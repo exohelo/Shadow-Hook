@@ -3127,7 +3127,7 @@ const lastJob=DOCKETS.map(j=>j.date).sort().pop();
 })();
 
 /* next dispatch — rolling milestone clock
-   Day: Flex 6:30 → 1st 7:00 → 2nd 8:00 (+1hr) · Night: Flex 4:30 → 1st 5:00 → 2nd 6:00 (+1hr)
+   Day: Flex 6:30 → 1st 7:00 → 2nd 8:10 → end 9:30 · Night: Flex 4:30 → 1st 5:00 → 2nd 6:10 → end 7:30  (#202, per hall timeline)
    Active window glows green; clock counts to the next milestone — except while
    dispatch is LIVE (#107): then the clock stands down to "STAND BY.." until the
    first docket scan lands and the live ID reel takes over. */
@@ -3136,9 +3136,9 @@ function tickDisp(){
   const n=nowLA();   /* #201 — Long Beach wall-clock, not the device's */
   const mk=(h,m,dd)=>{const d=new Date(n);d.setDate(d.getDate()+(dd||0));d.setHours(h,m,0,0);return d};
   const boards=[
-    {name:"DAY DISPATCH",  flex:mk(6,30),  first:mk(7,0),  second:mk(8,0),  end:mk(9,0),  ft:"6:30", t1:"7:00", t2:"8:00"},
-    {name:"NIGHT DISPATCH",flex:mk(16,30), first:mk(17,0), second:mk(18,0), end:mk(19,0), ft:"4:30", t1:"5:00", t2:"6:00"},
-    {name:"DAY DISPATCH",  flex:mk(6,30,1),first:mk(7,0,1),second:mk(8,0,1),end:mk(9,0,1),ft:"6:30", t1:"7:00", t2:"8:00", tom:true}
+    {name:"DAY DISPATCH",  flex:mk(6,30),  first:mk(7,0),  second:mk(8,10),  end:mk(9,30),  ft:"6:30", t1:"7:00", t2:"8:10"},   /* #202 — 2nd @8:10, official end 9:30 */
+    {name:"NIGHT DISPATCH",flex:mk(16,30), first:mk(17,0), second:mk(18,10), end:mk(19,30), ft:"4:30", t1:"5:00", t2:"6:10"},   /* #202 — 2nd @6:10, official end 7:30 */
+    {name:"DAY DISPATCH",  flex:mk(6,30,1),first:mk(7,0,1),second:mk(8,10,1),end:mk(9,30,1),ft:"6:30", t1:"7:00", t2:"8:10", tom:true}
   ];
   const b=boards.find(x=>n<x.end);
   let target, phase; // phase: which segment is live now
@@ -3244,21 +3244,22 @@ try{const _br=JSON.parse(localStorage.getItem(K('boardresults'))||'{}');
 
 const AZ="ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 // which board is next — #110: a board stays "next/live" until its dispatch ENDS.
-// Morning runs to 9:00, so tonight doesn't become UP NEXT until 9:00; night runs
-// to 19:00, so tomorrow morning doesn't post until 19:00. (Old cutoffs: 6/16 —
+// #202 — official end is 9:30 / 19:30 (per the hall timeline), so tonight doesn't
+// become UP NEXT until 9:30 and tomorrow morning doesn't post until 19:30 — now in
+// step with the Dispatch Bot's 9:30 Early-count trigger. (Old cutoffs: 6/16 —
 // that's why tonight showed during morning dispatch and Sunday showed midday.)
-const hh2=now.getHours();
-let nd2=new Date(now); if(hh2>=19) nd2.setDate(nd2.getDate()+1);
-const nextAM = hh2<9 ? true : hh2<19 ? false : true;
+const _m2=now.getHours()*60+now.getMinutes();   /* #202 — flip on the 9:30 / 19:30 official end, not the round hour */
+let nd2=new Date(now); if(_m2>=19*60+30) nd2.setDate(nd2.getDate()+1);
+const nextAM = _m2<9*60+30 ? true : _m2<19*60+30 ? false : true;
 const DOWM=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 let callSlot = DOWM[nd2.getDay()]+"_"+(nextAM?"AM":"PM");
 if(!SLOTS[callSlot]) callSlot="Thu_PM";
 document.getElementById('callSlot').textContent = callSlot.replace("_"," ") + (nd2.getDate()!==now.getDate()?" · tomorrow":" · today");
-/* #110 — the app can sit open across 9:00/19:00: re-aim the pending board on the minute */
+/* #110/#202 — the app can sit open across 9:30/19:30: re-aim the pending board on the minute */
 setInterval(function(){
-  const n=nowLA(),h=n.getHours();
-  const d=new Date(n); if(h>=19)d.setDate(d.getDate()+1);
-  const am=h<9?true:h<19?false:true;
+  const n=nowLA(),_m=n.getHours()*60+n.getMinutes();
+  const d=new Date(n); if(_m>=19*60+30)d.setDate(d.getDate()+1);
+  const am=_m<9*60+30?true:_m<19*60+30?false:true;
   let s=DOWM[d.getDay()]+"_"+(am?"AM":"PM"); if(!SLOTS[s])s="Thu_PM";
   if(s!==callSlot||d.getDate()!==nd2.getDate()){
     callSlot=s; nd2=d;
@@ -3981,9 +3982,9 @@ function cwCurrentSlot(){
   /* #114 — same cutoffs as the main board clock (#110): a board holds until its
      dispatch ENDS (9:00 / 19:00). This used the old 6/16 cutoffs and fought the
      fixed clock every minute, flip-flopping callSlot during dispatch windows. */
-  const n=nowLA(); const h=n.getHours();   /* #201 — Long Beach clock */
-  const nd=new Date(n); if(h>=19) nd.setDate(nd.getDate()+1);
-  const am = h<9 ? true : h<19 ? false : true;
+  const n=nowLA(); const _m=n.getHours()*60+n.getMinutes();   /* #201 LA · #202 flip on 9:30 / 19:30 */
+  const nd=new Date(n); if(_m>=19*60+30) nd.setDate(nd.getDate()+1);
+  const am = _m<9*60+30 ? true : _m<19*60+30 ? false : true;
   let s=DOWM[nd.getDay()]+"_"+(am?"AM":"PM");
   return SLOTS[s]?s:"Thu_PM";
 }
