@@ -4362,7 +4362,10 @@ const DispatchBot=(function(){
   // has this file already landed? EARLY sits nested under the PM key; NIGHT/MORNING are the top-level sheet
   function isFound(kind,key){
     const r=DISPATCH_DATA[key]; if(!r)return false;
-    return kind==="EARLY" ? !!r.early : !!(r.total||r.boards);
+    /* #203 — once the NIGHT final for a day is in, the EARLY count is subsumed by it:
+       a night sheet landing (or being uploaded) also closes the early hunt, so the bot
+       stops "still looking for the early count" once tonight's real board is already in. */
+    return kind==="EARLY" ? !!(r.early||r.total||r.boards) : !!(r.total||r.boards);
   }
   // the three searches whose "today" is the anchor day
   function searchesFor(anchor){
@@ -4534,12 +4537,24 @@ function renderBotStatus(now){
       happy:["dispatch is rolling and I love it! 😄","so many hooks going out tonight — woo! 🪝","great energy in the hall right now ✨","board's up soon — can't wait! 🎈","good luck out there, everybody! 🫡"],
       sleepy:["dispatch is going… just resting my eyes 😴","*yawn* …hooks out… board later… 💤","holding down the chair 'til the come-down","so cozy right now… wake me for the final 🥱","that night-dispatch hum is very… sleepy… 😴"],
       bored:["dispatch is running. I'm just… here 🥱","hooks out, I guess. big whoop.","watching the board fill in. thrilling stuff.","nothing for me to do 'til the come-down 🙄","night dispatch. same as always. anyway."]
+    },
+    /* #203 — IDLE MUTTERINGS: what the bot says to itself when there's nothing on the
+       board to chase. One block per mood, same shape as every other situation above.
+       Sprinkled into the caught-up (allclear) and waiting states so the quiet has some
+       character — a sleepy, forgetful little dispatch bot puttering around the hall. */
+    idle:{
+      grumpy:["nothing to do. don't get used to it 🙄","i'm not asleep, i'm resting my eyes. big difference 😤","was i supposed to do something? eh. probably handled it.","quiet shift. suspiciously quiet. i don't trust it.","wake me when something breaks. not one second before.","i'd take a break but i'm already on one.","the board's empty and so is my patience 🙄","doing nothing is a skill. i'm the best there is."],
+      chill:["mmmmm thinking… 😎","just vibing. board's quiet, so am i.","nothing on the wire… i'll be over here ☕","i was gonna do a thing… it can wait.","harbor's calm. i'm calmer 🌊","floating through the shift, no notes.","clouds look nice today. anyway.","if you need me i'm right here, cruising.","no news is good news. kickin' back 😎"],
+      sweet:["just thinking about all you hard workers 💛","nothing to do but hope you're having a good one 😊","tidied up already… so i'm just here for you ✨","was i supposed to do something? if it was for you, i did it twice 💛","quiet moment — perfect time to check on you. doing okay?","sending a little good luck to the window 🌷","i'll keep watch while you rest, friend 😌","no tasks right now, just good company 🥰"],
+      happy:["mmm, nothing to do — and honestly? kinda great 😄","caught up already! tiny happy dance 🎉","i think i finished all my chores. go me! ✨","empty board, sun's out. living the dream ☀️","was gonna do a task… turns out it's already done! woo 🙌","lovely quiet shift. i'm having the best time 😄","just grinning at the clipboard, as one does.","idle time is me-time! 🎈","nothing on the wire and i couldn't be happier 😄"],
+      sleepy:["i was supposed to be doing something… oh well, probably already did it. going back to sleep 😴","mmmf… five more minutes… 💤","resting my eyes. purely professional 😴","zzz… huh? oh. nothing. …zzz 💤","this chair is so comfy right now 🥱","did i check the board? …i'll check after this nap 💤","so cozy, so quiet, so sleepy 😴","holding down the desk. with my face 💤","g'night board. g'night hall. g'night me 😴"],
+      bored:["mmmmm thinking… nope, nothing 🥱","counting the ceiling tiles. i'm at forty-one.","nothing to do. shocking, i know.","i was gonna do something. forgot what. oh well.","staring at the board. the board stares back 🙄","reorganized the paperclips. twice.","this is the part where nothing happens.","wake me if the plot advances 🥱","so… anyway. still nothing."]
     }
   };
   const VIBES=Object.keys(MOODS);   // #193 — the mood roster comes straight from the MOODS map
   const hash=s=>{let h=0;for(let i=0;i<s.length;i++)h=(h*31+s.charCodeAt(i))|0;return Math.abs(h);};
   const vibe=VIBES[hash("v"+Math.floor(now.getTime()/(80*60000)))%VIBES.length];
-  const rot=Math.floor(now.getTime()/45000);
+  const rot=Math.floor(now.getTime()/240000);   // #203 — a line holds ~4 min now (was 45s); the bot's a slow, sleepy talker
   const pick=(state,salt)=>{const p=LINES[state][vibe];return p[(rot+hash(String(salt)))%p.length];};
   const fill=(t,s)=>t.replace("{L}",s.label).replace("{F}",s.file).replace("{O}",clock(s.open)).replace("{C}",clock(s.close));
   const chip=(txt,color)=>'<span style="color:'+color+';font-weight:600">'+txt+'</span>';
@@ -4573,8 +4588,18 @@ function renderBotStatus(now){
       const missed=P.filter(s=>s.state==="closed"&&(now-s.close)<3*60*60*1000).sort((a,b)=>b.close-a.close)[0];
       const waiting=P.filter(s=>s.state==="waiting").sort((a,b)=>a.open-b.open)[0];
       if(missed){stress="alarm";parts.push(chip("😞 "+fill(pick("missed",missed.kind),missed),"var(--ember)"));}
-      else if(waiting)parts.push(chip("😴 "+fill(pick("waiting",waiting.kind),waiting),"var(--steel)"));
-      else parts.push(chip("✅ "+pick("allclear","idle"),"var(--steel)"));
+      else if(waiting){
+        /* #203 — caught up with a sheet still to come: mostly idle mutterings, with the
+           next-due note surfacing every third turn so you still know what's next & when. */
+        if(rot%3===0)parts.push(chip("😴 "+fill(pick("waiting",waiting.kind),waiting),"var(--steel)"));
+        else parts.push(chip("💭 "+pick("idle","z"),"var(--steel)"));
+      }
+      else{
+        /* #203 — nothing left to chase at all: the bot putters. an "all in" reassurance
+           every fourth turn, an idle muttering the rest of the time. */
+        if(rot%4===0)parts.push(chip("✅ "+pick("allclear","idle"),"var(--steel)"));
+        else parts.push(chip("💭 "+pick("idle","z2"),"var(--steel)"));
+      }
     }
   }
   const tn=MOODS[vibe].tint;   // #193 — panel border/bg/glow comes from the active mood
@@ -4582,8 +4607,8 @@ function renderBotStatus(now){
   _botStatusEl.style.background=tn.bg;
   _botStatusEl.style.boxShadow=stress==="alarm"?("0 0 15px "+tn.gl+", inset 0 0 0 1px "+tn.bd):"none";
   _botStatusEl.innerHTML='<span class="mono" style="letter-spacing:.14em;font-size:9.5px;color:var(--steel);text-transform:uppercase">Dispatch Bot</span>'
-    +'<span title="mood: '+MOODS[vibe].name+' — '+MOODS[vibe].tag+'" style="font-size:14px;margin-left:1px;line-height:1">'+MOODS[vibe].face+'</span>'
-    +'<span class="mono" title="'+MOODS[vibe].tag+'" style="letter-spacing:.1em;font-size:9px;font-weight:600;color:'+MOODS[vibe].ink+';text-transform:uppercase">'+MOODS[vibe].name+'</span>'
+    +'<span class="mono" title="'+MOODS[vibe].tag+'" style="letter-spacing:.05em;font-size:9.5px;font-weight:700;color:'+MOODS[vibe].ink+'">Mood: '+MOODS[vibe].name+'</span>'
+    +'<span title="Dispatch Bot Mood: '+MOODS[vibe].name+' — '+MOODS[vibe].tag+'" style="font-size:14px;margin-left:1px;line-height:1">'+MOODS[vibe].face+'</span>'
     +parts.join('<span style="color:var(--line)">·</span>');
 }
 try{DispatchBot.tick();}catch(e){}
