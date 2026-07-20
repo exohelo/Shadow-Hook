@@ -1,0 +1,128 @@
+#!/usr/bin/env python3
+"""
+Shadow Hook · dispatch-sheet parser
+Reads an ILWU Local 13 dispatch PDF (a scanned fax bundle), finds the
+"Job Forecast Report" page, OCRs its Boards/Gangs table, and returns the
+forecast in the exact shape the app stores in Supabase `dispatch_boards`.
+
+Self-correcting: OCR turns some zeros into stray symbols; the Total column
+(Total = Early+MO+EO+MRO+RO+LM) lets us validate and repair each row.
+"""
+import subprocess, re, json, sys, os, tempfile
+
+COLS = ["shorted", "early", "mo", "eo", "mro", "ro", "lm", "total"]
+SUMCOLS = ["early", "mo", "eo", "mro", "ro", "lm"]  # these sum to total
+
+# known Boards-table rows (longest first so multi-word names match before short ones)
+BOARDS = ["Crane Top Handler", "Hold", "Crane", "Winch", "UTR", "CY", "Jitney",
+          "Swamper", "Casual", "Dock", "Mechanics", "Gear", "Carpenter"]
+
+def sh(args):
+    return subprocess.run(args, capture_output=True, text=True).stdout
+
+def npages(pdf):
+    out = sh(["pdfinfo", pdf])
+    m = re.search(r"Pages:\s+(\d+)", out)
+    return int(m.group(1)) if m else 1
+
+def render(pdf, page, dpi=300):
+    d = tempfile.mkdtemp()
+    base = os.path.join(d, "pg")
+    sh(["pdftoppm", "-f", str(page), "-l", str(page), "-r", str(dpi), "-png", pdf, base])
+    for f in os.listdir(d):
+        if f.endswith(".png"):
+            return os.path.join(d, f)
+    return None
+
+def ocr(png):
+    return sh(["tesseract", png, "stdout", "--psm", "6"])
+
+def clean_num(tok):
+    """A single OCR token -> int, or None if it's unrecoverable garble."""
+    t = tok.strip().strip(".,:;")
+    if re.fullmatch(r"\d+", t):
+        return int(t)
+    t2 = (t.replace("l", "1").replace("I", "1").replace("|", "1")
+           .replace("O", "0").replace("o", "0").replace("Q", "0")
+           .replace("S", "5").replace("B", "8"))
+    if re.fullmatch(r"\d+", t2):
+        return int(t2)
+    return None  # e.g. ")", "A)", "tt)", "m0)" — almost always a zero
+
+def parse_row(tokens):
+    """8 value-tokens -> {col: int}. Garbled cells -> 0, then Total validates."""
+    vals = [clean_num(t) for t in tokens[-8:]]
+    while len(vals) < 8:
+        vals.insert(0, 0)
+    row = {c: (v if v is not None else 0) for c, v in zip(COLS, vals)}
+    total = vals[-1]
+    if total == 0:
+        for c in SUMCOLS:                 # a board whose Total is 0 has every column 0
+            row[c] = 0
+    s = sum(row[c] for c in SUMCOLS)
+    ok = (total is not None and s == total)
+    if total is not None and not ok:
+        # trust the (clean) Total for the headline number; note the mismatch
+        row["_total_mismatch"] = {"cols_sum": s, "printed_total": total}
+        row["total"] = total
+    return row, ok
+
+def find_row(text_lines, name):
+    """Find a board's line and return its 8 value tokens (or None)."""
+    for ln in text_lines:
+        low = ln.lower()
+        if low.strip().startswith(name.lower()):
+            rest = ln[len(name):]
+            toks = re.findall(r"[^\s]+", rest)
+            nums = [t for t in toks if re.search(r"[\d)lIQOoSB]", t)]
+            if len(nums) >= 6:
+                return nums
+    return None
+
+def parse_page(text):
+    lines = [l for l in text.splitlines() if l.strip()]
+    # workdate + shift
+    date_iso, shift = None, None
+    joined = " ".join(lines)
+    dm = re.search(r"(\d{1,2})[/\s]?(\d{2})[/\s]?(\d{4})", joined.replace("WorkDate", "WorkDate "))
+    if dm:
+        mo, dy, yr = dm.group(1), dm.group(2), dm.group(3)
+        date_iso = f"{yr}-{int(mo):02d}-{int(dy):02d}"
+    if re.search(r"\bnight\b", joined, re.I): shift = "Night"
+    elif re.search(r"\bday\b", joined, re.I): shift = "Day"
+
+    boards, warnings = {}, []
+    for name in BOARDS:
+        nums = find_row(lines, name)
+        if nums is None:
+            continue
+        row, ok = parse_row(nums)
+        boards[name] = {k: row[k] for k in COLS}
+        if not ok and "_total_mismatch" in row:
+            warnings.append(f"{name}: cols summed {row['_total_mismatch']['cols_sum']} but printed total {row['_total_mismatch']['printed_total']}")
+
+    # grand total = the Boards totals row (a numbers-only line after the last board)
+    total = None
+    if boards:
+        bt = {c: sum(b[c] for b in boards.values()) for c in COLS}
+        bt["total"] = sum(b["total"] for b in boards.values())
+        total = bt
+    return {"workdate": date_iso, "shift": shift, "boards": boards, "total": total, "warnings": warnings}
+
+def parse_pdf(pdf):
+    n = npages(pdf)
+    for p in range(1, n + 1):
+        png = render(pdf, p, dpi=150)          # fast low-res scan just to locate the page
+        if not png:
+            continue
+        txt = ocr(png)
+        if "Job Forecast" in txt or ("Boards" in txt and "Shorted" in txt and "Total" in txt):
+            sharp = render(pdf, p, dpi=300)     # re-render the matched page sharp for parsing
+            res = parse_page(ocr(sharp) if sharp else txt)
+            res["source_page"] = p
+            return res
+    return {"error": "no Job Forecast Report page found", "pages_scanned": n}
+
+if __name__ == "__main__":
+    pdf = sys.argv[1] if len(sys.argv) > 1 else "sample.pdf"
+    print(json.dumps(parse_pdf(pdf), indent=2, ensure_ascii=False))
