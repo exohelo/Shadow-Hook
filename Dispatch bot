@@ -1,0 +1,122 @@
+#!/usr/bin/env python3
+"""
+Shadow Hook · dispatch board bot
+Runs on a schedule (GitHub Action). For the current Pacific day it tries to grab
+the three dispatch sheets from ilwu13.com — tonight's EARLY (E), tonight's final
+NIGHT (N), and tomorrow's MORNING (D) — parses each, and upserts the forecast
+into Supabase `dispatch_boards` in the exact shape the app reads.
+
+Idempotent: sheets that aren't posted yet just fail to download and are skipped;
+re-running simply overwrites with the same numbers. Nothing else to babysit.
+
+Env:  SUPABASE_URL, SUPABASE_SERVICE_KEY   (set as GitHub secrets)
+Test: python3 dispatch_bot.py --test <local.pdf> <E|N|D> <YYYY-MM-DD>   (no network)
+"""
+import os, sys, json, datetime, tempfile, urllib.request, urllib.parse
+from parse_forecast import parse_pdf
+
+BASE = os.environ.get("DISPATCH_BASE_URL",
+    "https://ilwu13.com/wp-content/uploads/simple-file-list/Dispatches/Day-Night-Early/")
+DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+
+def dow(d):   return DOW[(d.weekday() + 1) % 7]                      # Mon.. -> Sun-indexed
+def fname(d, L): return f"{d.month:02d}{d.day:02d}{str(d.year)[-2:]}{L}.pdf"   # 072026E.pdf
+
+def targets(today):
+    """(letter, file-date, dispatch_boards key, nest-field-or-None) for today."""
+    tomo = today + datetime.timedelta(days=1)
+    return [
+        ("E", today, f"{today.isoformat()}_{dow(today)}_PM", "early"),  # tonight's early look → PM row, under .early
+        ("N", today, f"{today.isoformat()}_{dow(today)}_PM", None),     # tonight's final     → PM row, top-level
+        ("D", tomo,  f"{tomo.isoformat()}_{dow(tomo)}_AM",  None),      # tomorrow morning    → AM row, top-level
+    ]
+
+def payload_from(parsed):
+    """The forecast slice the app stores/reads."""
+    return {"total": parsed["total"], "boards": parsed["boards"], "shift": parsed.get("shift")}
+
+# ---- Supabase REST (service key bypasses RLS; read-merge-write preserves siblings) ----
+def _req(url, data=None, method="GET"):
+    key = os.environ["SUPABASE_SERVICE_KEY"]
+    h = {"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    if method == "POST":
+        h["Prefer"] = "resolution=merge-duplicates"
+    r = urllib.request.Request(url, data=data, method=method, headers=h)
+    with urllib.request.urlopen(r, timeout=45) as resp:
+        return resp.read()
+
+def sb_get(key):
+    base = os.environ["SUPABASE_URL"].rstrip("/")
+    url = f"{base}/rest/v1/dispatch_boards?key=eq.{urllib.parse.quote(key)}&select=data"
+    arr = json.loads(_req(url) or b"[]")
+    return arr[0]["data"] if arr else {}
+
+def sb_upsert(key, data):
+    base = os.environ["SUPABASE_URL"].rstrip("/")
+    body = json.dumps([{"key": key, "data": data}]).encode()
+    _req(f"{base}/rest/v1/dispatch_boards", data=body, method="POST")
+
+def download(url, dest):
+    req = urllib.request.Request(url, headers={"User-Agent": "shadowhook-dispatch-bot"})
+    with urllib.request.urlopen(req, timeout=90) as r, open(dest, "wb") as f:
+        f.write(r.read())
+
+def merge(existing, payload, nest):
+    out = dict(existing or {})
+    if nest:
+        out[nest] = payload
+    else:
+        out.update(payload)
+    return out
+
+def process(letter, file_date, key, nest, pdf_path, dry=False):
+    parsed = parse_pdf(pdf_path)
+    if parsed.get("error") or not parsed.get("boards"):
+        print(f"  · {os.path.basename(pdf_path)}: no forecast page ({parsed.get('error','')})")
+        return None
+    if parsed.get("workdate") and parsed["workdate"] != file_date.isoformat():
+        print(f"  ! workdate in sheet ({parsed['workdate']}) != file date ({file_date}); using file date for the key")
+    payload = payload_from(parsed)
+    if parsed.get("warnings"):
+        print(f"  ~ ocr notes: {parsed['warnings']}")
+    if dry:
+        print(json.dumps({"key": key, "nest": nest, "data": merge({}, payload, nest)}, indent=2, ensure_ascii=False))
+        return key
+    merged = merge(sb_get(key), payload, nest)
+    sb_upsert(key, merged)
+    print(f"  ✓ {key}{'.'+nest if nest else ''}  total={payload['total']['total']} jobs, shift={payload['shift']}")
+    return key
+
+def run():
+    today = datetime.date.today()   # Action sets TZ=America/Los_Angeles
+    print(f"Dispatch bot · {today} ({dow(today)})")
+    done = []
+    for L, fdate, key, nest in targets(today):
+        f = fname(fdate, L)
+        tmp = os.path.join(tempfile.gettempdir(), f)
+        try:
+            download(BASE + f, tmp)
+        except Exception as e:
+            print(f"  · {f}: not up yet / unreachable ({getattr(e,'code',e)})")
+            continue
+        try:
+            k = process(L, fdate, key, nest, tmp)
+            if k: done.append(k)
+        except Exception as e:
+            print(f"  ! {f}: {e}")
+    print("done —", (", ".join(done) if done else "nothing new this run"))
+
+if __name__ == "__main__":
+    if len(sys.argv) >= 5 and sys.argv[1] == "--test":
+        _, _, pdf, L, ds = sys.argv[:5]
+        d = datetime.date.fromisoformat(ds)
+        tset = {t[0]: t for t in targets(d if L != "D" else d - datetime.timedelta(days=1))}
+        letter, fdate, key, nest = tset[L]
+        # for the test, key off the provided date directly
+        if L == "E": key, nest = f"{d.isoformat()}_{dow(d)}_PM", "early"
+        elif L == "N": key, nest = f"{d.isoformat()}_{dow(d)}_PM", None
+        else: key, nest = f"{d.isoformat()}_{dow(d)}_AM", None
+        print(f"TEST · file {pdf} · letter {L} · date {d} -> key {key}" + (f" (.{nest})" if nest else ""))
+        process(L, d, key, nest, pdf, dry=True)
+    else:
+        run()
