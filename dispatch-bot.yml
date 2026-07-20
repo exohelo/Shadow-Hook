@@ -1,0 +1,32 @@
+name: Dispatch board bot
+
+# Fills Supabase `dispatch_boards` from the ilwu13.com sheets, so the app's board
+# updates itself. Runs on a schedule and can also be run by hand (the "Run
+# workflow" button in the Actions tab) for testing.
+on:
+  schedule:
+    # every 15 min across the dispatch window (~8 AM – 1 AM Pacific, written in UTC).
+    # The bot skips any sheet that isn't posted yet, so extra runs are harmless.
+    - cron: "*/15 15-23,0-8 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    env:
+      TZ: America/Los_Angeles
+      SUPABASE_URL: https://ehykqebzkbelwtkgjbml.supabase.co
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install OCR + PDF tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr poppler-utils
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Fetch & parse dispatch sheets
+        working-directory: bot
+        run: python3 dispatch_bot.py
