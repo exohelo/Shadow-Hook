@@ -2427,15 +2427,33 @@ function K(s){return "shadowhook_"+s+"_"+ACCT_ID;}
   else { var iv=setInterval(function(){ if(window.SB){ clearInterval(iv); boot(); } },120); setTimeout(function(){ try{ clearInterval(iv); }catch(e){} },8000); }
 })();
 
+/* ── PACIFIC-TIME ANCHOR (#201) ───────────────────────────────────────────
+   The hall runs on Long Beach time. EVERY scheduling decision below must read
+   Long Beach wall-clock — NOT the device's local clock — or a member on a phone
+   set to another timezone (travel, auto-timezone, a work desktop) sees the wrong
+   dispatch window, the wrong AM/PM board, and the wrong sheet date, and "live
+   synced with all users" quietly breaks. nowLA() returns a Date whose LOCAL
+   fields (getHours/getMinutes/getDate/getMonth/getFullYear/getDay) always read as
+   America/Los_Angeles, on any device, and it tracks PST/PDT automatically.
+   Pass an epoch (e.g. a stored Date.now() timestamp) to read THAT instant in LA.
+   IMPORTANT: use it only for those wall-clock fields — its .getTime() is shifted,
+   so keep Date.now()/new Date(ts) for durations, ages, and ids. */
+function nowLA(ts){
+  try{
+    var base = (ts==null) ? new Date() : new Date(ts);
+    return new Date(base.toLocaleString('en-US',{timeZone:'America/Los_Angeles'}));
+  }catch(e){ return (ts==null) ? new Date() : new Date(ts); }  // no Intl/tz → fall back to device local
+}
 /* #50 — LOCAL calendar date (toISOString is UTC: after ~5pm in San Pedro it returns TOMORROW,
-   which stamped night-shift scans with the wrong date and knocked them out of the weekly take) */
-function todayISO(){const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
+   which stamped night-shift scans with the wrong date and knocked them out of the weekly take).
+   #201 — now anchored to Long Beach so the date is the hall's date on every device. */
+function todayISO(){const d=nowLA();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
 /* #90 — the working day flips at local MIDNIGHT. A dispatch sheet posted in the
    evening reads "tonight"; once the clock passes 00:00 that same board is released
    into "this morning" (the night-into-hoot work is happening now). It reverts to
    "tonight" at noon, when the evening's next sheet starts going up. One source of
    truth so every board, ship count, and odds line across the app agrees. */
-function boardWhen(){return (new Date().getHours()<12)?"this morning":"tonight";}
+function boardWhen(){return (nowLA().getHours()<12)?"this morning":"tonight";}
 function boardWhenCap(){return boardWhen()==="tonight"?"Tonight":"This Morning";}
 const DOCKETS = [];  // starts empty — fills as the user scans/logs their own jobs
 try{JSON.parse(localStorage.getItem(K("dockets"))||"[]").forEach(j=>DOCKETS.push(j))}catch(e){}
@@ -2992,7 +3010,7 @@ const fmt$=n=>"$"+n.toLocaleString(undefined,{maximumFractionDigits:0});
 const fmtD=iso=>{const[p]=iso.split("T");const[y,m,d]=p.split("-");return m+"/"+d+"/"+y.slice(2)};
 const DOW=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 function isWeekend(d){return d.getDay()===0||d.getDay()===6}
-function isHoliday(d){return HOLIDAYS_26.includes(d.toISOString().slice(0,10))}
+function isHoliday(d){return HOLIDAYS_26.includes(d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"));} /* #201 — local Y-M-D, not UTC toISOString (which flipped the day in the evening) */
 /* Hoot owls run irregular hours. We remember the last hoot-owl hours the member logged
    and use it as the default for the next hoot, so the estimate tracks reality over time. */
 let LEARNED_HOOT=(function(){try{return parseFloat(localStorage.getItem(K("hoothrs")))||0}catch(e){return 0}})();
@@ -3052,7 +3070,7 @@ function estPay(j){
 }
 
 /* ================= LEDGER ================= */
-const now=new Date();
+const now=nowLA();   /* #201 — the hall's day (Long Beach), so the ledger, pay-week and next-board pick agree on every device */
 document.getElementById('todayLine').textContent=DOW[now.getDay()]+" · "+now.toLocaleDateString(undefined,{month:'long',day:'numeric',year:'numeric'});
 // pay week Sat→Fri
 const wkStart=new Date(now);wkStart.setDate(now.getDate()-((now.getDay()+1)%7));wkStart.setHours(0,0,0,0);
@@ -3115,7 +3133,7 @@ const lastJob=DOCKETS.map(j=>j.date).sort().pop();
    first docket scan lands and the live ID reel takes over. */
 let lastCall=null; // {pos, ts, win} — hoisted above tickDisp so it can read dispatch state
 function tickDisp(){
-  const n=new Date();
+  const n=nowLA();   /* #201 — Long Beach wall-clock, not the device's */
   const mk=(h,m,dd)=>{const d=new Date(n);d.setDate(d.getDate()+(dd||0));d.setHours(h,m,0,0);return d};
   const boards=[
     {name:"DAY DISPATCH",  flex:mk(6,30),  first:mk(7,0),  second:mk(8,0),  end:mk(9,0),  ft:"6:30", t1:"7:00", t2:"8:00"},
@@ -3164,13 +3182,13 @@ function posVal(p){ // rank a position in board order relative to the open lette
   return ((A.indexOf(m[1])-A.indexOf(OPENP()[0])+26)%26)*100000+ +m[2];
 }
 function liveWindow(){ // between flex and end of the current board
-  const n=new Date();
+  const n=nowLA();   /* #201 — Long Beach wall-clock, not the device's */
   const mk=(h,mi)=>{const d=new Date(n);d.setHours(h,mi,0,0);return d};
   if(n>=mk(6,30)&&n<mk(9,0))return "DAY";
   if(n>=mk(16,30)&&n<mk(19,0))return "NIGHT";
   return null;
 }
-function winKey(){const w=liveWindow();return w?new Date().toDateString()+"_"+w:null} // #107 — which board a scan belongs to
+function winKey(){const w=liveWindow();return w?nowLA().toDateString()+"_"+w:null} // #107 — which board a scan belongs to · #201 LA date
 function submitLiveCall(pos){ // no identity attached — a position IS a worker's number
   pos=pos.toUpperCase().trim();
   if(posVal(pos)<0)return false;
@@ -3238,7 +3256,7 @@ if(!SLOTS[callSlot]) callSlot="Thu_PM";
 document.getElementById('callSlot').textContent = callSlot.replace("_"," ") + (nd2.getDate()!==now.getDate()?" · tomorrow":" · today");
 /* #110 — the app can sit open across 9:00/19:00: re-aim the pending board on the minute */
 setInterval(function(){
-  const n=new Date(),h=n.getHours();
+  const n=nowLA(),h=n.getHours();
   const d=new Date(n); if(h>=19)d.setDate(d.getDate()+1);
   const am=h<9?true:h<19?false:true;
   let s=DOWM[d.getDay()]+"_"+(am?"AM":"PM"); if(!SLOTS[s])s="Thu_PM";
@@ -3963,7 +3981,7 @@ function cwCurrentSlot(){
   /* #114 — same cutoffs as the main board clock (#110): a board holds until its
      dispatch ENDS (9:00 / 19:00). This used the old 6/16 cutoffs and fought the
      fixed clock every minute, flip-flopping callSlot during dispatch windows. */
-  const n=new Date(); const h=n.getHours();
+  const n=nowLA(); const h=n.getHours();   /* #201 — Long Beach clock */
   const nd=new Date(n); if(h>=19) nd.setDate(nd.getDate()+1);
   const am = h<9 ? true : h<19 ? false : true;
   let s=DOWM[nd.getDay()]+"_"+(am?"AM":"PM");
@@ -4362,9 +4380,14 @@ const DispatchBot=(function(){
   }
   // full picture at a given moment: every search with its live state
   function plan(now){
-    now=now||new Date();
+    now=now||nowLA();
     const today=dayOf(now), yday=new Date(today.getFullYear(),today.getMonth(),today.getDate()-1);
     const base=(typeof window!=="undefined"&&window.DISPATCH_BASE_URL)||"";
+    /* #201 — each sheet type lives in its OWN folder on ilwu13.com:
+       EARLY → Day-Night-Early/ · NIGHT → Nightside-Final/ · MORNING(D) → Dayside-Final/.
+       Build the URL from the per-kind folder; fall back to the old single base if unset. */
+    const folderFor=k=>{const F=(typeof window!=="undefined"&&window.DISPATCH_FOLDERS)||null;
+      const key=(k==="EARLY")?"E":(k==="NIGHT")?"N":"D"; return (F&&F[key])||base;};
     const seen={}, out=[];
     searchesFor(yday).concat(searchesFor(today)).forEach(s=>{     // yesterday's MORNING carries past midnight
       const id=s.kind+"|"+s.key; if(seen[id])return; seen[id]=1;
@@ -4374,36 +4397,54 @@ const DispatchBot=(function(){
       else if(now<s.open)     state="waiting";
       else if(now>=s.close)   state="closed";                    // window passed, never landed
       else state=(now.getTime()>s.expect.getTime()+MARGIN_MS)?"overdue":"searching";  // overdue only past EXPECT + margin
-      out.push(Object.assign({state:state,found:found,url:base+s.file},s));
+      out.push(Object.assign({state:state,found:found,url:folderFor(s.kind)+s.file},s));
     });
     return out;
   }
   function active(now){ return plan(now).filter(s=>s.state==="searching"||s.state==="overdue"); }
-  function status(now){ now=now||new Date(); const p=plan(now);
+  function status(now){ now=now||nowLA(); const p=plan(now);
     return {now:now, searches:p, active:p.filter(s=>s.state==="searching"||s.state==="overdue")}; }
   function tick(){
-    const now=new Date(), act=active(now);
+    const now=nowLA(), act=active(now);
     if(typeof window!=="undefined" && typeof window.DISPATCH_FETCH==="function"){
       act.forEach(s=>{ try{window.DISPATCH_FETCH(s);}catch(e){} });   // hand each open file to the real fetcher
     }
     try{renderBotStatus(now);}catch(e){}
     return act;
   }
-  function onData(){ try{renderBotStatus(new Date());}catch(e){} }
+  function onData(){ try{renderBotStatus(nowLA());}catch(e){} }
   return {plan:plan, active:active, status:status, tick:tick, onData:onData};
 })();
 window.DispatchBot=DispatchBot;
 
-/* The real dispatch folder — Day, Night AND Early sheets all live here — so plan() now
-   builds the exact URLs, e.g.  .../Day-Night-Early/071726E.pdf .
+/* #201 — the three sheet types live in THREE different folders on ilwu13.com (verified
+   against the live listings), not one:
+       E (early count)  → Day-Night-Early/     named for that same day  (072026E = Jul 20)
+       N (night final)  → Nightside-Final/     named for that same day  (072026N = Jul 20)
+       D (day final)    → Dayside-Final/        named for the MORNING it's for, posted the
+                                                evening before          (072026D = Jul 20 board,
+                                                                         generated Jul 19 ~4 PM)
+   THE PDF HEADER: each sheet's top line reads e.g. "Jul. 19. 2026  4:17PM  No. 9120  P. 1/21" —
+   that stamp is the GENERATION time (for a D sheet, the evening BEFORE the board it's for), plus a
+   running sheet serial (No.####, a solid unique-id / "new sheet dropped" trigger) and a page count
+   (sheets run 20+ pages and page 1 can be a community flyer, so the parser must read on to the
+   actual dispatch pages). RULE: date a board by its FILENAME, never by the header stamp — the
+   header would pull a D board a day early (the trap this whole section exists to prevent).
+   plan() now builds each URL from its own folder (folderFor).
    IMPORTANT: a browser cannot READ a PDF hosted on another site (CORS blocks cross-origin
-   file reads), and these sheets are likely scans (need OCR) — so the actual grab CANNOT
-   run inside this page. It runs OFF the page: a small scheduled worker (serverless / a
-   cron on a box / a GitHub Action) fetches the PDF server-side, parses it, and posts the
-   result back through addDispatchData(key,data). This app holds the schedule, the status,
-   and the ingest point; the worker is the hands. Point DISPATCH_BASE_URL at your own
-   CORS-enabled JSON endpoint if the worker republishes there. */
-window.DISPATCH_BASE_URL=window.DISPATCH_BASE_URL||"https://ilwu13.com/wp-content/uploads/simple-file-list/Dispatches/Day-Night-Early/";
+   file reads), and these sheets are scans (need OCR) — so the actual grab CANNOT run inside
+   this page. It runs OFF the page: a small scheduled worker (serverless / a cron on a box /
+   a GitHub Action) fetches the PDF server-side, parses it, and posts the result back through
+   addDispatchData(key,data). This app holds the schedule, the status, and the ingest point;
+   the worker is the hands. IF that worker builds its own URLs, mirror this three-folder map
+   there too. Override window.DISPATCH_FOLDERS to point at your own CORS-enabled endpoint. */
+window.DISPATCH_ROOT=window.DISPATCH_ROOT||"https://ilwu13.com/wp-content/uploads/simple-file-list/Dispatches/";
+window.DISPATCH_FOLDERS=window.DISPATCH_FOLDERS||{
+  E: window.DISPATCH_ROOT+"Day-Night-Early/",   // Early count
+  N: window.DISPATCH_ROOT+"Nightside-Final/",   // Night final count
+  D: window.DISPATCH_ROOT+"Dayside-Final/"      // Day final (posted the evening before the morning it's for)
+};
+window.DISPATCH_BASE_URL=window.DISPATCH_BASE_URL||window.DISPATCH_FOLDERS.E;   // back-compat: old single base = the Early folder
 
 /* the bot's live status rides on top of Recent Boards (Wire tab) — a sibling before the
    list, so renderRecentBoards() never clobbers it. Shows what's being chased, what's in,
@@ -4423,7 +4464,7 @@ const MOODS={
   bored:{name:"Bored",face:"🥱",tag:"so… anyway",ink:"#aab2b8",tint:{bd:"rgba(122,130,138,.5)",bg:"linear-gradient(180deg,rgba(30,34,38,.55),rgba(14,16,18,.5))",gl:"rgba(122,130,138,.28)"}}
 };
 function renderBotStatus(now){
-  now=now||new Date();
+  now=now||nowLA();
   if(typeof rb==="undefined"||!rb)return;
   if(!_botStatusEl){
     _botStatusEl=document.createElement('div');
@@ -4569,7 +4610,7 @@ const CW_FIELDS=[
                      14:30 → 16:30 = day hands calling the DAY board's finals;
                      after 19:30   = night hands calling the NIGHT board's finals.
    A question the member has already answered is hidden regardless (handled in renderCW). */
-function cwMinsNow(){const n=new Date();return n.getHours()*60+n.getMinutes();}
+function cwMinsNow(){const n=nowLA();return n.getHours()*60+n.getMinutes();}
 const DAY_END=9*60+30, NIGHT_OPEN=16*60+30, AFTERNOON=14*60+30, NIGHT_END=19*60+30;
 function cwFieldVisible(id){
   const m=cwMinsNow();
@@ -4592,7 +4633,7 @@ function cwFieldVisible(id){
    on, not the wire's current slot: morning call → today's AM board, evening
    call → today's PM board. Stored per board so the flop math can find it. */
 function dropKey(){
-  const n=new Date(), m=n.getHours()*60+n.getMinutes();
+  const n=nowLA(), m=n.getHours()*60+n.getMinutes();
   const iso=n.getFullYear()+"-"+String(n.getMonth()+1).padStart(2,"0")+"-"+String(n.getDate()).padStart(2,"0");
   return iso+"_"+DOWM[n.getDay()]+"_"+(m<AFTERNOON?"AM":"PM");
 }
@@ -4600,7 +4641,7 @@ function dropKey(){
    (14:30→16:30) are the DAY board's finals, evening reports the NIGHT board's.
    Stored per board; AM + PM get summed wherever a whole-day number is wanted. */
 function finKey(){
-  const n=new Date(), m=n.getHours()*60+n.getMinutes();
+  const n=nowLA(), m=n.getHours()*60+n.getMinutes();
   const iso=n.getFullYear()+"-"+String(n.getMonth()+1).padStart(2,"0")+"-"+String(n.getDate()).padStart(2,"0");
   return iso+"_"+DOWM[n.getDay()]+"_"+(m<NIGHT_OPEN?"AM":"PM");
 }
@@ -4624,7 +4665,7 @@ function finRecord(id,v){
    · silence = no entries = the flop math keeps its floor
    Every logged drop pays ⬡10, capped at 6 paid drops a board so it can't be
    farmed. (Single-device for now — the backend cross-checks the crowd's drops.) */
-function dropPhase(ts){var d=new Date(ts||Date.now()),m=d.getHours()*60+d.getMinutes();if(m>=NIGHT_OPEN)return m<17*60?"FLEX":(m<18*60?"1ST":"2ND");return m<7*60?"FLEX":(m<8*60?"1ST":"2ND");}
+function dropPhase(ts){var d=nowLA(ts||Date.now()),m=d.getHours()*60+d.getMinutes();if(m>=NIGHT_OPEN)return m<17*60?"FLEX":(m<18*60?"1ST":"2ND");return m<7*60?"FLEX":(m<8*60?"1ST":"2ND");}
 const DROP_WAVE={FLEX:"Flex","1ST":"1st","2ND":"2nd"};
 const DROP_CATS={UTR:"UTR",FLEX:"Flex UTR",HOLD:"Hold",SWING:"Swing",SL:"Swing Lash",LASH:"Lash",DOCK:"Dock",DSIG:"Dock Signal",HL:"Heavy Lift",AUTO:"Autos",JIT:"Jitney",CY:"CY",SWMP:"Swamper",GEAR:"Gear","?":"they didn't say",EST:"ballpark"};
 function dropWaves(list){var w={FLEX:0,"1ST":0,"2ND":0},est=0;list.forEach(function(x){if(x.cat==="EST"){est=Math.max(est,x.n);return;}var p=x.ph||dropPhase(x.ts);if(w[p]==null)p="2ND";w[p]+=x.n;});return {FLEX:w.FLEX,"1ST":w["1ST"],"2ND":w["2ND"],est:est};}
@@ -4725,7 +4766,7 @@ function renderDropLog(){
     }
   }
   h+=[...u.list].reverse().map(x=>{
-    const tm=new Date(x.ts);const hh=tm.getHours()%12||12, mm=String(tm.getMinutes()).padStart(2,"0"), ap=tm.getHours()<12?'a':'p';
+    const tm=nowLA(x.ts);const hh=tm.getHours()%12||12, mm=String(tm.getMinutes()).padStart(2,"0"), ap=tm.getHours()<12?'a':'p';
     const wv=(x.cat==="EST")?null:(x.ph||dropPhase(x.ts));
     return '<div class="jobrow"><div class="d mono">'+hh+':'+mm+ap+'</div><div class="n"><b>'+(x.cat==="EST"?'~ ':'+ ')+x.n.toLocaleString()+'</b><span>'+DROP_CATS[x.cat]
       +(wv?' · <span class="mono" style="color:var(--steel);font-size:10px">'+DROP_WAVE[wv]+'</span>':'')
@@ -5323,7 +5364,7 @@ njToggleClerk();
 /* #49 — Shift auto-selects from the clock (still changeable). HootOwl is gone from the
    hand-log: a scan still detects a hoot from the job start time and pays it ×1.6, and
    legacy hoot entries get a temporary option injected when edited so their pay holds. */
-function njDefaultShift(){ const h=new Date().getHours(); return (h>=4&&h<14)?"Day":"Night"; }
+function njDefaultShift(){ const h=nowLA().getHours(); return (h>=4&&h<14)?"Day":"Night"; }
 /* #27 — flex & hoot come from the job start, not a checkbox.
    Flex jobs start with 1st dispatch (Day 7:00, Night 5:00 PM) — regular boards start an hour
    later. A start in the dead hours (midnight–4:59 AM) is a hoot owl, whatever the dropdown says. */
@@ -7521,7 +7562,7 @@ function parseDocket(t, knownId){
 }
 function sealScan(p){
   const w=liveWindow();
-  const rawShift=p.shift||((w==="DAY"||(!w&&new Date().getHours()<14))?"Day":"Night");
+  const rawShift=p.shift||((w==="DAY"||(!w&&nowLA().getHours()<14))?"Day":"Night");
   const trS=startTraits(p.start,rawShift);   // #27 — flex & hoot from the scanned start time
   const j={date:p.date||todayISO(),
     ship:p.ship||"—",
@@ -7676,7 +7717,7 @@ function boardForCard(){
   const night=window.TONIGHT_BOARD||null;
   if(boardWhen()!=="this morning") return night;
   try{
-    const d=new Date();
+    const d=nowLA();   /* #201 — LA weekday so it matches todayISO()'s LA date in the key */
     const key=todayISO()+"_"+["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d.getDay()]+"_AM";
     const dd=(typeof DISPATCH_DATA!=="undefined")?DISPATCH_DATA[key]:null;
     if(dd&&dd.boards){
