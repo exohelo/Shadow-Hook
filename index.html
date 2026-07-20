@@ -2166,6 +2166,182 @@ function wipeAcct(){try{localStorage.removeItem('shadowhook_account')}catch(e){}
 const savedAcct=loadAcct();
 let ACCT_ID=(savedAcct&&savedAcct.id)?savedAcct.id:"anon";
 function K(s){return "shadowhook_"+s+"_"+ACCT_ID;}
+
+/* ============================================================================
+   WORK ID CLOUD  ·  cross-device profile sync
+   ----------------------------------------------------------------------------
+   Makes the SERVER the single source of truth for everything tied to a member's
+   Work ID (dispatch #): hours, dockets / job log, pay (finlog), boards and the
+   rest of the per-card localStorage. Log in on ANY phone or computer and the
+   same profile loads — even if that device is holding an old cache. (Chat, port
+   bucks, name & handle already sync through their own tables; this covers the
+   rest.)  Needs the `user_kv` table — see WORK-ID-CLOUD-SETUP.sql.
+   ========================================================================== */
+(function(){
+  var HYDR='shk_cloud_hydrated_v1';        // sessionStorage: already pulled this open?
+  var DIRTY='shk_cloud_outbox_dirty';      // localStorage, device-local (NOT synced): unsent edits here
+  var PUSH_DELAY=700, RETRY_DELAY=4000;    // ms
+  var _set=localStorage.setItem.bind(localStorage);
+  var _rem=localStorage.removeItem.bind(localStorage);
+  var _applying=false;                     // true while writing server->local (kills echo)
+  var _pending={};                         // key -> string value, or null = delete
+  var _timer=null, _channel=null, _hydrated=false;
+
+  // Which Work ID (card) is signed in on this device?
+  function card(){
+    var a=null;
+    try{ if(typeof ACCT_ID==='string') a=ACCT_ID; }catch(e){}
+    if(!(a&&/^[A-Z]\d{3,5}$/.test(a))){ try{ var la=(typeof loadAcct==='function')&&loadAcct(); if(la&&la.id) a=la.id; }catch(e){} }
+    if(!(a&&/^[A-Z]\d{3,5}$/.test(a))){ try{ var t=((document.getElementById('meCircle')||{}).textContent)||''; var m=t.match(/[A-Z]\d{3,5}/); if(m) a=m[0]; }catch(e){} }
+    return (a&&/^[A-Z]\d{3,5}$/.test(a))?a:null;
+  }
+  // Does this localStorage key belong to the signed-in Work ID? (port bucks excluded: own atomic path)
+  function mine(key){
+    var a=card(); if(!a) return false;
+    if(key.indexOf('shadowhook_')!==0) return false;
+    if(key.indexOf('_'+a)===-1) return false;
+    if(key==='shadowhook_credits_'+a) return false;
+    return true;
+  }
+  function markDirty(){ try{ _set(DIRTY,'1'); }catch(e){} }
+  function clearDirty(){ try{ _rem(DIRTY); }catch(e){} }
+
+  /* ---- write-through: every save to a Work ID key rides up to the server ---- */
+  localStorage.setItem=function(k,v){
+    _set(k,v);
+    try{ if(!_applying && mine(k)){ _pending[k]=String(v); markDirty(); arm(PUSH_DELAY); } }catch(e){}
+  };
+  localStorage.removeItem=function(k){
+    _rem(k);
+    try{ if(!_applying && mine(k)){ _pending[k]=null; markDirty(); arm(PUSH_DELAY); } }catch(e){}
+  };
+  function arm(ms){ if(_timer) return; _timer=setTimeout(pushUp,ms); }
+  function pushUp(){
+    _timer=null;
+    var uid=window.__shkUid; if(!window.SB||!uid){ arm(RETRY_DELAY); return; }   // no session yet — try later
+    var keys=Object.keys(_pending); if(!keys.length) return;
+    var a=card()||'', rows=[], dels=[], snapshot=_pending; _pending={};
+    keys.forEach(function(k){ var val=snapshot[k]; if(val===null) dels.push(k); else rows.push({owner:uid,card_id:a,k:k,v:val}); });
+    var ops=[];
+    try{
+      if(rows.length) ops.push(window.SB.from('user_kv').upsert(rows,{onConflict:'owner,k'}));
+      dels.forEach(function(k){ ops.push(window.SB.from('user_kv').delete().eq('owner',uid).eq('k',k)); });
+    }catch(e){ ops=[Promise.reject(e)]; }
+    Promise.all(ops.map(function(p){ return Promise.resolve(p).then(function(r){ if(r&&r.error) throw new Error(r.error.message); return r; }); }))
+      .then(function(){ if(!Object.keys(_pending).length) clearDirty(); },
+            function(err){                         // failed (offline?) — requeue and retry
+              console.warn('[cloud] push retry:', err&&err.message);
+              Object.keys(snapshot).forEach(function(k){ if(!(k in _pending)) _pending[k]=snapshot[k]; });
+              arm(RETRY_DELAY);
+            });
+  }
+
+  /* ---- push EVERY local Work ID key up (used when a device that made edits
+          reopens: its fresh work wins over an older server copy) ---- */
+  async function flushAllLocal(){
+    var uid=window.__shkUid; if(!window.SB||!uid) return;
+    var a=card()||'', rows=[];
+    try{
+      for(var i=0;i<localStorage.length;i++){
+        var k=localStorage.key(i); if(!k||!mine(k)) continue;
+        var v=localStorage.getItem(k); if(v!=null) rows.push({owner:uid,card_id:a,k:k,v:String(v)});
+      }
+    }catch(e){}
+    if(!rows.length){ clearDirty(); return; }
+    try{
+      var r=await window.SB.from('user_kv').upsert(rows,{onConflict:'owner,k'});
+      if(r&&r.error){ console.warn('[cloud] flush',r.error.message); return; }   // keep dirty; retry next open
+      clearDirty();
+    }catch(e){ console.warn('[cloud] flush',e); }
+  }
+
+  /* ---- apply one server row to this device (no echo back up) ---- */
+  function apply(k,v){
+    _applying=true;
+    try{
+      var cur=localStorage.getItem(k);
+      if(v===null){ if(cur!==null){ _rem(k); return true; } return false; }
+      if(cur!==v){ _set(k,v); return true; }
+      return false;
+    } finally { _applying=false; }
+  }
+
+  function sessionOK(){ try{ sessionStorage.setItem('__shk_t','1'); sessionStorage.removeItem('__shk_t'); return true; }catch(e){ return false; } }
+
+  /* ---- pull the whole profile down, then reload ONCE if it changed local data.
+          (Module-level caches like DOCKETS / STUB are built at load from the old
+           localStorage, so a single reload re-reads the server truth cleanly.) ---- */
+  async function pull(){
+    if(_hydrated){ startLive(); return; }
+    var uid=window.__shkUid; if(!window.SB||!uid) return;
+    _hydrated=true;
+    // Unsent edits on THIS device? Push them up first so the pull below can't
+    // overwrite fresh local work with an older server copy.
+    try{ if(localStorage.getItem(DIRTY)) await flushAllLocal(); }catch(e){}
+    var res;
+    try{ res=await window.SB.from('user_kv').select('k,v').eq('owner',uid); }
+    catch(e){ console.warn('[cloud] pull',e); return; }
+    if(res&&res.error){ console.warn('[cloud] pull',res.error.message); return; }
+    var changed=0;
+    ((res&&res.data)||[]).forEach(function(row){ if(apply(row.k,row.v)) changed++; });
+    var canS=sessionOK();
+    var already=canS?sessionStorage.getItem(HYDR):'1';
+    if(canS) sessionStorage.setItem(HYDR,'1');
+    if(changed>0 && !already && canS){
+      try{ location.reload(); }catch(e){ location.href=location.pathname; }
+      return;
+    }
+    startLive();
+  }
+
+  /* ---- live: hear this member's changes from their other open devices ---- */
+  function startLive(){
+    if(_channel||!window.SB||!window.__shkUid) return;
+    try{
+      _channel=window.SB.channel('user_kv_'+window.__shkUid)
+        .on('postgres_changes',{event:'*',schema:'public',table:'user_kv',filter:'owner=eq.'+window.__shkUid},function(p){
+          try{
+            var row=(p&&(p.new||p.old))||{};
+            if(p.eventType==='DELETE') apply(row.k,null); else apply(row.k,row.v);
+            settle(row.k);
+          }catch(e){}
+        }).subscribe();
+    }catch(e){ console.warn('[cloud] live',e); }
+  }
+  var _soft=null;
+  function settle(key){
+    try{
+      var a=card();
+      if(a && key==='shadowhook_dockets_'+a && typeof DOCKETS!=='undefined'){
+        var arr=JSON.parse(localStorage.getItem(key)||'[]'); DOCKETS.length=0; arr.forEach(function(j){DOCKETS.push(j);});
+      }
+    }catch(e){}
+    if(_soft) return; _soft=setTimeout(function(){ _soft=null;
+      ['renderWeek','renderYear','renderBoards','renderDayReport','renderCredits'].forEach(function(fn){ try{ if(typeof window[fn]==='function') window[fn](); }catch(e){} });
+    },250);
+  }
+
+  /* ---- activate whenever a backend session is present ---- */
+  function onSess(session){
+    var uid=session&&session.user&&session.user.id;
+    if(uid){ window.__shkUid=uid; pull(); }
+    else{
+      window.__shkUid=null; _hydrated=false;
+      if(_channel){ try{ window.SB.removeChannel(_channel); }catch(e){} _channel=null; }
+      try{ sessionStorage.removeItem(HYDR); }catch(e){}
+    }
+  }
+  function boot(){
+    if(!window.SB) return;
+    try{
+      window.SB.auth.getSession().then(function(s){ onSess(s&&s.data&&s.data.session); },function(){});
+      window.SB.auth.onAuthStateChange(function(_e,session){ onSess(session); });
+    }catch(e){ console.warn('[cloud] boot',e); }
+  }
+  if(window.SB) boot();
+  else { var iv=setInterval(function(){ if(window.SB){ clearInterval(iv); boot(); } },120); setTimeout(function(){ try{ clearInterval(iv); }catch(e){} },8000); }
+})();
+
 /* #50 — LOCAL calendar date (toISOString is UTC: after ~5pm in San Pedro it returns TOMORROW,
    which stamped night-shift scans with the wrong date and knocked them out of the weekly take) */
 function todayISO(){const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
