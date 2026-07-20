@@ -1,9 +1,14 @@
-/* Shadow Hook — service worker
-   • Offline: caches the app shell so it opens with no signal (out at the ports).
-   • Notifications: showNotification() while open/backgrounded, and real Web Push
-     later when the profile server sends them (the app already calls this).
-   Bump CACHE whenever index.html or the icons change so phones pull the update. */
-const CACHE = 'shadowhook-v2';
+/* Shadow Hook - service worker  (auto-updating)
+   - Offline: caches the app shell so it opens with no signal (out at the ports).
+   - Notifications: showNotification() while open/backgrounded, and real Web Push
+     when the profile server sends them (the app already calls this).
+   - AUTO-UPDATE: the app now refreshes itself. Every time a phone opens the app
+     online, it pulls the latest index.html straight from the server (bypassing the
+     phone's cache), so a new deploy reaches everyone on their next open - no more
+     bumping a version by hand. The cache is only a fallback for when there's no signal.
+   (You can still bump this number if you ever want to force a hard refresh.) */
+const CACHE = 'shadowhook-v3';
+
 const SHELL = [
   '.',
   'index.html',
@@ -14,14 +19,21 @@ const SHELL = [
   'apple-touch-icon.png'
 ];
 
+/* Install: pull FRESH copies of the shell (cache:'reload' skips the phone's old cache),
+   then take over immediately. Missing files are skipped, never fatal. */
 self.addEventListener('install', (e) => {
   e.waitUntil(
-    caches.open(CACHE)
-      .then((c) => c.addAll(SHELL).catch(() => {})) // never let one 404 block install
-      .then(() => self.skipWaiting())
+    caches.open(CACHE).then((c) =>
+      Promise.all(SHELL.map((u) =>
+        fetch(new Request(u, { cache: 'reload' }))
+          .then((res) => (res && res.ok) ? c.put(u, res) : null)
+          .catch(() => null)
+      ))
+    ).then(() => self.skipWaiting())
   );
 });
 
+/* Activate: drop every old cache and take control of open pages right away. */
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys()
@@ -30,22 +42,28 @@ self.addEventListener('activate', (e) => {
   );
 });
 
-/* Network-first for the page (always try for fresh odds/roster), fall back to
-   cache when offline. Cache-first for static assets (icons, manifest, fonts). */
+/* Lets the page ask the worker to activate instantly (used by the optional
+   auto-refresh snippet). Harmless if the page never sends it. */
+self.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting();
+});
+
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
-  const url = new URL(req.url);
 
-  // Never touch the Supabase API or other cross-origin data calls.
-  if (url.origin !== self.location.origin) return;
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;   // leave CDN scripts (Supabase, etc.) alone
 
   const isDoc = req.mode === 'navigate' ||
                 (req.headers.get('accept') || '').includes('text/html');
 
+  /* THE APP ITSELF - always fetch the newest copy from the server, bypassing the
+     phone's HTTP cache. This is the line that makes updates actually reach people.
+     If there's no signal, fall back to the last good cached copy. */
   if (isDoc) {
     e.respondWith(
-      fetch(req)
+      fetch(url.href, { cache: 'reload', credentials: 'same-origin' })
         .then((res) => {
           const copy = res.clone();
           caches.open(CACHE).then((c) => c.put('index.html', copy)).catch(() => {});
@@ -56,18 +74,23 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
+  /* ICONS / MANIFEST - serve instantly from cache, but quietly refresh the cached
+     copy in the background so they stay current over time (stale-while-revalidate). */
   e.respondWith(
-    caches.match(req).then((cached) => cached || fetch(req).then((res) => {
-      if (res && res.status === 200 && res.type === 'basic') {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
-      }
-      return res;
-    }).catch(() => cached))
+    caches.match(req).then((cached) => {
+      const net = fetch(req).then((res) => {
+        if (res && res.status === 200 && res.type === 'basic') {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+        }
+        return res;
+      }).catch(() => cached);
+      return cached || net;
+    })
   );
 });
 
-/* ── Web Push (Tier 2): fires with the app fully closed once the server sends ── */
+/* ---- notifications (unchanged) ---- */
 self.addEventListener('push', (e) => {
   let data = {};
   try { data = e.data ? e.data.json() : {}; } catch (_) {
