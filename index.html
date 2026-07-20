@@ -3214,8 +3214,42 @@ window.renderMyOdds=renderMyOdds;
    Tier 2 (later): when the profile server exists, the same service worker receives
    real pushes with the app fully closed — sw.js is already wired for it.          */
 var SW_REG=null;   /* var (not let): renderMyOdds fires before this line runs */
+/* ── AUTO-UPDATE ───────────────────────────────────────────────────────────────
+   sw.js already serves the newest index.html network-first, so an online phone
+   pulls a fresh app on its next open. This block closes the two remaining gaps:
+     1) it actively CHECKS for a new sw.js on every open and every time the app is
+        brought back to the foreground (reopened from the home screen),
+     2) when a new version is found it activates immediately and reloads the page
+        ONE time — so the member sees the new build on THIS open, not the next one.
+   Nothing to maintain here; to push an update you only bump the version number in
+   sw.js (see that file's comments) and re-upload the changed files.            */
 if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('sw.js').then(r=>{SW_REG=r;}).catch(()=>{});
+  var _hadController = !!navigator.serviceWorker.controller;   // false on a first-ever visit
+  navigator.serviceWorker.register('sw.js').then(function(reg){
+    SW_REG=reg;
+    try{ reg.update(); }catch(e){}
+    /* reopening the app from the home screen fires visibilitychange, not a full
+       load — so re-check for a new version then, too. */
+    document.addEventListener('visibilitychange',function(){
+      if(!document.hidden){ try{ reg.update(); }catch(e){} }
+    });
+    /* a newer sw.js was found → once it's installed and ready, tell it to take over */
+    reg.addEventListener('updatefound',function(){
+      var nw=reg.installing; if(!nw) return;
+      nw.addEventListener('statechange',function(){
+        if(nw.state==='installed' && navigator.serviceWorker.controller){
+          try{ nw.postMessage({type:'SKIP_WAITING'}); }catch(e){}
+        }
+      });
+    });
+  }).catch(function(){});
+  /* the new worker took control → refresh once so the page matches it. Guarded so
+     it never loops and never fires on the very first install (no old controller). */
+  var _swReloaded=false;
+  navigator.serviceWorker.addEventListener('controllerchange',function(){
+    if(_swReloaded) return; _swReloaded=true;
+    if(_hadController){ try{ location.reload(); }catch(e){} }
+  });
 }
 
 /* ── #45 — INSTALL THE APP (no more address bar) ─────────────────────────────
@@ -8587,6 +8621,26 @@ window.addEventListener('resize',()=>{if($w('wbw').classList.contains('on'))wbFi
     $('pfSync').textContent = online
       ? "Synced to your Brotherhood account — same login on every device"
       : "Saved on this device";
+    showBuild();
+  }
+
+  /* Ask the running service worker which build it is (its cache version is the
+     single source of truth) and stamp it in the footer, so you can open this
+     panel on any phone and confirm at a glance whether it's on the latest deploy. */
+  function showBuild(){
+    var el=$('pfBuild'); if(!el) return;
+    var base="THE ORDER OF THE SHADOW HOOK";
+    el.textContent=base;
+    try{
+      if(navigator.serviceWorker && navigator.serviceWorker.controller && window.MessageChannel){
+        var ch=new MessageChannel();
+        ch.port1.onmessage=function(ev){
+          var v=ev && ev.data && ev.data.version;
+          if(v) el.textContent=base+" · BUILD "+String(v).replace(/^shadowhook-/,"");
+        };
+        navigator.serviceWorker.controller.postMessage({type:'VERSION'},[ch.port2]);
+      }
+    }catch(e){}
   }
 
   function openSheet(){ fill(); sheet.classList.add('on'); }
