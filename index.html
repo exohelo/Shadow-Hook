@@ -262,6 +262,15 @@ html.daylight .dayBtn{box-shadow:0 5px 14px rgba(70,56,30,.2)}
 .jobxp .xp-more{position:relative}
 .jobxp .xp-mem{position:relative;margin-top:11px;font-size:11px;color:var(--steel);text-align:center;letter-spacing:.02em;line-height:1.5}
 .jobxp .xp-mem b{color:var(--bone)}
+/* #rebuild — THE WEEK'S AVERAGES, folded into the dispatch sheet with the same wire aesthetic */
+.jobxp .xp-docks-sub{color:var(--steel);font-size:9.5px;letter-spacing:.06em;font-weight:500}
+.jobxp .xp-docks-caret{color:var(--copper-hi);font-size:12px;margin-left:5px}
+.jobxp .wk-row{gap:9px}
+.jobxp .xp-spark{flex:1;display:inline-flex;align-items:flex-end;gap:2px;height:22px;padding:0 6px;min-width:0}
+.jobxp .xp-spark i{display:block;width:5px;border-radius:1px;background:linear-gradient(180deg,#eeb46b,#7c4a22);box-shadow:0 0 6px rgba(238,180,107,.45)}
+.jobxp .wk-row b{flex:0 0 36px;font-size:16px}
+.jobxp .wk-tag{flex:0 0 42px;text-align:right;font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.02em}
+.jobxp .wk-up{color:#9fd18a}.jobxp .wk-dn{color:#f2a184}.jobxp .wk-fl{color:var(--steel)}
 .ring-wrap{display:flex;align-items:center;gap:16px}
 .ring{width:92px;height:92px;flex:none}
 .ring svg{transform:rotate(-90deg)}
@@ -3032,6 +3041,7 @@ function openPendingSheet(){   // #95/#113 — ONLY the UP NEXT card's sheet aut
     if(openIt && !xp.querySelector('.xp-docks-h')){
       const ships=(window.TONIGHT_BOARD&&window.TONIGHT_BOARD.ships)||[];
       if(ships.length) xp.insertAdjacentHTML('beforeend', xpShips(ships));
+      try{ const wk=xpWeekAvg(); if(wk) xp.insertAdjacentHTML('beforeend', wk); }catch(e){}   // #rebuild — the week's averages ride under the ships
     }
     xp.style.display=openIt?'block':'none';
     const s=card&&card.querySelector('.rb-sheet'); if(s)s.textContent=openIt?'▤ SHEET ▴':'▤ SHEET ▾';
@@ -4652,6 +4662,30 @@ function xpDocksToggle(h){
   const c=h.querySelector('.xp-docks-caret'); if(c)c.textContent=open?'▴':'▾';
 }
 window.xpDocksToggle=xpDocksToggle;
+/* #rebuild — THE WEEK'S AVERAGES, rendered in the dispatch-sheet popup's own aesthetic
+   (Cinzel header, copper spark bars, mono numbers). Collapsible like SHIPS ON DECK, off the
+   same window.WEEK_AVG the hall's Average Report posts. No-ops if the data isn't in. */
+function xpWeekAvg(){
+  try{
+    const WA=window.WEEK_AVG; if(!WA||!WA.rows) return '';
+    const keys=Object.keys(WA.rows); if(!keys.length) return '';
+    let gmax=1; keys.forEach(k=>{(WA.rows[k]||[]).forEach(v=>{if(v>gmax)gmax=v;});});
+    const span=(WA.days&&WA.days.length)?(WA.days[0]+'→'+WA.days[WA.days.length-1]):'';
+    const spark=a=>'<span class="xp-spark">'+a.map(v=>'<i style="height:'+Math.max(3,Math.round(v/gmax*20))+'px"></i>').join('')+'</span>';
+    let h='<div class="xp-h xp-docks-h" onclick="xpDocksToggle(this)" style="margin-top:16px;cursor:pointer">THE WEEK’S AVERAGES <span class="xp-docks-sub">· '+(WA.shift||'')+' · 7-DAY'+(span?' '+span:'')+'</span> <span class="xp-docks-caret">▾</span></div>';
+    h+='<div class="xp-docks-body" style="display:none">';
+    h+='<div class="xp-mem" style="margin:0 0 10px">Rolling man-count per board, Mon→Sun · the number is Sunday’s, the tag is the week’s move</div>';
+    keys.forEach(k=>{
+      const a=WA.rows[k]||[]; if(!a.length) return;
+      const last=a[a.length-1], d=last-a[0];
+      const tag=d>0?'<span class="wk-up">▲ '+d+'</span>':(d<0?'<span class="wk-dn">▼ '+(-d)+'</span>':'<span class="wk-fl">—</span>');
+      h+='<div class="xp-row wk-row"><span class="xp-name">'+acEsc(String(k))+'</span>'+spark(a)+'<b>'+last+'</b><span class="wk-tag">'+tag+'</span></div>';
+    });
+    h+='</div>';
+    return h;
+  }catch(e){ return ''; }
+}
+window.xpWeekAvg=xpWeekAvg;
 const rb=document.getElementById('recentBoards');
 let RB_WIN=0;
 function renderRecentBoards(){
@@ -9831,6 +9865,9 @@ window.addEventListener('resize',()=>{if($w('wbw').classList.contains('on'))wbFi
    Self-contained + defensive: if anything is missing it no-ops and the app is untouched. */
 (function(){
   try{
+    /* #rebuild — the week's averages now live INSIDE the dispatch-sheet popup (xpWeekAvg),
+       styled to match the wire. This standalone card is retired so it isn't shown twice. */
+    return;
     var WA=window.WEEK_AVG; if(!WA||!WA.rows) return;
     var host=document.getElementById('scr-board'); if(!host) return;
     if(document.getElementById('weekAvgCard')) return;   // no double-inject
