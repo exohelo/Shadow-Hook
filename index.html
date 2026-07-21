@@ -3337,6 +3337,14 @@ function lastCompletedBoard(){
   const past=RECENT.filter(r=>ok(r)<po);
   return past[past.length-1]||null;
 }
+/* #rebuild — ONE source of truth for the pending board's OPENING CARD: the card AFTER the
+   last completed board's end (or that board's own start if it never got an end). Both the
+   "Starting on" header and the prediction anchor on this, so they can never disagree. */
+function pendingStartCard(){
+  try{ const last=(typeof lastCompletedBoard==="function"&&lastCompletedBoard())||null;
+       if(last) return last.end?nextCard(last.end):(last.start||""); }catch(e){}
+  return "";
+}
 renderCallStart();
 /* ===== THE ENGINE — the Keymaster's method: match the numbers, not the average =====
    v1 simulated 6-month slot averages: backtested WORSE than guessing "no move"
@@ -3786,15 +3794,20 @@ function publishCall(){
     const cached=(window._publishedKey===key&&window._lastStageO)?window._lastStageO:_lockGet(key);
     if(frozen && cached){
       cached.lock = live?'LIVE':(finalIn?'FINAL':(cached.lock||cached.source||'EST'));
+      /* #rebuild — the MOVEMENT is frozen so logging drops can't move it, but the STARTING
+         CARD is a fact, not a prediction: keep it live so the locked call always reads off
+         tonight's real opening card (matches "Starting on"), never a stale anchor. The stop
+         re-derives from the current start + the frozen movement. */
+      try{ const _s=pendingStartCard(); if(_s){ cached.start=_s; cached.base=AZ.indexOf(_s[0]); } }catch(e){}
       window._lastStageO=cached; window._publishedKey=key;
       try{ renderWireStage(cached); }catch(e){}
       try{ if(cached.start!=null&&cached.med!=null) renderMyOdds(cached.start,cached.med); }catch(e){}
+      try{ window._lastCall={stop:AZ[(cached.base+cached.med)%26], lo:AZ[(cached.base+(cached.lo||0))%26], hi:AZ[(cached.base+(cached.hi||0))%26], pmove:cached.pmove}; }catch(e){}
       try{ _lockSet(key,cached); }catch(e){}
       return;
     }
   }
-  const lastR=(typeof lastCompletedBoard==="function"&&lastCompletedBoard())||RECENT[RECENT.length-1]||{};
-  const lastStart=lastR.end||lastR.start||"C4100";
+  const lastStart=pendingStartCard()||"C4100";   /* #rebuild — same opening card as the "Starting on" header */
   const isAM=callSlot.endsWith("AM");
   const dowIdx={Mon:0,Tue:1,Wed:2,Thu:3,Fri:4,Sat:5,Sun:6}[callSlot.slice(0,3)];
   let pmf,mom,source;
