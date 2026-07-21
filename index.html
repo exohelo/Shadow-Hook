@@ -2398,17 +2398,25 @@ function K(s){return "shadowhook_"+s+"_"+ACCT_ID;}
 
   /* ---- live: hear this member's changes from their other open devices ---- */
   function startLive(){
-    if(_channel||!window.SB||!window.__shkUid) return;
+    if(_channel || !window.SB || !window.__shkUid) return;
     try{
-      _channel=window.SB.channel('user_kv_'+window.__shkUid)
-        .on('postgres_changes',{event:'*',schema:'public',table:'user_kv',filter:'owner=eq.'+window.__shkUid},function(p){
-          try{
-            var row=(p&&(p.new||p.old))||{};
-            if(p.eventType==='DELETE') apply(row.k,null); else apply(row.k,row.v);
-            settle(row.k);
-          }catch(e){}
-        }).subscribe();
-    }catch(e){ console.warn('[cloud] live',e); }
+      _channel = window.SB.channel('dispatch_board:boards', {
+        config: { private: true }
+      })
+      .on('broadcast', { event: '*' }, function(payload){
+        try{
+          console.log('[realtime] Broadcast received:', payload);
+          
+          // Re-render your UI views when a broadcast event arrives
+          settle('dispatch_board_update');
+        }catch(e){
+          console.warn('[realtime] Error handling broadcast event:', e);
+        }
+      })
+      .subscribe(function(status){
+        console.log('[realtime] Subscription status:', status);
+      });
+    }catch(e){ console.warn('[cloud] live', e); }
   }
   var _soft=null;
   function settle(key){
