@@ -3195,6 +3195,25 @@ const lastJob=DOCKETS.map(j=>j.date).sort().pop();
    Active window glows green; clock counts to the next milestone — except while
    dispatch is LIVE (#107): then the clock stands down to "STAND BY.." until the
    first docket scan lands and the live ID reel takes over. */
+/* ===== #118b — NO FLOP ENDS THE CLOCK =====
+   The official call ("no flop — go home") can land before the scheduled end
+   (9:30 AM / 7:30 PM). When a board's record for ITS OWN day+slot carries an
+   end card — sealed by YOUR NO FLOP button, a board log, or any hand on the
+   wire (board_wire rides it to every phone) — that window is OVER: the hall
+   clock rolls to the next board and the live states stand down, morning and
+   night alike. Read-only: this helper only LOOKS at the record; every path
+   that writes a seal already existed. RECENT is declared later in this script,
+   so the first ticks simply read "not sealed" until it exists (same lazy
+   pattern as OPENP below). */
+function boardSealed(d,ap){
+  try{
+    const DW=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+    const k=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")
+      +"_"+DW[d.getDay()]+"_"+ap;
+    const r=RECENT.find(x=>x.date+"_"+x.slot===k);
+    return !!(r&&r.end);
+  }catch(e){return false}
+}
 let lastCall=null; // {pos, ts, win} — hoisted above tickDisp so it can read dispatch state
 function tickDisp(){
   const n=nowLA();   /* #201 — Long Beach wall-clock, not the device's */
@@ -3204,7 +3223,11 @@ function tickDisp(){
     {name:"NIGHT DISPATCH",flex:mk(16,30), first:mk(17,0), second:mk(18,10), end:mk(19,30), ft:"4:30", t1:"5:00", t2:"6:10"},   /* #202 — 2nd @6:10, official end 7:30 */
     {name:"DAY DISPATCH",  flex:mk(6,30,1),first:mk(7,0,1),second:mk(8,10,1),end:mk(9,30,1),ft:"6:30", t1:"7:00", t2:"8:10", tom:true}
   ];
-  const b=boards.find(x=>n<x.end);
+  let b=boards.find(x=>n<x.end);
+  /* #118b — inside this board's window but the record's already sealed?
+     The call came early — the clock rolls straight to the next board. */
+  const _bi=boards.indexOf(b);
+  if(n>=b.flex && _bi<boards.length-1 && boardSealed(b.flex, b.name.indexOf("DAY")===0?"AM":"PM")) b=boards[_bi+1];
   let target, phase; // phase: which segment is live now
   if(n<b.flex){target=b.flex;phase=0}
   else if(n<b.first){target=b.first;phase=1}
@@ -3248,8 +3271,8 @@ function posVal(p){ // rank a position in board order relative to the open lette
 function liveWindow(){ // between flex and end of the current board
   const n=nowLA();   /* #201 — Long Beach wall-clock, not the device's */
   const mk=(h,mi)=>{const d=new Date(n);d.setHours(h,mi,0,0);return d};
-  if(n>=mk(6,30)&&n<mk(9,0))return "DAY";
-  if(n>=mk(16,30)&&n<mk(19,0))return "NIGHT";
+  if(n>=mk(6,30)&&n<mk(9,0))return boardSealed(n,"AM")?null:"DAY";      /* #118b — sealed = over */
+  if(n>=mk(16,30)&&n<mk(19,0))return boardSealed(n,"PM")?null:"NIGHT";  /* #118b — sealed = over */
   return null;
 }
 function winKey(){const w=liveWindow();return w?nowLA().toDateString()+"_"+w:null} // #107 — which board a scan belongs to · #201 LA date
@@ -5077,7 +5100,7 @@ function renderBotStatus(now){
      While it runs, the bot keeps looking for the morning board quietly but does NOT
      announce the hunt (no "looking for the morning final" chip, no OVERDUE alarm);
      when it has nothing else to report it makes a general comment instead. */
-  const _dm=now.getHours()*60+now.getMinutes(), DISPATCH_ON=_dm>=(16*60+30)&&_dm<(19*60+30);
+  const _dm=now.getHours()*60+now.getMinutes(), DISPATCH_ON=_dm>=(16*60+30)&&_dm<(19*60+30)&&!boardSealed(now,"PM");   /* #118b — no flop = floor's clear */
   justLanded.forEach(s=>parts.push(chip("🎉 "+fill(pick("found",s.kind),s),"var(--ok)")));
   const activeShown=DISPATCH_ON?st.active.filter(s=>s.kind!=="MORNING"):st.active;
   activeShown.forEach(s=>{
@@ -5147,18 +5170,22 @@ function cwMinsNow(){const n=nowLA();return n.getHours()*60+n.getMinutes();}
 const DAY_END=9*60+30, NIGHT_OPEN=16*60+30, AFTERNOON=14*60+30, NIGHT_END=19*60+30;
 function cwFieldVisible(id){
   const m=cwMinsNow();
+  /* #118b — a sealed board IS the end of its dispatch: the same gates that
+     open at 9:30 / 7:30 open the moment the NO FLOP call seals the record */
+  const amOver=m>=DAY_END||(m>=6*60+30&&boardSealed(nowLA(),"AM"));
+  const pmOver=m>=NIGHT_END||(m>=NIGHT_OPEN&&boardSealed(nowLA(),"PM"));
   if(id==="open"){
     // who got the last job: asked after the day board closes, until the night board
     // opens — the last card dispatched tells the wire who's first up on the coming board
-    return m>=DAY_END && m<NIGHT_OPEN;
+    return amOver && m<NIGHT_OPEN;
   }
   if(id==="early"){
     // early casual read: day board close (9:30) until the final counts open (2:30)
-    return m>=DAY_END && m<AFTERNOON;
+    return amOver && m<AFTERNOON;
   }
   if(id==="total"||id==="casual"){
     // afternoon read (2:30 → night opens), then again after night dispatch ends
-    return (m>=AFTERNOON && m<NIGHT_OPEN) || (m>=NIGHT_END);
+    return (m>=AFTERNOON && m<NIGHT_OPEN) || pmOver;
   }
   return true;
 }
@@ -5284,6 +5311,16 @@ function renderDropLog(){
   const card=document.getElementById('dropCard'); if(!card)return;
   card.style.display=dropWindowOpen()?'':'none';
   if(!dropWindowOpen())return;
+  /* #118b — board already sealed (by you, a reload, or any hand on the wire):
+     the button stands down and shows the call. A new window resets it. */
+  try{
+    const _sr=RECENT.find(x=>x.date+"_"+x.slot===dropKey());
+    const _sb=document.getElementById('noflopBtn'), _si=document.getElementById('noflopEnd');
+    if(_sb&&_si){
+      if(_sr&&_sr.end){_sb.disabled=true;_sb.textContent="⚑ SEALED AT "+_sr.end+" — ON THE WIRE";_si.disabled=true;if(!_si.value)_si.value=_sr.end;}
+      else{_sb.disabled=false;_sb.textContent="⚑ NO FLOP — Dispatch Is Over";_si.disabled=false;}
+    }
+  }catch(e){}
   const el=document.getElementById('dropList');
   const u=dropUnion();
   if(!u.list.length){el.innerHTML='<p class="sub" style="margin-top:8px">Nothing logged for this board yet. First ear on the speaker gets the bucks.</p>';return;}
