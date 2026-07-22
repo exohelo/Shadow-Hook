@@ -609,9 +609,12 @@ html.daylight .heist{background:rgba(64,54,38,.6)}
 .race-ttl{font-family:'Anton',sans-serif;font-size:24px;letter-spacing:.06em;color:var(--bone);text-shadow:0 0 18px rgba(238,180,107,.35);line-height:1}
 .race-sub{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.14em;color:var(--steel);margin-top:4px;text-transform:uppercase}
 .race-season{margin-left:auto;flex:none;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.18em;color:var(--copper-hi);border:1px solid rgba(238,180,107,.45);border-radius:99px;padding:4px 10px;background:rgba(238,180,107,.07);text-transform:uppercase}
-.race-board-tabs{display:flex;gap:8px;margin:14px 0 10px}
-.race-board-tabs button{flex:1;font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--steel);background:var(--well);border:1px solid var(--line-soft);border-radius:9px;padding:8px 6px;cursor:pointer;transition:.15s}
+.race-board-tabs{display:flex;gap:9px;margin:14px 0 10px}
+.race-board-tabs button{flex:1;font-family:'IBM Plex Mono',monospace;font-size:11.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--steel);background:var(--well);border:1px solid var(--line-soft);border-radius:11px;padding:13px 8px;cursor:pointer;transition:.15s}
+.race-board-tabs button::after{content:"▸";margin-left:7px;color:var(--copper);display:inline-block;transition:transform .18s}
 .race-board-tabs button.on{color:var(--copper-hi);border-color:rgba(238,180,107,.55);background:linear-gradient(180deg,rgba(238,180,107,.14),rgba(238,180,107,.04));box-shadow:0 0 12px rgba(238,180,107,.14)}
+.race-board-tabs button.on::after{transform:rotate(90deg)}
+.race-list.pop{animation:feedIn .3s both}
 .race-list{list-style:none;margin:0;padding:0}
 .race-list li{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;margin-bottom:5px;background:var(--well);border:1px solid var(--line-soft)}
 .race-list li.podium{background:linear-gradient(90deg,rgba(238,180,107,.12),var(--well) 65%);border-color:rgba(238,180,107,.35)}
@@ -1632,11 +1635,12 @@ html.daylight .hdr-seal{background:radial-gradient(circle at 50% 30%,#f6eed8,#e5
         <div class="bar" style="margin-top:6px"><i id="rHuntBar" style="width:0%"></i></div>
       </div>
       <div id="rLocked" class="sub" style="display:none;text-align:center;padding:6px 0">Verify your card at the gate to take your lane in the race.</div>
+      <!-- #race — the boards ride folded: push a button to roll one open, push again to fold it -->
       <div class="race-board-tabs">
-        <button type="button" class="on" data-rboard="global">🌍 Global Top 10</button>
+        <button type="button" data-rboard="global">🌍 Global Top 10</button>
         <button type="button" data-rboard="letter" id="rbLetterTab">Your Squad Top 10</button>
       </div>
-      <ol class="race-list" id="raceListGlobal"></ol>
+      <ol class="race-list" id="raceListGlobal" style="display:none"></ol>
       <ol class="race-list" id="raceListLetter" style="display:none"></ol>
       <details class="fold" style="margin-top:8px">
         <summary>The stakes // why it's the long game</summary>
@@ -4497,15 +4501,18 @@ function renderRaceBoards(me){
   }
   lel.innerHTML=lo;
 }
-/* board tab flips + the hand-off card on Take */
+/* board buttons — collapsible: push to roll a board open, push again to fold it;
+   pushing the other button swaps which board is open. Plus the hand-off card on Take. */
 (function(){
   const tabs=document.querySelectorAll('.race-board-tabs button');
   tabs.forEach(b=>b.addEventListener('click',()=>{
-    tabs.forEach(x=>x.classList.toggle('on',x===b));
-    const isG=b.getAttribute('data-rboard')==='global';
     const g=document.getElementById('raceListGlobal'),l=document.getElementById('raceListLetter');
-    if(g)g.style.display=isG?'':'none';
-    if(l)l.style.display=isG?'none':'';
+    const closing=b.classList.contains('on');                       // same button again → fold it away
+    tabs.forEach(x=>x.classList.toggle('on',x===b&&!closing));
+    const isG=b.getAttribute('data-rboard')==='global';
+    const show=el=>{if(!el)return;el.style.display='';el.classList.remove('pop');void el.offsetWidth;el.classList.add('pop');};
+    if(g)g.style.display='none'; if(l)l.style.display='none';
+    if(!closing)show(isG?g:l);
   }));
   const lk=document.getElementById('raceLink');
   if(lk)lk.addEventListener('click',()=>{try{gotoTab('order')}catch(e){}});
