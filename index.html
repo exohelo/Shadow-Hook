@@ -1574,6 +1574,12 @@ html.daylight .hdr-seal{background:radial-gradient(circle at 50% 30%,#f6eed8,#e5
     #socialFeed .chan-unread{width:9px;height:9px;border-radius:50%;background:linear-gradient(var(--copper-hi),var(--copper));box-shadow:0 0 9px rgba(238,180,107,.7)}
     #socialFeed .feed-inv{flex:none;width:32px;height:32px;margin-left:2px;border:1px solid rgba(238,180,107,.38);border-radius:9px;background:transparent;color:var(--copper-hi);font-size:14px;line-height:1;cursor:pointer;transition:background .15s}
     #socialFeed .feed-inv:active{background:rgba(238,180,107,.14)}
+    /* #21fix — strike chip (your rooms/gatherings) + the RSVP head-count line */
+    #socialFeed .feed-del{border-color:rgba(205,75,42,.4);color:var(--ember)}
+    #socialFeed .feed-del.arm{background:rgba(205,75,42,.16);border-color:var(--ember);width:auto;padding:0 8px;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.08em}
+    #socialFeed .evt-going{margin-top:5px;font-size:11px;color:var(--steel)}
+    #socialFeed .evt-going b{color:var(--copper-hi);font-family:'Barlow Condensed',sans-serif;font-size:13.5px;font-weight:800}
+    #socialFeed .chan-mini.lock{color:var(--copper-hi)}
 
     /* ---- create tiles (dashed) ---- */
     #socialFeed .chan.create,#socialFeed .evt.create{border-style:dashed;border-color:rgba(238,180,107,.32);background:transparent}
@@ -3040,7 +3046,7 @@ document.querySelectorAll('.nav button').forEach(b=>b.addEventListener('click',(
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));
   document.getElementById('scr-'+b.dataset.scr).classList.add('on');window.scrollTo(0,0);
   if(b.dataset.scr==='mayday'&&!alertsLoaded){alertsLoaded=true;loadAlerts()}
-  if(b.dataset.scr==='order'){try{renderSocialFeed();}catch(e){}}
+  if(b.dataset.scr==='order'){try{renderSocialFeed();}catch(e){} try{socPullSoon();}catch(e){}}   // #21fix — fresh counts on tab open
   if(b.dataset.scr==='ports'){try{renderHarborBoard();}catch(e){}}
   if(b.dataset.scr==='board'){try{openPendingSheet();}catch(e){}}   // #93 — the Wire opens with the pending dispatch sheet showing
 }));
@@ -3392,7 +3398,7 @@ function hallMomentumNow(){ /* streak through the log's end + anything newer in 
   let e=null;
   HALL_LOG.forEach(r=>{e=(e===null)?r[4]:0.3*r[4]+0.7*e;});
   const lastD=HALL_LOG[HALL_LOG.length-1][0];
-  RECENT.forEach(r=>{if(r.slot.endsWith("PM")&&r.date>lastD&&typeof r.act==="number")e=0.3*r.act+0.7*e;});   /* #206 — an end-only bot row may not carry act yet */
+  RECENT.forEach(r=>{if(r.slot.endsWith("PM")&&r.date>lastD)e=0.3*r.act+0.7*e;});
   return e;
 }
 function hallExpect(dowIdx){ /* expected job numbers for this weekday (EWMA of history) —
@@ -3430,7 +3436,7 @@ function shPrior(momentum,rain,wknd){
   const s=pmf.reduce((a,x)=>a+x,0); return pmf.map(x=>x/s);
 }
 function shMomentum(slotIsAM){
-  const seq=RECENT.filter(r=>r.slot.endsWith(slotIsAM?"AM":"PM")&&typeof r.act==="number");   /* #206 — skip rows still waiting on act */
+  const seq=RECENT.filter(r=>r.slot.endsWith(slotIsAM?"AM":"PM"));
   let e=null; seq.forEach(r=>{e=(e===null)?r.act:0.3*r.act+0.7*e;});
   return e===null?1:e;
 }
@@ -3540,37 +3546,21 @@ window.renderWireStage=renderWireStage;
    in DISPATCH_DATA[<date>_<slot>] with a real total the moment they're parsed/uploaded. */
 function _predKey(){ return nd2.getFullYear()+"-"+String(nd2.getMonth()+1).padStart(2,"0")+"-"+String(nd2.getDate()).padStart(2,"0")+"_"+callSlot; }
 function _finalInFor(key){ const dd=DISPATCH_DATA[key]; return !!(dd && dd.total && (dd.total.total||(typeof dd.total==="number"&&dd.total))); }
-/* #rebuild — YOUR logged drops for this board = you're standing at it, in dispatch.
-   #205 — crowd drops off the wire (window.DW) no longer freeze the call from afar:
-   another member's ear doesn't mean YOU are standing at the board. */
+/* #rebuild — you've LOGGED DROPS for this board = you're standing at it, in dispatch. */
 function _dropsEngaged(key){
   try{
     const dl=JSON.parse(localStorage.getItem(K('droplog'))||'{}'); const d=dl&&dl[key];
     if(d&&d.drops&&d.drops.length>0) return true;
+    if(window.DW&&window.DW[key]&&window.DW[key].length>0) return true;
   }catch(e){}
   return false;
-}
-/* #205 — fingerprint of the board's OWN sheet data (source rank + counts) exactly as the
-   engine would read it right now. Drops never touch DISPATCH_DATA, so while the call is
-   frozen a changed fingerprint = real sheet news (final landed late, a corrected count,
-   a re-upload) — the one thing that must still re-figure a locked call. */
-function _sheetFP(key){
-  try{
-    const dd=DISPATCH_DATA[key];
-    const cas=(dd&&typeof casualJobsOf==="function")?casualJobsOf(dd):null;
-    const tv=(dd&&dd.total)?(dd.total.total!=null?dd.total.total:(typeof dd.total==="number"?dd.total:null)):null;
-    if(cas!=null||tv!=null) return (tv!=null?'F':'E')+'|'+(cas!=null?Math.round(cas):'')+'|'+(tv!=null?Math.round(tv):'');
-    const ec=window.EARLY_COUNTS;
-    if(ec) return 'C|'+Math.round(ec.ch||0)+'|'+Math.round(ec.tot||0);
-    return 'N||';
-  }catch(e){ return 'N||'; }
 }
 /* ENGAGED = the call is set and must hold: live with its final sheet in, OR drops logged. */
 function _engaged(key){ try{ return (!!liveWindow() && _finalInFor(key)) || _dropsEngaged(key); }catch(e){ return false; } }
 /* remember the exact call per board, so drops — and even a reload — never move it mid-dispatch */
 function _lockStore(){ try{ return JSON.parse(localStorage.getItem(K('lockedcall'))||'{}')||{}; }catch(e){ return {}; } }
 function _lockGet(key){ const s=_lockStore(); return s[key]?Object.assign({},s[key]):null; }
-function _lockSet(key,o){ try{ const s=_lockStore(); s[key]={base:o.base,start:o.start,med:o.med,lo:o.lo,hi:o.hi,pmove:o.pmove,mom:o.mom,p6:o.p6,p10:o.p10,source:o.source,isAM:o.isAM,lock:o.lock,fp:o.fp}; const ks=Object.keys(s); while(ks.length>40){ delete s[ks.shift()]; } localStorage.setItem(K('lockedcall'),JSON.stringify(s)); }catch(e){} }
+function _lockSet(key,o){ try{ const s=_lockStore(); s[key]={base:o.base,start:o.start,med:o.med,lo:o.lo,hi:o.hi,pmove:o.pmove,mom:o.mom,p6:o.p6,p10:o.p10,source:o.source,isAM:o.isAM,lock:o.lock}; const ks=Object.keys(s); while(ks.length>40){ delete s[ks.shift()]; } localStorage.setItem(K('lockedcall'),JSON.stringify(s)); }catch(e){} }
 /* FROZEN = the board you're standing at, once dispatch has it. Drops are recorded, never folded into the live call. */
 function wireFrozen(){ try{ return _engaged(_predKey()); }catch(e){ return false; } }
 
@@ -3826,20 +3816,14 @@ function publishCall(){
      #114b — anchored on the last COMPLETED board, never a future bot row */
   const key=_predKey();
   const live=!!liveWindow(), finalIn=_finalInFor(key), frozen=_engaged(key);
-  const fp=_sheetFP(key);   /* #205 — what the board's own sheet says right now */
   /* #rebuild — LOCK THE CALL ONCE YOU'RE IN DISPATCH. The board you're standing at
      freezes the moment (a) it's live with its final sheet in, or (b) you've logged your
      first drop for it. From then on the published stop letter does NOT move: come-downs
      you log ride onto the board sheet and into future learning, but never re-figure the
-     call in front of you. It releases on its own when the next board comes up.
-     #205 — the freeze holds only while the SHEET under the call is unchanged. Drops can
-     never move a locked call, but real sheet news — the final landing after the freeze,
-     a corrected count, a re-upload — falls through, re-figures off the new numbers, and
-     re-locks. (Before: the cached call was served even when the data under it changed,
-     and the chip relabeled a pre-final estimate as "off the final count".) */
+     call in front of you. It releases on its own when the next board comes up. */
   {
     const cached=(window._publishedKey===key&&window._lastStageO)?window._lastStageO:_lockGet(key);
-    if(frozen && cached && cached.fp===fp){
+    if(frozen && cached){
       cached.lock = live?'LIVE':(finalIn?'FINAL':(cached.lock||cached.source||'EST'));
       /* #rebuild — the MOVEMENT is frozen so logging drops can't move it, but the STARTING
          CARD is a fact, not a prediction: keep it live so the locked call always reads off
@@ -3898,7 +3882,7 @@ function publishCall(){
   /* #204 — LOCK STATE for the chip: LOCKED off the final (FINAL); LOCKED + frozen while
      dispatch runs (LIVE); UNLOCKED estimate off the early count (EARLY) or off nothing (EST/AM). */
   const lock = finalIn ? (live?'LIVE':'FINAL') : (source==='EARLY'?'EARLY':(isAM?'AM':'EST'));
-  const o={base:base,start:lastStart,med:med,lo:lo,hi:hi,pmove:pmove,mom:mom,p6:p6,p10:p10,source:source,isAM:isAM,lock:lock,fp:fp};   /* #205 — fp: the sheet this call was figured from */
+  const o={base:base,start:lastStart,med:med,lo:lo,hi:hi,pmove:pmove,mom:mom,p6:p6,p10:p10,source:source,isAM:isAM,lock:lock};
   window._lastStageO=o; window._publishedKey=key;
   try{ renderWireStage(o); }catch(e){ console.warn('wire stage',e); }
   /* the pending row on Recent Boards reads this same call */
@@ -7129,16 +7113,23 @@ document.getElementById('roomBack').addEventListener('click',closeRoom);
    invite to the phone's share sheet (text, WhatsApp, whatever's on the phone).
    No share sheet → the invite is copied, ready to paste; no clipboard → SMS.
    An invite is spreading the word, so it counts toward Town Crier. */
-async function inviteWord(kind,name,detail){
+async function inviteWord(kind,name,detail,id){
+  /* #21fix — a room invite carries the room's key (?join=id): that's how an
+     invite-only room lets a hand in. Falls back to the plain app link. */
+  let url=SHARE_URL;
+  if(kind==='room'){
+    try{if(!id){const m=serverRoomByName(name);if(m)id=m.id;}}catch(e){}
+    if(id)url=SHARE_URL+"/?join="+id;
+  }
   const text=(kind==='gath'
     ?"🕯 You're called: "+name+(detail?" — "+detail:"")+". A gathering of The Order of The Shadow Hook. Get on: "
     :"⚓ You're called to \""+name+"\" — a room in The Order of The Shadow Hook. Masked handles only. Get on: ");
   if(navigator.share){
-    try{await navigator.share({title:"The Order of The Shadow Hook",text:text,url:SHARE_URL});unlockBadge(TOWN_CRIER);}catch(e){}
+    try{await navigator.share({title:"The Order of The Shadow Hook",text:text,url:url});unlockBadge(TOWN_CRIER);}catch(e){}
     return;
   }
-  try{await navigator.clipboard.writeText(text+SHARE_URL);toast("⧉ Invite copied — paste it anywhere");unlockBadge(TOWN_CRIER);}
-  catch(e){location.href="sms:?&body="+encodeURIComponent(text+SHARE_URL);}
+  try{await navigator.clipboard.writeText(text+url);toast("⧉ Invite copied — paste it anywhere");unlockBadge(TOWN_CRIER);}
+  catch(e){location.href="sms:?&body="+encodeURIComponent(text+url);}
 }
 document.getElementById('roomInvite').addEventListener('click',()=>{
   inviteWord('room',document.getElementById('roomTitle').textContent);
@@ -7469,8 +7460,8 @@ document.getElementById('gifBtn').addEventListener('click',openGifPicker);
 
 /* ===== #59 — open rooms & call gatherings with Port Bucks =====
    Reusable pay sheet: shows the price against the balance, takes the form,
-   charges only when they commit. Creations persist on this device; they sync
-   Order-wide when the profile server lands. */
+   charges only when they commit. Creations mint on the server (#21fix) so the
+   whole Order sees them; offline falls back to this device until next sign-in. */
 function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;")}
 function openPaySheet(o){ // {title,sub,price,fields:[{k,label,ph}],go,onPaid}
   let sh=document.getElementById('paySheet');
@@ -7479,14 +7470,16 @@ function openPaySheet(o){ // {title,sub,price,fields:[{k,label,ph}],go,onPaid}
   sh.innerHTML='<div class="sheet-card" style="text-align:left">'
     +'<div class="big" style="font-size:20px;letter-spacing:.06em;text-align:center">'+o.title+'</div>'
     +'<p class="sub" style="margin:8px 0 14px;text-align:center">'+o.sub+'</p>'
-    +o.fields.map(f=>'<span class="lbl">'+f.label+'</span><input class="field" data-k="'+f.k+'" placeholder="'+esc(f.ph||'')+'" value="'+esc(f.v||'')+'" style="margin-bottom:12px" maxlength="60">').join('')
+    +o.fields.map(f=>f.type==='select'
+      ?'<span class="lbl">'+f.label+'</span><select class="field" data-k="'+f.k+'" style="margin-bottom:12px">'+(f.opts||[]).map(op=>'<option value="'+esc(op[0])+'">'+esc(op[1])+'</option>').join('')+'</select>'
+      :'<span class="lbl">'+f.label+'</span><input class="field" data-k="'+f.k+'" placeholder="'+esc(f.ph||'')+'" value="'+esc(f.v||'')+'" style="margin-bottom:12px" maxlength="60">').join('')
     +'<div class="sixstrip" style="margin:2px 0 14px;justify-content:space-between"><span>Price <b class="mono" style="color:var(--copper-hi)">'+(o.price?o.price+' ⬡':'FREE')+'</b></span><span>Your stack <b class="mono" style="color:'+(CREDITS>=o.price?'var(--ok)':'var(--ember)')+'">'+CREDITS.toLocaleString()+' ⬡</b></span></div>'
     +'<button class="btn" id="payGo" type="button">'+(o.price?'⬡ PAY '+o.price+' — ':'✓ ')+o.go+'</button>'
     +'<button class="btn-ghost" id="payNo" type="button" style="width:100%;margin-top:10px;border:0;color:#586067">Never mind</button></div>';
   sh.querySelector('#payNo').addEventListener('click',()=>sh.classList.remove('on'));
   sh.querySelector('#payGo').addEventListener('click',()=>{
     const vals={};let ok=true;
-    sh.querySelectorAll('input[data-k]').forEach(i=>{const v=i.value.trim();vals[i.dataset.k]=v;if(!v){ok=false;i.focus();}});
+    sh.querySelectorAll('input[data-k],select[data-k]').forEach(i=>{const v=i.value.trim();vals[i.dataset.k]=v;if(!v){ok=false;i.focus();}});
     if(!ok)return;
     if(o.validate){const err=o.validate(vals);if(err){toast(err);return;}}   // checked BEFORE any bucks move
     if(o.price&&!payCredits(o.price,o.title.toLowerCase()))return;
@@ -7495,10 +7488,142 @@ function openPaySheet(o){ // {title,sub,price,fields:[{k,label,ph}],go,onPaid}
   });
   sh.classList.add('on');
 }
-let MY_ROOMS=[],MY_GATHS=[];
+/* ===== #21fix — rooms, gatherings & RSVPs live on the SERVER now =====
+   The old build kept MY_ROOMS / MY_GATHS in this device's localStorage, so a
+   room opened on one phone never reached anyone else (the reported bug). The
+   directory now rides three shared tables — rooms, gatherings, gathering_rsvps
+   (one-time setup: run SOCIAL-SETUP.sql in the Supabase SQL editor). Offline or
+   backend-off keeps the old local behaviour, and anything created back then
+   migrates up automatically on the next signed-in open. */
+let MY_ROOMS=[],MY_GATHS=[];   // legacy device-local creations — carried up by sbMigrateSocial(), then retired
 try{MY_ROOMS=JSON.parse(localStorage.getItem(K('myrooms'))||'[]')}catch(e){}
 try{MY_GATHS=JSON.parse(localStorage.getItem(K('mygaths'))||'[]')}catch(e){}
 function saveSocial(){try{localStorage.setItem(K('myrooms'),JSON.stringify(MY_ROOMS));localStorage.setItem(K('mygaths'),JSON.stringify(MY_GATHS))}catch(e){}}
+
+let ALL_ROOMS=[],ALL_GATHS=[],RSVP_N={},RSVP_NAMES={},MY_RSVPS={};
+/* shared cache — deliberately NOT a K() key: the directory belongs to the whole
+   Order, not one card, so it must not ride the per-member user_kv cloud */
+try{const _sc=JSON.parse(localStorage.getItem('shadowhook_social_v1')||'{}');ALL_ROOMS=_sc.r||[];ALL_GATHS=_sc.g||[];RSVP_N=_sc.n||{};RSVP_NAMES=_sc.h||{};}catch(e){}
+function joinedRooms(){try{return JSON.parse(localStorage.getItem(K('joinedrooms'))||'[]')}catch(e){return[]}}
+function serverRoomByName(n){
+  const s=ALL_ROOMS.find(r=>r.name===n); if(s)return s;
+  const j=joinedRooms().find(x=>x.n===n);
+  return j?{id:j.id,name:j.n,ico:j.ico,is_private:!!j.priv,by_handle:j.by||''}:null;
+}
+function isMineRow(row){return !!((row.by_id&&row.by_id===ACCT_ID)||(row.owner&&row.owner===window.__shkUid));}
+
+let _socTimer=null;
+function socPullSoon(){if(_socTimer)return;_socTimer=setTimeout(()=>{_socTimer=null;sbLoadSocial();},350);}
+
+/* legacy local creations ride up ONCE per account — gap-fill, never clobber */
+let _migRun=false;
+async function sbMigrateSocial(){
+  if(_migRun||!window.SB||!window.__shkUid)return;
+  if(!(MY_ROOMS.length||MY_GATHS.length))return;
+  if(localStorage.getItem(K('socialmig')))return;
+  _migRun=true;
+  const uid=window.__shkUid,h=chatMyHandle();
+  try{
+    if(MY_ROOMS.length){
+      const rows=MY_ROOMS.map(r=>({name:r.n,ico:'🗣',owner:uid,by_id:ACCT_ID,by_handle:h,is_private:false}));
+      const r=await window.SB.from('rooms').upsert(rows,{onConflict:'name',ignoreDuplicates:true});
+      if(r.error)throw r.error;
+    }
+    if(MY_GATHS.length){
+      const rows=MY_GATHS.map(g=>({name:g.n,ico:'🕯',when_txt:g.w||'',where_txt:g.p||'',owner:uid,by_id:ACCT_ID,by_handle:g.by||h,is_private:false}));
+      const r=await window.SB.from('gatherings').insert(rows);
+      if(r.error)throw r.error;
+    }
+    localStorage.setItem(K('socialmig'),'1');   // rides user_kv → the member's other devices skip
+    MY_ROOMS=[];MY_GATHS=[];saveSocial();
+  }catch(e){console.warn('[social] migrate:',(e&&e.message)||e);}
+  _migRun=false;
+}
+
+/* pull the Order-wide directory + RSVP state; silent no-op offline */
+async function sbLoadSocial(){
+  if(!window.SB)return;
+  try{
+    const q=await Promise.all([
+      window.SB.from('rooms').select('id,name,ico,owner,by_id,by_handle,is_private,created_at').order('created_at',{ascending:true}),
+      window.SB.from('gatherings').select('id,name,ico,when_txt,where_txt,owner,by_id,by_handle,is_private,created_at').order('created_at',{ascending:true}),
+      window.SB.from('gathering_rsvps').select('gathering_id,owner,by_handle'),
+      window.SB.rpc('rsvp_counts')
+    ]);
+    const rr=q[0],gg=q[1],vv=q[2],cc=q[3];
+    if(rr.error||gg.error){console.warn('[social] load:',(rr.error||gg.error).message,'— run SOCIAL-SETUP.sql');return;}
+    ALL_ROOMS=rr.data||[]; ALL_GATHS=gg.data||[];
+    RSVP_NAMES={};MY_RSVPS={};
+    ((vv&&vv.data)||[]).forEach(v=>{
+      (RSVP_NAMES[v.gathering_id]=RSVP_NAMES[v.gathering_id]||[]).push(v.by_handle||'a hand');
+      if(v.owner&&v.owner===window.__shkUid)MY_RSVPS[v.gathering_id]=true;
+    });
+    RSVP_N={};
+    ((cc&&cc.data)||[]).forEach(c=>{RSVP_N[c.gathering_id]=+c.n||0;});
+    try{localStorage.setItem('shadowhook_social_v1',JSON.stringify({r:ALL_ROOMS,g:ALL_GATHS,n:RSVP_N,h:RSVP_NAMES}))}catch(e){}
+    try{await sbMigrateSocial();}catch(e){}
+    renderSocialFeed();
+    try{processPendingJoin();}catch(e){}
+  }catch(e){console.warn('[social] load',e);}
+}
+
+/* RSVP — server truth. Public gathering: your handle joins the list. Private:
+   you ride in the count only (#RSVP rule — names stay masked). */
+async function rsvpToggle(gid){
+  if(!window.SB||!window.__shkUid){toast('Verify at the gate first — then your RSVP rides the wire');return null;}
+  const on=!!MY_RSVPS[gid];
+  try{
+    if(on){
+      const r=await window.SB.from('gathering_rsvps').delete().eq('gathering_id',gid).eq('owner',window.__shkUid);
+      if(r.error)throw r.error;
+      delete MY_RSVPS[gid];RSVP_N[gid]=Math.max(0,(RSVP_N[gid]||1)-1);
+    }else{
+      const r=await window.SB.from('gathering_rsvps').insert({gathering_id:gid,owner:window.__shkUid,by_id:ACCT_ID,by_handle:chatMyHandle()});
+      if(r.error)throw r.error;
+      MY_RSVPS[gid]=true;RSVP_N[gid]=(RSVP_N[gid]||0)+1;
+    }
+    socPullSoon();
+    return !on;
+  }catch(e){console.warn('[social] rsvp',(e&&e.message)||e);toast('Didn’t stick — check your connection');return null;}
+}
+
+/* creator-only strike — the database enforces owner=you, this just asks */
+async function socialDelete(kind,id){
+  if(!window.SB||!window.__shkUid)return false;
+  try{
+    const r=await window.SB.from(kind==='room'?'rooms':'gatherings').delete().eq('id',id);
+    if(r.error)throw r.error;
+    if(kind==='room'){try{localStorage.setItem(K('joinedrooms'),JSON.stringify(joinedRooms().filter(x=>x.id!==id)))}catch(e){}}
+    ALL_ROOMS=ALL_ROOMS.filter(x=>x.id!==id);ALL_GATHS=ALL_GATHS.filter(x=>x.id!==id);
+    renderSocialFeed();socPullSoon();
+    return true;
+  }catch(e){toast('Couldn’t strike it — check your connection');return false;}
+}
+
+/* an invite link carries ?join=<room id> — the link IS the key to a private
+   room. Stash it, then let them in once they're past the gate. */
+try{
+  const _ji=new URLSearchParams(location.search).get('join');
+  if(_ji){localStorage.setItem('shadowhook_pending_join',_ji);history.replaceState(null,'',location.pathname);}
+}catch(e){}
+async function processPendingJoin(){
+  let jid=null;try{jid=localStorage.getItem('shadowhook_pending_join')}catch(e){}
+  if(!jid||!window.SB)return;
+  const acct=loadAcct(); if(!(window.__shkUid||(acct&&acct.handle)))return;   // still at the gate — keep it pending
+  try{
+    const r=await window.SB.rpc('join_room',{p_id:jid});
+    try{localStorage.removeItem('shadowhook_pending_join')}catch(e){}
+    const row=(r&&r.data&&r.data[0])||null;
+    if(!row){toast('That room’s gone dark');return;}
+    try{
+      const j=joinedRooms();
+      if(!j.some(x=>x.id===row.id)){j.push({id:row.id,n:row.name,ico:row.ico||'🗣',priv:!!row.is_private,by:row.by_handle||''});localStorage.setItem(K('joinedrooms'),JSON.stringify(j));}
+    }catch(e){}
+    renderSocialFeed();
+    openRoom(row.name,row.ico||'🗣',row.by_handle?('by '+row.by_handle):'invited crew');
+    toast('🗝 You’re on the list — '+row.name);
+  }catch(e){console.warn('[social] join',e);}
+}
 
 /* ===== SOCIAL FEED — the Floor (chat) + Gatherings, up top, social-media style =====
    Data-driven so live signals (last message, time, unread, who's on the floor)
@@ -7548,7 +7673,16 @@ function renderSocialFeed(){
   let delay=0; const step=()=>' style="animation-delay:'+((delay++)*45)+'ms"';
 
   /* ---------- THE FLOOR (rooms) ---------- */
-  const rooms=BUILTIN_ROOMS.concat(MY_ROOMS.map(r=>({n:r.n,ico:'🗣',who:'your room',tagline:'your room · opened '+(r.d||''),mine:true})));
+  /* #21fix — the floor lists the SHARED directory: server rooms (everyone's),
+     private rooms you hold a key to, then any legacy local rooms awaiting sync */
+  const svr=ALL_ROOMS.map(r=>({n:r.name,ico:r.ico||'🗣',id:r.id,priv:!!r.is_private,mine:isMineRow(r),
+    who:isMineRow(r)?'your room':('by '+(r.by_handle||'a hand')),
+    tagline:(r.is_private?'🗝 invite-only · ':'')+(isMineRow(r)?'your room · yours for good':'opened by '+(r.by_handle||'a hand'))}));
+  const jn=joinedRooms().filter(j=>!svr.some(s=>s.id===j.id)).map(j=>({n:j.n,ico:j.ico||'🗣',id:j.id,priv:!!j.priv,mine:false,
+    who:j.by?('by '+j.by):'invited crew',tagline:'🗝 invite-only · you hold the key'}));
+  const legacyR=MY_ROOMS.filter(r=>!svr.some(s=>s.n===r.n)&&!jn.some(s=>s.n===r.n)).map(r=>({n:r.n,ico:'🗣',who:'your room',
+    tagline:'this phone only · goes Order-wide next sign-in',mine:true,local:true}));
+  const rooms=BUILTIN_ROOMS.concat(svr,jn,legacyR);
   const hero=rooms.find(r=>r.hero)||rooms[0];
   const rest=rooms.filter(r=>r!==hero);
   let html='<div class="fsec">'
@@ -7571,10 +7705,11 @@ function renderSocialFeed(){
       +'<div class="chan-main">'
         +'<div class="chan-top"><span class="chan-name">'+esc(r.n)+'</span></div>'
         +'<div class="chan-msg" data-prev="'+esc(r.n)+'">'+esc(r.tagline||'')+'</div>'
-        +'<div class="chan-tags"><span class="chan-mini"><i class="dot"></i>'+floorCount(r.n)+' on the floor</span>'+(r.mine?'<span class="chan-mini yours">★ yours</span>':'')+'</div>'
+        +'<div class="chan-tags"><span class="chan-mini"><i class="dot"></i>'+floorCount(r.n)+' on the floor</span>'+(r.mine?'<span class="chan-mini yours">★ yours</span>':'')+(r.priv?'<span class="chan-mini lock">🗝 invite-only</span>':'')+'</div>'
       +'</div>'
       +'<div class="chan-r"><span class="chan-time" data-time="'+esc(r.n)+'"></span><span class="chan-unread" data-unread="'+esc(r.n)+'" style="display:none"></span></div>'
-      +(r.mine?'<button class="feed-inv" data-inv="room" data-name="'+esc(r.n)+'" aria-label="Invite to '+esc(r.n)+'">⤴</button>':'')
+      +((r.mine||r.priv)?'<button class="feed-inv" data-inv="room" data-name="'+esc(r.n)+'"'+(r.id?' data-rid="'+esc(r.id)+'"':'')+' aria-label="Invite to '+esc(r.n)+'">⤴</button>':'')
+      +(r.mine&&r.id?'<button class="feed-inv feed-del" data-del="room" data-id="'+esc(r.id)+'" aria-label="Strike '+esc(r.n)+'">✕</button>':'')
       +'</div>';
   });
   html+='<div class="chan create feedIn"'+step()+' data-new="room"><div class="chan-av">🗝</div>'
@@ -7583,22 +7718,34 @@ function renderSocialFeed(){
   html+='</div>';
 
   /* ---------- GATHERINGS ---------- */
-  const gaths=BUILTIN_GATHS.concat(MY_GATHS.map(g=>({n:g.n,ico:'🕯',w:g.w,p:g.p,by:g.by||'you',mine:true})));
+  const svrG=ALL_GATHS.map(g=>({n:g.name,ico:g.ico||'🕯',w:g.when_txt||'',p:g.where_txt||'',by:isMineRow(g)?'you':(g.by_handle||'the Order'),mine:isMineRow(g),id:g.id,priv:!!g.is_private}));
+  const legacyG=MY_GATHS.filter(g=>!svrG.some(s=>s.n===g.n)).map(g=>({n:g.n,ico:'🕯',w:g.w,p:g.p,by:g.by||'you',mine:true,local:true}));
+  const gaths=BUILTIN_GATHS.concat(svrG,legacyG);
   html+='<div class="fsec">'
     +'<div class="fsec-h"><span class="ttl">Gatherings</span><span class="more">what’s on</span></div>';
   gaths.forEach(g=>{
     const d=eventDate(g.w);
     const badge=d?('<div class="evt-date"><div class="mo">'+d.mo+'</div><div class="dy">'+d.dy+'</div></div>')
                  :('<div class="evt-date glyph">'+esc(g.ico||'🕯')+'</div>');
-    const going=!!GATH_RSVP[g.n];
+    const sv=!!g.id;                                   // #21fix — a server gathering: RSVPs ride the shared table
+    const going=sv?!!MY_RSVPS[g.id]:!!GATH_RSVP[g.n];
+    const nGo=sv?(RSVP_N[g.id]||0):0;
+    let goLine='';
+    if(sv){
+      if(g.priv)goLine='<div class="evt-going">🗝 <b>'+nGo+'</b> going · names ride masked</div>';   // private: the count, never the list
+      else{const hs=RSVP_NAMES[g.id]||[];
+        goLine='<div class="evt-going">⚓ <b>'+nGo+'</b> going'+(hs.length?' · '+esc(hs.slice(0,3).join(', '))+(hs.length>3?' +'+(hs.length-3)+' more':''):'')+'</div>';}
+    }
     html+='<div class="evt feedIn'+(g.mine?' mine':'')+'"'+step()+'>'+badge
       +'<div class="evt-main">'
-        +'<div class="evt-name">'+esc(g.n)+(g.pill?' <span class="epill">'+esc(g.pill)+'</span>':'')+'</div>'
+        +'<div class="evt-name">'+esc(g.n)+(g.pill?' <span class="epill">'+esc(g.pill)+'</span>':'')+(sv&&g.priv?' <span class="epill">🗝 PRIVATE</span>':'')+'</div>'
         +'<div class="evt-meta">'+(g.w?'<span>🕓 '+esc(g.w)+'</span>':'')+(g.p?'<span>📍 '+esc(g.p)+'</span>':'')+'</div>'
+        +goLine
         +'<div class="evt-foot"><span class="evt-host">called by <b>'+esc(g.by||'the Order')+'</b></span>'
           +'<div class="evt-cta">'
-            +'<button class="rsvp'+(going?' on':'')+'" data-rsvp="'+esc(g.n)+'">'+(going?'✓ Going':'＋ RSVP')+'</button>'
+            +'<button class="rsvp'+(going?' on':'')+'" data-rsvp="'+esc(g.n)+'"'+(sv?' data-gid="'+esc(g.id)+'"':'')+'>'+(going?'✓ Going':'＋ RSVP')+'</button>'
             +'<button class="feed-inv" data-inv="gath" data-name="'+esc(g.n)+'" data-detail="'+esc((g.w||'')+' · '+(g.p||''))+'" aria-label="Invite to '+esc(g.n)+'">⤴</button>'
+            +(g.mine&&sv?'<button class="feed-inv feed-del" data-del="gath" data-id="'+esc(g.id)+'" aria-label="Strike '+esc(g.n)+'">✕</button>':'')
           +'</div>'
         +'</div>'
       +'</div></div>';
@@ -7624,13 +7771,34 @@ function bindFeed(host){
   });
   const cr=host.querySelector('[data-new="room"]'); if(cr)cr.addEventListener('click',()=>{try{newRoomFlow()}catch(e){}});
   const cg=host.querySelector('[data-new="gath"]'); if(cg)cg.addEventListener('click',()=>{try{newGatheringFlow()}catch(e){}});
-  host.querySelectorAll('.feed-inv').forEach(b=>b.addEventListener('click',e=>{
+  host.querySelectorAll('.feed-inv[data-inv]').forEach(b=>b.addEventListener('click',e=>{
     e.stopPropagation();
-    try{inviteWord(b.getAttribute('data-inv'), b.getAttribute('data-name'), b.getAttribute('data-detail')||'')}catch(_){}
+    try{inviteWord(b.getAttribute('data-inv'), b.getAttribute('data-name'), b.getAttribute('data-detail')||'', b.getAttribute('data-rid')||'')}catch(_){}
   }));
-  host.querySelectorAll('[data-rsvp]').forEach(b=>b.addEventListener('click',e=>{
+  /* #21fix — striking your own room/gathering: first tap arms it, second tap fires */
+  host.querySelectorAll('.feed-del[data-del]').forEach(b=>b.addEventListener('click',async e=>{
     e.stopPropagation();
-    const k=b.getAttribute('data-rsvp');
+    if(!b.classList.contains('arm')){
+      b.classList.add('arm');b.textContent='sure?';
+      setTimeout(()=>{if(b.isConnected){b.classList.remove('arm');b.textContent='✕';}},2600);
+      return;
+    }
+    b.disabled=true;
+    await socialDelete(b.getAttribute('data-del'),b.getAttribute('data-id'));
+  }));
+  host.querySelectorAll('[data-rsvp]').forEach(b=>b.addEventListener('click',async e=>{
+    e.stopPropagation();
+    const gid=b.getAttribute('data-gid');
+    if(gid){                                        // #21fix — server gathering: the RSVP rides the shared table
+      if(b.disabled)return; b.disabled=true;
+      const now=await rsvpToggle(gid);
+      b.disabled=false;
+      if(now===null)return;
+      if(now){try{toast('🕯 You’re on the list')}catch(_){}}
+      renderSocialFeed();                           // repaint the head-count + names line
+      return;
+    }
+    const k=b.getAttribute('data-rsvp');            // built-in card: the old local toggle
     GATH_RSVP[k]=!GATH_RSVP[k];
     try{localStorage.setItem(K('gathrsvp'),JSON.stringify(GATH_RSVP))}catch(_){}
     b.classList.toggle('on',!!GATH_RSVP[k]);
@@ -7672,14 +7840,38 @@ function setPrev(room,who,txt,tm,unread){
   document.querySelectorAll('#socialFeed [data-unread]').forEach(el=>{ if(el.getAttribute('data-unread')===room)el.style.display=unread?'':'none'; });
 }
 
-/* create-flows unchanged in behavior; they refresh the whole feed after minting */
+/* #21fix — create-flows now mint on the SERVER (fail → bucks returned).
+   Offline / backend-off falls back to the old this-device-only behaviour. */
 window.newRoomFlow=function(){
   const price=(typeof CIRCLE_LVL!=='undefined'&&CIRCLE_LVL>=5)?125:ROOM_COST;   // #7 — Boatswain perk
   openPaySheet({title:"OPEN A ROOM",sub:"Your room, your rules. Masked handles only — and the Keymaster sees all."+(price<ROOM_COST?" Boatswain rate.":""),
-    price:price,go:"OPEN IT",fields:[{k:"n",label:"Room name",ph:"e.g. Night Owls · graveyard crew"}],
-    onPaid:v=>{MY_ROOMS.push({n:v.n,d:new Date().toLocaleDateString()});saveSocial();renderSocialFeed();
+    price:price,go:"OPEN IT",fields:[
+      {k:"n",label:"Room name",ph:"e.g. Night Owls · graveyard crew"},
+      {k:"v",label:"Who can walk in",type:"select",opts:[["0","⚓ Public — listed for the whole Order"],["1","🗝 Private — invite only, off the floor list"]]}],
+    validate:v=>{const nm=(v.n||'').trim();
+      if(serverRoomByName(nm)||BUILTIN_ROOMS.some(r=>r.n===nm)||MY_ROOMS.some(r=>r.n===nm))return "That name’s already on the floor — pick another";
+      return null;},
+    onPaid:async v=>{
+      const priv=v.v==="1";
+      if(window.SB&&window.__shkUid){
+        try{
+          const r=await window.SB.from('rooms').insert({name:v.n,ico:'🗣',owner:window.__shkUid,by_id:ACCT_ID,by_handle:chatMyHandle(),is_private:priv}).select().single();
+          if(r.error)throw r.error;
+          if(r.data)ALL_ROOMS.push(r.data);
+          renderSocialFeed();
+          unlockBadge(bixLate("Room Founder"));                   // #8
+          openRoom(v.n,'🗣','your room');
+          if(priv)toast('🗝 Private room open — tap its ⤴ to hand out keys');
+        }catch(e){
+          try{addCredits(price,'refund',true)}catch(_){}
+          toast(/duplicate|unique/i.test((e&&e.message)||'')?'That room name’s taken — bucks returned':'The wire dropped — bucks returned, try again');
+        }
+        return;
+      }
+      MY_ROOMS.push({n:v.n,d:new Date().toLocaleDateString()});saveSocial();renderSocialFeed();
       unlockBadge(bixLate("Room Founder"));                       // #8
-      openRoom(v.n,'🗣','your room');}});
+      openRoom(v.n,'🗣','your room');
+      toast('Offline — the room lives on this phone and rides up next sign-in');}});
 };
 window.newGatheringFlow=function(){
   const price=(typeof CIRCLE_LVL!=='undefined'&&CIRCLE_LVL>=4)?100:GATH_COST;   // #7 — Quartermaster perk
@@ -7687,15 +7879,37 @@ window.newGatheringFlow=function(){
     price:price,go:"CALL IT",fields:[
       {k:"n",label:"What is it",ph:"e.g. C-List BBQ at Cabrillo"},
       {k:"w",label:"When",ph:"e.g. Sat Aug 8 · 2 PM"},
-      {k:"p",label:"Where",ph:"e.g. Cabrillo Beach pits"}],
-    onPaid:v=>{const h=document.getElementById('meHandle');MY_GATHS.push({n:v.n,w:v.w,p:v.p,by:h?h.textContent:'you'});
+      {k:"p",label:"Where",ph:"e.g. Cabrillo Beach pits"},
+      {k:"v",label:"The RSVP list",type:"select",opts:[["0","⚓ Public — list every hand going"],["1","🗝 Private — show the count, mask the names"]]}],
+    onPaid:async v=>{
+      const priv=v.v==="1";
+      if(window.SB&&window.__shkUid){
+        try{
+          const r=await window.SB.from('gatherings').insert({name:v.n,ico:'🕯',when_txt:v.w,where_txt:v.p,owner:window.__shkUid,by_id:ACCT_ID,by_handle:chatMyHandle(),is_private:priv}).select().single();
+          if(r.error)throw r.error;
+          if(r.data)ALL_GATHS.push(r.data);
+          renderSocialFeed();
+          unlockBadge(bixLate("Rally Caller"));                   // #8
+          toast("🕯 Gathering called — every hand sees it. Tap its ⤴ to invite directly");
+        }catch(e){
+          try{addCredits(price,'refund',true)}catch(_){}
+          toast('The wire dropped — bucks returned, try again');
+        }
+        return;
+      }
+      const h=document.getElementById('meHandle');MY_GATHS.push({n:v.n,w:v.w,p:v.p,by:h?h.textContent:'you'});
       saveSocial();renderSocialFeed();unlockBadge(bixLate("Rally Caller"));  // #8
-      toast("🕯 Gathering called — tap its ⤴ to invite hands directly");}});
+      toast("🕯 Gathering called — rides up Order-wide next sign-in");}});
 };
 /* legacy hooks kept so any other caller still works — both refresh the feed */
 function renderMyRooms(){renderSocialFeed();}
 function renderMyGaths(){renderSocialFeed();}
 renderSocialFeed();
+sbLoadSocial();                                   // #21fix — pull the Order-wide directory (cache painted above)
+/* re-pull the moment a backend session lands or switches (login is async) */
+let _socUid=null;
+setInterval(function(){var u=window.__shkUid||null;if(u!==_socUid){_socUid=u;socPullSoon();}},1200);
+setTimeout(function(){try{processPendingJoin()}catch(e){}},2200);   // invite link opened before sign-in finished
 
 /* ===== #7 — THE CIRCLES: the climb runs on Port Bucks =====
    Tap a circle → the terms: price + everything it buys. Each ring costs more
@@ -8610,21 +8824,6 @@ function bwApplyRow(row){
   if(!r){r={date:date,slot:slot,rain:false,hol:false};RECENT.push(r);
     RECENT.sort((a,b)=>{const ka=a.date+(String(a.slot).endsWith('AM')?'_1':'_2'),kb=b.date+(String(b.slot).endsWith('AM')?'_1':'_2');return ka<kb?-1:ka>kb?1:0;});}
   Object.assign(r,row.patch);
-  /* #206 — the ☎ hall-line bot posts the END alone (that's all the recording says).
-     Fill the start from the directly-previous board on the record — same handoff
-     rule as the chain (AM → same-day PM, PM → next-day AM) — and figure act from
-     the span, so momentum and the chain read a complete row. Never invents a start
-     across a gap in the record. */
-  if(r.end&&!r.start){try{
-    const prevKey=String(slot).endsWith('PM')
-      ? date+'_'+slot.slice(0,3)+'_AM'
-      : (function(){const d=new Date(date+'T12:00');d.setDate(d.getDate()-1);
-          const iso=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-          return iso+'_'+DOWM[d.getDay()]+'_PM';})();
-    const pv=RECENT.find(x=>x.date+'_'+x.slot===prevKey);
-    if(pv&&pv.end)r.start=nextCard(pv.end);
-  }catch(e){}}
-  if(r.act==null&&r.start&&r.end){try{r.act=(AZ.indexOf(r.end[0])-AZ.indexOf(r.start[0])+26)%26;}catch(e){}}
   try{chainBoards(k);}catch(e){}
 }
 /* every device applies its own credit consequences exactly once */
@@ -8735,7 +8934,7 @@ try{sbLoadBoardWire();}catch(e){}
    board log/correction, or a dispatch sheet from ANY hand lands on every screen at
    once. Falls back to a gentle pull if the socket can't hold (same as chat). */
 let _liveChan=null, _liveOn=false;
-function liveRefreshAll(){ try{dwPull();}catch(e){} try{sbLoadBoardWire();}catch(e){} try{sbLoadDispatch();}catch(e){} }
+function liveRefreshAll(){ try{dwPull();}catch(e){} try{sbLoadBoardWire();}catch(e){} try{sbLoadDispatch();}catch(e){} try{sbLoadSocial();}catch(e){} }
 function liveSync(){
   if(!window.SB)return;
   try{
@@ -8743,6 +8942,9 @@ function liveSync(){
       .on('postgres_changes',{event:'*',schema:'public',table:'drop_wire'},      function(){try{dwPull();}catch(e){}})
       .on('postgres_changes',{event:'*',schema:'public',table:'board_wire'},      function(){try{sbLoadBoardWire();}catch(e){}})
       .on('postgres_changes',{event:'*',schema:'public',table:'dispatch_boards'}, function(){try{sbLoadDispatch();}catch(e){}})
+      .on('postgres_changes',{event:'*',schema:'public',table:'rooms'},           function(){try{socPullSoon();}catch(e){}})   // #21fix — the social
+      .on('postgres_changes',{event:'*',schema:'public',table:'gatherings'},      function(){try{socPullSoon();}catch(e){}})   // directory is shared:
+      .on('postgres_changes',{event:'*',schema:'public',table:'gathering_rsvps'}, function(){try{socPullSoon();}catch(e){}})   // rooms/RSVPs land live
       .subscribe(function(s){ _liveOn=(s==='SUBSCRIBED'); try{console.log('[live] order sync:',s);}catch(e){} });
   }catch(e){}
 }
