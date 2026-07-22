@@ -127,6 +127,9 @@ def process(t, dry=False, existing=None):
     if parsed.get("workdate") and parsed["workdate"] != t["fdate"].isoformat():
         print(f"  ! workdate in sheet ({parsed['workdate']}) != file date ({t['fdate']}); using file date for the key")
     payload = payload_from(parsed, t["url"].split("/")[-1])
+    # 'Shift: Day/Night' OCRs unreliably off the scan; the sheet letter is definitive
+    if not payload.get("shift"):
+        payload["shift"] = "Day" if t["letter"] == "D" else "Night"
     if parsed.get("warnings"):
         print(f"  ~ ocr notes: {parsed['warnings']}")
     if dry:

@@ -22,9 +22,10 @@ import subprocess, re, json, sys, os, tempfile
 COLS = ["shorted", "early", "mo", "eo", "mro", "ro", "lm", "total"]
 SUMCOLS = ["early", "mo", "eo", "mro", "ro", "lm"]  # these sum to total
 
-# known Boards-table rows (longest first so multi-word names match before short ones)
-BOARDS = ["Crane Top Handler", "Hold", "Crane", "Winch", "UTR", "CY", "Jitney",
-          "Swamper", "Casual", "Dock", "Mechanics", "Gear", "Carpenter"]
+# known Boards-table rows (calibrated against real 7/21–7/22 sheets; a sheet lists
+# only the boards it has, so this is a superset — missing rows are simply absent)
+BOARDS = ["Crane Top Handler", "Key Hold", "Hold", "Crane", "Winch", "UTR", "CY",
+          "Jitney", "Lumber", "Swamper", "Casual", "Dock", "Mechanics", "Gear", "Carpenter"]
 
 MONTHS = {m: i + 1 for i, m in enumerate(
     ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"])}
@@ -65,7 +66,11 @@ def clean_num(tok):
     return None  # e.g. ")", "A)", "tt)", "m0)" — almost always a zero
 
 def parse_row(tokens):
-    """8 value-tokens -> {col: int}. Garbled cells -> 0, then Total validates."""
+    """8 value-tokens -> {col: int}. Garbled cells -> 0, then Total validates.
+    Calibrated fix (7/22): a Total cell OCR'd into junk ('30}' for 301, 'TAT' for
+    747, '5]' for 51) used to zero the board out of the count — the missing-Hold
+    bug. Now an unreadable Total is REBUILT from the row's own columns
+    (Total = Early+MO+EO+MRO+RO+LM by definition), flagged _reconstructed."""
     vals = [clean_num(t) for t in tokens[-8:]]
     while len(vals) < 8:
         vals.insert(0, 0)
@@ -75,8 +80,12 @@ def parse_row(tokens):
         for c in SUMCOLS:                 # a board whose Total is 0 has every column 0
             row[c] = 0
     s = sum(row[c] for c in SUMCOLS)
-    ok = (total is not None and s == total)
-    if total is not None and not ok:
+    if total is None:                     # garbled Total -> the columns ARE the total
+        row["total"] = s
+        row["_reconstructed"] = True
+        return row, True
+    ok = (s == total)
+    if not ok:
         # trust the (clean) Total for the headline number; note the mismatch
         row["_total_mismatch"] = {"cols_sum": s, "printed_total": total}
         row["total"] = total
@@ -88,6 +97,9 @@ def find_row(text_lines, name):
         low = ln.lower()
         if low.strip().startswith(name.lower()):
             rest = ln[len(name):]
+            # the name must END here — 'Crane' must not swallow a 'Crane Top Handler' line
+            if rest.lstrip()[:1].isalpha():
+                continue
             toks = re.findall(r"[^\s]+", rest)
             nums = [t for t in toks if re.search(r"[\d)lIQOoSB]", t)]
             if len(nums) >= 6:
@@ -141,55 +153,123 @@ def parse_flops(lines, warnings):
     return None
 
 
-# ── ships: the vessel-lineup page(s) ───────────────────────────────────────
-SHIP_LINE = re.compile(
-    r"^\s*(\d{1,2})\s+(\d{1,2}:\d{2}\s*[AP]M)\s+(.+?)\s{2,}([A-Z0-9&/.\-]{2,})\s+(\S+)\s{2,}(\d+)\s+(\S+)\s*$",
-    re.I)
-SHIP_LOOSE = re.compile(r"^\s*(\d{1,2})\s+(\d{1,2}:\d{2}\s*[AP]M)\s+(.+)$", re.I)
+# ── ships: the "Allocation List" page(s) ───────────────────────────────────
+#    Real layout (calibrated on 072226D p.10 / 072126N):
+#      Alc.#  StartTime  OrderType  ShipName        Company  Berth   Tags
+#      1      8:00AM     MRO        NORSE NAOSHIMA  SSA      LB 205  GE-
+#         1HL                                  <- jobs line (or "Cancelled")
+#    Entries continue onto following lines: a jobs string like "6S 2DS 12UTR"
+#    (crew = the sum of those leading counts, matching the app), or "Cancelled",
+#    or an "Early Dispatch" tag we skip.
+ENTRY_RE = re.compile(r"^\s*(\d{1,2})\s+(\d{1,2}[:.]\d{2}\s*[AP]M)\s+([A-Z]{1,5})\b\s*(.*)$")
+# a line that WANTS to be an entry (has the order-type anchor) but didn't parse —
+# the dotted separators bleed into every other row and destroy order/time. Those
+# entries are skipped whole, so their 'Cancelled'/jobs lines can't attach to the
+# wrong ship (the bug that marked live vessels as scratched).
+ENTRYISH_RE = re.compile(r"\bM\s?RO\b")
+JOB_TOK = re.compile(r"^(\d{1,3})[A-Z][A-Z0-9/:.\-]*$")
+BERTH_PFX = {"LB", "TI", "TY", "TL", "T1", "LB.", "TI."}
 
-def looks_like_ships(text):
-    times = re.findall(r"\d{1,2}:\d{2}\s*[AP]M", text, re.I)
-    return len(times) >= 3 and bool(re.search(r"vessel|berth|ship|lineup", text, re.I))
+def _norm_job(tok):
+    """Common OCR garbles in job tokens: '4§$'->'4SS', 'IAL'->'1AL', '3OSL'->'30SL'."""
+    t = tok.replace("§", "S").replace("$", "S")
+    t = re.sub(r"^[IlL](?=[A-Z0-9])", "1", t)
+    t = re.sub(r"^(\d+)O(?=[A-Z])", r"\g<1>0", t)
+    return t
+
+def looks_like_alloc(text):
+    if re.search(r"[Aa]ll?ocat", text):
+        return True
+    return bool(re.search(r"Ship\s*Name", text, re.I) and re.search(r"Berth", text, re.I))
+
+def _canon_pfx(p):
+    p = p.upper().strip(".,")
+    return "TI" if p in {"TI", "TY", "TL", "T1"} else "LB"
+
+def _split_entry(rest):
+    """rest of an entry line -> (ship, company, berth). Berth anchors the split:
+    'LB 205' / 'TI 400' style first (incl. glued 'LB24' and OCR'd 'TY'/'TL'),
+    else the rightmost bare 2-4 digit token."""
+    toks = rest.split()
+    n = len(toks)
+    for i in range(n - 1, 0, -1):                      # LB/TI + number, rightmost
+        if re.fullmatch(r"\d{1,4}", toks[i]) and toks[i - 1].upper().strip(".,") in {p.strip(".") for p in BERTH_PFX}:
+            return (" ".join(toks[: i - 2]).strip(),
+                    toks[i - 2] if i >= 2 else "",
+                    _canon_pfx(toks[i - 1]) + " " + toks[i])
+    for i in range(n - 1, 0, -1):                      # glued berth token: 'LB24', 'TI400'
+        m = re.fullmatch(r"(LB|TI|TY|TL|T1)\.?(\d{1,4})", toks[i], re.I)
+        if m:
+            return (" ".join(toks[: i - 1]).strip(),
+                    toks[i - 1] if i >= 1 else "",
+                    _canon_pfx(m.group(1)) + " " + m.group(2))
+    for i in range(n - 1, 0, -1):                      # bare berth number (e.g. '100', '176')
+        if re.fullmatch(r"\d{2,4}", toks[i]):
+            return (" ".join(toks[: i - 1]).strip(), toks[i - 1], toks[i])
+    return (rest.strip(), "", "")
 
 def parse_ships(text):
-    ships = []
-    for line in text.splitlines():
-        mm = SHIP_LINE.match(line)
-        if mm:
-            ships.append({"order": int(mm.group(1)), "time": mm.group(2).replace(" ", "").upper(),
-                          "ship": mm.group(3).strip(), "company": mm.group(4).strip(),
-                          "berth": mm.group(5).strip(), "cancelled": False,
-                          "crew": int(mm.group(6)), "jobs": mm.group(7).strip()})
+    ships, cur, skipped = [], None, 0
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
             continue
-        mm = SHIP_LOOSE.match(line)
-        if mm:
-            rest = re.split(r"\s{2,}", mm.group(3).strip())
-            ship = rest[0].strip() if rest else ""
-            if len(ship) < 3 or ship.isdigit():
+        mm = ENTRY_RE.match(line)
+        if mm and mm.group(4):
+            ship, company, berth = _split_entry(mm.group(4))
+            ship = ship.strip(" .,-—~|")
+            alnum = sum(1 for c in ship if c.isalnum() or c == " ")
+            if (len(ship) < 4 or len(ship) > 40 or alnum < 0.6 * len(ship)
+                    or re.search(r"[~«»™=§<]|\.\.", ship)):  # junk/glued name -> not a real entry
+                cur = None
+                skipped += 1
                 continue
-            rec = {"order": int(mm.group(1)), "time": mm.group(2).replace(" ", "").upper(),
-                   "ship": ship, "company": rest[1].strip() if len(rest) > 1 else "",
-                   "berth": rest[2].strip() if len(rest) > 2 else "", "cancelled": False,
-                   "crew": 0, "jobs": ""}
-            tail_nums = re.findall(r"\d+", " ".join(rest[3:])) if len(rest) > 3 else []
-            if tail_nums:
-                rec["crew"] = int(tail_nums[0])
-            ships.append(rec)
-    return ships
+            cur = {"order": int(mm.group(1)), "time": mm.group(2).replace(" ", "").replace(".", ":").upper(),
+                   "ship": ship, "company": company.strip(" .,"), "berth": berth,
+                   "cancelled": False, "crew": 0, "jobs": ""}
+            ships.append(cur)
+            continue
+        if ENTRYISH_RE.search(line):
+            # an entry row the OCR destroyed — drop it AND its continuation lines
+            cur = None
+            skipped += 1
+            continue
+        if cur is None:
+            continue
+        if re.search(r"cancel", line, re.I):
+            cur["cancelled"] = True
+            cur["crew"] = 0
+            cur["jobs"] = ""
+            continue
+        if re.search(r"early\s+dispatch", line, re.I):
+            continue
+        toks = [_norm_job(t) for t in line.split()]
+        hits = [t for t in toks if JOB_TOK.match(t)]
+        if hits and len(hits) >= max(1, len(toks) - 1) and not cur["cancelled"] and not cur["jobs"]:
+            cur["jobs"] = " ".join(hits)
+            cur["crew"] = sum(int(JOB_TOK.match(t).group(1)) for t in hits)
+    return ships, skipped
 
 
 # ── the forecast page ──────────────────────────────────────────────────────
 def parse_page(text):
     lines = [l for l in text.splitlines() if l.strip()]
-    # workdate + shift
-    date_iso, shift = None, None
+    # workdate + shift + the printed generation timestamp
+    date_iso, shift, generated = None, None, None
     joined = " ".join(lines)
     dm = re.search(r"(\d{1,2})[/\s]?(\d{2})[/\s]?(\d{4})", joined.replace("WorkDate", "WorkDate "))
     if dm:
         mo, dy, yr = dm.group(1), dm.group(2), dm.group(3)
         date_iso = f"{yr}-{int(mo):02d}-{int(dy):02d}"
+    # the sheet prints its own clean timestamp next to WorkDate ('7/21/2026 3:18:57PM')
+    # — far more reliable than the fax stamp, which OCRs badly ('Jul 24' for Jul 21)
+    gm = re.search(r"(\d{1,2})/(\d{1,2})/(\d{4})\s+(\d{1,2}):(\d{2})(?::\d{2})?\s*([AP]M)", joined, re.I)
+    if gm:
+        generated = f"{gm.group(3)}-{int(gm.group(1)):02d}-{int(gm.group(2)):02d} {int(gm.group(4))}:{gm.group(5)}{gm.group(6).upper()}"
     if re.search(r"\bnight\b", joined, re.I): shift = "Night"
     elif re.search(r"\bday\b", joined, re.I): shift = "Day"
+    # (shift is OCR-fragile — 'Shift: Day' scans as junk; the bot fills it from the
+    #  sheet letter when missing, which is always right)
 
     boards, warnings, last_row_i = {}, [], -1
     for name in BOARDS:
@@ -197,6 +277,8 @@ def parse_page(text):
         if nums is None:
             continue
         row, ok = parse_row(nums)
+        if row.pop("_reconstructed", None):
+            warnings.append(f"{name}: total cell unreadable — rebuilt {row['total']} from the row's columns")
         boards[name] = {k: row[k] for k in COLS}
         last_row_i = max(last_row_i, li)
         if not ok and "_total_mismatch" in row:
@@ -217,29 +299,35 @@ def parse_page(text):
 
     flops = parse_flops(lines, warnings) if boards else None
     out = {"workdate": date_iso, "shift": shift, "boards": boards, "total": total, "warnings": warnings}
+    if generated:
+        out["generated"] = generated
     if flops is not None:
         out["flops"] = flops
     return out
 
 def _printed_total(lines, last_row_i):
-    """The sheet's own totals row: either labelled TOTAL(S), or a numbers-only line
-    just after the last board row. Trusted only if its own checksum holds."""
+    """The sheet's own totals row: either labelled TOTAL(S), or the cell row right
+    after the last board row (on the real sheets it's unlabelled: '0 280 327 49 91
+    0 0 747'). Cells can be OCR junk ('747' scans as 'TAT') — keep every cell-ish
+    token and let parse_row repair/rebuild, trusting only a row whose checksum
+    holds or whose Total was rebuilt from its own clean columns."""
     cands = []
     for i, ln in enumerate(lines):
         if re.match(r"\s*(grand\s+)?totals?\b", ln, re.I):
             toks = re.findall(r"[^\s]+", re.sub(r"^\s*(grand\s+)?totals?\b", "", ln, flags=re.I))
-            nums = [t for t in toks if re.search(r"[\d)lIQOoSB]", t)]
-            if len(nums) >= 6:
-                cands.append(nums)
-    if not cands and last_row_i >= 0:
+            cells = [t for t in toks if re.search(r"[A-Za-z0-9)|]", t)]
+            if len(cells) >= 6:
+                cands.append(cells)
+    if last_row_i >= 0:
         for ln in lines[last_row_i + 1: last_row_i + 4]:
             toks = re.findall(r"[^\s]+", ln)
-            nums = [t for t in toks if re.search(r"[\d)lIQOoSB]", t)]
-            if len(nums) >= 7 and len(nums) >= len(toks) - 1:   # numbers-only line
-                cands.append(nums)
+            cells = [t for t in toks if re.search(r"[A-Za-z0-9)|]", t)]
+            digitish = [t for t in cells if re.search(r"\d", t)]
+            if len(cells) >= 7 and len(digitish) >= len(cells) - 1:   # a cells-only line
+                cands.append(cells)
                 break
-    for nums in cands:
-        row, ok = parse_row(nums)
+    for cells in cands:
+        row, ok = parse_row(cells)
         if ok and row["total"] > 0:
             return {c: row[c] for c in COLS}
     return None
@@ -248,7 +336,7 @@ def _printed_total(lines, last_row_i):
 # ── whole document ─────────────────────────────────────────────────────────
 def parse_pdf(pdf):
     n = npages(pdf)
-    result, ships, header = None, [], {}
+    result, ships, header, ships_skipped = None, [], {}, 0
     for p in range(1, n + 1):
         png = render(pdf, p, dpi=150)          # fast low-res scan just to locate pages
         if not png:
@@ -260,21 +348,44 @@ def parse_pdf(pdf):
             sharp = render(pdf, p, dpi=300)     # re-render the matched page sharp for parsing
             result = parse_page(ocr(sharp) if sharp else txt)
             result["source_page"] = p
-        elif not ships and looks_like_ships(txt):
+        elif looks_like_alloc(txt):
+            # the Allocation List can run across several pages — collect them all
             sharp = render(pdf, p, dpi=300)
-            ships = parse_ships(ocr(sharp) if sharp else txt)
-            if ships:
-                result_ships_page = p
-        if result is not None and ships:
-            break                               # got everything — stop burning OCR time
+            got, skp = parse_ships(ocr(sharp) if sharp else txt)
+            ships_skipped += skp
+            if got:
+                ships.extend(got)
     if result is None:
         return {"error": "no Job Forecast Report page found", "pages_scanned": n}
+    # fax-stamp header is a fallback only; the forecast page's printed timestamp wins,
+    # and a stamp date that disagrees wildly with the sheet's WorkDate is an OCR
+    # misread ('Jul 24' for Jul 21) — drop it rather than store a wrong date.
     for k, v in header.items():
         result.setdefault(k, v)
+    try:
+        if result.get("generated") and result.get("workdate"):
+            import datetime as _dt
+            g = _dt.date.fromisoformat(result["generated"][:10])
+            w = _dt.date.fromisoformat(result["workdate"])
+            if not (-1 <= (w - g).days <= 4):
+                result.pop("generated", None)
+    except Exception:
+        pass
     if ships:
-        result["ships"] = ships
+        # de-dup (same Alc.# from an overlapping OCR pass) keeping first sighting
+        seen, uniq = set(), []
+        for s in ships:
+            k = (s["order"], s["ship"])
+            if k in seen:
+                continue
+            seen.add(k)
+            uniq.append(s)
+        result["ships"] = uniq
+        if ships_skipped:
+            result.setdefault("warnings", []).append(
+                f"allocation list: {ships_skipped} entries unreadable (dotted-rule bleed) — kept the {len(uniq)} clean ones")
     else:
-        result.setdefault("warnings", []).append("no vessel-lineup page recognized — ships omitted (calibrate off an _ocr dump)")
+        result.setdefault("warnings", []).append("no Allocation List page recognized — ships omitted")
     return result
 
 
