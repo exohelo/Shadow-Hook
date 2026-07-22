@@ -3540,21 +3540,37 @@ window.renderWireStage=renderWireStage;
    in DISPATCH_DATA[<date>_<slot>] with a real total the moment they're parsed/uploaded. */
 function _predKey(){ return nd2.getFullYear()+"-"+String(nd2.getMonth()+1).padStart(2,"0")+"-"+String(nd2.getDate()).padStart(2,"0")+"_"+callSlot; }
 function _finalInFor(key){ const dd=DISPATCH_DATA[key]; return !!(dd && dd.total && (dd.total.total||(typeof dd.total==="number"&&dd.total))); }
-/* #rebuild — you've LOGGED DROPS for this board = you're standing at it, in dispatch. */
+/* #rebuild — YOUR logged drops for this board = you're standing at it, in dispatch.
+   #205 — crowd drops off the wire (window.DW) no longer freeze the call from afar:
+   another member's ear doesn't mean YOU are standing at the board. */
 function _dropsEngaged(key){
   try{
     const dl=JSON.parse(localStorage.getItem(K('droplog'))||'{}'); const d=dl&&dl[key];
     if(d&&d.drops&&d.drops.length>0) return true;
-    if(window.DW&&window.DW[key]&&window.DW[key].length>0) return true;
   }catch(e){}
   return false;
+}
+/* #205 — fingerprint of the board's OWN sheet data (source rank + counts) exactly as the
+   engine would read it right now. Drops never touch DISPATCH_DATA, so while the call is
+   frozen a changed fingerprint = real sheet news (final landed late, a corrected count,
+   a re-upload) — the one thing that must still re-figure a locked call. */
+function _sheetFP(key){
+  try{
+    const dd=DISPATCH_DATA[key];
+    const cas=(dd&&typeof casualJobsOf==="function")?casualJobsOf(dd):null;
+    const tv=(dd&&dd.total)?(dd.total.total!=null?dd.total.total:(typeof dd.total==="number"?dd.total:null)):null;
+    if(cas!=null||tv!=null) return (tv!=null?'F':'E')+'|'+(cas!=null?Math.round(cas):'')+'|'+(tv!=null?Math.round(tv):'');
+    const ec=window.EARLY_COUNTS;
+    if(ec) return 'C|'+Math.round(ec.ch||0)+'|'+Math.round(ec.tot||0);
+    return 'N||';
+  }catch(e){ return 'N||'; }
 }
 /* ENGAGED = the call is set and must hold: live with its final sheet in, OR drops logged. */
 function _engaged(key){ try{ return (!!liveWindow() && _finalInFor(key)) || _dropsEngaged(key); }catch(e){ return false; } }
 /* remember the exact call per board, so drops — and even a reload — never move it mid-dispatch */
 function _lockStore(){ try{ return JSON.parse(localStorage.getItem(K('lockedcall'))||'{}')||{}; }catch(e){ return {}; } }
 function _lockGet(key){ const s=_lockStore(); return s[key]?Object.assign({},s[key]):null; }
-function _lockSet(key,o){ try{ const s=_lockStore(); s[key]={base:o.base,start:o.start,med:o.med,lo:o.lo,hi:o.hi,pmove:o.pmove,mom:o.mom,p6:o.p6,p10:o.p10,source:o.source,isAM:o.isAM,lock:o.lock}; const ks=Object.keys(s); while(ks.length>40){ delete s[ks.shift()]; } localStorage.setItem(K('lockedcall'),JSON.stringify(s)); }catch(e){} }
+function _lockSet(key,o){ try{ const s=_lockStore(); s[key]={base:o.base,start:o.start,med:o.med,lo:o.lo,hi:o.hi,pmove:o.pmove,mom:o.mom,p6:o.p6,p10:o.p10,source:o.source,isAM:o.isAM,lock:o.lock,fp:o.fp}; const ks=Object.keys(s); while(ks.length>40){ delete s[ks.shift()]; } localStorage.setItem(K('lockedcall'),JSON.stringify(s)); }catch(e){} }
 /* FROZEN = the board you're standing at, once dispatch has it. Drops are recorded, never folded into the live call. */
 function wireFrozen(){ try{ return _engaged(_predKey()); }catch(e){ return false; } }
 
@@ -3810,14 +3826,20 @@ function publishCall(){
      #114b — anchored on the last COMPLETED board, never a future bot row */
   const key=_predKey();
   const live=!!liveWindow(), finalIn=_finalInFor(key), frozen=_engaged(key);
+  const fp=_sheetFP(key);   /* #205 — what the board's own sheet says right now */
   /* #rebuild — LOCK THE CALL ONCE YOU'RE IN DISPATCH. The board you're standing at
      freezes the moment (a) it's live with its final sheet in, or (b) you've logged your
      first drop for it. From then on the published stop letter does NOT move: come-downs
      you log ride onto the board sheet and into future learning, but never re-figure the
-     call in front of you. It releases on its own when the next board comes up. */
+     call in front of you. It releases on its own when the next board comes up.
+     #205 — the freeze holds only while the SHEET under the call is unchanged. Drops can
+     never move a locked call, but real sheet news — the final landing after the freeze,
+     a corrected count, a re-upload — falls through, re-figures off the new numbers, and
+     re-locks. (Before: the cached call was served even when the data under it changed,
+     and the chip relabeled a pre-final estimate as "off the final count".) */
   {
     const cached=(window._publishedKey===key&&window._lastStageO)?window._lastStageO:_lockGet(key);
-    if(frozen && cached){
+    if(frozen && cached && cached.fp===fp){
       cached.lock = live?'LIVE':(finalIn?'FINAL':(cached.lock||cached.source||'EST'));
       /* #rebuild — the MOVEMENT is frozen so logging drops can't move it, but the STARTING
          CARD is a fact, not a prediction: keep it live so the locked call always reads off
@@ -3876,7 +3898,7 @@ function publishCall(){
   /* #204 — LOCK STATE for the chip: LOCKED off the final (FINAL); LOCKED + frozen while
      dispatch runs (LIVE); UNLOCKED estimate off the early count (EARLY) or off nothing (EST/AM). */
   const lock = finalIn ? (live?'LIVE':'FINAL') : (source==='EARLY'?'EARLY':(isAM?'AM':'EST'));
-  const o={base:base,start:lastStart,med:med,lo:lo,hi:hi,pmove:pmove,mom:mom,p6:p6,p10:p10,source:source,isAM:isAM,lock:lock};
+  const o={base:base,start:lastStart,med:med,lo:lo,hi:hi,pmove:pmove,mom:mom,p6:p6,p10:p10,source:source,isAM:isAM,lock:lock,fp:fp};   /* #205 — fp: the sheet this call was figured from */
   window._lastStageO=o; window._publishedKey=key;
   try{ renderWireStage(o); }catch(e){ console.warn('wire stage',e); }
   /* the pending row on Recent Boards reads this same call */
