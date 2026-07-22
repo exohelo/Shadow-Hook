@@ -54,6 +54,7 @@ const ANCHORS = [
 function tokenize(text){
   const t = String(text||'')
     .toLowerCase()
+    .replace(/(\d),(\d)/g, '$1$2')         // 1,240 -> 1240 (before commas become spaces)
     .replace(/[.,;:!?()"']/g, ' ')
     .replace(/(\d)\s*-\s*(\d)/g, '$1$2')   // 49-12 -> 4912
     .replace(/-/g, ' ')                    // forty-nine -> forty nine
@@ -180,4 +181,70 @@ function score(tokens, i, j, card, risky, keywords, fourDigit){
   return { card, conf, pos: i, risky, anchored, keyed, heard: contextAround(tokens, i, j) };
 }
 
-module.exports = { parseLeftOff, _internals: { tokenize, readNumber, readLetter } };
+/* ============================================================================
+   parseCounts — the recording also announces JOB COUNTS on a schedule:
+     Early (E)  after morning dispatch   → tonight's early look
+     Night (N)  final after ~2:30 PM     → tonight's final
+     Day (D)    final after night ends   → tomorrow morning's final
+   These are BACKUP data only — the PDF sheet is the record. The worker logs
+   them and cross-checks the PDF; it never writes them over sheet data.
+   Counts arrive as digits from Whisper ("991", "1,240"). A number is only a
+   count if count-context words sit near it, and never if it's a card's digits.
+   ========================================================================== */
+const NIGHT_WORDS = ['night', 'tonight', 'evening'];
+const DAY_WORDS   = ['day', 'tomorrow', 'morning', 'tomorrows'];
+
+function parseCounts(transcript){
+  const tokens = tokenize(transcript);
+  const found = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const w = tokens[i];
+    if (!/^\d{2,4}$/.test(w)) continue;
+    const n = parseInt(w, 10);
+    if (n < 20 || n > 4000) continue;
+    // a card's digits, not a count: the token before it reads as a letter
+    const prev = tokens[i - 1];
+    if (prev && (/^[a-z]$/.test(prev) || NATO[prev] || SAFE_NAMES[prev] || RISKY[prev])) continue;
+    // a TIME, not a count: "after 230", "at 930", "230 pm"
+    if (prev && ['after', 'at', 'until', 'till', 'by', 'around', 'before'].includes(prev)) continue;
+    const nxt = tokens[i + 1];
+    if (nxt && ['am', 'pm', 'oclock', 'a', 'p'].includes(nxt)) continue;
+    const from = Math.max(0, i - 8), to = Math.min(tokens.length, i + 6);
+    const win = tokens.slice(from, to);
+    const hasJobs  = win.some(t => t === 'jobs' || t === 'job' || t === 'count' || t === 'orders');
+    const hasFinal = win.some(t => t === 'final' || t === 'finals');
+    const hasEarly = win.some(t => t === 'early');
+    if (!(hasJobs || hasFinal || hasEarly)) continue;      // bare number, no count context
+    let kind = 'count';
+    if (hasEarly) kind = 'early';
+    else if (hasFinal) {
+      const night = win.some(t => NIGHT_WORDS.includes(t));
+      const day   = win.some(t => DAY_WORDS.includes(t));
+      kind = (night && !day) ? 'night_final' : (day && !night) ? 'day_final' : 'final';
+    }
+    found.push({ kind, n, heard: win.join(' ') });
+  }
+  return found;
+}
+
+/* parseSpecial — flag special announcements so a human reads them.
+   Advisory only: flags ride the log; nothing is ever auto-acted on. */
+const SPECIALS = [
+  { tag: 'stop_work',    re: /(stop work(?! meeting)|work stoppage|no work (tonight|today|tomorrow)|no work\b)/ },
+  { tag: 'closed',       re: /(hall (is |will be )?closed|closed (today|tomorrow|tonight)|no dispatch)/ },
+  { tag: 'holiday',      re: /(holiday|thanksgiving|christmas|new year|fourth of july|july 4|bloody thursday|memorial day|labor day|harry bridges|juneteenth|veterans day)/ },
+  { tag: 'weather',      re: /(heavy rain|rain delay|storm|wind advisory|excessive heat|air quality)/ },
+  { tag: 'meeting',      re: /(stop work meeting|membership meeting|union meeting|arbitration|caucus)/ },
+  { tag: 'announcement', re: /(special announcement|attention all|please be advised|reminder to all|effective immediately)/ }
+];
+function parseSpecial(transcript){
+  const t = String(transcript || '').toLowerCase().replace(/\s+/g, ' ');
+  const out = [];
+  SPECIALS.forEach(s => {
+    const m = s.re.exec(t);
+    if (m) out.push({ tag: s.tag, snippet: t.slice(Math.max(0, m.index - 45), m.index + 90).trim() });
+  });
+  return out;
+}
+
+module.exports = { parseLeftOff, parseCounts, parseSpecial, _internals: { tokenize, readNumber, readLetter } };

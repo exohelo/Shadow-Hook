@@ -2,7 +2,7 @@
 /* node --test parse.test.js */
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { parseLeftOff } = require('./parse.js');
+const { parseLeftOff, parseCounts, parseSpecial } = require('./parse.js');
 
 const HIGH = 0.7;   // what the worker treats as postable by default (MIN_CONF=0.75 needs anchor too)
 
@@ -141,4 +141,69 @@ test('heard context is included for the log', () => {
   const r = best('good evening the day board left off on whiskey 4912 thank you');
   assert.ok(r.heard.includes('left off'));
   assert.ok(r.heard.includes('4912') || r.heard.includes('whiskey'));
+});
+
+/* ── counts (E / N / D) ── */
+
+test('early count after morning dispatch', () => {
+  const c = parseCounts('the early count for tonight is 176 jobs');
+  assert.equal(c.length, 1);
+  assert.equal(c[0].kind, 'early');
+  assert.equal(c[0].n, 176);
+});
+
+test('night final after 2:30', () => {
+  const c = parseCounts('the night board final count is 991 jobs thank you');
+  assert.equal(c[0].kind, 'night_final');
+  assert.equal(c[0].n, 991);
+});
+
+test('day final the night before, with comma', () => {
+  const c = parseCounts("tomorrow's day board final is 1,240 jobs");
+  assert.equal(c[0].kind, 'day_final');
+  assert.equal(c[0].n, 1240);
+});
+
+test('card digits are never a count', () => {
+  const c = parseCounts('the day board left off on whiskey 4912 the early count is 176 jobs');
+  assert.equal(c.length, 1);
+  assert.equal(c[0].n, 176);
+});
+
+test('bare numbers with no count context are ignored', () => {
+  assert.equal(parseCounts('call back after 230 for the final').length, 0);
+  assert.equal(parseCounts('today is july 22 2026').length, 0);
+});
+
+test('counts and left-off coexist in one transcript', () => {
+  const t = 'the night board left off on bravo 4433 the day board final for tomorrow is 1240 jobs';
+  assert.equal(parseLeftOff(t).card, 'B4433');
+  const c = parseCounts(t);
+  assert.equal(c[0].kind, 'day_final');
+  assert.equal(c[0].n, 1240);
+});
+
+/* ── special announcements ── */
+
+test('stop work flagged', () => {
+  const s = parseSpecial('attention there will be no work tonight due to the contract action');
+  assert.ok(s.some(x => x.tag === 'stop_work'));
+});
+
+test('stop work MEETING is a meeting, not a stoppage', () => {
+  const s = parseSpecial('reminder the stop work meeting is thursday at 6 pm');
+  assert.ok(s.some(x => x.tag === 'meeting'));
+  assert.ok(!s.some(x => x.tag === 'stop_work'));
+});
+
+test('holiday and closure flagged with snippets', () => {
+  const s = parseSpecial('the hall is closed friday for the bloody thursday holiday');
+  const tags = s.map(x => x.tag);
+  assert.ok(tags.includes('closed'));
+  assert.ok(tags.includes('holiday'));
+  assert.ok(s[0].snippet.length > 0);
+});
+
+test('quiet recording flags nothing', () => {
+  assert.equal(parseSpecial('the day board left off on whiskey 4912 thank you for calling').length, 0);
 });

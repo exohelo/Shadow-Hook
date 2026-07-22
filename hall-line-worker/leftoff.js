@@ -37,7 +37,7 @@
    ========================================================================== */
 
 const fs = require('fs');
-const { parseLeftOff } = require('./parse.js');
+const { parseLeftOff, parseCounts, parseSpecial } = require('./parse.js');
 
 /* ---------- config ---------- */
 const env = k => (process.env[k] || '').trim();
@@ -112,6 +112,26 @@ function prevBoardKey(t) {
 function nextCard(id) { const m = /^([A-Z])(\d+)$/.exec(id || ''); return m ? m[1] + (parseInt(m[2], 10) + 1) : id; }
 function letterDist(a, b) { return ((AZ.indexOf(b[0]) - AZ.indexOf(a[0])) % 26 + 26) % 26; }
 
+/* which board a heard COUNT belongs to:
+   Early + Night final talk about TONIGHT's board; Day final about the next
+   morning's board (announced the night before). The PDF is the record — these
+   are only compared against it, never written over it. */
+function boardKeyFor(daysAhead, slot) {
+  const p = laParts(Date.now() + daysAhead * 86400000);
+  return p.iso + '_' + p.dow + '_' + slot;
+}
+function countTargetKey(kind) {
+  const m = laParts().mins;
+  if (kind === 'early' || kind === 'night_final' || kind === 'final') return boardKeyFor(0, 'PM');
+  if (kind === 'day_final') return boardKeyFor(m >= 19 * 60 + 30 ? 1 : 0, 'AM');
+  return null;
+}
+function pdfTotals(data) {
+  const t = data && data.total ? (data.total.total != null ? data.total.total : (typeof data.total === 'number' ? data.total : null)) : null;
+  const e = data && data.early && data.early.total ? (data.early.total.total != null ? data.early.total.total : null) : null;
+  return { final: t, early: e };
+}
+
 /* ---------- Supabase (REST, service key) ---------- */
 function sbHeaders(extra) {
   return Object.assign({
@@ -140,6 +160,7 @@ async function sbInsert(table, row) {
     body: JSON.stringify([row])
   });
   if (!r.ok) log('warn: could not write ' + table + ':', r.status, (await r.text()).slice(0, 200));
+  return r.ok;
 }
 
 /* ---------- Twilio: place a recorded call to the hotline ---------- */
@@ -269,15 +290,45 @@ async function transcribe(buf, prevEnd) {
   log('parsed:', res.card, '· confidence', conf.toFixed(2), '· heard:', JSON.stringify(res.heard));
   if (res.all.length > 1) log('other candidates:', res.all.slice(1).map(c => c.card + '@' + c.conf.toFixed(2)).join(' '));
 
+  /* ── the recording's COUNTS (E/N/D) — backup ears only. The PDF is the record:
+     compare and log MATCH/MISMATCH, never write over sheet data. ── */
+  const counts = parseCounts(transcript);
+  const specials = parseSpecial(transcript);
+  const checks = [];
+  if (counts.length) {
+    let pdfRows = {};
+    try {
+      const keys = [...new Set(counts.map(c => countTargetKey(c.kind)).filter(Boolean))];
+      if (keys.length && CFG.sbUrl && CFG.sbKey) {
+        const rows = await sbSelect('dispatch_boards', 'key=in.(' + keys.map(k => '%22' + k + '%22').join(',') + ')&select=key,data');
+        rows.forEach(r => { pdfRows[r.key] = r.data; });
+      }
+    } catch (e) { log('warn: could not read dispatch_boards for count check:', e.message); }
+    counts.forEach(c => {
+      const key = countTargetKey(c.kind);
+      const pdf = key && pdfRows[key] ? pdfTotals(pdfRows[key]) : null;
+      const pdfN = pdf ? (c.kind === 'early' ? pdf.early : pdf.final) : null;
+      const verdict = pdfN == null ? 'no_pdf_yet' : (pdfN === c.n ? 'MATCH' : 'MISMATCH');
+      checks.push({ kind: c.kind, heard_n: c.n, key, pdf_n: pdfN, verdict });
+      log('count check:', c.kind, c.n, key ? '(' + key + ')' : '',
+          pdfN == null ? '· PDF not in yet — phone count logged as backup'
+                       : '· PDF says ' + pdfN + ' — ' + verdict + (verdict === 'MISMATCH' ? ' ⚠ (the paper wins)' : ''));
+    });
+  }
+  specials.forEach(s => log('⚑ SPECIAL (' + s.tag + '): "' + s.snippet + '"'));
+
   const posting = !!(res.card && conf >= CFG.minConf);
 
   /* audit trail — every run, posted or not */
   if (CFG.sbUrl && CFG.sbKey && !CFG.dryRun) {
-    await sbInsert('hall_line_log', {
+    const baseRow = {
       k: t.key, card: res.card, conf: Math.round(conf * 100) / 100,
       heard: res.heard, transcript: transcript.slice(0, 4000),
       call_sid: callSid, posted: posting
-    });
+    };
+    const extras = (counts.length || specials.length || checks.length) ? { counts, specials, checks } : null;
+    const wrote = await sbInsert('hall_line_log', extras ? Object.assign({ extras }, baseRow) : baseRow);
+    if (!wrote && extras) await sbInsert('hall_line_log', baseRow);   // older table without the extras column
   }
 
   if (!posting) {

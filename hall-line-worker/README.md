@@ -80,6 +80,25 @@ The parser ships tuned to plausible wording ("…left off on/at…", multiple bo
 - `SLOT_KEYWORDS` — the exact words the recording uses for the board you track
 - anchor phrases in `parse.js` (`ANCHORS`) if the hall says something other than "left off / stopped at / ended on"
 
+## Counts and special announcements (v2)
+
+The recording also announces job counts on a schedule — **Early (E)** after morning
+dispatch, **Night final (N)** after ~2:30 PM, **Day final (D)** for the next morning
+after night dispatch. The worker hears them, but treats them strictly as **backup
+ears**: it compares each heard count against the PDF sheet in `dispatch_boards` and
+logs `MATCH` / `MISMATCH` / `no_pdf_yet` — it never writes a phone-heard count over
+sheet data. When they disagree, the paper wins, exactly as the hall would tell you.
+
+Special announcements (stop work, hall closed, holiday, weather, meetings) get
+flagged in the run log with a ⚑ and stored — advisory only, nothing is auto-acted on.
+
+All of it lands in `hall_line_log.extras` (JSON). If you created the table before v2,
+add the column once:
+
+```sql
+alter table hall_line_log add column if not exists extras jsonb;
+```
+
 ## Behavior details
 
 - **Never talks over a human**: if a member already logged the board on the wire, the worker stands down for that board.
