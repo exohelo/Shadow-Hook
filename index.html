@@ -3392,7 +3392,7 @@ function hallMomentumNow(){ /* streak through the log's end + anything newer in 
   let e=null;
   HALL_LOG.forEach(r=>{e=(e===null)?r[4]:0.3*r[4]+0.7*e;});
   const lastD=HALL_LOG[HALL_LOG.length-1][0];
-  RECENT.forEach(r=>{if(r.slot.endsWith("PM")&&r.date>lastD)e=0.3*r.act+0.7*e;});
+  RECENT.forEach(r=>{if(r.slot.endsWith("PM")&&r.date>lastD&&typeof r.act==="number")e=0.3*r.act+0.7*e;});   /* #206 — an end-only bot row may not carry act yet */
   return e;
 }
 function hallExpect(dowIdx){ /* expected job numbers for this weekday (EWMA of history) —
@@ -3430,7 +3430,7 @@ function shPrior(momentum,rain,wknd){
   const s=pmf.reduce((a,x)=>a+x,0); return pmf.map(x=>x/s);
 }
 function shMomentum(slotIsAM){
-  const seq=RECENT.filter(r=>r.slot.endsWith(slotIsAM?"AM":"PM"));
+  const seq=RECENT.filter(r=>r.slot.endsWith(slotIsAM?"AM":"PM")&&typeof r.act==="number");   /* #206 — skip rows still waiting on act */
   let e=null; seq.forEach(r=>{e=(e===null)?r.act:0.3*r.act+0.7*e;});
   return e===null?1:e;
 }
@@ -8610,6 +8610,21 @@ function bwApplyRow(row){
   if(!r){r={date:date,slot:slot,rain:false,hol:false};RECENT.push(r);
     RECENT.sort((a,b)=>{const ka=a.date+(String(a.slot).endsWith('AM')?'_1':'_2'),kb=b.date+(String(b.slot).endsWith('AM')?'_1':'_2');return ka<kb?-1:ka>kb?1:0;});}
   Object.assign(r,row.patch);
+  /* #206 — the ☎ hall-line bot posts the END alone (that's all the recording says).
+     Fill the start from the directly-previous board on the record — same handoff
+     rule as the chain (AM → same-day PM, PM → next-day AM) — and figure act from
+     the span, so momentum and the chain read a complete row. Never invents a start
+     across a gap in the record. */
+  if(r.end&&!r.start){try{
+    const prevKey=String(slot).endsWith('PM')
+      ? date+'_'+slot.slice(0,3)+'_AM'
+      : (function(){const d=new Date(date+'T12:00');d.setDate(d.getDate()-1);
+          const iso=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+          return iso+'_'+DOWM[d.getDay()]+'_PM';})();
+    const pv=RECENT.find(x=>x.date+'_'+x.slot===prevKey);
+    if(pv&&pv.end)r.start=nextCard(pv.end);
+  }catch(e){}}
+  if(r.act==null&&r.start&&r.end){try{r.act=(AZ.indexOf(r.end[0])-AZ.indexOf(r.start[0])+26)%26;}catch(e){}}
   try{chainBoards(k);}catch(e){}
 }
 /* every device applies its own credit consequences exactly once */
