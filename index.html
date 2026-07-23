@@ -8754,7 +8754,6 @@ function svPageHTML(s,i){
         +'<div class="bd-sub">the dispatch bot takes the wheel \u00b7 pick the vibe</div>'
         +'<div class="sv-vibes">'+vibes+'</div>'
         +'<div class="bd-note" id="botNote">swipe up \u2014 the bot feeds you \u201c'+esc(_botVibe)+'\u201d</div>'
-        +'<button class="bd-key" data-ytkey="1">\u2699 '+(_ytKey()?'change the YouTube key':'wire a YouTube key for real search')+'</button>'
       +'</div>'
     +'</div>';
   }
@@ -8785,7 +8784,7 @@ function svPageHTML(s,i){
   if(k==='img'||k==='vid'){
     const poster=_thumbCache()[String(s.url)]||'';
     const media=(k==='vid')
-      ?'<video class="sv-mediafull" src="'+u+'" muted autoplay loop playsinline webkit-playsinline preload="auto"'+(poster?' poster="'+esc(poster)+'"':'')+'></video>'
+      ?'<video class="sv-mediafull" src="'+u+'" muted autoplay playsinline webkit-playsinline preload="auto"'+(poster?' poster="'+esc(poster)+'"':'')+'></video>'
       :'<img class="sv-mediafull" src="'+u+'" alt="">';
     return '<div class="sv-page" data-si="'+i+'" style="--pc:#EEB46B">'
       +media+'<div class="sv-shade top"></div><div class="sv-shade"></div><div class="sv-burst">❤</div>'
@@ -8905,6 +8904,27 @@ function svCurrentEmbed(){
 function svYtCmd(f,func,args){
   try{if(f&&f.contentWindow)f.contentWindow.postMessage(JSON.stringify({event:'command',func:func,args:args||[]}),'*');}catch(e){}
 }
+/* #autonext — a finished clip hands off to the next page on its own */
+function svNext(){
+  const track=document.getElementById('svTrack');if(!track)return;
+  const i=Math.round(track.scrollTop/Math.max(1,track.clientHeight));
+  if(i<_svList.length-1)try{track.scrollTo({top:(i+1)*track.clientHeight,behavior:'smooth'});}catch(e){track.scrollTop=(i+1)*track.clientHeight;}
+}
+function svYtListen(f){   // handshake so the YT player reports state into the page
+  const fire=()=>{svYtCmd(f,'addEventListener',['onStateChange']);
+    try{if(f&&f.contentWindow)f.contentWindow.postMessage(JSON.stringify({event:'listening',id:1,channel:'widget'}),'*');}catch(e){}};
+  fire();setTimeout(fire,600);setTimeout(fire,1600);
+}
+window.addEventListener('message',e=>{   // #autonext — YT says "ended" → next story
+  try{
+    if(typeof e.data!=='string'||e.data.indexOf('event')<0)return;
+    const d=JSON.parse(e.data);
+    const ended=(d.event==='onStateChange'&&d.info===0)||(d.event==='infoDelivery'&&d.info&&d.info.playerState===0);
+    if(!ended)return;
+    const f=svCurrentEmbed();
+    if(f&&f.contentWindow===e.source&&!f._svAdvanced){f._svAdvanced=1;svNext();}
+  }catch(_){}
+});
 function svEmbedSound(f,on){
   if(!f||!/youtube\.com\/embed/.test(String(f.dataset.esrc||'')))return;
   const fire=()=>{ if(on){svYtCmd(f,'unMute');svYtCmd(f,'setVolume',[100]);svYtCmd(f,'playVideo');} else svYtCmd(f,'mute'); };
@@ -8927,6 +8947,11 @@ function svUpdateIx(){
     const pg=v.closest('.sv-page'), on=pg&&(+pg.getAttribute('data-si')===i);
     try{
       if(on){
+        if(!v._svEnd){v._svEnd=1;v.addEventListener('ended',function(){   // #autonext — the clip ran out → next story
+          try{const pg2=v.closest('.sv-page');
+            const cur=Math.round(track.scrollTop/Math.max(1,track.clientHeight));
+            if(pg2&&+pg2.getAttribute('data-si')===cur)svNext();
+          }catch(e){}});}
         if(v.paused){
           v.muted=!_svSound;                                   // #stories8 — try it WITH sound
           const pr=v.play();
@@ -8946,7 +8971,7 @@ function svUpdateIx(){
   track.querySelectorAll('iframe.sv-embed').forEach(f=>{
     const pg=f.closest('.sv-page'), on=pg&&(+pg.getAttribute('data-si')===i);
     try{
-      if(on&&f.dataset.on!=='1'){f.dataset.on='1';f.src=f.dataset.esrc||'about:blank';if(_svSound)svEmbedSound(f,true);}   // #sndfix — the app's 🔊 rides into YT
+      if(on&&f.dataset.on!=='1'){f.dataset.on='1';f._svAdvanced=0;f.src=f.dataset.esrc||'about:blank';if(_svSound)svEmbedSound(f,true);svYtListen(f);}   // #sndfix/#autonext — 🔊 + end-watch ride into YT
       else if(!on&&f.dataset.on==='1'){f.dataset.on='0';f.src='about:blank';}
     }catch(e){}
   });
@@ -8983,8 +9008,6 @@ function svBind(track){
     if(like){toggleStoryLike(like.getAttribute('data-like'));svLikeUI(like.closest('.sv-page'),like.getAttribute('data-like'));return;}
     const vb=e.target.closest('[data-vibe]');   // #botreel — pick what the bot feeds you
     if(vb){svBotVibe(vb.getAttribute('data-vibe'));return;}
-    const yk=e.target.closest('[data-ytkey]');
-    if(yk){botKeySheet();return;}
     const cm=e.target.closest('[data-cm]');   // #stories5 — 💬 opens the talk
     if(cm){openComments(cm.getAttribute('data-cm'));return;}
     const open=e.target.closest('[data-open]');
@@ -9156,12 +9179,23 @@ function botPoolPick(vibe){
   for(let i=rows.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));const t=rows[i];rows[i]=rows[j];rows[j]=t;}
   return rows;
 }
+function _ytParse(j){return {token:j.nextPageToken||'',list:(j.items||[]).map(it=>({url:'https://www.youtube.com/watch?v='+(it.id&&it.id.videoId||''),title:((it.snippet||{}).title||'')})).filter(x=>/v=[\w-]{6,}/.test(x.url))};}
+let _botFnDead=false;   // bot-search edge function absent/unset → stop asking this session
 async function ytSearch(q,pageToken){
-  const k=_ytKey();if(!k)return null;
+  /* #botkey — FIRST road: the wire's own searcher (the bot-search edge function).
+     The YouTube key lives server-side as a secret — no user ever sees a key prompt. */
+  if(window.SB&&window.SB.functions&&!_botFnDead){
+    try{
+      const r=await window.SB.functions.invoke('bot-search',{body:{q:q+' port harbor',pageToken:pageToken||''}});
+      if(!r.error&&r.data&&r.data.items)return _ytParse(r.data);
+      _botFnDead=true;
+    }catch(e){_botFnDead=true;}
+  }
+  const k=_ytKey();if(!k)return null;   // legacy on-device key still honored
   const u='https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoEmbeddable=true&safeSearch=strict&maxResults=12&q='+encodeURIComponent(q+' port harbor')+(pageToken?'&pageToken='+encodeURIComponent(pageToken):'')+'&key='+encodeURIComponent(k);
   const r=await fetch(u);if(!r.ok)throw new Error('HTTP '+r.status);
   const j=await r.json();
-  return {token:j.nextPageToken||'',list:(j.items||[]).map(it=>({url:'https://www.youtube.com/watch?v='+(it.id&&it.id.videoId||''),title:((it.snippet||{}).title||'')})).filter(x=>/v=[\w-]{6,}/.test(x.url))};
+  return _ytParse(j);
 }
 function botEntries(rows,vibe){
   return rows.map(r=>({id:'bot-'+String(r.url).replace(/[^\w-]/g,'').slice(-14)+'-'+(_botCycle),bot:true,by:'The Dispatch Bot',url:r.url,note:r.title||'',t:r.title||'',plat:'youtube',ts:0,mine:false,vibe:vibe}));
@@ -9179,17 +9213,15 @@ async function svBotKick(){
   if(_botBusy)return;_botBusy=true;
   try{
     const note=document.getElementById('botNote');
-    if(_ytKey()){
-      try{
-        if(note)note.textContent='the bot is out hunting \u201c'+_botVibe+'\u201d\u2026';
-        const r=await ytSearch(_botVibe,'');
-        if(r&&r.list.length){_botToken=r.token;svAppendBot(botEntries(r.list,_botVibe));if(note)note.textContent='swipe up \u2014 the bot feeds you \u201c'+_botVibe+'\u201d';_botBusy=false;return;}
-      }catch(e){console.warn('[bot] search:',(e&&e.message)||e);if(note)note.textContent='the key got refused \u2014 check it under \u2699, riding the crate instead';}
-    }
+    try{
+      if(note)note.textContent='the bot is out hunting \u201c'+_botVibe+'\u201d\u2026';
+      const r=await ytSearch(_botVibe,'');
+      if(r&&r.list.length){_botToken=r.token;svAppendBot(botEntries(r.list,_botVibe));if(note)note.textContent='swipe up \u2014 the bot feeds you \u201c'+_botVibe+'\u201d';_botBusy=false;return;}
+    }catch(e){console.warn('[bot] search:',(e&&e.message)||e);}
     await sbLoadBotFeed();
     const rows=botPoolPick(_botVibe);
     if(rows.length){svAppendBot(botEntries(rows,_botVibe));if(note)note.textContent='swipe up \u2014 '+rows.length+' from the Keymaster\u2019s crate';}
-    else if(note)note.textContent=_ytKey()?'nothing landed \u2014 try another vibe':'the crate is empty \u2014 feed bot_feed on the wire, or wire a YouTube key below';
+    else if(note)note.textContent='the crate is empty \u2014 feed bot_feed on the wire, or deploy bot-search on the backend for real search';
   }finally{_botBusy=false;}
 }
 async function svBotMore(){   // nearing the end -> keep the reel rolling
@@ -9198,7 +9230,7 @@ async function svBotMore(){   // nearing the end -> keep the reel rolling
   if(_svList.length>=200)return;
   _botBusy=true;
   try{
-    if(_ytKey()&&_botToken){
+    if(_botToken){
       try{const r=await ytSearch(_botVibe,_botToken);if(r){_botToken=r.token;svAppendBot(botEntries(r.list,_botVibe));}}catch(e){_botToken='';}
     }else if(BOT_POOL.length&&_svList.length>doorIx+1){
       _botCycle++;svAppendBot(botEntries(botPoolPick(_botVibe),_botVibe));   // shuffle another lap of the crate
@@ -9215,23 +9247,8 @@ function svBotVibe(v){
     const door=track.children[doorIx];if(door)door.outerHTML=svPageHTML(_svList[doorIx],doorIx);}
   svBotKick();
 }
-function botKeySheet(){
-  openPaySheet({title:'WIRE THE BOT TO YOUTUBE',
-    sub:'A free YouTube Data API key gives the bot real search. console.cloud.google.com \u2192 enable \u201cYouTube Data API v3\u201d \u2192 Credentials \u2192 API key. Paste it here \u2014 it stays on this device.',
-    price:0,go:'SAVE THE KEY',
-    fields:[{k:'key',label:'API key',ph:'AIza\u2026',v:_ytKey(),max:64}],
-    validate:v=>((v.key||'').trim().length<20?'That doesn\u2019t look like a key':null),
-    onPaid:async v=>{
-      const k=v.key.trim();
-      try{
-        const r=await fetch('https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=1&q=port&key='+encodeURIComponent(k));
-        if(!r.ok)throw new Error('HTTP '+r.status);
-        localStorage.setItem('shadowhook_ytkey',k);
-        toast('\u2699 The bot is wired \u2014 real search is on');
-        svBotVibe(_botVibe);
-      }catch(e){toast('YouTube refused that key \u2014 check it\u2019s the API key with YouTube Data API v3 enabled');}
-    }});
-}
+/* #botkey \u2014 the per-user key sheet is GONE: the key lives on the backend
+   (bot-search edge function secret); a legacy on-device key is still honored. */
 
 /* #hall — the Hall lives ON the Social tab now (no overlay). setHallView() flips the
    two pills; openHub() survives as the road in for share-ins and invite links — it
