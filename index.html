@@ -3845,6 +3845,7 @@ setInterval(function(){
     try{publishCall();}catch(e){}
     try{renderRecentBoards();}catch(e){}
   }
+  else{ try{publishCall();}catch(e){} }   /* #liverecalc — never "calculates once and stops": the call re-figures every minute */
 },60000);
 /* #53 — the next board picks up right where the last one ended; show that as the starting point */
 /* the next board opens on the card AFTER the last one dispatched:
@@ -4317,6 +4318,11 @@ function publishCall(){
      data every run: drops you log, corrections on the record, new sheets — they
      ALL move the published call immediately. */
   const lastStart=pendingStartCard()||"C4100";   /* #rebuild — same opening card as the "Starting on" header */
+  /* #liverecalc — the DROP LOG is the freshest count there is. Every drop logged
+     (yours or any hand's on the wire) rides straight into the expected-count the
+     engine predicts from — so the call MOVES as the speaker talks. */
+  let _dropTot=0;
+  try{ if(key===dropKey()){ _dropTot=(dropUnion().total||0); } }catch(e){}
   const isAM=callSlot.endsWith("AM");
   const dowIdx={Mon:0,Tue:1,Wed:2,Thu:3,Fri:4,Sat:5,Sun:6}[callSlot.slice(0,3)];
   let pmf,mom,source;
@@ -4334,6 +4340,7 @@ function publishCall(){
     } else if(window.EARLY_COUNTS){
       ex.ch=(window.EARLY_COUNTS.ch||ex.ch); ex.tot=(window.EARLY_COUNTS.tot||ex.tot); source='EARLY';
     } else { source=isAM?'AM':'EST'; }
+    if(_dropTot>0){ ex.ch=Math.max(ex.ch||0,_dropTot*V4.boardsToCh); if(source!=='FINAL')source='EARLY'; }   /* #liverecalc */
     pmf=V4.predict({isAM:isAM,dow:dowIdx,chHat:ex.ch,totHat:ex.tot,mom:mom,date:nd2,cats:cats});
     window._v4dbg={source:source,ch:Math.round(ex.ch),tot:Math.round(ex.tot),cats:cats.list,shutdown:!!cats.shutdown,mom:+(mom||0).toFixed(2)};
   }catch(_v4e){ if(window.console)console.warn('V4 fallback',_v4e); pmf=null; }
@@ -4344,6 +4351,7 @@ function publishCall(){
       if(_cas!=null){ ex.ch=_cas; const hasTot=!!(_fc.total&&_fc.total.total); if(hasTot)ex.tot=_fc.total.total; source=hasTot?'FINAL':'EARLY'; }
       else if(window.EARLY_COUNTS){ex.ch=window.EARLY_COUNTS.ch||ex.ch;ex.tot=window.EARLY_COUNTS.tot||ex.tot;source='EARLY';}
       else source='EST';
+      if(_dropTot>0){ ex.ch=Math.max(ex.ch||0,_dropTot); if(source!=='FINAL')source='EARLY'; }   /* #liverecalc — fallback engine hears the drops too */
       pmf=knnPredict(dowIdx,ex.ch,ex.tot,mom);
     }else{
       mom=shMomentum(true); pmf=shPrior(mom,false,dowIdx>=5); source=finalIn?'FINAL':'AM';
@@ -5808,6 +5816,7 @@ async function dwPull(){
       try{dropCommit();}catch(e){}
       try{renderDropLog();}catch(e){}
       try{renderRecentBoards();}catch(e){}
+      try{repredict();}catch(e){}   /* #liverecalc — another hand's ears move YOUR call */
     }
   }catch(e){}
 }
