@@ -735,7 +735,12 @@ html.daylight .heist{background:rgba(64,54,38,.6)}
 .sv-embedwrap{position:relative;z-index:0;border-radius:18px;overflow:hidden;background:#000;
   border:1px solid color-mix(in srgb,var(--pc) 45%,transparent);box-shadow:0 24px 60px rgba(0,0,0,.55)}
 .sv-embedwrap.v{position:absolute;inset:0;width:auto;height:auto;border:0;border-radius:0;box-shadow:none}
-.sv-embedwrap.w{width:100%;aspect-ratio:16/9;max-height:94%;border-radius:0;border-left:0;border-right:0}
+/* #widezoom — landscape videos run OVERSIZED and center-cropped: ~32% bigger,
+   the sides give a little. Vertical Shorts inside the same frame lose their
+   black side-bars to the crop and read near-fullscreen. */
+.sv-embedwrap.w{width:100%;height:74vw;max-height:58vh;aspect-ratio:auto;overflow:hidden;border-radius:0;border-left:0;border-right:0}
+.sv-embedwrap.w iframe{inset:auto;left:50%;top:50%;width:132vw;height:auto;aspect-ratio:16/9;max-width:none;transform:translate(-50%,-50%)}
+#storyViewer.cm .sv-embedwrap.w{height:44%;max-height:none}
 .sv-embedwrap.t{width:96%;height:min(62vh,540px)}
 .sv-embedwrap.s{width:96%;height:170px}
 .sv-embedwrap iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000}
@@ -9186,13 +9191,13 @@ async function ytSearch(q,pageToken){
      The YouTube key lives server-side as a secret — no user ever sees a key prompt. */
   if(window.SB&&window.SB.functions&&!_botFnDead){
     try{
-      const r=await window.SB.functions.invoke('bot-search',{body:{q:q+' port harbor',pageToken:pageToken||''}});
+      const r=await window.SB.functions.invoke('bot-search',{body:{q:q+' port #shorts',pageToken:pageToken||''}});   /* #widezoom — bias the hunt toward vertical story-style clips */
       if(!r.error&&r.data&&r.data.items)return _ytParse(r.data);
       _botFnDead=true;
     }catch(e){_botFnDead=true;}
   }
   const k=_ytKey();if(!k)return null;   // legacy on-device key still honored
-  const u='https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoEmbeddable=true&safeSearch=strict&maxResults=12&q='+encodeURIComponent(q+' port harbor')+(pageToken?'&pageToken='+encodeURIComponent(pageToken):'')+'&key='+encodeURIComponent(k);
+  const u='https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoEmbeddable=true&safeSearch=strict&videoDuration=short&maxResults=12&q='+encodeURIComponent(q+' port #shorts')+(pageToken?'&pageToken='+encodeURIComponent(pageToken):'')+'&key='+encodeURIComponent(k);
   const r=await fetch(u);if(!r.ok)throw new Error('HTTP '+r.status);
   const j=await r.json();
   return _ytParse(j);
