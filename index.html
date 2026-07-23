@@ -7720,7 +7720,8 @@ function openRoom(name,ico,who){
   rv.classList.add('on'); document.body.style.overflow="hidden";
   chatJoin(name||document.getElementById('roomTitle').textContent);   // #chat-live — load history + go realtime
 }
-function closeRoom(){document.getElementById('roomView').classList.remove('on');document.body.style.overflow="";chatLeave();}
+function closeRoom(){document.getElementById('roomView').classList.remove('on');document.body.style.overflow="";chatLeave();
+  document.querySelectorAll('#chatFeed video').forEach(v=>{try{if(!v.paused)v.pause();}catch(e){}});}   /* #stories7 — a hidden room says nothing */
 document.getElementById('roomBack').addEventListener('click',closeRoom);
 /* ===== #12 — invite each other to rooms & gatherings =====
    The ⤴ in a room's header and on every room/gathering you created hands the
@@ -8800,9 +8801,30 @@ function openStoryViewer(startIdx){
   const idx=Math.max(0,Math.min(_svList.length-1,startIdx||0));
   requestAnimationFrame(()=>{track.scrollTop=idx*track.clientHeight; svUpdateIx();});
 }
+/* ===== #stories7 — NO GHOST AUDIO =====
+   display:none does NOT stop media, and backgrounded browsers happily keep
+   iframe audio rolling. So: closing the viewer, leaving a room, locking the
+   phone or switching apps all hush every player explicitly. Coming back to a
+   still-open viewer re-mounts the story you were on. */
+function svHush(){
+  document.querySelectorAll('#svTrack video').forEach(v=>{try{if(!v.paused)v.pause();}catch(e){}});
+  document.querySelectorAll('iframe.sv-embed').forEach(f=>{try{if(f.dataset.on==='1'){f.dataset.on='0';f.src='about:blank';}}catch(e){}});
+}
+function hushAllMedia(){
+  document.querySelectorAll('video').forEach(v=>{try{if(!v.paused)v.pause();}catch(e){}});
+  svHush();
+}
+window.hushAllMedia=hushAllMedia;
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden)hushAllMedia();
+  else{try{const v=document.getElementById('storyViewer');if(v&&v.classList.contains('on'))svUpdateIx();}catch(e){}}   // back → the in-view story wakes up
+});
+window.addEventListener('pagehide',hushAllMedia);
+document.addEventListener('freeze',hushAllMedia);
 function closeStoryViewer(){
   const v=document.getElementById('storyViewer'); if(!v)return;
   try{closeComments();}catch(e){}   /* #stories5 */
+  svHush();                         /* #stories7 — a closed viewer says NOTHING */
   v.classList.remove('on'); v.setAttribute('aria-hidden','true');
   document.body.style.overflow='';   /* #hall — the Hall is a page now, not an overlay: the viewer was the only scroll lock */
 }
