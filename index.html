@@ -735,12 +735,13 @@ html.daylight .heist{background:rgba(64,54,38,.6)}
 .sv-embedwrap{position:relative;z-index:0;border-radius:18px;overflow:hidden;background:#000;
   border:1px solid color-mix(in srgb,var(--pc) 45%,transparent);box-shadow:0 24px 60px rgba(0,0,0,.55)}
 .sv-embedwrap.v{position:absolute;inset:0;width:auto;height:auto;border:0;border-radius:0;box-shadow:none}
-/* #widezoom — landscape videos run OVERSIZED and center-cropped: ~32% bigger,
-   the sides give a little. Vertical Shorts inside the same frame lose their
-   black side-bars to the crop and read near-fullscreen. */
-.sv-embedwrap.w{width:100%;height:74vw;max-height:58vh;aspect-ratio:auto;overflow:hidden;border-radius:0;border-left:0;border-right:0}
-.sv-embedwrap.w iframe{inset:auto;left:50%;top:50%;width:132vw;height:auto;aspect-ratio:16/9;max-width:none;transform:translate(-50%,-50%)}
-#storyViewer.cm .sv-embedwrap.w{height:44%;max-height:none}
+/* #vshape — the PLAYER matches the VIDEO now. Verticals (probed via YouTube's
+   Shorts-only oardefault thumb) take the full-bleed portrait frame — no black
+   pillars. True landscape plays honest 16:9, and the SAME video's thumbnail
+   rides zoomed + blurred behind it, filling the whole stage TikTok-style. */
+.sv-embedwrap.w{position:relative;z-index:1;width:100%;aspect-ratio:16/9;max-height:92%;border-radius:0;border-left:0;border-right:0}
+.sv-embg{position:absolute;inset:-44px;z-index:0;pointer-events:none;background-position:center;background-size:cover;
+  filter:blur(26px) brightness(.5) saturate(1.15);transform:scale(1.28)}
 .sv-embedwrap.t{width:96%;height:min(62vh,540px)}
 .sv-embedwrap.s{width:96%;height:170px}
 .sv-embedwrap iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000}
@@ -8505,6 +8506,34 @@ function makeVideoThumb(url,cacheKey){
     setTimeout(()=>{if(!done){done=true;try{v.removeAttribute('src');v.load();}catch(e){}}},15000);
   }catch(e){}
 }
+/* #vshape — is this YouTube video VERTICAL? Shorts (and only Shorts) serve a
+   portrait 'oardefault.jpg' thumb; an Image() probe needs no CORS. Cached per id. */
+let _vsCache={};try{_vsCache=JSON.parse(localStorage.getItem('shadowhook_vshape')||'{}')}catch(e){}
+function ytIdOf(url){
+  let u;try{u=new URL(url)}catch(e){return null}
+  const h2=u.hostname.replace(/^www\.|^m\./,'');let m;
+  if(h2==='youtu.be'&&(m=u.pathname.match(/^\/([\w-]{6,})/)))return m[1];
+  if(/(^|\.)youtube\.com$/.test(h2)){
+    if(m=u.pathname.match(/^\/(?:shorts|live|embed)\/([\w-]{6,})/))return m[1];
+    const v=u.searchParams.get('v');if(v&&/^[\w-]{6,}$/.test(v))return v;
+  }
+  return null;
+}
+function probeShort(vid){
+  return new Promise(res=>{
+    if(!vid)return res(false);
+    if(vid in _vsCache)return res(!!_vsCache[vid]);
+    let done=false;
+    const fin=v=>{if(done)return;done=true;_vsCache[vid]=v?1:0;
+      try{localStorage.setItem('shadowhook_vshape',JSON.stringify(_vsCache))}catch(e){}
+      res(v);};
+    setTimeout(()=>fin(false),900);
+    const im=new Image();
+    im.onload=()=>fin(im.naturalWidth>0&&im.naturalHeight>im.naturalWidth);
+    im.onerror=()=>fin(false);
+    im.src='https://i.ytimg.com/vi/'+vid+'/oardefault.jpg';
+  });
+}
 /* #stories2 — what a story IS: a camera image, a camera clip, a link card, or demo */
 function storyKind(s){
   if(s.demo)return 'demo';
@@ -8807,6 +8836,7 @@ function svPageHTML(s,i){
      plays RIGHT HERE on the page; only no-embed links keep the open-out card */
   const p=detectPlatform(s.url);
   const emb=storyEmbed(s.url);
+  if(emb&&s._vshape)emb.shape=s._vshape;   // #vshape — a probed Short takes the portrait frame
   const rail='<div class="sv-rail">'
       +'<div class="sv-av">🎭</div>'+likeBtn+cmBtn
       +'<button data-open="'+u+'"><span class="ic">🔗</span>Open</button>'
@@ -8814,8 +8844,11 @@ function svPageHTML(s,i){
       
     +'</div>';
   if(emb){
+    const bgThumb=(emb.shape==='w')?storyThumb(s):null;   // #vshape — landscape: same video, zoomed + blurred, fills the stage
     return '<div class="sv-page" data-si="'+i+'" style="--pc:'+p.color+'">'
-      +'<div class="sv-bg"></div><div class="sv-burst">❤</div>'
+      +'<div class="sv-bg"></div>'
+      +(bgThumb&&bgThumb.img?'<div class="sv-embg" style="background-image:url(\''+esc(String(bgThumb.img))+'\')"></div>':'')
+      +'<div class="sv-burst">❤</div>'
       +'<div class="sv-embedwrap '+emb.shape+'">'
         +'<iframe class="sv-embed" data-esrc="'+esc(emb.src)+'" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe>'
       +'</div>'
@@ -8859,6 +8892,21 @@ function openStoryViewer(startIdx){
   try{track.scrollTop=idx*Math.max(1,track.clientHeight);svUpdateIx();}catch(e){}
   requestAnimationFrame(()=>{track.scrollTop=idx*track.clientHeight; svUpdateIx();});
   try{svBotKick();}catch(e){}   // #botreel — start loading the bot's batch behind the door
+  /* #vshape — crew-posted watch links that are secretly Shorts: probe, then
+     re-frame any page the viewer isn't currently sitting on */
+  try{
+    _svList.forEach(async(s,ix)=>{
+      if(!s||s.divider||s.bot||s._vshape)return;
+      const emb2=storyEmbed(s.url);if(!emb2||emb2.shape!=='w')return;
+      if(await probeShort(ytIdOf(s.url))){
+        s._vshape='v';
+        const tr2=document.getElementById('svTrack');if(!tr2)return;
+        const cur=Math.round(tr2.scrollTop/Math.max(1,tr2.clientHeight));
+        const pg=tr2.children[ix];
+        if(pg&&ix!==cur)pg.outerHTML=svPageHTML(s,ix);
+      }
+    });
+  }catch(e){}
 }
 /* ===== #stories7 — NO GHOST AUDIO =====
    display:none does NOT stop media, and backgrounded browsers happily keep
@@ -9221,11 +9269,17 @@ async function svBotKick(){
     try{
       if(note)note.textContent='the bot is out hunting \u201c'+_botVibe+'\u201d\u2026';
       const r=await ytSearch(_botVibe,'');
-      if(r&&r.list.length){_botToken=r.token;svAppendBot(botEntries(r.list,_botVibe));if(note)note.textContent='swipe up \u2014 the bot feeds you \u201c'+_botVibe+'\u201d';_botBusy=false;return;}
+      if(r&&r.list.length){_botToken=r.token;
+        const ents=botEntries(r.list,_botVibe);
+        await Promise.all(ents.map(async s=>{try{if(await probeShort(ytIdOf(s.url)))s._vshape='v';}catch(e){}}));   /* #vshape */
+        svAppendBot(ents);if(note)note.textContent='swipe up \u2014 the bot feeds you \u201c'+_botVibe+'\u201d';_botBusy=false;return;}
     }catch(e){console.warn('[bot] search:',(e&&e.message)||e);}
     await sbLoadBotFeed();
     const rows=botPoolPick(_botVibe);
-    if(rows.length){svAppendBot(botEntries(rows,_botVibe));if(note)note.textContent='swipe up \u2014 '+rows.length+' from the Keymaster\u2019s crate';}
+    if(rows.length){
+      const ents=botEntries(rows,_botVibe);
+      await Promise.all(ents.map(async s=>{try{if(await probeShort(ytIdOf(s.url)))s._vshape='v';}catch(e){}}));   /* #vshape */
+      svAppendBot(ents);if(note)note.textContent='swipe up \u2014 '+rows.length+' from the Keymaster\u2019s crate';}
     else if(note)note.textContent='the crate is empty \u2014 feed bot_feed on the wire, or deploy bot-search on the backend for real search';
   }finally{_botBusy=false;}
 }
@@ -9236,9 +9290,14 @@ async function svBotMore(){   // nearing the end -> keep the reel rolling
   _botBusy=true;
   try{
     if(_botToken){
-      try{const r=await ytSearch(_botVibe,_botToken);if(r){_botToken=r.token;svAppendBot(botEntries(r.list,_botVibe));}}catch(e){_botToken='';}
+      try{const r=await ytSearch(_botVibe,_botToken);
+        if(r){_botToken=r.token;const ents=botEntries(r.list,_botVibe);
+          await Promise.all(ents.map(async s=>{try{if(await probeShort(ytIdOf(s.url)))s._vshape='v';}catch(e){}}));
+          svAppendBot(ents);}}catch(e){_botToken='';}
     }else if(BOT_POOL.length&&_svList.length>doorIx+1){
-      _botCycle++;svAppendBot(botEntries(botPoolPick(_botVibe),_botVibe));   // shuffle another lap of the crate
+      _botCycle++;const ents=botEntries(botPoolPick(_botVibe),_botVibe);
+      await Promise.all(ents.map(async s=>{try{if(await probeShort(ytIdOf(s.url)))s._vshape='v';}catch(e){}}));
+      svAppendBot(ents);   // shuffle another lap of the crate
     }
   }finally{_botBusy=false;}
 }
