@@ -2,7 +2,7 @@
 /* node --test parse.test.js */
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { parseLeftOff, parseCounts, parseSpecial } = require('./parse.js');
+const { parseLeftOff, parseCounts, parseSpecial, parseForecastTarget } = require('./parse.js');
 
 const HIGH = 0.7;   // what the worker treats as postable by default (MIN_CONF=0.75 needs anchor too)
 
@@ -141,6 +141,69 @@ test('heard context is included for the log', () => {
   const r = best('good evening the day board left off on whiskey 4912 thank you');
   assert.ok(r.heard.includes('left off'));
   assert.ok(r.heard.includes('4912') || r.heard.includes('whiskey'));
+});
+
+/* ── #jul23: the REAL recordings off the live line (July 23 2026) ──
+   These are the transcripts Whisper actually produced. They are START callouts
+   ("we're going to start with…"), not left-offs — the parser must read the card,
+   flag mode:'start', clear the 0.75 post threshold, and name the target board. */
+
+const REAL_AM = "All right, here's a casual job forecast for Thursday morning, July 23rd. " +
+  "We're going to start for letter Y, Y is in yellow, 4879. Y, 4879. " +
+  "We'll see you in the morning. Thank you for calling.";
+const REAL_PM = "We're here with your casual job forecast for Thursday night, July 23rd. " +
+  "We're going to start with the letter B, B is in Baker 4704, B 4704. Good luck tonight.";
+
+test('REAL Jul-23 morning forecast: card, start mode, postable confidence', () => {
+  const r = parseLeftOff(REAL_AM, { keywords: ['day', 'morning', 'casual', 'casuals', 'unidentified'] });
+  assert.equal(r.card, 'Y4879');
+  assert.equal(r.mode, 'start');
+  assert.ok(r.conf >= 0.75, 'conf ' + r.conf + ' must clear MIN_CONF 0.75');
+});
+
+test('REAL Jul-23 night forecast: card, start mode, postable confidence', () => {
+  const r = parseLeftOff(REAL_PM, { keywords: ['day', 'morning', 'casual', 'casuals', 'unidentified'] });
+  assert.equal(r.card, 'B4704');
+  assert.equal(r.mode, 'start');
+  assert.ok(r.conf >= 0.75, 'conf ' + r.conf + ' must clear MIN_CONF 0.75');
+});
+
+test('forecast target: Thursday morning July 23rd → Thu AM 7/23', () => {
+  const f = parseForecastTarget(REAL_AM);
+  assert.equal(f.dow, 'Thu'); assert.equal(f.slot, 'AM');
+  assert.equal(f.mon, 7); assert.equal(f.day, 23);
+});
+
+test('forecast target: Thursday night July 23rd → Thu PM 7/23', () => {
+  const f = parseForecastTarget(REAL_PM);
+  assert.equal(f.dow, 'Thu'); assert.equal(f.slot, 'PM');
+  assert.equal(f.mon, 7); assert.equal(f.day, 23);
+});
+
+test('"is in" exemplar confirms the letter (Whisper mishears "as in")', () => {
+  const a = parseLeftOff('we start with the letter B, B is in Baker 4704');
+  const b = parseLeftOff('we start with the letter B, 4704');
+  assert.equal(a.card, 'B4704');
+  assert.ok(a.conf > b.conf, 'exemplar-backed read should score higher');
+});
+
+test('repeated card raises confidence', () => {
+  const once  = parseLeftOff('we will start with letter B 4704 tonight');
+  const twice = parseLeftOff('we will start with letter B 4704 tonight. B, 4704.');
+  assert.equal(twice.card, 'B4704');
+  assert.ok(twice.conf > once.conf, 'a repeated callout should score higher');
+});
+
+test('left-off phrasing still reads as mode end', () => {
+  const r = parseLeftOff('the day board left off on whiskey 4912');
+  assert.equal(r.card, 'W4912');
+  assert.equal(r.mode, 'end');
+});
+
+test('mixed sentence: left off beats start when both are present', () => {
+  const r = parseLeftOff('we left off at letter W 4912 for the day board');
+  assert.equal(r.card, 'W4912');
+  assert.equal(r.mode, 'end');
 });
 
 /* ── counts (E / N / D) ── */

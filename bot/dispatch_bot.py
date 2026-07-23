@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """
-Shadow Hook · dispatch board bot  (v2 — the three-folder fix, July 2026)
+Shadow Hook · dispatch board bot  (v3 — keep-searching, July 23 2026)
+
+New in v3: --watch MIN. GitHub's shared cron is heavily throttled (a */15
+schedule can fire hours apart), so each run can now LINGER: while a sheet's
+posting window is open and the sheet still isn't up, the run re-checks every
+few minutes instead of exiting — a late sheet lands minutes after it posts,
+not hours later on the next lucky cron fire.
 
 Runs on a schedule (GitHub Action). For the current Pacific day it chases the
 dispatch sheets on ilwu13.com — tonight's EARLY (E), tonight's final NIGHT (N),
@@ -27,7 +33,7 @@ Also new in v2:
 Env:  SUPABASE_URL, SUPABASE_SERVICE_KEY   (set as GitHub secrets)
 Test: python3 dispatch_bot.py --test <local.pdf> <E|N|D> <YYYY-MM-DD>   (no network)
 """
-import os, sys, json, argparse, datetime, tempfile, urllib.request, urllib.parse
+import os, sys, json, time, argparse, datetime, tempfile, urllib.request, urllib.parse
 from parse_forecast import parse_pdf
 
 ROOT = os.environ.get("DISPATCH_ROOT",
@@ -46,17 +52,22 @@ def key_for(d, ap): return f"{d.isoformat()}_{dow(d)}_{ap}"          # 2026-07-2
 def targets(today):
     """Every sheet worth chasing on `today` (skip-if-present makes extras free):
        E/N → today's PM row (E nested under .early) · D → tomorrow's AM row ·
-       plus a catch-up D for THIS morning in case an evening run was missed."""
+       plus catch-ups: THIS morning's D and YESTERDAY's N, so a run that was
+       missed (bot down, sheet late) self-heals on the next plain run — no
+       manual backfill needed for a one-day gap."""
     tomo = today + datetime.timedelta(days=1)
+    yday = today - datetime.timedelta(days=1)
     return [
-        {"kind": "EARLY",   "letter": "E", "fdate": today, "key": key_for(today, "PM"), "nest": "early",
+        {"kind": "EARLY",     "letter": "E", "fdate": today, "key": key_for(today, "PM"), "nest": "early",
          "url": FOLDERS["E"] + fname(today, "E")},
-        {"kind": "NIGHT",   "letter": "N", "fdate": today, "key": key_for(today, "PM"), "nest": None,
+        {"kind": "NIGHT",     "letter": "N", "fdate": today, "key": key_for(today, "PM"), "nest": None,
          "url": FOLDERS["N"] + fname(today, "N")},
-        {"kind": "MORNING", "letter": "D", "fdate": tomo,  "key": key_for(tomo, "AM"),  "nest": None,
+        {"kind": "MORNING",   "letter": "D", "fdate": tomo,  "key": key_for(tomo, "AM"),  "nest": None,
          "url": FOLDERS["D"] + fname(tomo, "D")},
-        {"kind": "CATCHUP", "letter": "D", "fdate": today, "key": key_for(today, "AM"), "nest": None,
+        {"kind": "CATCHUP",   "letter": "D", "fdate": today, "key": key_for(today, "AM"), "nest": None,
          "url": FOLDERS["D"] + fname(today, "D")},
+        {"kind": "CATCHUP-N", "letter": "N", "fdate": yday,  "key": key_for(yday, "PM"),  "nest": None,
+         "url": FOLDERS["N"] + fname(yday, "N")},
     ]
 
 def already_have(existing, nest):
@@ -146,6 +157,12 @@ def process(t, dry=False, existing=None):
     return t["key"]
 
 def chase(t, force=False):
+    """Chase one sheet. Returns (status, key):
+       'ingested'  — parsed + upserted this run
+       'have'      — already in dispatch_boards, skipped
+       'not_up'    — the PDF isn't posted yet (or unreachable)
+       'no_page'   — downloaded but no forecast page found
+       'error'     — read/parse/upsert blew up"""
     f = t["url"].split("/")[-1]
     existing = {}
     try:
@@ -154,36 +171,90 @@ def chase(t, force=False):
         print(f"  ! {f}: supabase read failed ({e})")
     if not force and already_have(existing, t["nest"]):
         print(f"  = {f}: already in dispatch_boards ({t['key']}{'.'+t['nest'] if t['nest'] else ''}) — skip")
-        return None
+        return ("have", t["key"])
     tmp = os.path.join(tempfile.gettempdir(), f)
     try:
         download(t["url"], tmp)
     except Exception as e:
         print(f"  · {f}: not up yet / unreachable ({getattr(e, 'code', e)})")
-        return None
+        return ("not_up", None)
     t = dict(t, tmp=tmp)
     try:
-        return process(t, existing=existing)
+        k = process(t, existing=existing)
+        return ("ingested", k) if k else ("no_page", None)
     except Exception as e:
         print(f"  ! {f}: {e}")
-        return None
+        return ("error", None)
 
-def run(force=False):
-    require_env()
-    today = datetime.date.today()   # Action sets TZ=America/Los_Angeles
-    print(f"Dispatch bot v2 · {today} ({dow(today)})")
-    done = []
+# ── #jul23 — KEEP SEARCHING. GitHub's cron is throttled hard (a */15 schedule
+# can fire hours apart), and a sheet that posted inside one of those gaps used
+# to sit missing until somebody force-ran the bot. A run no longer gives up:
+# while a sheet is IN SEASON (its posting window is open) and still missing,
+# the run stays alive and re-checks every few minutes, up to --watch minutes.
+# Extra passes are nearly free: already-ingested sheets skip on one Supabase GET.
+WATCH_WINDOWS = {           # minutes-of-LA-day when a missing sheet is worth re-chasing
+    "EARLY":     (9*60+25,  16*60+30),   # E posts ~9:30 after morning dispatch
+    "NIGHT":     (14*60+25, 24*60),      # N posts ~2:30 PM
+    "MORNING":   (16*60+40, 24*60),      # tomorrow's D posts ~5 PM the evening before
+    "CATCHUP":   (0,        9*60+30),    # this morning's D, overnight until its board runs
+    "CATCHUP-N": (0,        0),          # yesterday's N: chase once, never hold the run open for it
+}
+
+def in_season(kind, now=None):
+    now = now or datetime.datetime.now()      # Action sets TZ=America/Los_Angeles
+    m = now.hour * 60 + now.minute
+    lo, hi = WATCH_WINDOWS.get(kind, (0, 0))
+    return lo <= m < hi
+
+def one_pass(force=False):
+    """Chase every target once. Returns (done_keys, kinds_still_worth_watching)."""
+    today = datetime.date.today()
+    done, watching = [], []
     for t in targets(today):
         print(f"[{t['kind']}] {t['url']}")
-        k = chase(t, force=force)
-        if k:
+        status, k = chase(t, force=force)
+        if status == "ingested":
             done.append(k)
-    print("done —", (", ".join(done) if done else "nothing new this run"))
+        elif status in ("not_up", "error", "no_page") and in_season(t["kind"]):
+            watching.append(t["kind"])
+    return done, watching
+
+def run(force=False, watch_min=0):
+    require_env()
+    today = datetime.date.today()
+    print(f"Dispatch bot v3 · {today} ({dow(today)})"
+          + (f" · will watch up to {watch_min} min for late sheets" if watch_min else ""))
+    deadline = time.time() + watch_min * 60
+    all_done, passes = [], 0
+    while True:
+        passes += 1
+        done, watching = one_pass(force=(force and passes == 1))
+        all_done += done
+        if not watching:
+            break                       # everything in season is in — no reason to linger
+        if time.time() >= deadline:
+            if watch_min:
+                print(f"…watch budget spent — {', '.join(watching)} still not posted; the next run picks them up.")
+            break
+        wait = min(300, max(60, int(deadline - time.time())))
+        print(f"…{', '.join(watching)} not posted yet — checking again in {wait//60} min (pass {passes}).")
+        time.sleep(wait)
+    print("done —", (", ".join(all_done) if all_done else "nothing new this run"))
+
+def parse_date_arg(s):
+    """Forgiving date reader: 2026-07-21, 7/21/2026, 07/21/26, 7-21-2026 all work."""
+    s = (s or "").strip().strip(",.;'\"")
+    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%m/%d/%y", "%Y/%m/%d", "%m-%d-%Y", "%m-%d-%y"):
+        try:
+            return datetime.datetime.strptime(s, fmt).date()
+        except ValueError:
+            pass
+    sys.exit(f"FATAL: couldn't read the date '{s}' — type it like 2026-07-21")
 
 def one_sheet(date_str, letter, force=False):
     """Backfill / repair a single sheet: --date 2026-07-21 --kind N"""
     require_env()
-    d = datetime.date.fromisoformat(date_str)
+    d = parse_date_arg(date_str)
     ap = "AM" if letter == "D" else "PM"
     t = {"kind": {"E": "EARLY", "N": "NIGHT", "D": "MORNING"}[letter], "letter": letter,
          "fdate": d, "key": key_for(d, ap), "nest": "early" if letter == "E" else None,
@@ -195,15 +266,24 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Shadow Hook dispatch board bot")
     ap.add_argument("--test", nargs=3, metavar=("PDF", "LETTER", "DATE"),
                     help="parse a local PDF as E|N|D for YYYY-MM-DD and print JSON (no network)")
-    ap.add_argument("--date", help="backfill one sheet: the date YYYY-MM-DD (with --kind)")
-    ap.add_argument("--kind", choices=["E", "N", "D"], help="backfill one sheet: the letter")
+    ap.add_argument("--date", help="backfill one sheet: the date (YYYY-MM-DD; slashes fine too)")
+    ap.add_argument("--kind", type=lambda s: s.strip().strip(",.;'\"").upper(),
+                    choices=["E", "N", "D"], help="backfill one sheet: the letter (any case)")
     ap.add_argument("--force", action="store_true", help="re-ingest even if already in the table")
-    a = ap.parse_args()
+    ap.add_argument("--watch", type=int, default=0, metavar="MIN",
+                    help="stay alive up to MIN minutes, re-checking every few minutes for sheets "
+                         "that are in season but not posted yet (survives GitHub's cron gaps)")
+    a, stray = ap.parse_known_args()
+    if stray:
+        print(f"note: ignoring stray input {stray}")
+    if bool(a.date) != bool(a.kind):
+        sys.exit("FATAL: a backfill needs BOTH boxes — the date (like 2026-07-21) AND the letter (E, N or D).")
     if a.test:
         pdf, L, ds = a.test
+        L = L.strip().upper()
         if L not in ("E", "N", "D"):
             sys.exit("letter must be E, N or D")
-        d = datetime.date.fromisoformat(ds)
+        d = parse_date_arg(ds)
         apup = "AM" if L == "D" else "PM"
         t = {"kind": "TEST", "letter": L, "fdate": d, "key": key_for(d, apup),
              "nest": "early" if L == "E" else None, "url": "local/" + os.path.basename(pdf), "tmp": pdf}
@@ -212,4 +292,4 @@ if __name__ == "__main__":
     elif a.date and a.kind:
         one_sheet(a.date, a.kind, force=a.force)
     else:
-        run(force=a.force)
+        run(force=a.force, watch_min=max(0, a.watch))

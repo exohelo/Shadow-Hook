@@ -50,6 +50,20 @@ const ANCHORS = [
   ['ended','at'], ['ended','on'], ['ending','at'], ['ending','on'],
   ['last','card'], ['last','number'], ['last','call'], ['cut','off'], ['down','to']
 ];
+/* #jul23 — phrases that anchor "this is where the NEXT board STARTS". The hall's
+   recording says it exactly like the real Jul-23 transcripts:
+     "we're going to start for letter Y, Y is in yellow, 4879"
+     "we're going to start with the letter B, B is in Baker 4704"
+   A start callout is the upcoming board's opening card — the caller maps it to
+   the right board (the just-ended board's END is that card minus one). */
+const ANCHORS_START = [
+  ['start','with'], ['start','for'], ['start','at'], ['start','on'], ['start','the'],
+  ['starting','with'], ['starting','for'], ['starting','at'], ['starting','on'],
+  ['starts','with'], ['starts','on'], ['starts','at'],
+  ['begin','with'], ['beginning','with'], ['opening','with'], ['open','with'],
+  ['going','to','start'], ['gonna','start'],
+  ['letter']                       // "…for letter Y…" — in these recordings 'letter' precedes the callout
+];
 
 function tokenize(text){
   const t = String(text||'')
@@ -100,8 +114,13 @@ function readNumber(tokens, i){
   return { num, next: j };
 }
 
-/* resolve tokens[i] as a letter; returns {L, risky, next} or null.
-   Understands "w", "whiskey", "kay", "w as in william", risky homophones. */
+/* resolve tokens[i] as a letter; returns {L, risky, next, confirmed} or null.
+   Understands "w", "whiskey", "kay", "w as in william", risky homophones.
+   #jul23 — also the shapes Whisper actually produced on the live line:
+     "B, B is in Baker 4704"  ("is in" = Whisper's mishear of "as in")
+     "Y, Y is in yellow, 4879", "B like Baker", a stuttered/repeated letter.
+   When the exemplar word starts with the same letter (Baker→B, yellow→Y) the
+   letter is CONFIRMED and scores higher. */
 function readLetter(tokens, i){
   const w = tokens[i];
   let L = null, risky = false;
@@ -110,21 +129,40 @@ function readLetter(tokens, i){
   else if (w in SAFE_NAMES) L = SAFE_NAMES[w];
   else if (w in RISKY) { L = RISKY[w]; risky = true; }
   if (!L) return null;
-  let next = i + 1;
-  // "... W as in William 4912" — skip the exemplar
-  if (tokens[next] === 'as' && tokens[next+1] === 'in' && tokens[next+2]) next += 3;
-  return { L, risky, next };
+  let next = i + 1, confirmed = false;
+  // stuttered / doubled letter: "letter B, B …" — treat as one callout
+  while (tokens[next] && /^[a-z]$/.test(tokens[next]) && tokens[next].toUpperCase() === L) next++;
+  // "... W as in William 4912" / "... B is in Baker 4704" / "B like Baker" — skip the exemplar
+  let exemplar = null;
+  if ((tokens[next] === 'as' || tokens[next] === 'is') && tokens[next+1] === 'in' && tokens[next+2]) { exemplar = tokens[next+2]; next += 3; }
+  else if (tokens[next] === 'like' && tokens[next+1]) { exemplar = tokens[next+1]; next += 2; }
+  if (exemplar){
+    if (exemplar[0].toUpperCase() === L) confirmed = true;                       // Baker→B, yellow→Y
+    else if (NATO[exemplar] === L || SAFE_NAMES[exemplar] === L) confirmed = true;
+    risky = risky && !confirmed;
+  }
+  return { L, risky, next, confirmed };
 }
 
-function hasAnchorBefore(tokens, i, span){
+function matchAnchorList(list, tokens, i, span){
   const from = Math.max(0, i - span);
   for (let j = from; j < i; j++) {
-    for (const a of ANCHORS) {
+    for (const a of list) {
       if (a.length === 1 && tokens[j] === a[0]) return true;
       if (a.length === 2 && tokens[j] === a[0] && tokens[j+1] === a[1] && j+1 < i + 2) return true;
+      if (a.length === 3 && tokens[j] === a[0] && tokens[j+1] === a[1] && tokens[j+2] === a[2] && j+2 < i + 3) return true;
     }
   }
   return false;
+}
+function hasAnchorBefore(tokens, i, span){ return matchAnchorList(ANCHORS, tokens, i, span); }
+/* #jul23 — which KIND of callout sits before tokens[i]: 'end' (left off / stopped),
+   'start' (going to start with / letter …), or null. 'end' wins when both appear
+   ("left off at letter W" is still a left-off). */
+function anchorModeBefore(tokens, i, span){
+  if (matchAnchorList(ANCHORS, tokens, i, span)) return 'end';
+  if (matchAnchorList(ANCHORS_START, tokens, i, span)) return 'start';
+  return null;
 }
 
 function hasKeywordBefore(tokens, i, span, keywords){
@@ -147,38 +185,46 @@ function parseLeftOff(transcript, opts){
     // fast path: an embedded card like "w4912" (Whisper often writes it this way)
     const m = /^([a-z])(\d{3,5})$/.exec(tokens[i]);
     if (m) {
-      cands.push(score(tokens, i, i + 1, m[1].toUpperCase() + m[2], false, keywords, true));
+      cands.push(score(tokens, i, i + 1, m[1].toUpperCase() + m[2], false, keywords, true, false));
       continue;
     }
     const lt = readLetter(tokens, i);
     if (!lt) continue;
     const nm = readNumber(tokens, lt.next);
     if (!nm) continue;
-    cands.push(score(tokens, i, nm.next, lt.L + nm.num, lt.risky, keywords, nm.num.length === 4));
+    cands.push(score(tokens, i, nm.next, lt.L + nm.num, lt.risky, keywords, nm.num.length === 4, lt.confirmed));
   }
 
   // a risky homophone with no anchor near it is almost certainly a plain word — drop it
   const kept = cands.filter(c => !(c.risky && !c.anchored));
+  /* #jul23 — the announcer REPEATS the card ("…4879. Y, 4879."). A card heard more
+     than once is far more trustworthy: each extra hearing adds confidence. */
+  const times = {};
+  kept.forEach(c => { times[c.card] = (times[c.card] || 0) + 1; });
+  kept.forEach(c => { if (times[c.card] > 1) c.conf = Math.min(0.98, c.conf + 0.08 * (times[c.card] - 1)); });
   kept.sort((a, b) => b.conf - a.conf || a.pos - b.pos);
   const best = kept[0] || null;
   return {
     card:  best ? best.card : null,
     conf:  best ? best.conf : 0,
     heard: best ? best.heard : '',
-    all:   kept.map(c => ({ card: c.card, conf: c.conf, heard: c.heard }))
+    mode:  best ? (best.mode || null) : null,   // #jul23 — 'end' (left off), 'start' (next board opens on), or null
+    all:   kept.map(c => ({ card: c.card, conf: c.conf, heard: c.heard, mode: c.mode || null }))
   };
 }
 
-function score(tokens, i, j, card, risky, keywords, fourDigit){
-  const anchored = hasAnchorBefore(tokens, i, 9);
+function score(tokens, i, j, card, risky, keywords, fourDigit, confirmed){
+  const mode     = anchorModeBefore(tokens, i, 9);   // #jul23 — 'end' | 'start' | null
+  const anchored = !!mode;
   const keyed    = hasKeywordBefore(tokens, i, 14, keywords);
   let conf = 0.5;
   if (anchored)  conf += 0.25;
   if (!risky)    conf += 0.10; else conf -= 0.20;
   if (fourDigit) conf += 0.05;
   if (keyed)     conf += 0.15;
+  if (confirmed) conf += 0.10;                       // "B is in Baker" — the exemplar backs the letter
   conf = Math.max(0, Math.min(0.98, conf));
-  return { card, conf, pos: i, risky, anchored, keyed, heard: contextAround(tokens, i, j) };
+  return { card, conf, pos: i, risky, anchored, keyed, mode, heard: contextAround(tokens, i, j) };
 }
 
 /* ============================================================================
@@ -247,4 +293,50 @@ function parseSpecial(transcript){
   return out;
 }
 
-module.exports = { parseLeftOff, parseCounts, parseSpecial, _internals: { tokenize, readNumber, readLetter } };
+/* ============================================================================
+   parseForecastTarget — WHICH BOARD is the recording talking about?
+   The live line says it in plain words: "casual job forecast for Thursday
+   morning, July 23rd" / "…for Thursday night, July 23rd". Read the weekday,
+   the shift, and (when present) the month+day, so the caller can pin the
+   heard card to the exact board key instead of guessing off the clock.
+   Returns { dow:'Thu'|null, slot:'AM'|'PM'|null, mon:1-12|null, day:1-31|null,
+             rel:'today'|'tomorrow'|null } — all best-effort.
+   ========================================================================== */
+const WEEKDAYS = { sunday:'Sun', monday:'Mon', tuesday:'Tue', wednesday:'Wed',
+                   thursday:'Thu', friday:'Fri', saturday:'Sat' };
+const MONTHS = { january:1, february:2, march:3, april:4, may:5, june:6, july:7,
+                 august:8, september:9, october:10, november:11, december:12 };
+const AM_WORDS = ['morning', 'day', 'dayside'];
+const PM_WORDS = ['night', 'evening', 'nightside', 'tonight'];
+function parseForecastTarget(transcript){
+  const tokens = tokenize(transcript);
+  const out = { dow:null, slot:null, mon:null, day:null, rel:null };
+  let dowAt = -1;
+  for (let i = 0; i < tokens.length; i++) {
+    const w = tokens[i];
+    if (out.dow === null && WEEKDAYS[w]) { out.dow = WEEKDAYS[w]; dowAt = i; }
+    if (out.mon === null && MONTHS[w]) {
+      out.mon = MONTHS[w];
+      const nx = tokens[i+1] || '';
+      const dm = /^(\d{1,2})(st|nd|rd|th)?$/.exec(nx);
+      if (dm) { const d = parseInt(dm[1], 10); if (d >= 1 && d <= 31) out.day = d; }
+    }
+    if (out.rel === null && w === 'tonight') out.rel = 'today';
+    if (out.rel === null && w === 'tomorrow') out.rel = 'tomorrow';
+  }
+  // the shift word closest to the weekday wins; else the first one anywhere
+  let best = null;
+  for (let i = 0; i < tokens.length; i++) {
+    const w = tokens[i];
+    const s = AM_WORDS.includes(w) ? 'AM' : (PM_WORDS.includes(w) ? 'PM' : null);
+    if (!s) continue;
+    const d = dowAt >= 0 ? Math.abs(i - dowAt) : 999 + i;
+    if (!best || d < best.d) best = { s, d };
+  }
+  if (best) out.slot = best.s;
+  if (!out.slot && out.rel === 'today') out.slot = 'PM';   // "tonight"
+  return out;
+}
+
+module.exports = { parseLeftOff, parseCounts, parseSpecial, parseForecastTarget,
+                   _internals: { tokenize, readNumber, readLetter, anchorModeBefore } };

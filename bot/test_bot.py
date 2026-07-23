@@ -23,7 +23,9 @@ ck("Wed dow", b.dow(dt.date(2026, 7, 22)), "Wed")
 
 print("\n=== targets: the THREE-FOLDER map (the v1 bug) ===")
 ts = {t["kind"]: t for t in b.targets(dt.date(2026, 7, 21))}
-ck("4 targets", sorted(ts), ["CATCHUP", "EARLY", "MORNING", "NIGHT"])
+ck("5 targets", sorted(ts), ["CATCHUP", "CATCHUP-N", "EARLY", "MORNING", "NIGHT"])
+ck("CATCHUP-N url (yesterday's night final)", ts["CATCHUP-N"]["url"].split("Dispatches/")[1], "Nightside-Final/072026N.pdf")
+ck("CATCHUP-N key", (ts["CATCHUP-N"]["key"], ts["CATCHUP-N"]["nest"]), ("2026-07-20_Mon_PM", None))
 ck("EARLY url", ts["EARLY"]["url"].split("Dispatches/")[1], "Day-Night-Early/072126E.pdf")
 ck("NIGHT url (Nightside-Final!)", ts["NIGHT"]["url"].split("Dispatches/")[1], "Nightside-Final/072126N.pdf")
 ck("MORNING url (Dayside-Final, tomorrow's file)", ts["MORNING"]["url"].split("Dispatches/")[1], "Dayside-Final/072226D.pdf")
@@ -61,6 +63,25 @@ ck("ships kept", len(p["ships"]), 1)
 ck("header kept", (p["generated"], p["serial"], p["pages"]), ("2026-07-21 2:41PM", "9155", 21))
 ck("src recorded", p["src"], "072126N.pdf")
 ck("workdate/warnings NOT shipped", ("workdate" in p or "warnings" in p), False)
+
+print("\n=== forgiving backfill inputs ===")
+ck("ISO date", b.parse_date_arg("2026-07-21"), dt.date(2026, 7, 21))
+ck("slash date", b.parse_date_arg("7/21/2026"), dt.date(2026, 7, 21))
+ck("short year", b.parse_date_arg("07/21/26"), dt.date(2026, 7, 21))
+ck("padded + comma", b.parse_date_arg(" 2026-07-21, "), dt.date(2026, 7, 21))
+
+
+print("\n=== #jul23 keep-searching windows ===")
+import datetime as _dt
+def _at(h,m): return _dt.datetime(2026,7,23,h,m)
+ck("EARLY in season at 10:00 AM",  b.in_season("EARLY",   _at(10,0)),  True)
+ck("EARLY out of season at 5 PM",  b.in_season("EARLY",   _at(17,0)),  False)
+ck("NIGHT in season at 3:00 PM",   b.in_season("NIGHT",   _at(15,0)),  True)
+ck("NIGHT out of season at 9 AM",  b.in_season("NIGHT",   _at(9,0)),   False)
+ck("MORNING in season at 7 PM",    b.in_season("MORNING", _at(19,0)),  True)
+ck("CATCHUP in season at 2 AM",    b.in_season("CATCHUP", _at(2,0)),   True)
+ck("CATCHUP done after 9:30",      b.in_season("CATCHUP", _at(10,0)),  False)
+ck("CATCHUP-N never holds a run",  b.in_season("CATCHUP-N",_at(12,0)), False)
 
 print("\n=== parser internals (no OCR needed) ===")
 import parse_forecast as pf

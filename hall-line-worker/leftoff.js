@@ -2,7 +2,18 @@
 'use strict';
 /* ============================================================================
    leftoff.js — call the hall's recorded dispatch line, transcribe it, parse
-   "where the board left off", and post it to the Order's record.
+   what it announced, and post it to the Order's record.
+
+   #jul23 REWORK — built against the REAL recordings: the line announces the
+   casual job FORECAST ("we're going to start with the letter B, B as in Baker,
+   4704"), i.e. where the NEXT board STARTS — not only where the last one left
+   off. The worker now reads both: a start callout for board X becomes the
+   previous board's END (start minus one card — the same chain rule the app
+   runs on), pinned to the exact board the transcript names ("…for Thursday
+   night, July 23rd"). It also RETRIES the call when a recording comes back
+   empty or unreadable (RETRY_CALLS, default 2), and logs WHICH board every
+   reading is about (hall_line_log.k + extras.kind/about/posted_to), so the
+   app's Hall Line card and dev log can show it even when it isn't posted.
 
    Pipeline:  Twilio call (recorded) -> recording mp3 -> Whisper transcript
               -> parse card (parse.js) -> sanity check vs previous board
@@ -27,6 +38,7 @@
      SLOT_KEYWORDS                           optional csv to steer multi-board
                                              recordings, e.g. "casual,unidentified"
      MIN_CONF                                post threshold (default 0.75)
+     RETRY_CALLS                             live-call attempts per run (default 2)
      BOT_ID / BOT_HANDLE                     default hall-line-bot / ☎ Hall Line
 
    Flags (local testing):
@@ -37,7 +49,7 @@
    ========================================================================== */
 
 const fs = require('fs');
-const { parseLeftOff, parseCounts, parseSpecial } = require('./parse.js');
+const { parseLeftOff, parseCounts, parseSpecial, parseForecastTarget } = require('./parse.js');
 
 /* ---------- config ---------- */
 const env = k => (process.env[k] || '').trim();
@@ -56,6 +68,7 @@ const CFG = {
   sbUrl:       env('SUPABASE_URL').replace(/\/+$/, ''),
   sbKey:       env('SUPABASE_SERVICE_KEY'),
   minConf:     parseFloat(env('MIN_CONF') || '0.75'),
+  retryCalls:  Math.max(1, parseInt(env('RETRY_CALLS') || '2', 10)),   // #jul23 — call again if the line gave nothing usable
   botId:       env('BOT_ID') || 'hall-line-bot',
   botHandle:   env('BOT_HANDLE') || '☎ Hall Line',
   keywords:    (env('SLOT_KEYWORDS') || '').split(',').map(s => s.trim()).filter(Boolean),
@@ -226,7 +239,9 @@ async function transcribe(buf, prevEnd) {
   fd.append('temperature', '0');
   fd.append('prompt',
     'ILWU Local 13 longshore dispatch recording, San Pedro / Long Beach. ' +
-    'It announces where casual boards left off, as a letter and card number like W4912 or C4100.' +
+    'It announces the casual job forecast: where boards left off, or which letter and card ' +
+    'number the next board will start with — like "we are going to start with the letter B, ' +
+    'B as in Baker, 4704" or "left off at W4912".' +
     (prevEnd ? ' The previous board ended at ' + prevEnd + '.' : ''));
   const r = await fetch('https://api.openai.com/v1/audio/transcriptions', {
     method: 'POST',
@@ -235,6 +250,48 @@ async function transcribe(buf, prevEnd) {
   });
   if (!r.ok) throw new Error('whisper: ' + r.status + ' ' + (await r.text()).slice(0, 300));
   return (await r.json()).text || '';
+}
+
+/* ---------- board-key arithmetic (#jul23) ---------- */
+function keyParts(k){ const m=/^(\d{4}-\d{2}-\d{2})_[A-Za-z]+_(AM|PM)$/.exec(String(k||'')); return m?{iso:m[1],slot:m[2]}:null; }
+function isoShift(iso, n){
+  const d = new Date(iso + 'T12:00:00');
+  d.setDate(d.getDate() + n);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function keyFor(iso, slot){ return iso + '_' + DOW[new Date(iso + 'T12:00:00').getDay()] + '_' + slot; }
+function prevKeyOf(k){ const p = keyParts(k); if (!p) return null;
+  return p.slot === 'PM' ? keyFor(p.iso, 'AM') : keyFor(isoShift(p.iso, -1), 'PM'); }
+function nextKeyOf(k){ const p = keyParts(k); if (!p) return null;
+  return p.slot === 'AM' ? keyFor(p.iso, 'PM') : keyFor(isoShift(p.iso, 1), 'AM'); }
+function prevCardId(card){ const m = /^([A-Z])(\d{3,5})$/.exec(card || ''); if (!m) return null;
+  const n = parseInt(m[2], 10) - 1; if (n <= 0) return null;
+  return m[1] + String(n).padStart(m[2].length, '0'); }
+function endOf(row){ return row && row.patch && row.patch.end ? String(row.patch.end).toUpperCase() : null; }
+
+/* #jul23 — WHICH BOARD is the recording about? The transcript usually says it
+   outright ("casual job forecast for Thursday night, July 23rd"); trust that
+   first, and only fall back to wall-clock guessing when it doesn't. */
+function resolveAboutKey(ft, t, mode){
+  if (mode !== 'start') return t.key;                        // a left-off is about the board that just ended
+  const fallback = nextKeyOf(t.key);                          // a start callout is about the NEXT board
+  if (!ft || !ft.slot) return fallback;
+  let best = null;
+  for (let n = -1; n <= 2; n++) {
+    const p = laParts(Date.now() + n * 86400000);
+    let sc = 0;
+    if (ft.dow && p.dow === ft.dow) sc += 2;
+    if (ft.mon && ft.day) {
+      const md = String(ft.mon).padStart(2, '0') + '-' + String(ft.day).padStart(2, '0');
+      if (p.iso.slice(5) === md) sc += 3;
+    }
+    if (ft.rel === 'tomorrow' && n === 1) sc += 1;
+    if (ft.rel === 'today' && n === 0) sc += 1;
+    if ((ft.dow || (ft.mon && ft.day)) && sc === 0) continue; // named a day, this date isn't it
+    const cand = { key: p.iso + '_' + p.dow + '_' + ft.slot, sc, dist: Math.abs(n) + (n < 0 ? 0.5 : 0) };
+    if (!best || sc > best.sc || (sc === best.sc && cand.dist < best.dist)) best = cand;
+  }
+  return (best && best.key) || fallback;
 }
 
 /* ---------- main ---------- */
@@ -246,49 +303,80 @@ async function transcribe(buf, prevEnd) {
     return;
   }
 
-  /* who owns this key already? never talk over a human. */
-  let existing = null, prevEnd = null;
+  /* one read of the wire around the target: two boards back through two ahead —
+     enough to chain starts, sanity-check ends, and honor human ownership. */
+  const NEAR = [prevKeyOf(prevKeyOf(t.key)), prevKeyOf(t.key), t.key, nextKeyOf(t.key), nextKeyOf(nextKeyOf(t.key))].filter(Boolean);
+  const WIRE = {};
   if (CFG.sbUrl && CFG.sbKey) {
     try {
-      const rows = await sbSelect('board_wire', 'k=in.(%22' + t.key + '%22,%22' + prevBoardKey(t) + '%22)&select=*');
-      existing = rows.find(r => r.k === t.key) || null;
-      const prev = rows.find(r => r.k === prevBoardKey(t)) || null;
-      prevEnd = prev && prev.patch && prev.patch.end ? String(prev.patch.end).toUpperCase() : null;
+      const rows = await sbSelect('board_wire', 'k=in.(' + NEAR.map(k => '%22' + k + '%22').join(',') + ')&select=*');
+      rows.forEach(r => { WIRE[r.k] = r; });
     } catch (e) { log('warn: could not read board_wire:', e.message); }
   }
-  if (existing && existing.patch && existing.by && existing.by !== CFG.botId) {
-    log('a hand already logged ' + t.key + ' (' + (existing.by_handle || existing.by) + ') — standing down.');
-    return;
-  }
+  const prevEnd = endOf(WIRE[prevKeyOf(t.key)]);
 
-  /* get a transcript: flag > audio file > live call */
-  let transcript = CFG.transcript, callSid = null;
-  if (!transcript && CFG.audioFile) {
-    transcript = await transcribe(fs.readFileSync(CFG.audioFile), prevEnd);
-  }
-  if (!transcript) {
-    for (const k of ['twilioSid', 'twilioToken', 'twilioFrom', 'dispatchNum', 'openaiKey'])
-      if (!CFG[k]) { console.error('missing config: ' + k); process.exit(1); }
-    const rec = await recordHotline();
-    callSid = rec.callSid;
-    transcript = await transcribe(rec.buf, prevEnd);
-  }
-  log('transcript:', JSON.stringify(transcript.slice(0, 400)));
-
-  /* parse + sanity */
+  /* get a transcript: flag > audio file > live call — and if a LIVE call hears
+     nothing usable, wait and CALL AGAIN (#jul23: the recording is sometimes
+     late, mid-cycle, or briefly silent; one dead call must not kill the run). */
   const keywords = CFG.keywords.length ? CFG.keywords
     : (t.slot === 'AM' ? ['day', 'morning', 'casual', 'casuals', 'unidentified']
                        : ['night', 'evening', 'casual', 'casuals', 'unidentified']);
-  const res = parseLeftOff(transcript, { keywords });
-  let conf = res.conf;
-  if (res.card && prevEnd) {
-    const d = letterDist(prevEnd, res.card);
-    if (d <= 16) conf = Math.min(0.98, conf + 0.05);
-    else if (d > 20) conf -= 0.25;                    // moving backwards / wrapping hard — suspicious
-    log('sanity: previous end ' + prevEnd + ' -> ' + res.card + ' is ' + d + ' letters forward');
+  const liveMode = !CFG.transcript && !CFG.audioFile;
+  if (liveMode) {
+    for (const k of ['twilioSid', 'twilioToken', 'twilioFrom', 'dispatchNum', 'openaiKey'])
+      if (!CFG[k]) { console.error('missing config: ' + k); process.exit(1); }
   }
-  log('parsed:', res.card, '· confidence', conf.toFixed(2), '· heard:', JSON.stringify(res.heard));
+  const attempts = liveMode ? CFG.retryCalls : 1;
+  let res = null, transcript = '', callSid = null;
+  for (let a = 1; a <= attempts; a++) {
+    let tx = '', sid = null;
+    if (CFG.transcript) tx = CFG.transcript;
+    else if (CFG.audioFile) tx = await transcribe(fs.readFileSync(CFG.audioFile), prevEnd);
+    else {
+      const rec = await recordHotline();
+      sid = rec.callSid;
+      tx = await transcribe(rec.buf, prevEnd);
+    }
+    log('transcript' + (attempts > 1 ? ' (call ' + a + '/' + attempts + ')' : '') + ':', JSON.stringify((tx || '').slice(0, 400)));
+    const r = parseLeftOff(tx || '', { keywords });
+    if (!res || r.conf > res.conf || (r.card && !res.card)) { res = r; transcript = tx || ''; callSid = sid || callSid; }
+    if (r.card) break;
+    if (a < attempts) {
+      log((tx && tx.trim() ? 'no card in that recording' : 'EMPTY recording') + ' — waiting 75s, then calling again.');
+      await sleep(75000);
+    }
+  }
+
+  /* what did it tell us, and which board is it about? */
+  const ft = parseForecastTarget(transcript);
+  let mode = res.mode;
+  if (!mode && res.card && ft && ft.slot) mode = 'start';   // forecast phrasing ("…for Thursday night…") = a start callout
+  const aboutKey = resolveAboutKey(ft, t, mode);
+  log('parsed:', res.card, '· mode', mode || '?', '· about', aboutKey, '· confidence', res.conf.toFixed(2), '· heard:', JSON.stringify(res.heard));
   if (res.all.length > 1) log('other candidates:', res.all.slice(1).map(c => c.card + '@' + c.conf.toFixed(2)).join(' '));
+
+  /* translate to a record entry. A start callout ("the night board starts on
+     B4704") means the board BEFORE it ENDED one card earlier (the chain rule
+     the app itself runs on: day ends W4912 → night opens W4913). */
+  let postKey, patch = null;
+  if (mode === 'start' && res.card) {
+    const endCard = prevCardId(res.card);
+    if (endCard) { postKey = prevKeyOf(aboutKey); patch = { end: endCard }; }
+    else         { postKey = aboutKey;            patch = { start: res.card }; }
+  } else {
+    postKey = t.key;
+    if (res.card) patch = { end: res.card };
+  }
+
+  /* sanity vs the chain — softened so a true read is not strangled (#jul23) */
+  let conf = res.conf;
+  const priorEnd = postKey ? endOf(WIRE[prevKeyOf(postKey)]) : null;
+  if (patch && patch.end && priorEnd) {
+    const d = letterDist(priorEnd, patch.end);
+    if (d <= 16) conf = Math.min(0.98, conf + 0.05);
+    else if (d > 20) conf -= 0.15;                    // moving backwards / wrapping hard — suspicious, not fatal
+    log('sanity: prior end ' + priorEnd + ' -> ' + patch.end + ' is ' + d + ' letters forward');
+  }
 
   /* ── the recording's COUNTS (E/N/D) — backup ears only. The PDF is the record:
      compare and log MATCH/MISMATCH, never write over sheet data. ── */
@@ -317,40 +405,51 @@ async function transcribe(buf, prevEnd) {
   }
   specials.forEach(s => log('⚑ SPECIAL (' + s.tag + '): "' + s.snippet + '"'));
 
-  const posting = !!(res.card && conf >= CFG.minConf);
+  /* never talk over a human — check the row we would actually write */
+  const existing = postKey ? WIRE[postKey] : null;
+  const humanOwns = !!(existing && existing.patch && existing.by && existing.by !== CFG.botId);
+  const posting = !!(patch && conf >= CFG.minConf && !humanOwns);
 
-  /* audit trail — every run, posted or not */
+  /* audit trail — every run, posted or not. k = the board the info is ABOUT. */
   if (CFG.sbUrl && CFG.sbKey && !CFG.dryRun) {
     const baseRow = {
-      k: t.key, card: res.card, conf: Math.round(conf * 100) / 100,
+      k: aboutKey || t.key, card: res.card, conf: Math.round(conf * 100) / 100,
       heard: res.heard, transcript: transcript.slice(0, 4000),
       call_sid: callSid, posted: posting
     };
-    const extras = (counts.length || specials.length || checks.length) ? { counts, specials, checks } : null;
-    const wrote = await sbInsert('hall_line_log', extras ? Object.assign({ extras }, baseRow) : baseRow);
-    if (!wrote && extras) await sbInsert('hall_line_log', baseRow);   // older table without the extras column
+    const extras = { kind: mode || 'unknown', about: aboutKey, posted_to: posting ? postKey : null };
+    if (mode === 'start' && res.card) extras.announced_start = res.card;
+    if (counts.length) extras.counts = counts;
+    if (specials.length) extras.specials = specials;
+    if (checks.length) extras.checks = checks;
+    const wrote = await sbInsert('hall_line_log', Object.assign({ extras }, baseRow));
+    if (!wrote) await sbInsert('hall_line_log', baseRow);   // older table without the extras column
   }
 
+  if (humanOwns) {
+    log('a hand already logged ' + postKey + ' (' + (existing.by_handle || existing.by) + ') — standing down.');
+    return;
+  }
   if (!posting) {
     log(res.card ? 'below MIN_CONF (' + CFG.minConf + ') — logged only, not posted.' : 'no card found — logged only.');
     return;
   }
-  if (existing && existing.patch && existing.patch.end === res.card) {
-    log('already on the record as ' + res.card + ' — nothing new.');
+  const dupe = existing && existing.patch &&
+    ((patch.end && existing.patch.end === patch.end) || (patch.start && existing.patch.start === patch.start && !patch.end));
+  if (dupe) {
+    log('already on the record (' + postKey + ' ' + JSON.stringify(existing.patch) + ') — nothing new.');
     return;
   }
 
   /* the bot's post: exactly the row a member's log produces (status live, fact
-     on arrival). Patch carries ONLY what the hall line actually said — the end.
-     Start/act ride along when the previous board is on the wire; otherwise the
-     app fills them from its own chain (#206). */
-  const patch = { end: res.card };
-  if (prevEnd) {
-    patch.start = nextCard(prevEnd);
-    patch.act = letterDist(patch.start, res.card);
+     on arrival). Start/act ride along when the prior board is on the wire;
+     otherwise the app fills them from its own chain (#206). */
+  if (patch.end && priorEnd) {
+    patch.start = nextCard(priorEnd);
+    patch.act = letterDist(patch.start, patch.end);
   }
   const row = {
-    k: t.key, patch,
+    k: postKey, patch,
     by: CFG.botId, by_handle: CFG.botHandle,
     yes: 2, no: 0, confirmers: 0,
     chal: null, chal_by: null, chal_handle: null, chal_yes: 0, chal_no: 0,
@@ -359,6 +458,6 @@ async function transcribe(buf, prevEnd) {
   if (CFG.dryRun) { log('DRY RUN — would upsert board_wire:', JSON.stringify(row)); return; }
   if (!CFG.sbUrl || !CFG.sbKey) { console.error('missing SUPABASE_URL / SUPABASE_SERVICE_KEY'); process.exit(1); }
   await sbUpsert('board_wire', row, 'k');
-  log('⚓ posted to the wire: ' + t.key + ' left off on ' + res.card +
-      (patch.start ? ' (start ' + patch.start + ', ' + patch.act + ' letters)' : ''));
+  log('⚓ posted to the wire: ' + postKey + ' ' + JSON.stringify(patch) +
+      (mode === 'start' ? '  (the hall said ' + aboutKey + ' starts on ' + res.card + ')' : ''));
 })().catch(e => { console.error('[leftoff] FAILED:', e.message); process.exit(1); });
