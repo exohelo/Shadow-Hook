@@ -686,7 +686,6 @@ html.daylight .heist{background:rgba(64,54,38,.6)}
 #storyViewer.cm .sv-rail{bottom:56px;gap:12px}
 #storyViewer.cm .sv-rail .ic{font-size:22px}
 #storyViewer.cm .sv-cap{bottom:10px}
-#storyViewer.cm .sv-embedwrap.v{height:86%;max-height:none}
 #storyViewer.cm .sv-hero,#storyViewer.cm .sv-demo{max-height:82%}
 .sv-cpanel{position:absolute;left:0;right:0;bottom:0;height:var(--cmH);z-index:6;display:none;flex-direction:column;
   background:linear-gradient(184deg,var(--plate-2),var(--plate));border-top:1px solid rgba(238,180,107,.45);
@@ -718,11 +717,11 @@ html.daylight .heist{background:rgba(64,54,38,.6)}
 .svc-bar button{flex:none;width:42px;height:42px;border-radius:50%;border:1px solid rgba(238,180,107,.5);background:linear-gradient(184deg,var(--btn-hi),var(--btn-lo));color:var(--copper-hi);font-size:15px;cursor:pointer}
 .svc-bar button:active{transform:translateY(1px)}
 /* ===== #stories4 — IN-APP EMBEDS: the platform's own player, framed on the story page ===== */
-/* #stories6 — BIGGER STAGE: the player fills nearly the whole page now */
-.sv-embedwrap{position:relative;z-index:1;border-radius:18px;overflow:hidden;background:#000;
+/* #stories9 — FULLSCREEN STAGE: portrait players run edge-to-edge, no frame at all */
+.sv-embedwrap{position:relative;z-index:0;border-radius:18px;overflow:hidden;background:#000;
   border:1px solid color-mix(in srgb,var(--pc) 45%,transparent);box-shadow:0 24px 60px rgba(0,0,0,.55)}
-.sv-embedwrap.v{height:94%;width:auto;aspect-ratio:9/16;max-width:96%}
-.sv-embedwrap.w{width:96%;aspect-ratio:16/9;max-height:94%}
+.sv-embedwrap.v{position:absolute;inset:0;width:auto;height:auto;border:0;border-radius:0;box-shadow:none}
+.sv-embedwrap.w{width:100%;aspect-ratio:16/9;max-height:94%;border-radius:0;border-left:0;border-right:0}
 .sv-embedwrap.t{width:96%;height:min(62vh,540px)}
 .sv-embedwrap.s{width:96%;height:170px}
 .sv-embedwrap iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000}
@@ -8772,6 +8771,7 @@ function svPageHTML(s,i){
       +'<div class="sv-embedwrap '+emb.shape+'">'
         +'<iframe class="sv-embed" data-esrc="'+esc(emb.src)+'" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe>'
       +'</div>'
+      +'<div class="sv-shade top"></div>'
       +rail
       +'<div class="sv-cap"><div class="sv-h">🎭 '+esc(s.by)+'</div>'
         +(s.note&&s.note.trim()?'<div class="sv-note">'+esc(s.note)+'</div>':'')
@@ -8803,6 +8803,10 @@ function openStoryViewer(startIdx){
   svBind(track);
   try{svcCounts();}catch(e){}   /* #stories5 — 💬 badges for the reel */
   const idx=Math.max(0,Math.min(_svList.length-1,startIdx||0));
+  /* #stories9 — position + first play run SYNCHRONOUSLY, still inside the tap:
+     that's the gesture window where the browser allows SOUND. The rAF pass
+     below just re-settles layout. */
+  try{track.scrollTop=idx*Math.max(1,track.clientHeight);svUpdateIx();}catch(e){}
   requestAnimationFrame(()=>{track.scrollTop=idx*track.clientHeight; svUpdateIx();});
 }
 /* ===== #stories7 — NO GHOST AUDIO =====
