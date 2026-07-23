@@ -3966,7 +3966,7 @@ window.addComeDown=function(key,camedown,called){
   try{COMEDOWN_CAL.add(key,camedown,called);}catch(e){}
   /* #204 — while the call is frozen (dispatch on the floor), record the come-down for
      later calibration but DON'T move the live prediction. It refreshes after dispatch. */
-  try{if(window._lastStart && !wireFrozen())renderMyOdds(window._lastStart,window._lastMoved);}catch(e){}
+  try{if(window._lastStart)renderMyOdds(window._lastStart,window._lastMoved);}catch(e){}
 };
 let SH_PMF=null;                                  // published distribution — renderMyOdds reads it
 window.EARLY_COUNTS=null;                         // the #23 bot posts {ch,tot} here when it lands
@@ -3992,11 +3992,11 @@ function renderWireStage(o){
     const L=o.lock||o.source||'EST';
     const cls={FINAL:'final',LIVE:'final',EARLY:'prov',EST:'est',AM:'est'}[L]||'est';
     const txt={
-      FINAL:'🔒 LOCKED · off the final count',
-      LIVE:'🔒 LOCKED · dispatch live — call is frozen',
-      EARLY:'🔓 UNLOCKED · early count · estimate',
-      EST:'🔓 UNLOCKED · estimate til the final count',
-      AM:'🔓 UNLOCKED · estimate til the day count'
+      FINAL:'✓ FINAL COUNT · call rides the real sheet',
+      LIVE:'✓ FINAL COUNT · dispatch live',
+      EARLY:'~ EARLY COUNT · estimate, moves with the data',
+      EST:'~ ESTIMATE · til the final count lands',
+      AM:'~ ESTIMATE · til the day count lands'
     }[L]||'—';
     srcEl.className='wire-src '+cls; srcEl.textContent=txt;
   }
@@ -4043,23 +4043,10 @@ window.renderWireStage=renderWireStage;
    in DISPATCH_DATA[<date>_<slot>] with a real total the moment they're parsed/uploaded. */
 function _predKey(){ return nd2.getFullYear()+"-"+String(nd2.getMonth()+1).padStart(2,"0")+"-"+String(nd2.getDate()).padStart(2,"0")+"_"+callSlot; }
 function _finalInFor(key){ const dd=DISPATCH_DATA[key]; return !!(dd && dd.total && (dd.total.total||(typeof dd.total==="number"&&dd.total))); }
-/* #rebuild — you've LOGGED DROPS for this board = you're standing at it, in dispatch. */
-function _dropsEngaged(key){
-  try{
-    const dl=JSON.parse(localStorage.getItem(K('droplog'))||'{}'); const d=dl&&dl[key];
-    if(d&&d.drops&&d.drops.length>0) return true;
-    if(window.DW&&window.DW[key]&&window.DW[key].length>0) return true;
-  }catch(e){}
-  return false;
-}
-/* ENGAGED = the call is set and must hold: live with its final sheet in, OR drops logged. */
-function _engaged(key){ try{ return (!!liveWindow() && _finalInFor(key)) || _dropsEngaged(key); }catch(e){ return false; } }
-/* remember the exact call per board, so drops — and even a reload — never move it mid-dispatch */
-function _lockStore(){ try{ return JSON.parse(localStorage.getItem(K('lockedcall'))||'{}')||{}; }catch(e){ return {}; } }
-function _lockGet(key){ const s=_lockStore(); return s[key]?Object.assign({},s[key]):null; }
-function _lockSet(key,o){ try{ const s=_lockStore(); s[key]={base:o.base,start:o.start,med:o.med,lo:o.lo,hi:o.hi,pmove:o.pmove,mom:o.mom,p6:o.p6,p10:o.p10,source:o.source,isAM:o.isAM,lock:o.lock}; const ks=Object.keys(s); while(ks.length>40){ delete s[ks.shift()]; } localStorage.setItem(K('lockedcall'),JSON.stringify(s)); }catch(e){} }
-/* FROZEN = the board you're standing at, once dispatch has it. Drops are recorded, never folded into the live call. */
-function wireFrozen(){ try{ return _engaged(_predKey()); }catch(e){ return false; } }
+/* #unlock — the prediction-lock machinery (_engaged/_lockStore/wireFrozen) is
+   retired: corrections and drops re-figure the call live. Old locked-call cache
+   is swept below. */
+try{localStorage.removeItem(K('lockedcall'));}catch(e){}
 
 /* ====== KEYMASTER v4 ENGINE (rebuild) — injected ====== */
 /* ==================================================================
@@ -4312,29 +4299,10 @@ function publishCall(){
   /* the next board picks up where the last one ENDED — predict from there.
      #114b — anchored on the last COMPLETED board, never a future bot row */
   const key=_predKey();
-  const live=!!liveWindow(), finalIn=_finalInFor(key), frozen=_engaged(key);
-  /* #rebuild — LOCK THE CALL ONCE YOU'RE IN DISPATCH. The board you're standing at
-     freezes the moment (a) it's live with its final sheet in, or (b) you've logged your
-     first drop for it. From then on the published stop letter does NOT move: come-downs
-     you log ride onto the board sheet and into future learning, but never re-figure the
-     call in front of you. It releases on its own when the next board comes up. */
-  {
-    const cached=(window._publishedKey===key&&window._lastStageO)?window._lastStageO:_lockGet(key);
-    if(frozen && cached){
-      cached.lock = live?'LIVE':(finalIn?'FINAL':(cached.lock||cached.source||'EST'));
-      /* #rebuild — the MOVEMENT is frozen so logging drops can't move it, but the STARTING
-         CARD is a fact, not a prediction: keep it live so the locked call always reads off
-         tonight's real opening card (matches "Starting on"), never a stale anchor. The stop
-         re-derives from the current start + the frozen movement. */
-      try{ const _s=pendingStartCard(); if(_s){ cached.start=_s; cached.base=AZ.indexOf(_s[0]); } }catch(e){}
-      window._lastStageO=cached; window._publishedKey=key;
-      try{ renderWireStage(cached); }catch(e){}
-      try{ if(cached.start!=null&&cached.med!=null) renderMyOdds(cached.start,cached.med); }catch(e){}
-      try{ window._lastCall={stop:AZ[(cached.base+cached.med)%26], lo:AZ[(cached.base+(cached.lo||0))%26], hi:AZ[(cached.base+(cached.hi||0))%26], pmove:cached.pmove}; }catch(e){}
-      try{ _lockSet(key,cached); }catch(e){}
-      return;
-    }
-  }
+  const live=!!liveWindow(), finalIn=_finalInFor(key);
+  /* #unlock — the prediction lock is GONE. The call re-figures from the freshest
+     data every run: drops you log, corrections on the record, new sheets — they
+     ALL move the published call immediately. */
   const lastStart=pendingStartCard()||"C4100";   /* #rebuild — same opening card as the "Starting on" header */
   const isAM=callSlot.endsWith("AM");
   const dowIdx={Mon:0,Tue:1,Wed:2,Thu:3,Fri:4,Sat:5,Sun:6}[callSlot.slice(0,3)];
@@ -4376,8 +4344,8 @@ function publishCall(){
   /* hot boards run away — surfaced as its own runaway meter, not buried in a text line */
   const p6=pmf.slice(6).reduce((a,x)=>a+x,0), p10=pmf.slice(10).reduce((a,x)=>a+x,0);
   window._predSource=source;
-  /* #204 — LOCK STATE for the chip: LOCKED off the final (FINAL); LOCKED + frozen while
-     dispatch runs (LIVE); UNLOCKED estimate off the early count (EARLY) or off nothing (EST/AM). */
+  /* #204/#unlock — the chip labels the COUNT SOURCE only (no freezing anywhere):
+     FINAL/LIVE off the real sheet, EARLY off the early count, EST/AM off nothing yet. */
   const lock = finalIn ? (live?'LIVE':'FINAL') : (source==='EARLY'?'EARLY':(isAM?'AM':'EST'));
   const o={base:base,start:lastStart,med:med,lo:lo,hi:hi,pmove:pmove,mom:mom,p6:p6,p10:p10,source:source,isAM:isAM,lock:lock};
   window._lastStageO=o; window._publishedKey=key;
@@ -4385,7 +4353,6 @@ function publishCall(){
   /* the pending row on Recent Boards reads this same call */
   window._lastCall={stop:AZ[(base+med)%26], lo:AZ[(base+lo)%26], hi:AZ[(base+hi)%26], pmove:pmove};
   renderMyOdds(lastStart, med);   /* #54 — personal odds off the same engine run */
-  try{ if(_engaged(key)) _lockSet(key,o); }catch(e){}   /* #rebuild — remember the call the moment dispatch has it */
 }
 /* #204 — HYBRID FLOP MODEL ────────────────────────────────────────────────────
    Off the last several COMPLETED boards (start → end + the come-down that was logged):
