@@ -661,7 +661,7 @@ html.daylight .heist{background:rgba(64,54,38,.6)}
 .sv-rail .sv-like.liked{color:#FE2C55}
 .sv-rail .sv-like.liked .ic{animation:heartPop .4s}
 @keyframes heartPop{0%{transform:scale(1)}40%{transform:scale(1.4)}100%{transform:scale(1)}}
-.sv-cap{position:absolute;left:16px;right:78px;bottom:calc(40px + env(safe-area-inset-bottom));z-index:2}   /* #stories2 — clears the swipe hint */
+.sv-cap{position:absolute;left:16px;right:78px;bottom:calc(40px + env(safe-area-inset-bottom));z-index:2;pointer-events:none}   /* #stories2 — clears the swipe hint · #sndfix — NEVER blocks taps on the player's own controls underneath */
 .sv-cap .sv-h{font-family:'Anton',sans-serif;font-size:17px;letter-spacing:.03em;color:#fff}
 .sv-cap .sv-note{font-size:13.5px;color:rgba(255,255,255,.94);margin-top:5px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .sv-cap .sv-t{font-family:'IBM Plex Mono',monospace;font-size:10px;color:rgba(255,255,255,.62);margin-top:6px}
@@ -8371,7 +8371,7 @@ function linkCard(url,note){
 function storyEmbed(url){
   let u;try{u=new URL(url);}catch(e){return null;}
   const h=u.hostname.replace(/^www\.|^m\./,''), p=u.pathname;let m;
-  const yt=id=>({src:'https://www.youtube.com/embed/'+id+'?playsinline=1&autoplay=1&mute=1&rel=0',shape:'w'});
+  const yt=id=>({src:'https://www.youtube.com/embed/'+id+'?playsinline=1&autoplay=1&mute=1&rel=0&enablejsapi=1',shape:'w'});   // #sndfix — jsapi lets the app's 🔊 reach inside
   if(/(^|\.)youtube\.com$/.test(h)){
     if(m=p.match(/^\/shorts\/([\w-]{6,})/))return Object.assign(yt(m[1]),{shape:'v'});
     const v=(u.searchParams.get('v')||'');if(/^[\w-]{6,}$/.test(v))return yt(v);
@@ -8853,11 +8853,28 @@ function svCurrentVideo(){
   const i=Math.round(track.scrollTop/Math.max(1,track.clientHeight));
   return track.querySelector('.sv-page[data-si="'+i+'"] video.sv-mediafull');
 }
+function svCurrentEmbed(){
+  const track=document.getElementById('svTrack');if(!track)return null;
+  const i=Math.round(track.scrollTop/Math.max(1,track.clientHeight));
+  return track.querySelector('.sv-page[data-si="'+i+'"] iframe.sv-embed');
+}
+/* #sndfix — the YouTube bridge: postMessage commands into the player. Retries
+   while the player boots; silently no-ops for platforms with no API (TikTok/IG —
+   their own in-player unmute is tappable now that the caption layer lets taps through). */
+function svYtCmd(f,func,args){
+  try{if(f&&f.contentWindow)f.contentWindow.postMessage(JSON.stringify({event:'command',func:func,args:args||[]}),'*');}catch(e){}
+}
+function svEmbedSound(f,on){
+  if(!f||!/youtube\.com\/embed/.test(String(f.dataset.esrc||'')))return;
+  const fire=()=>{ if(on){svYtCmd(f,'unMute');svYtCmd(f,'setVolume',[100]);svYtCmd(f,'playVideo');} else svYtCmd(f,'mute'); };
+  fire();setTimeout(fire,500);setTimeout(fire,1400);setTimeout(fire,2800);   // player boots async
+}
 function svSoundSet(on){
   _svSound=!!on;try{localStorage.setItem('shadowhook_svsound',_svSound?'1':'0');}catch(e){}
   svSoundIcon();
   const v=svCurrentVideo();
   if(v){try{v.muted=!_svSound;if(v.paused){const p=v.play();if(p&&p.catch)p.catch(function(){});}}catch(e){}}
+  try{svEmbedSound(svCurrentEmbed(),_svSound);}catch(e){}   // #sndfix — YT obeys the same switch
   try{toast(_svSound?'🔊 Sound on':'🔇 Muted');}catch(e){}
 }
 function svUpdateIx(){
@@ -8888,7 +8905,7 @@ function svUpdateIx(){
   track.querySelectorAll('iframe.sv-embed').forEach(f=>{
     const pg=f.closest('.sv-page'), on=pg&&(+pg.getAttribute('data-si')===i);
     try{
-      if(on&&f.dataset.on!=='1'){f.dataset.on='1';f.src=f.dataset.esrc||'about:blank';}
+      if(on&&f.dataset.on!=='1'){f.dataset.on='1';f.src=f.dataset.esrc||'about:blank';if(_svSound)svEmbedSound(f,true);}   // #sndfix — the app's 🔊 rides into YT
       else if(!on&&f.dataset.on==='1'){f.dataset.on='0';f.src='about:blank';}
     }catch(e){}
   });
