@@ -10752,49 +10752,89 @@ async function sbLoadBoardWire(){
    record — so "the bot heard B4704 at 11:48" is always visible in the app. */
 window.HALL_LINE_ROWS=[];
 function hlSlotWord(k){return String(k||'').endsWith('AM')?'morning':'night';}
-function renderHallLine(){
+/* #jul23b — timestamps from Supabase arrive as "2026-07-23T18:48:54.5+00:00" or
+   "2026-07-23 18:48:54.5"; blindly appending Z made an Invalid Date. Parse safely. */
+function hlWhen(ts){
   try{
-    let card=document.getElementById('hallLineCard');
-    const wc=document.getElementById('wireCard');
-    if(!card){
-      if(!wc)return;
-      card=document.createElement('div');
-      card.id='hallLineCard'; card.className='card';
-      wc.insertAdjacentElement('afterend',card);
-    }
-    const rows=window.HALL_LINE_ROWS||[];
-    if(!rows.length){card.style.display='none';return;}
-    card.style.display='block';
-    const r=rows[0];
-    const when=(function(){try{const d=new Date(r.ran_at+(String(r.ran_at).endsWith('Z')?'':'Z'));
-      return d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})+' · '+d.toLocaleDateString([],{weekday:'short'});}catch(e){return '';}})();
-    const x=r.extras||{};
-    const about=x.about||r.k||'';
-    const kindTxt=(x.kind==='start')?('the '+hlSlotWord(about)+' board starts on'):(x.kind==='end'?'left off on':'heard');
-    const conf=Math.round((r.conf||0)*100);
-    let line;
-    if(r.card){
-      line='☎ '+kindTxt+' <b class="mono" style="color:var(--copper-hi);font-size:14px">'+acEsc(r.card)+'</b>'
-        +' <span style="color:var(--steel)">· '+conf+'% sure · '+when+'</span> '
-        +(r.posted?'<span style="color:var(--ok);font-weight:700">✓ on the record</span>'
-                  :'<span style="color:var(--ember)">− logged only'+(conf?' (low confidence)':'')+'</span>');
-    }else{
-      line='☎ called the line · <span style="color:var(--ember)">heard no card</span> <span style="color:var(--steel)">· '+when+'</span>';
-    }
-    let extraChecks='';
-    try{ (x.checks||[]).slice(0,3).forEach(c=>{ if(c&&c.heard_n!=null)
-      extraChecks+='<div class="rb-line" style="font-size:10.5px;color:var(--steel)">phone count · '+acEsc(String(c.kind||''))+' '+c.heard_n
-        +(c.verdict==='MATCH'?' <span style="color:var(--ok)">= sheet</span>':(c.verdict==='MISMATCH'?' <span style="color:var(--ember)">≠ sheet '+c.pdf_n+' (paper wins)</span>':' · sheet not in yet'))+'</div>'; });}catch(e){}
-    card.innerHTML='<div class="card-h">Dispatch Hotline <span class="sl">//</span> Transcript <span class="tag">auto-called after each board</span></div>'
-      +'<div class="card-b" style="padding-top:8px">'
-      +'<div class="rb-line" style="font-size:12px;margin:0">'+line+'</div>'
-      +(about?'<div class="rb-line" style="font-size:10.5px;color:var(--steel)">about board · <span class="mono">'+acEsc(about)+'</span></div>':'')
-      +extraChecks
-      +(r.transcript?('<details style="margin-top:7px"><summary style="cursor:pointer;font-size:10.5px;color:var(--copper-hi);letter-spacing:.06em">TRANSCRIPT ▾</summary>'
-        +'<div class="sub" style="font-size:11px;margin-top:5px;line-height:1.5">'+acEsc(String(r.transcript).slice(0,600))+'</div></details>'):'')
-      +'</div>';
-  }catch(e){try{DEVLOG.note('renderHallLine: '+e.message);}catch(_){}}
+    let s=String(ts||''); if(!s)return '';
+    s=s.replace(' ','T');
+    if(!/([zZ]|[+\-]\d{2}:?\d{2})$/.test(s)) s+='Z';
+    const d=new Date(s); if(isNaN(d.getTime()))return '';
+    return d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})+' · '+d.toLocaleDateString([],{weekday:'short'});
+  }catch(e){return '';}
 }
+/* key arithmetic for board keys ("2026-07-23_Thu_PM") */
+function hlKeyFor(iso,slot){try{const d=new Date(iso+'T12:00:00');return iso+'_'+DOWM[d.getDay()]+'_'+slot;}catch(e){return null;}}
+function hlIsoShift(iso,n){const d=new Date(iso+'T12:00:00');d.setDate(d.getDate()+n);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function hlPrevKey(k){const m=/^(\d{4}-\d{2}-\d{2})_[A-Za-z]+_(AM|PM)$/.exec(String(k||''));if(!m)return null;
+  return m[2]==='PM'?hlKeyFor(m[1],'AM'):hlKeyFor(hlIsoShift(m[1],-1),'PM');}
+function hlPrevCard(card){const m=/^([A-Z])(\d{3,5})$/.exec(card||'');if(!m)return null;
+  const n=parseInt(m[2],10)-1;if(n<=0)return null;return m[1]+String(n).padStart(m[2].length,'0');}
+/* #jul23b — WHAT DOES THE LATEST READING IMPLY FOR THE RECORD?
+   New-worker rows carry extras.kind/about. LEGACY rows (like the 65% B4704 one)
+   only have k = the slot the call ran in — so re-read the transcript: "start …
+   for Thursday night" means the named board OPENS on that card, i.e. the board
+   before it ENDED one card earlier (the chain rule). */
+function hlImplied(r){
+  try{
+    if(!r||!r.card)return null;
+    const x=r.extras||{}; let kind=x.kind, about=x.about;
+    const tx=String(r.transcript||r.heard||'').toLowerCase();
+    if(kind!=='start'&&kind!=='end') kind=/\bstart(ing|s)?\b/.test(tx)?'start':'end';
+    if(!about){
+      const datePart=String(r.k||'').slice(0,10);
+      if(kind==='start'&&/^\d{4}-\d{2}-\d{2}$/.test(datePart)){
+        const slot=/night|evening/.test(tx)?'PM':(/morning/.test(tx)?'AM':null);
+        about=slot?hlKeyFor(datePart,slot):null;
+      }
+      if(!about) about=r.k;
+    }
+    if(kind==='start'){
+      const pk=hlPrevKey(about), end=hlPrevCard(r.card);
+      if(pk&&end) return {key:pk,end:end,kind:kind,startsKey:about,starts:r.card};
+      return null;
+    }
+    return {key:about,end:r.card,kind:kind};
+  }catch(e){return null;}
+}
+/* #jul23b — THE PHONE LINE RIDES THE RECORD. A reading that never cleared the
+   posting threshold used to just sit in the log while "Starting on" and the
+   prediction ran on stale chain math. Now: if no board_wire row already owns
+   the implied key, the freshest hotline reading (conf ≥ .5) lands on the LOCAL
+   record — chain ripples, "Starting on" + the call re-figure immediately.
+   A real board_wire post (bot or human) still outranks it the moment it lands. */
+function hlApplyToRecord(){
+  window._hlApplied=null;
+  try{
+    const r=(window.HALL_LINE_ROWS||[])[0];
+    const imp=hlImplied(r);
+    if(!imp){return;}
+    if((r.conf||0)<0.5){window._hlApplied={skipped:'confidence '+(r.conf!=null?r.conf:'?')+' below .5 — not riding the record'};return;}
+    const bw=window.BW&&window.BW[imp.key];
+    if(bw&&bw.patch){window._hlApplied={skipped:'the record already owns '+imp.key+' ('+(bw.by_handle||bw.by||'a hand')+')'};return;}
+    const i=imp.key.indexOf('_'), date=imp.key.slice(0,i), slot=imp.key.slice(i+1);
+    let row=RECENT.find(x=>x.date+'_'+x.slot===imp.key);
+    if(!row){row={date:date,slot:slot,rain:false,hol:false};RECENT.push(row);
+      RECENT.sort((a,b)=>{const ka=a.date+(String(a.slot).endsWith('AM')?'_1':'_2'),kb=b.date+(String(b.slot).endsWith('AM')?'_1':'_2');return ka<kb?-1:ka>kb?1:0;});}
+    if(row.end===imp.end){window._hlApplied={key:imp.key,end:imp.end,note:'already on the record'};return;}
+    row.end=imp.end; row._hotline=true;
+    if(row.start){try{row.act=(AZ.indexOf(imp.end[0])-AZ.indexOf(row.start[0])+26)%26;}catch(e){}}
+    try{chainBoards(imp.key);}catch(e){}
+    try{renderRecentBoards();}catch(e){}
+    try{repredict();}catch(e){}
+    window._hlApplied={key:imp.key,end:imp.end,note:(imp.starts?('the hotline says '+imp.startsKey+' starts on '+imp.starts):'off the hotline')};
+    try{DEVLOG.note('☎ hotline riding the record: '+imp.key+' end '+imp.end+(imp.starts?(' → '+imp.startsKey+' starts '+imp.starts):''));}catch(e){}
+  }catch(e){try{DEVLOG.err('hlApplyToRecord: '+e.message);}catch(_){}}
+}
+/* #jul23b — the hotline card LEFT the Wire tab: the full reading (with transcript)
+   lives in the ⚙ Dev Log panel now. This keeps the wire clean and puts the raw
+   phone data next to the rest of the diagnostics. */
+function renderHallLine(){
+  try{const old=document.getElementById('hallLineCard'); if(old) old.remove();}catch(e){}
+  try{hlApplyToRecord();}catch(e){}
+}
+
 async function sbLoadHallLine(){
   if(!window.SB){try{DEVLOG.data('hall_line_log',{ok:false,err:'no backend client'});}catch(e){} return;}
   try{
@@ -12226,7 +12266,26 @@ window.addEventListener('resize',()=>{if($w('wbw').classList.contains('on'))wbFi
       try{const v=window._v4dbg;if(v)html+=row('engine inputs','source '+esc(v.source)+' · ch '+v.ch+' · tot '+v.tot+' · mom '+v.mom+(v.shutdown?' · SHUTDOWN':''));else html+=row('engine inputs','no run yet');}catch(e){}
       try{html+=row('sheets on device',(typeof DISPATCH_DATA!=='undefined')?(Object.keys(DISPATCH_DATA).length+' · newest '+esc(Object.keys(DISPATCH_DATA).sort().pop()||'—')):'—');}catch(e){}
       try{html+=row('record rows',(typeof RECENT!=='undefined')?RECENT.length+' boards on the record':'—');}catch(e){}
-      try{const hl=(window.HALL_LINE_ROWS||[])[0];html+=row('hall line',hl?((hl.card||'no card')+' · conf '+(hl.conf!=null?hl.conf:'?')+' · '+(hl.posted?'posted':'logged only')):'no rows read');}catch(e){}
+      /* #jul23b — DISPATCH HOTLINE lives here now (moved off the Wire tab) */
+      html+=h('DISPATCH HOTLINE · TRANSCRIPT');
+      try{
+        const hl=(window.HALL_LINE_ROWS||[])[0];
+        if(!hl){ html+=row('—','no hotline rows read yet'); }
+        else{
+          const when=(typeof hlWhen==='function')?hlWhen(hl.ran_at):'';
+          const conf=Math.round((hl.conf||0)*100);
+          html+=row('heard', hl.card?('<b style="color:#eeb46b">'+esc(hl.card)+'</b> · '+conf+'% sure'+(when?' · '+esc(when):'')):('no card in the recording'+(when?' · '+esc(when):'')));
+          html+=row('posted', hl.posted?'<span style="color:#9fd18a">✓ on the record (board_wire)</span>':'<span style="color:#d8a544">logged only — below the posting bar</span>');
+          const imp=(typeof hlImplied==='function')?hlImplied(hl):null;
+          if(imp) html+=row('reading', esc(imp.starts?(imp.startsKey+' starts on '+imp.starts+' → '+imp.key+' ended '+imp.end):(imp.key+' ended '+imp.end)));
+          const ap=window._hlApplied;
+          if(ap) html+=row('riding the record', ap.skipped?('<span style="color:#8f979e">no — '+esc(ap.skipped)+'</span>')
+                                                        :('<span style="color:#9fd18a">yes — '+esc(ap.key)+' end '+esc(ap.end)+'</span>'+(ap.note?' <span style="color:#586067">('+esc(ap.note)+')</span>':'')));
+          try{((hl.extras&&hl.extras.checks)||[]).slice(0,4).forEach(c=>{ if(c&&c.heard_n!=null)
+            html+=row('phone count', esc(String(c.kind||'count'))+' '+c.heard_n+(c.verdict==='MATCH'?' <span style="color:#9fd18a">= sheet</span>':(c.verdict==='MISMATCH'?' <span style="color:#f2a184">≠ sheet '+c.pdf_n+' (paper wins)</span>':' · sheet not in yet')));});}catch(e){}
+          if(hl.transcript) html+=row('transcript','<details><summary style="cursor:pointer;color:#eeb46b">show ▾</summary><div style="margin-top:5px;color:#aab2b8;font-size:11px;line-height:1.5">'+esc(String(hl.transcript).slice(0,700))+'</div></details>');
+        }
+      }catch(e){html+=row('hotline','error: '+esc(e.message));}
       html+=h('ERRORS · newest first ('+S.errs.length+')');
       if(!S.errs.length) html+=row('—','<span style="color:#9fd18a">none caught this session</span>');
       S.errs.slice(0,25).forEach(e2=>{html+=row(e2.t,'<span style="color:#f2a184">'+esc(e2.msg)+'</span>'+(e2.at?' <span style="color:#586067">@ '+esc(e2.at)+'</span>':''));});
