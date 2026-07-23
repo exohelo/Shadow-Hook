@@ -7715,11 +7715,17 @@ async function inviteWord(kind,name,detail,id){
 document.getElementById('roomInvite').addEventListener('click',()=>{
   inviteWord('room',document.getElementById('roomTitle').textContent);
 });
-// swipe-right from the left edge returns to Social
+/* #swipeback — ANY decisive left/right swipe in a room = back (was edge-only).
+   Dominantly-horizontal test keeps normal feed scrolling untouched; swipes that
+   START on the emoji strip (it scrolls sideways) or the send bar don't count. */
 (function(){const rv=document.getElementById('roomView');let x0=null,y0=null;
-  rv.addEventListener('touchstart',e=>{const t=e.touches[0];if(t.clientX<60){x0=t.clientX;y0=t.clientY}else{x0=null}},{passive:true});
+  rv.addEventListener('touchstart',e=>{const t=e.touches[0];
+    if(e.target.closest('.emoji-row')||e.target.closest('.sendbar')){x0=null;return;}
+    x0=t.clientX;y0=t.clientY;},{passive:true});
   rv.addEventListener('touchend',e=>{if(x0==null)return;const t=e.changedTouches[0];
-    if(t.clientX-x0>70 && Math.abs(t.clientY-y0)<50)closeRoom();x0=null;},{passive:true});
+    const dx=t.clientX-x0,dy=t.clientY-y0;
+    if(Math.abs(dx)>75&&Math.abs(dx)>Math.abs(dy)*1.6)closeRoom();
+    x0=null;},{passive:true});
 })();
 /* ---- modern chat: emojis, self bubbles, photo/video, gif slot ---- */
 const EMOJIS=["🔥","😂","💀","👍","⚓","💪","🌧","🤙","👀","🍺"];
@@ -9407,13 +9413,20 @@ try{renderHallStats();}catch(e){}
   on('svClose',closeStoryViewer);
   on('svSound',()=>svSoundSet(!_svSound));   // #stories8
   try{svSoundIcon()}catch(e){}
-  /* #hub — swipe down at the top, or right from the edge, closes the story viewer */
+  /* #hub/#swipeback — ANY left/right swipe is BACK: folds the talk first if it's
+     open, closes the reel otherwise. Pull-down at the very top still closes too.
+     Swipes starting on the comment input don't count (text selection). */
   const sv=document.getElementById('storyViewer'), svt=document.getElementById('svTrack');
   if(sv&&svt){let sx=null,sy=null;
-    sv.addEventListener('touchstart',e=>{const t=e.touches[0];sx=t.clientX;sy=t.clientY;},{passive:true});
+    sv.addEventListener('touchstart',e=>{const t=e.touches[0];
+      if(e.target.closest('.svc-bar')){sx=null;return;}
+      sx=t.clientX;sy=t.clientY;},{passive:true});
     sv.addEventListener('touchend',e=>{if(sx==null)return;const t=e.changedTouches[0];
       const dx=t.clientX-sx,dy=t.clientY-sy;
-      if(dx>80&&Math.abs(dy)<60&&sx<45)closeStoryViewer();                       // right from the left edge
+      if(Math.abs(dx)>75&&Math.abs(dx)>Math.abs(dy)*1.6){
+        if(sv.classList.contains('cm'))closeComments();
+        else closeStoryViewer();
+      }
       else if(dy>110&&Math.abs(dx)<70&&svt.scrollTop<8)closeStoryViewer();       // pull down at the very top
       sx=sy=null;},{passive:true});
   }
