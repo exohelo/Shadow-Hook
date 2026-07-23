@@ -8443,7 +8443,7 @@ function _thumbCache(){if(_thc)return _thc;try{_thc=JSON.parse(localStorage.getI
 function storyThumb(s){
   const k=storyKind(s);
   if(k==='img')return{img:String(s.url)};
-  if(k==='vid')return{vid:String(s.url)};
+  if(k==='vid'){const c=_thumbCache()[String(s.url)];return c?{img:c}:{vid:String(s.url)};}   // #stories6b — a captured poster beats the live-frame trick (iOS never paints those)
   if(k!=='link')return null;
   let u;try{u=new URL(s.url)}catch(e){return null}
   const h=u.hostname.replace(/^www\.|^m\./,'');let m;
@@ -8469,6 +8469,41 @@ function fetchThumb(url){   // TikTok oEmbed → cached thumb → repaint once
       try{localStorage.setItem('shadowhook_thumbs',JSON.stringify(cc))}catch(e){}
       try{renderSocialFeed()}catch(e){}}
   }).catch(()=>{});
+}
+/* #stories6b — POSTER CAPTURE: iOS won't paint a <video> cover until it plays,
+   so we grab a real frame once (canvas), cache it, and repaint the reel. Works
+   for freshly-shot clips (from the local blob, no CORS) AND for clips already
+   on the wall (storage serves CORS). Fails silent -> the crest cover stays. */
+function makeVideoThumb(url,cacheKey){
+  url=String(url||'');cacheKey=String(cacheKey||url);
+  if(!url||_thPend.has(cacheKey)||_thumbCache()[cacheKey])return;
+  _thPend.add(cacheKey);
+  try{
+    const v=document.createElement('video');
+    v.muted=true;v.playsInline=true;v.setAttribute('playsinline','');v.preload='metadata';
+    if(!/^blob:|^data:/.test(url))v.crossOrigin='anonymous';
+    let done=false;
+    const grab=()=>{
+      if(done||!(v.videoWidth>0))return;
+      try{
+        const c=document.createElement('canvas');const sc=Math.min(1,320/v.videoWidth);
+        c.width=Math.max(2,Math.round(v.videoWidth*sc));c.height=Math.max(2,Math.round(v.videoHeight*sc));
+        c.getContext('2d').drawImage(v,0,0,c.width,c.height);
+        const d=c.toDataURL('image/jpeg',.62);
+        if(d&&d.length>800){
+          done=true;const cc=_thumbCache();cc[cacheKey]=d;
+          try{localStorage.setItem('shadowhook_thumbs',JSON.stringify(cc))}catch(e){}
+          try{renderSocialFeed()}catch(e){}
+        }
+      }catch(e){done=true;}   // tainted canvas / codec — leave the crest
+      if(done){try{v.removeAttribute('src');v.load();}catch(e){}}
+    };
+    v.addEventListener('loadeddata',()=>{try{v.currentTime=0.1;}catch(e){grab();}});
+    v.addEventListener('seeked',grab);
+    v.addEventListener('error',()=>{done=true;});
+    v.src=url;try{v.load()}catch(e){}
+    setTimeout(()=>{if(!done){done=true;try{v.removeAttribute('src');v.load();}catch(e){}}},15000);
+  }catch(e){}
 }
 /* #stories2 — what a story IS: a camera image, a camera clip, a link card, or demo */
 function storyKind(s){
@@ -8657,6 +8692,7 @@ async function postMediaStory(){
       const r=await window.SB.from('stories').insert({owner:window.__shkUid,by_id:ACCT_ID,by_handle:chatMyHandle(),url:url,platform:plat,note:cap});   // #stories3 — plain insert; no SELECT-policy trap
       if(r.error)throw r.error;
       ALL_STORIES.unshift({id:'srv'+Date.now(),owner:window.__shkUid,by_id:ACCT_ID,by_handle:chatMyHandle(),url:url,platform:plat,note:cap,created_at:new Date().toISOString()});
+      if(_styKind==='vid')try{makeVideoThumb(_styBlobUrl,url)}catch(e){}   // #stories6b — poster from the fresh blob, keyed to the public URL
       if(sh)sh.classList.remove('on');
       renderSocialFeed();
       try{sbLoadStories(true);}catch(e){}   // true-up with the server's real row/id
@@ -8737,8 +8773,9 @@ function svPageHTML(s,i){
   }
   /* #stories2 — a MEDIA page: the camera clip/photo itself, full-bleed */
   if(k==='img'||k==='vid'){
+    const poster=_thumbCache()[String(s.url)]||'';
     const media=(k==='vid')
-      ?'<video class="sv-mediafull" src="'+u+'" muted loop playsinline preload="metadata"></video>'
+      ?'<video class="sv-mediafull" src="'+u+'" muted autoplay loop playsinline webkit-playsinline preload="auto"'+(poster?' poster="'+esc(poster)+'"':'')+'></video>'
       :'<img class="sv-mediafull" src="'+u+'" alt="">';
     return '<div class="sv-page" data-si="'+i+'" style="--pc:#EEB46B">'
       +media+'<div class="sv-shade top"></div><div class="sv-shade"></div><div class="sv-burst">❤</div>'
@@ -8835,7 +8872,17 @@ function svUpdateIx(){
   /* #stories2 — only the clip in view plays; everything off-screen holds still */
   track.querySelectorAll('video.sv-mediafull').forEach(v=>{
     const pg=v.closest('.sv-page'), on=pg&&(+pg.getAttribute('data-si')===i);
-    try{ if(on){ if(v.paused){v.muted=true;v.play().catch(function(){});} } else if(!v.paused)v.pause(); }catch(e){}
+    try{
+      if(on){
+        if(v.paused){v.muted=true;const pr=v.play();if(pr&&pr.catch)pr.catch(function(){});}
+        if(v.readyState<2&&!v._svRetry){v._svRetry=1;   // #stories6b — the clip wasn't loaded yet: play the MOMENT it can
+          v.addEventListener('canplay',function(){try{
+            const cur=Math.round(track.scrollTop/Math.max(1,track.clientHeight));
+            const pg2=v.closest('.sv-page');
+            if(pg2&&+pg2.getAttribute('data-si')===cur&&v.paused){v.muted=true;v.play().catch(function(){});}
+          }catch(e){}});}
+      } else if(!v.paused)v.pause();
+    }catch(e){}
   });
   /* #stories4 — embeds mount ONLY for the page in view; scrolling away unloads
      the frame so sound stops and the track stays light */
@@ -8862,6 +8909,13 @@ let _svTapT=0,_svTapPage=null;
 function svBind(track){
   svUpdateIx();
   track.onscroll=svUpdateIx;
+  /* #stories6b — Low Power Mode & co. can veto autoplay until a real touch:
+     ANY tap in the viewer revives the in-view clip */
+  track.ontouchend=function(){try{
+    const i=Math.round(track.scrollTop/Math.max(1,track.clientHeight));
+    const v=track.querySelector('.sv-page[data-si="'+i+'"] video.sv-mediafull');
+    if(v&&v.paused){v.muted=true;v.play().catch(function(){});}
+  }catch(e){}};
   track.onclick=async e=>{
     const dp=e.target.closest('[data-demoplay]');   // #stories2 — the demo reel's ▶ says what it is
     if(dp){try{toast('🎬 Placeholder clip — the real ones land when hands start sharing')}catch(_){}return;}
@@ -9085,7 +9139,7 @@ function renderSocialFeed(){
       if(!th&&k==='link')try{fetchThumb(s.url)}catch(e){}
       let cover='<div class="sty-cover"></div>';
       if(th&&th.img)cover='<div class="sty-cover real" style="background-image:url(\''+esc(String(th.img))+'\')"></div>';
-      else if(th&&th.vid)cover='<div class="sty-cover real"><video class="sty-covervid" src="'+esc(String(th.vid))+'#t=0.1" muted playsinline preload="metadata"></video></div>';
+      else if(th&&th.vid){cover='<div class="sty-cover real"><video class="sty-covervid" src="'+esc(String(th.vid))+'#t=0.1" muted playsinline preload="metadata"></video></div>';try{makeVideoThumb(th.vid)}catch(e){}}   // #stories6b — capture a real poster for next paint
       const playable=(k==='vid')||!!storyEmbed(s.url);
       html+='<div class="sty-tile" data-si="'+i+'" style="--pc:'+p.color+'">'
         +cover
