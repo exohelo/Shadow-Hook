@@ -8350,7 +8350,7 @@ function storyKind(s){
   if(/\.(mp4|webm|mov|m4v)(\?|$)/i.test(u))return 'vid';
   return 'link';
 }
-async function sbLoadStories(){
+async function sbLoadStories(_noMig){
   if(!window.SB)return;
   try{
     const r=await window.SB.from('stories').select('id,owner,by_id,by_handle,url,platform,note,created_at').order('created_at',{ascending:false}).limit(60);
@@ -8358,7 +8358,51 @@ async function sbLoadStories(){
     ALL_STORIES=r.data||[];
     try{localStorage.setItem('shadowhook_stories_v1',JSON.stringify(ALL_STORIES));}catch(e){}
     renderSocialFeed();
+    /* #stories3 — stories stranded on this phone ride up now that the wire answers */
+    if(!_noMig){try{const n=await sbMigrateStories();if(n>0)return sbLoadStories(true);}catch(e){}}
   }catch(e){console.warn('[stories] load',e);}
+}
+/* ===== #stories3 — the promise kept: local stories RIDE UP on the next good load.
+   Offline link-shares and camera shots (data: URLs get parked in storage first)
+   move to the server one by one; session-only blob: clips can't survive and stay
+   put. Stops at the first failure and retries on the next pull. ===== */
+let _styMigBusy=false;
+async function sbMigrateStories(){
+  if(_styMigBusy||!window.SB||!window.__shkUid)return 0;
+  const up=MY_LOCAL_STORIES.filter(s=>!/^blob:/.test(String(s.url||'')));
+  if(!up.length)return 0;
+  _styMigBusy=true;let moved=0;
+  try{
+    for(const s of up.slice(0,10)){
+      if(ALL_STORIES.some(x=>x.url===s.url)){MY_LOCAL_STORIES=MY_LOCAL_STORIES.filter(x=>x.id!==s.id);moved++;continue;}   // already up there (an earlier "failed" post that actually landed)
+      try{
+        let url=String(s.url||'');
+        if(/^data:/.test(url)){   // offline camera shot — land the image in storage first
+          const blob=await (await fetch(url)).blob();
+          const path='stories/'+chatUUID()+'.jpg';
+          const r1=await window.SB.storage.from('chat-media').upload(path,blob,{contentType:blob.type||'image/jpeg',upsert:true});
+          if(r1.error)throw r1.error;
+          const pub=window.SB.storage.from('chat-media').getPublicUrl(path);
+          url=pub&&pub.data&&pub.data.publicUrl;if(!url)throw new Error('no public url');
+        }
+        const r=await window.SB.from('stories').insert({owner:window.__shkUid,by_id:s.by_id||ACCT_ID,by_handle:s.by_handle||chatMyHandle(),url:url,platform:s.platform||'link',note:s.note||''});
+        if(r.error)throw r.error;
+        MY_LOCAL_STORIES=MY_LOCAL_STORIES.filter(x=>x.id!==s.id);moved++;
+      }catch(e){console.warn('[stories] migrate:',(e&&e.message)||e);break;}
+    }
+    try{localStorage.setItem(K('mystories'),JSON.stringify(MY_LOCAL_STORIES.filter(s=>!/^blob:/.test(String(s.url||'')))));}catch(e){}
+  }finally{_styMigBusy=false;}
+  if(moved)try{toast('⚓ '+moved+' held stor'+(moved===1?'y':'ies')+' rode up to the wall');}catch(e){}
+  return moved;
+}
+/* #stories3 — when a post fails, SAY WHY (console gets the raw error) and never lose the story */
+function storyFailMsg(e){
+  const m=String((e&&(e.message||e.error||e.msg))||e||'');
+  try{console.warn('[stories] post failed:',m);}catch(_){}
+  if(/does not exist|42P01|schema cache/i.test(m))return '⚠ The wire has no stories table yet — run STORIES-SETUP.sql. Saved on this phone for now.';
+  if(/row-level security|policy|42501/i.test(m))return '⚠ The wire refused it (permissions) — saved on this phone for now.';
+  if(/jwt|expired|401/i.test(m))return '⚠ Session expired — pass the gate again. Saved on this phone for now.';
+  return 'The wire dropped — saved on this phone, it rides up when the wire answers.';
 }
 function newStoryFlow(prefill){
   prefill=prefill||{};
@@ -8369,20 +8413,26 @@ function newStoryFlow(prefill){
     validate:v=>isLink(v.url)?null:"That doesn't look like a link — paste the full https:// address",
     onPaid:async v=>{
       const p=detectPlatform(v.url);
+      const localSave=()=>{   // #stories3 — the story is NEVER lost: it parks on this phone and migrates up
+        MY_LOCAL_STORIES.unshift({id:'loc'+Date.now(),by_handle:chatMyHandle(),by_id:ACCT_ID,url:v.url,platform:p.k,note:v.note||'',created_at:new Date().toISOString(),local:true});
+        try{localStorage.setItem(K('mystories'),JSON.stringify(MY_LOCAL_STORIES.filter(s=>!/^blob:/.test(String(s.url||'')))));}catch(e){}
+        renderSocialFeed();
+      };
       if(window.SB&&window.__shkUid){
         try{
-          const r=await window.SB.from('stories').insert({owner:window.__shkUid,by_id:ACCT_ID,by_handle:chatMyHandle(),url:v.url,platform:p.k,note:v.note||''}).select().single();
+          /* #stories3 — plain insert (no .select().single(): a missing SELECT policy
+             used to fail the WHOLE post even though the row landed) */
+          const r=await window.SB.from('stories').insert({owner:window.__shkUid,by_id:ACCT_ID,by_handle:chatMyHandle(),url:v.url,platform:p.k,note:v.note||''});
           if(r.error)throw r.error;
-          if(r.data)ALL_STORIES.unshift(r.data);
+          ALL_STORIES.unshift({id:'srv'+Date.now(),owner:window.__shkUid,by_id:ACCT_ID,by_handle:chatMyHandle(),url:v.url,platform:p.k,note:v.note||'',created_at:new Date().toISOString()});
           renderSocialFeed();
+          try{sbLoadStories(true);}catch(e){}   // true-up with the server's real row/id
           try{unlockBadge(bixLate("Town Crier"))}catch(e){}
           toast(p.ico+' Story posted — the wall sees it');
-        }catch(e){toast('The wire dropped — try again');}
+        }catch(e){localSave();toast(storyFailMsg(e));}
         return;
       }
-      MY_LOCAL_STORIES.unshift({id:'loc'+Date.now(),by_handle:chatMyHandle(),by_id:ACCT_ID,url:v.url,platform:p.k,note:v.note||'',created_at:new Date().toISOString(),local:true});
-      try{localStorage.setItem(K('mystories'),JSON.stringify(MY_LOCAL_STORIES));}catch(e){}
-      renderSocialFeed();
+      localSave();
       toast('Offline — the story rides up next sign-in');
     }});
 }
@@ -8450,6 +8500,22 @@ async function postMediaStory(){
   const file=_styFile; if(!file)return;
   const btn=sh&&sh.querySelector('#styPost'); if(btn){btn.disabled=true;btn.textContent='POSTING…';}
   const plat='hook-'+_styKind;
+  /* #stories3 — the phone-side landing: photos keep a compressed copy that MIGRATES
+     UP on the next good load; clips hold for the session (blob URLs die on relaunch) */
+  const keepLocal=async(msg)=>{
+    try{
+      let url=_styBlobUrl;
+      if(_styKind==='img')url=await shrinkImage(file,1080,.72);
+      MY_LOCAL_STORIES.unshift({id:'loc'+Date.now(),by_handle:chatMyHandle(),by_id:ACCT_ID,url:url,platform:plat,note:cap,created_at:new Date().toISOString(),local:true});
+      try{localStorage.setItem(K('mystories'),JSON.stringify(MY_LOCAL_STORIES.filter(s=>!/^blob:/.test(String(s.url||'')))));}catch(e){}
+      if(sh)sh.classList.remove('on');
+      renderSocialFeed();
+      toast(msg||(_styKind==='vid'?'🎬 On the wall for this session — sign in to keep it there':'📸 On this phone’s wall — rides up when the wire answers'));
+    }catch(e){
+      if(btn){btn.disabled=false;btn.textContent='📣 POST IT — FREE';}
+      toast('Couldn’t read that file — try another');
+    }
+  };
   if(window.SB&&window.__shkUid){
     try{
       const ext=((file.name||'').split('.').pop()||(_styKind==='vid'?'mp4':'jpg')).toLowerCase().replace(/[^a-z0-9]/g,'')||'bin';
@@ -8458,34 +8524,20 @@ async function postMediaStory(){
       if(up.error)throw up.error;
       const pub=window.SB.storage.from('chat-media').getPublicUrl(path);
       const url=pub&&pub.data&&pub.data.publicUrl; if(!url)throw new Error('no public url');
-      const r=await window.SB.from('stories').insert({owner:window.__shkUid,by_id:ACCT_ID,by_handle:chatMyHandle(),url:url,platform:plat,note:cap}).select().single();
+      const r=await window.SB.from('stories').insert({owner:window.__shkUid,by_id:ACCT_ID,by_handle:chatMyHandle(),url:url,platform:plat,note:cap});   // #stories3 — plain insert; no SELECT-policy trap
       if(r.error)throw r.error;
-      if(r.data)ALL_STORIES.unshift(r.data);
+      ALL_STORIES.unshift({id:'srv'+Date.now(),owner:window.__shkUid,by_id:ACCT_ID,by_handle:chatMyHandle(),url:url,platform:plat,note:cap,created_at:new Date().toISOString()});
       if(sh)sh.classList.remove('on');
       renderSocialFeed();
+      try{sbLoadStories(true);}catch(e){}   // true-up with the server's real row/id
       try{unlockBadge(bixLate("Town Crier"))}catch(e){}
       toast((_styKind==='vid'?'🎬':'📸')+' Story posted — the wall sees it');
     }catch(e){
-      if(btn){btn.disabled=false;btn.textContent='📣 POST IT — FREE';}
-      try{console.warn('[stories] post failed:',(e&&(e.message||e.error))||e);}catch(_){}
-      toast('The wire dropped — try again');
+      await keepLocal(storyFailMsg(e));   // the shot is NOT lost — parked + will migrate
     }
     return;
   }
-  /* offline / backend off — a photo rides a compressed copy on this phone;
-     a clip holds for the session (blob URLs don't survive a relaunch) */
-  try{
-    let url=_styBlobUrl;
-    if(_styKind==='img')url=await shrinkImage(file,1080,.72);
-    MY_LOCAL_STORIES.unshift({id:'loc'+Date.now(),by_handle:chatMyHandle(),by_id:ACCT_ID,url:url,platform:plat,note:cap,created_at:new Date().toISOString(),local:true});
-    try{localStorage.setItem(K('mystories'),JSON.stringify(MY_LOCAL_STORIES.filter(s=>!/^blob:/.test(String(s.url||'')))));}catch(e){}
-    if(sh)sh.classList.remove('on');
-    renderSocialFeed();
-    toast(_styKind==='vid'?'🎬 On the wall for this session — sign in to keep it there':'📸 On this phone’s wall — goes Order-wide once the wire’s in');
-  }catch(e){
-    if(btn){btn.disabled=false;btn.textContent='📣 POST IT — FREE';}
-    toast('Couldn’t read that file — try another');
-  }
+  await keepLocal();
 }
 (function(){   // the camera / gallery inputs hand their pick to the composer
   const go=e=>{const f=e.target.files&&e.target.files[0];e.target.value='';if(f)storyCompose(f);};
