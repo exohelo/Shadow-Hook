@@ -3576,18 +3576,26 @@ setTimeout(setTbH,600);setTimeout(setTbH,2200);   // re-measure once fonts settl
 /* every nav tap runs through gotoTab() — screen classes AND the per-tab hooks in one place */
 document.querySelectorAll('.nav button').forEach(b=>b.addEventListener('click',()=>gotoTab(b.dataset.scr)));
 /* #93 — expand the pending board's dispatch sheet (the one at the top of Recent Boards) */
-function openPendingSheet(){   // #95/#113 — ONLY the UP NEXT card's sheet auto-opens. Everything
-  // else folds — including the newest entry of a PAST week tab, which used to
-  // pop open because this walked "first sheet in the DOM", not "the pending one".
+/* #jul23c — THE CURRENT DISPATCH OPENS FULLY ON EVERY FRESH APP OPEN: the sheet,
+   SHIPS ON DECK and THE WEEK'S AVERAGES all expanded. It never force-reopens what
+   a hand closed this session — that close is remembered in _pendClosed, which is
+   IN-MEMORY only, so a fresh app open (a reload) wipes it and the next launch opens
+   everything again. Only the current upcoming dispatch is auto-managed; every past
+   board stays folded. This is what stops the old "keeps popping back open on every
+   tick" behavior: re-renders now read the closed-state instead of forcing block. */
+window._pendClosed = window._pendClosed || {};
+function dockKey(h){ const t=((h&&h.textContent)||'').toUpperCase();
+  return t.indexOf('WEEK')>=0?'week':(t.indexOf('SHIP')>=0?'ships':null); }
+function openPendingSheet(){
   const rbEl=document.getElementById('recentBoards'); if(!rbEl)return;
   const sheets=rbEl.querySelectorAll('.jobxp'); if(!sheets.length)return;
   sheets.forEach(xp=>{
     const card=xp.previousElementSibling;
-    const openIt=!!(card&&card.classList&&card.classList.contains('up'));   // the pending board only
-    if(openIt && !xp.querySelector('.xp-docks-h')){
-      /* #data(jul23) — SHIPS ON DECK now reads the PENDING board's OWN sheet (its key in
-         DISPATCH_DATA), never the carried-over TONIGHT_BOARD sample/stale sheet. If this
-         board's sheet hasn't landed, say so instead of showing another day's ships. */
+    const isPending=!!(card&&card.classList&&card.classList.contains('up'));   // the UP NEXT board only
+    if(!isPending) return;   // every past sheet stays exactly as built (folded)
+    /* inject SHIPS ON DECK + THE WEEK'S AVERAGES once — off the PENDING board's OWN sheet.
+       #data(jul23) — never the carried-over sample; a board with no sheet says so. */
+    if(!xp.querySelector('.xp-docks-h')){
       let ships=[], pk='';
       try{
         pk=(nd2.getFullYear()+"-"+String(nd2.getMonth()+1).padStart(2,"0")+"-"+String(nd2.getDate()).padStart(2,"0"))+"_"+callSlot;
@@ -3598,8 +3606,17 @@ function openPendingSheet(){   // #95/#113 — ONLY the UP NEXT card's sheet aut
       else xp.insertAdjacentHTML('beforeend','<div class="xp-mem" style="text-align:left;margin-top:12px">⚓ No ship sheet for this board yet — the bot is watching for it; ships land here the moment the sheet drops.</div>');
       try{ const wk=xpWeekAvg(String(callSlot).endsWith('AM')?'AM':'PM'); if(wk) xp.insertAdjacentHTML('beforeend', wk); }catch(e){}   // #data — the week's averages, off real sheets only
     }
-    xp.style.display=openIt?'block':'none';
-    const s=card&&card.querySelector('.rb-sheet'); if(s)s.textContent=openIt?'▤ SHEET ▴':'▤ SHEET ▾';
+    /* apply the launch-open state (default open; a manual close this session sticks) */
+    const sheetOpen=!window._pendClosed.sheet;
+    xp.style.display=sheetOpen?'block':'none';
+    const s=card.querySelector('.rb-sheet'); if(s)s.textContent=sheetOpen?'▤ SHEET ▴':'▤ SHEET ▾';
+    xp.querySelectorAll('.xp-docks-h').forEach(h=>{
+      const body=h.nextElementSibling; if(!body)return;
+      const nm=dockKey(h);
+      const open=sheetOpen && !(nm&&window._pendClosed[nm]);   // SHIPS ON DECK + WEEK'S AVERAGES open too
+      body.style.display=open?'block':'none';
+      const c=h.querySelector('.xp-docks-caret'); if(c)c.textContent=open?'▴':'▾';
+    });
   });
 }
 
@@ -5277,6 +5294,11 @@ function xpDocksToggle(h){
   const open=body.style.display==='none';
   body.style.display=open?'block':'none';
   const c=h.querySelector('.xp-docks-caret'); if(c)c.textContent=open?'▴':'▾';
+  /* #jul23c — remember a manual close of SHIPS ON DECK / THE WEEK'S AVERAGES for this
+     session, so the launch-open pass won't force it back open on the next re-render.
+     A fresh app open clears _pendClosed, so the next launch expands it again. */
+  try{const nm=(typeof dockKey==='function')?dockKey(h):null;
+    if(nm){ if(open) delete window._pendClosed[nm]; else window._pendClosed[nm]=true; }}catch(e){}
 }
 window.xpDocksToggle=xpDocksToggle;
 /* #rebuild — THE WEEK'S AVERAGES, rendered in the dispatch-sheet popup's own aesthetic
@@ -5364,7 +5386,9 @@ function renderRecentBoards(){
         xp=document.createElement('div'); xp.className='jobxp'; xp.style.display='block';
         xp.innerHTML=(dd&&(dd.total||dd.boards)?xpSheet(dd,'DISPATCH SHEET'):'')+(dd&&dd.early?xpSheet(dd.early,'THE EARLY LOOK (posted ~11 AM)'):'');
         const s0=card.querySelector('.rb-sheet'); if(s0)s0.textContent='▤ SHEET ▴';
-        card.addEventListener('click',()=>{xp.style.display=(xp.style.display==='none')?'block':'none';const s=card.querySelector('.rb-sheet');if(s)s.textContent=xp.style.display==='none'?'▤ SHEET ▾':'▤ SHEET ▴';});
+        /* #jul23c — remember the hand's choice: closing the pending sheet keeps it
+           closed for the session (no re-render reopens it); a fresh app open resets it. */
+        card.addEventListener('click',()=>{const opening=(xp.style.display==='none');xp.style.display=opening?'block':'none';if(opening)delete window._pendClosed.sheet;else window._pendClosed.sheet=true;const s=card.querySelector('.rb-sheet');if(s)s.textContent=opening?'▤ SHEET ▴':'▤ SHEET ▾';});
       }
       return {card,xp};
     }});
