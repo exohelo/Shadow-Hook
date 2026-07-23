@@ -1732,7 +1732,11 @@ window.DEVLOG=(function(){
   #recentBoards .rb-stat.prog .rb-word{color:var(--copper-hi)}
   #recentBoards .rb-empty{padding:22px 10px;text-align:center;color:var(--steel);font-size:12px}
   </style>
-      <div class="card-h">Recent Boards <span class="sl">//</span> the record <span class="tag">tap a board for its sheet</span><button type="button" class="rb-log" id="rbLogBtn">✎ log / correct</button></div>
+      <!-- #jul23b — the ✎ log/correct button moved INTO the Dev Log panel (bottom ⚙ chip):
+           on some phones the header button read as dead while the real failure was the
+           WRITE being refused downstream. The dev panel now owns the button AND shows
+           whether the wire accepted the write, so nothing fails silently. -->
+      <div class="card-h">Recent Boards <span class="sl">//</span> the record <span class="tag">tap a board for its sheet</span></div>
       <div class="card-b" id="recentBoards" style="padding-top:6px"></div>
     </div>
 
@@ -10674,7 +10678,26 @@ function bwMe(){return (typeof loadAcct==="function"&&(loadAcct()||{}).id)||"";}
 function bwMyHandle(){return (typeof loadAcct==="function"&&(loadAcct()||{}).handle)||"a hand";}
 function bwBlank(k){return {k:k,patch:null,by:null,by_handle:null,yes:0,no:0,confirmers:0,
   chal:null,chal_by:null,chal_handle:null,chal_yes:0,chal_no:0,status:'posted',heist_from:null,heist_handle:null};}
-async function bwPush(row){try{if(window.SB)await window.SB.from('board_wire').upsert(row,{onConflict:'k'});}catch(e){}}
+/* #jul23b — a refused write used to VANISH here (swallowed catch), so a correction
+   looked saved but never reached the wire — exactly the "won't let me edit" feel.
+   Now every push reports to the Dev Log, and a refusal tells the hand out loud. */
+async function bwPush(row){
+  if(!window.SB){try{DEVLOG.data('board_wire WRITE',{ok:false,err:'no backend client'});}catch(e){} return false;}
+  try{
+    const r=await window.SB.from('board_wire').upsert(row,{onConflict:'k'});
+    if(r&&r.error){
+      try{DEVLOG.data('board_wire WRITE',{ok:false,err:r.error.message+' — the wire REFUSED the write; if this mentions row-level security / permission, run shadowhook_fixes.sql'});}catch(e){}
+      try{toast('⚠ saved on this phone only — the wire refused the write (⚙ dev log has why)');}catch(e){}
+      return false;
+    }
+    try{DEVLOG.data('board_wire WRITE',{ok:true,rows:1,latest:row&&row.k?('upserted '+row.k):'upserted'});}catch(e){}
+    return true;
+  }catch(e){
+    try{DEVLOG.data('board_wire WRITE',{ok:false,err:e.message});}catch(_){}
+    try{toast('⚠ saved on this phone only — the wire is unreachable (⚙ dev log has why)');}catch(_){}
+    return false;
+  }
+}
 
 /* the winner's numbers land on the record and ripple the chain */
 function bwApplyRow(row){
@@ -10762,7 +10785,7 @@ function renderHallLine(){
     try{ (x.checks||[]).slice(0,3).forEach(c=>{ if(c&&c.heard_n!=null)
       extraChecks+='<div class="rb-line" style="font-size:10.5px;color:var(--steel)">phone count · '+acEsc(String(c.kind||''))+' '+c.heard_n
         +(c.verdict==='MATCH'?' <span style="color:var(--ok)">= sheet</span>':(c.verdict==='MISMATCH'?' <span style="color:var(--ember)">≠ sheet '+c.pdf_n+' (paper wins)</span>':' · sheet not in yet'))+'</div>'; });}catch(e){}
-    card.innerHTML='<div class="card-h">Hall Line <span class="sl">//</span> what the phone said <span class="tag">auto-called after each board</span></div>'
+    card.innerHTML='<div class="card-h">Dispatch Hotline <span class="sl">//</span> Transcript <span class="tag">auto-called after each board</span></div>'
       +'<div class="card-b" style="padding-top:8px">'
       +'<div class="rb-line" style="font-size:12px;margin:0">'+line+'</div>'
       +(about?'<div class="rb-line" style="font-size:10.5px;color:var(--steel)">about board · <span class="mono">'+acEsc(about)+'</span></div>':'')
@@ -10925,7 +10948,7 @@ function noFlopSeal(){
 (function(){
   const on=(id,ev,fn)=>{const e=document.getElementById(id);if(e)e.addEventListener(ev,fn);};
   on('noflopBtn','click',noFlopSeal);               // #118 — the official call ends the board
-  on('rbLogBtn','click',openBoardSheet);            // #117 — corrections live on the record
+  /* #jul23b — rbLogBtn left the Recent Boards header; the Dev Log panel owns the ✎ button now */
   on('brCancel','click',()=>{const s=document.getElementById('boardSheet');if(s)s.classList.remove('on');});
   on('brSave','click',saveBoardResult);
   on('brBoard','change',()=>{brSyncStart();brPreview();});
@@ -12112,8 +12135,7 @@ window.addEventListener('resize',()=>{if($w('wbw').classList.contains('on'))wbFi
         const hit=id=>e.target&&e.target.closest&&e.target.closest('#'+id);
         const call=(name)=>{ if(typeof window[name]==='function'||typeof self[name]==='function'){ (window[name]||self[name])(); }
           else { try{DEVLOG.err('button "'+name+'" has no handler — a script block crashed before defining it (see errors above)');}catch(_){} } };
-        if(hit('rbLogBtn')) call('openBoardSheet');
-        else if(hit('noflopBtn')) call('noFlopSeal');
+        if(hit('noflopBtn')) call('noFlopSeal');
         else if(hit('brSave')) call('saveBoardResult');
         else if(hit('brCancel')){const s=document.getElementById('boardSheet');if(s)s.classList.remove('on');}
       }catch(_){}
@@ -12140,6 +12162,30 @@ window.addEventListener('resize',()=>{if($w('wbw').classList.contains('on'))wbFi
       +'<span style="flex:0 0 118px;color:#8f979e;font-size:10.5px">'+esc(k)+'</span>'
       +'<span style="flex:1;word-break:break-word;color:'+(color||'#c9d1d9')+'">'+v+'</span></div>';
     function fresh(){try{if(typeof liveRefreshAll==='function')liveRefreshAll();}catch(e){} setTimeout(render,1200);}
+    /* #jul23b — the ✎ log/correct button lives HERE now (moved off the Recent Boards
+       header). It opens the same Log-the-Board sheet; the write status shows below. */
+    function openCorrect(){
+      pane.style.display='none';
+      if(typeof openBoardSheet==='function'){ try{openBoardSheet();return;}catch(e){try{DEVLOG.err('openBoardSheet threw: '+e.message);}catch(_){}} }
+      else { try{DEVLOG.err('openBoardSheet is not defined — a script block crashed before it loaded (see errors)');}catch(_){}}
+      pane.style.display='block'; render();
+    }
+    /* #jul23b — ⚿ PERMISSION PROBE: try a real write to board_wire with the app's own
+       key, against a harmless sentinel row (_permtest). If the backend refuses it,
+       the exact refusal shows here — that's the "users can't change it" answer. */
+    async function permTest(){
+      try{DEVLOG.data('board_wire WRITE TEST',{ok:false,err:'running…'});}catch(e){}
+      render();
+      if(!window.SB){try{DEVLOG.data('board_wire WRITE TEST',{ok:false,err:'no backend client'});}catch(e){} render();return;}
+      const probe={k:'_permtest',patch:null,by:'permtest',by_handle:'⚿ write test',yes:0,no:0,confirmers:0,
+        chal:null,chal_by:null,chal_handle:null,chal_yes:0,chal_no:0,status:'posted',heist_from:null,heist_handle:null};
+      try{
+        const r=await window.SB.from('board_wire').upsert(probe,{onConflict:'k'});
+        if(r&&r.error) DEVLOG.data('board_wire WRITE TEST',{ok:false,err:r.error.message+' ← the backend refuses app writes. Run shadowhook_fixes.sql in Supabase → SQL Editor, then test again.'});
+        else DEVLOG.data('board_wire WRITE TEST',{ok:true,latest:'writes ACCEPTED — permissions are good (sentinel row _permtest updated)'});
+      }catch(e){ try{DEVLOG.data('board_wire WRITE TEST',{ok:false,err:e.message});}catch(_){}}
+      render();
+    }
     function report(){
       const S=(window.DEVLOG&&DEVLOG._s)||{errs:[],notes:[],tables:{}};
       let out='SHADOW HOOK DEV REPORT · '+new Date().toString()+'\nbuild '+(S.build||'?')+'\n\n[DATA]\n';
@@ -12163,6 +12209,9 @@ window.addEventListener('resize',()=>{if($w('wbw').classList.contains('on'))wbFi
         +'<button id="dlFresh" style="background:none;border:1px solid rgba(238,180,107,.4);color:#eeb46b;border-radius:7px;font:700 10px monospace;padding:4px 8px;cursor:pointer">↻ re-pull</button>'
         +'<button id="dlCopy" style="background:none;border:1px solid rgba(122,130,138,.4);color:#8f979e;border-radius:7px;font:700 10px monospace;padding:4px 8px;cursor:pointer">⧉ copy</button>'
         +'<button id="dlClose" style="background:none;border:1px solid rgba(224,73,46,.5);color:#f2a184;border-radius:7px;font:700 10px monospace;padding:4px 10px;cursor:pointer">✕</button></div>';
+      html+='<div style="display:flex;gap:8px;margin:12px 0 2px">'
+        +'<button id="dlCorrect" style="flex:1;background:linear-gradient(180deg,rgba(238,180,107,.18),rgba(11,13,15,.4));border:1px solid rgba(238,180,107,.5);color:#eeb46b;border-radius:9px;font:800 11px monospace;letter-spacing:.08em;padding:9px 8px;cursor:pointer">✎ LOG / CORRECT A BOARD</button>'
+        +'<button id="dlPerm" style="flex:1;background:none;border:1px solid rgba(122,130,138,.45);color:#aab2b8;border-radius:9px;font:800 11px monospace;letter-spacing:.08em;padding:9px 8px;cursor:pointer">⚿ TEST WIRE WRITE</button></div>';
       html+=h('BACKEND');
       html+=row('supabase client',window.SB?'<span style="color:#9fd18a">ready</span>':'<span style="color:#f2a184">NOT built (offline / config / library)</span>');
       try{html+=row('realtime',(typeof _liveOn!=='undefined'&&_liveOn)?'<span style="color:#9fd18a">SUBSCRIBED (live)</span>':'<span style="color:#d8a544">down — polling every 12s instead</span>');}catch(e){html+=row('realtime','unknown');}
@@ -12189,6 +12238,8 @@ window.addEventListener('resize',()=>{if($w('wbw').classList.contains('on'))wbFi
       on('dlClose',()=>{pane.style.display='none';});
       on('dlFresh',fresh);
       on('dlCopy',copyReport);
+      on('dlCorrect',openCorrect);
+      on('dlPerm',permTest);
     }
     btn.addEventListener('click',function(){ pane.style.display=(pane.style.display==='none'?'block':'none'); if(pane.style.display==='block')render(); });
   }catch(e){ try{console.warn('devlog panel failed:',e);}catch(_){} }
