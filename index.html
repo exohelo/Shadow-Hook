@@ -674,6 +674,20 @@ html.daylight .heist{background:rgba(64,54,38,.6)}
 .sv-burst{position:absolute;top:44%;left:50%;transform:translate(-50%,-50%) scale(0);z-index:4;font-size:96px;pointer-events:none;opacity:0;color:#FE2C55}
 .sv-burst.go{animation:burst .8s ease-out}
 @keyframes burst{0%{transform:translate(-50%,-50%) scale(0);opacity:0}22%{transform:translate(-50%,-50%) scale(1.12);opacity:1}68%{opacity:1}100%{transform:translate(-50%,-50%) scale(1.35);opacity:0}}
+/* ===== #botreel — THE DISPATCH BOT'S REEL: the hand-off door + vibe chips ===== */
+.sv-botdoor{position:relative;z-index:1;width:100%;max-width:min(94%,372px);display:flex;flex-direction:column;align-items:center;gap:13px;text-align:center;padding:26px 18px;border-radius:22px;
+  background:radial-gradient(130% 90% at 50% 18%,rgba(127,174,106,.22),#0a0d0a 80%);border:1px solid rgba(127,174,106,.45);box-shadow:0 24px 60px rgba(0,0,0,.55)}
+.sv-botdoor .bd-face{font-size:48px;filter:drop-shadow(0 0 16px rgba(127,174,106,.5));animation:crownBob 2.4s ease-in-out infinite}
+.sv-botdoor .bd-ttl{font-family:'Anton',sans-serif;font-size:19px;letter-spacing:.08em;color:#fff}
+.sv-botdoor .bd-sub{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.1em;color:rgba(255,255,255,.6);text-transform:uppercase}
+.sv-vibes{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+.sv-vibe{cursor:pointer;font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.06em;padding:8px 13px;border-radius:99px;border:1px solid rgba(127,174,106,.45);background:rgba(127,174,106,.08);color:#cfe8c4;text-transform:uppercase}
+.sv-vibe.on{background:linear-gradient(180deg,#7fae6a,#5a8a48);color:#0a0d0a;font-weight:700;box-shadow:0 0 14px rgba(127,174,106,.45)}
+.sv-vibe:active{transform:scale(.95)}
+.sv-botdoor .bd-note{font-size:11.5px;color:rgba(255,255,255,.55);line-height:1.5;min-height:16px}
+.sv-botdoor .bd-key{cursor:pointer;font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.08em;color:rgba(255,255,255,.5);background:none;border:1px dashed rgba(255,255,255,.25);border-radius:9px;padding:7px 12px}
+#socialFeed .sty-tile.botgate .sty-cover{background:radial-gradient(120% 78% at 50% 30%,rgba(127,174,106,.4),#0a0d0a 78%)}
+#socialFeed .sty-tile.botgate .sty-av{border-color:#7fae6a}
 /* ===== #stories5 — THE TALK: the comments drawer. Opening it SHRINKS the track
    (the clip re-fits the space above); focusing the input grows the drawer so the
    keyboard has room. ===== */
@@ -8720,10 +8734,25 @@ async function shareStory(url){
 }
 let _svList=[];
 function svPageHTML(s,i){
+  /* #botreel — the hand-off door between the crew's reel and the bot's */
+  if(s&&s.divider){
+    const vibes=BOT_VIBES.map(v=>'<button class="sv-vibe'+(v===_botVibe?' on':'')+'" data-vibe="'+esc(v)+'">'+esc(v)+'</button>').join('');
+    return '<div class="sv-page" data-si="'+i+'" style="--pc:#7fae6a">'
+      +'<div class="sv-bg"></div>'
+      +'<div class="sv-botdoor">'
+        +'<div class="bd-face">\ud83e\udd16</div>'
+        +'<div class="bd-ttl">END OF THE CREW\u2019S REEL</div>'
+        +'<div class="bd-sub">the dispatch bot takes the wheel \u00b7 pick the vibe</div>'
+        +'<div class="sv-vibes">'+vibes+'</div>'
+        +'<div class="bd-note" id="botNote">swipe up \u2014 the bot feeds you \u201c'+esc(_botVibe)+'\u201d</div>'
+        +'<button class="bd-key" data-ytkey="1">\u2699 '+(_ytKey()?'change the YouTube key':'wire a YouTube key for real search')+'</button>'
+      +'</div>'
+    +'</div>';
+  }
   const k=storyKind(s), liked=storyLiked(s.id), n=storyLikeCount(s.id), u=esc(String(s.url));
   const likeBtn='<button class="sv-like'+(liked?' liked':'')+'" data-like="'+esc(String(s.id))+'"><span class="ic">'+(liked?'❤':'🤍')+'</span><span class="cnt">'+n.toLocaleString()+'</span></button>';
   const cmBtn='<button data-cm="'+esc(String(s.id))+'"><span class="ic">💬</span><span class="cnt" data-cmcnt="'+esc(String(s.id))+'"></span></button>';   // #stories5 — the talk
-  const delBtn=s.mine?'<button class="sv-del" data-del="'+esc(String(s.id))+'"><span class="ic">✕</span>Delete</button>':'';
+  /* #stories10 — the ✕ left the rail: deletion is a LONG-PRESS on your tile in the reel */
   const hint=(i===0&&_svListLen>1)?'<div class="sv-hint">▲ swipe up for the next ▲</div>':'';
   /* #stories2 — a DEMO page: a placeholder "clip" frame, not the link sheet */
   if(k==='demo'){
@@ -8753,7 +8782,7 @@ function svPageHTML(s,i){
       +media+'<div class="sv-shade top"></div><div class="sv-shade"></div><div class="sv-burst">❤</div>'
       +'<div class="sv-rail"><div class="sv-av">🎭</div>'+likeBtn+cmBtn
         +'<button data-share="'+(s.local?'__APP__':u)+'"><span class="ic">⤴</span>Share</button>'
-        +delBtn
+        
       +'</div>'
       +'<div class="sv-cap"><div class="sv-h">🎭 '+esc(s.by)+'</div>'
         +(s.note&&s.note.trim()?'<div class="sv-note">'+esc(s.note)+'</div>':'')
@@ -8769,7 +8798,7 @@ function svPageHTML(s,i){
       +'<div class="sv-av">🎭</div>'+likeBtn+cmBtn
       +'<button data-open="'+u+'"><span class="ic">🔗</span>Open</button>'
       +'<button data-share="'+u+'"><span class="ic">⤴</span>Share</button>'
-      +delBtn
+      
     +'</div>';
   if(emb){
     return '<div class="sv-page" data-si="'+i+'" style="--pc:'+p.color+'">'
@@ -8779,9 +8808,9 @@ function svPageHTML(s,i){
       +'</div>'
       +'<div class="sv-shade top"></div>'
       +rail
-      +'<div class="sv-cap"><div class="sv-h">🎭 '+esc(s.by)+'</div>'
+      +'<div class="sv-cap"><div class="sv-h">'+(s.bot?'\ud83e\udd16':'\ud83c\udfad')+' '+esc(s.by)+'</div>'
         +(s.note&&s.note.trim()?'<div class="sv-note">'+esc(s.note)+'</div>':'')
-        +'<div class="sv-t">'+p.ico+' '+esc(p.label)+' · playing in the Hall · '+agoShort(s.ts)+'</div></div>'
+        +'<div class="sv-t">'+(s.bot?('\ud83e\udd16 fed by the bot \u00b7 \u201c'+esc(s.vibe||_botVibe)+'\u201d \u00b7 swipe for more'):(p.ico+' '+esc(p.label)+' \u00b7 playing in the Hall \u00b7 '+agoShort(s.ts)))+'</div></div>'
       +hint
     +'</div>';
   }
@@ -8800,7 +8829,9 @@ function svPageHTML(s,i){
 let _svListLen=0;
 function openStoryViewer(startIdx){
   _svList=storiesFeed();
-  if(!_svList.length)_svList=DEMO_STORIES;   // #stories2 — empty wall → the demo reel plays, never the share popup
+  if(!_svList.length)_svList=DEMO_STORIES.slice();   // #stories2 — empty wall → the demo reel plays, never the share popup
+  else _svList=_svList.slice();
+  _svList.push({id:'bot-door',divider:true});        // #botreel — the reel never dead-ends
   _svListLen=_svList.length;
   const v=document.getElementById('storyViewer'), track=document.getElementById('svTrack');
   if(!v||!track)return;
@@ -8814,6 +8845,7 @@ function openStoryViewer(startIdx){
      below just re-settles layout. */
   try{track.scrollTop=idx*Math.max(1,track.clientHeight);svUpdateIx();}catch(e){}
   requestAnimationFrame(()=>{track.scrollTop=idx*track.clientHeight; svUpdateIx();});
+  try{svBotKick();}catch(e){}   // #botreel — start loading the bot's batch behind the door
 }
 /* ===== #stories7 — NO GHOST AUDIO =====
    display:none does NOT stop media, and backgrounded browsers happily keep
@@ -8909,6 +8941,8 @@ function svUpdateIx(){
       else if(!on&&f.dataset.on==='1'){f.dataset.on='0';f.src='about:blank';}
     }catch(e){}
   });
+  /* #botreel — running out of road -> the bot lays more */
+  try{if(_svList.length&&i>=_svList.length-2)svBotMore();}catch(e){}
   /* #stories5 — the talk follows the story in view */
   try{
     const v=document.getElementById('storyViewer');
@@ -8938,21 +8972,16 @@ function svBind(track){
     if(dp){try{toast('🎬 Placeholder clip — the real ones land when hands start sharing')}catch(_){}return;}
     const like=e.target.closest('[data-like]');
     if(like){toggleStoryLike(like.getAttribute('data-like'));svLikeUI(like.closest('.sv-page'),like.getAttribute('data-like'));return;}
+    const vb=e.target.closest('[data-vibe]');   // #botreel — pick what the bot feeds you
+    if(vb){svBotVibe(vb.getAttribute('data-vibe'));return;}
+    const yk=e.target.closest('[data-ytkey]');
+    if(yk){botKeySheet();return;}
     const cm=e.target.closest('[data-cm]');   // #stories5 — 💬 opens the talk
     if(cm){openComments(cm.getAttribute('data-cm'));return;}
     const open=e.target.closest('[data-open]');
     if(open){try{window.open(open.getAttribute('data-open'),'_blank','noopener');}catch(_){}return;}
     const sh=e.target.closest('[data-share]');
     if(sh){const su=sh.getAttribute('data-share');shareStory(su==='__APP__'?SHARE_URL:su);return;}   // #stories2 — demo/local pages share the app itself
-    const del=e.target.closest('[data-del]');
-    if(del){
-      if(!del.classList.contains('arm')){del.classList.add('arm');del.querySelector('.ic').textContent='✓';
-        setTimeout(()=>{if(del.isConnected){del.classList.remove('arm');del.querySelector('.ic').textContent='✕';}},2200);return;}
-      const keep=Math.round(track.scrollTop/Math.max(1,track.clientHeight));   // #stories2 — hold your place, don't snap to the top
-      await deleteStory(del.getAttribute('data-del'));
-      if(!storiesFeed().length)closeStoryViewer(); else openStoryViewer(keep);
-      return;
-    }
     /* double-tap anywhere on the page → like it (TikTok signature) */
     const page=e.target.closest('.sv-page'); if(!page)return;
     const now=Date.now();
@@ -9089,6 +9118,112 @@ async function svcSend(){
   });
 })();
 
+/* ===== #botreel — THE DISPATCH BOT FEEDS THE REEL =====
+   The crew's stories end -> a hand-off page ("the bot takes the wheel") with
+   VIBE chips. Content: the Keymaster's bot_feed crate (BOT-FEED-SETUP.sql),
+   and REAL YouTube search once a free API key is wired (stored on-device,
+   GIPHY-style). Pages append as you swipe — the reel doesn't run dry. */
+const BOT_VIBES=['port life','crane ops','ship spotting','night shift','heavy machinery','dock fails'];
+let _botVibe='port life';try{const v=localStorage.getItem('shadowhook_botvibe');if(v)_botVibe=v;}catch(e){}
+let BOT_POOL=[];try{BOT_POOL=JSON.parse(localStorage.getItem('shadowhook_botfeed')||'[]');}catch(e){}
+let _botBusy=false,_botToken='',_botCycle=0;
+function _ytKey(){try{return localStorage.getItem('shadowhook_ytkey')||'';}catch(e){return '';}}
+async function sbLoadBotFeed(){
+  if(!window.SB)return;
+  try{
+    const r=await window.SB.from('bot_feed').select('url,title,tags').eq('active',true).limit(200);
+    if(!r.error&&r.data){BOT_POOL=r.data;try{localStorage.setItem('shadowhook_botfeed',JSON.stringify(BOT_POOL));}catch(e){}}
+    else if(r.error)console.warn('[bot] crate:',r.error.message,'— run BOT-FEED-SETUP.sql');
+  }catch(e){}
+}
+function botPoolPick(vibe){
+  const words=String(vibe||'').toLowerCase().split(/\s+/).filter(Boolean);
+  let rows=BOT_POOL.filter(r=>{
+    const hay=((r.tags||'')+' '+(r.title||'')).toLowerCase();
+    return words.some(w=>hay.indexOf(w)>-1);
+  });
+  if(!rows.length)rows=BOT_POOL.slice();
+  rows=rows.filter(r=>{try{return !!storyEmbed(r.url)}catch(e){return false}});
+  for(let i=rows.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));const t=rows[i];rows[i]=rows[j];rows[j]=t;}
+  return rows;
+}
+async function ytSearch(q,pageToken){
+  const k=_ytKey();if(!k)return null;
+  const u='https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoEmbeddable=true&safeSearch=strict&maxResults=12&q='+encodeURIComponent(q+' port harbor')+(pageToken?'&pageToken='+encodeURIComponent(pageToken):'')+'&key='+encodeURIComponent(k);
+  const r=await fetch(u);if(!r.ok)throw new Error('HTTP '+r.status);
+  const j=await r.json();
+  return {token:j.nextPageToken||'',list:(j.items||[]).map(it=>({url:'https://www.youtube.com/watch?v='+(it.id&&it.id.videoId||''),title:((it.snippet||{}).title||'')})).filter(x=>/v=[\w-]{6,}/.test(x.url))};
+}
+function botEntries(rows,vibe){
+  return rows.map(r=>({id:'bot-'+String(r.url).replace(/[^\w-]/g,'').slice(-14)+'-'+(_botCycle),bot:true,by:'The Dispatch Bot',url:r.url,note:r.title||'',t:r.title||'',plat:'youtube',ts:0,mine:false,vibe:vibe}));
+}
+function svBotDoorIx(){return _svList.findIndex(s=>s&&s.divider);}
+function svAppendBot(entries){
+  const track=document.getElementById('svTrack');if(!track||!entries.length)return;
+  const base=_svList.length;
+  entries.forEach((s,k)=>{_svList.push(s);track.insertAdjacentHTML('beforeend',svPageHTML(s,base+k));});
+  _svListLen=_svList.length;
+  try{svUpdateIx();}catch(e){}
+  try{svcCounts();}catch(e){}
+}
+async function svBotKick(){
+  if(_botBusy)return;_botBusy=true;
+  try{
+    const note=document.getElementById('botNote');
+    if(_ytKey()){
+      try{
+        if(note)note.textContent='the bot is out hunting \u201c'+_botVibe+'\u201d\u2026';
+        const r=await ytSearch(_botVibe,'');
+        if(r&&r.list.length){_botToken=r.token;svAppendBot(botEntries(r.list,_botVibe));if(note)note.textContent='swipe up \u2014 the bot feeds you \u201c'+_botVibe+'\u201d';_botBusy=false;return;}
+      }catch(e){console.warn('[bot] search:',(e&&e.message)||e);if(note)note.textContent='the key got refused \u2014 check it under \u2699, riding the crate instead';}
+    }
+    await sbLoadBotFeed();
+    const rows=botPoolPick(_botVibe);
+    if(rows.length){svAppendBot(botEntries(rows,_botVibe));if(note)note.textContent='swipe up \u2014 '+rows.length+' from the Keymaster\u2019s crate';}
+    else if(note)note.textContent=_ytKey()?'nothing landed \u2014 try another vibe':'the crate is empty \u2014 feed bot_feed on the wire, or wire a YouTube key below';
+  }finally{_botBusy=false;}
+}
+async function svBotMore(){   // nearing the end -> keep the reel rolling
+  if(_botBusy)return;
+  const doorIx=svBotDoorIx();if(doorIx<0)return;
+  if(_svList.length>=200)return;
+  _botBusy=true;
+  try{
+    if(_ytKey()&&_botToken){
+      try{const r=await ytSearch(_botVibe,_botToken);if(r){_botToken=r.token;svAppendBot(botEntries(r.list,_botVibe));}}catch(e){_botToken='';}
+    }else if(BOT_POOL.length&&_svList.length>doorIx+1){
+      _botCycle++;svAppendBot(botEntries(botPoolPick(_botVibe),_botVibe));   // shuffle another lap of the crate
+    }
+  }finally{_botBusy=false;}
+}
+function svBotVibe(v){
+  _botVibe=v;try{localStorage.setItem('shadowhook_botvibe',v);}catch(e){}
+  _botToken='';_botCycle=0;
+  const doorIx=svBotDoorIx();if(doorIx<0)return;
+  const track=document.getElementById('svTrack');
+  _svList.splice(doorIx+1);_svListLen=_svList.length;
+  if(track){[...track.children].slice(doorIx+1).forEach(el=>el.remove());
+    const door=track.children[doorIx];if(door)door.outerHTML=svPageHTML(_svList[doorIx],doorIx);}
+  svBotKick();
+}
+function botKeySheet(){
+  openPaySheet({title:'WIRE THE BOT TO YOUTUBE',
+    sub:'A free YouTube Data API key gives the bot real search. console.cloud.google.com \u2192 enable \u201cYouTube Data API v3\u201d \u2192 Credentials \u2192 API key. Paste it here \u2014 it stays on this device.',
+    price:0,go:'SAVE THE KEY',
+    fields:[{k:'key',label:'API key',ph:'AIza\u2026',v:_ytKey(),max:64}],
+    validate:v=>((v.key||'').trim().length<20?'That doesn\u2019t look like a key':null),
+    onPaid:async v=>{
+      const k=v.key.trim();
+      try{
+        const r=await fetch('https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=1&q=port&key='+encodeURIComponent(k));
+        if(!r.ok)throw new Error('HTTP '+r.status);
+        localStorage.setItem('shadowhook_ytkey',k);
+        toast('\u2699 The bot is wired \u2014 real search is on');
+        svBotVibe(_botVibe);
+      }catch(e){toast('YouTube refused that key \u2014 check it\u2019s the API key with YouTube Data API v3 enabled');}
+    }});
+}
+
 /* #hall — the Hall lives ON the Social tab now (no overlay). setHallView() flips the
    two pills; openHub() survives as the road in for share-ins and invite links — it
    just lands you on the tab with the Hall view up. */
@@ -9176,6 +9311,13 @@ function renderSocialFeed(){
       +'</div>';
     });
   }
+  /* #botreel — the gate tile: straight to the bot's reel */
+  html+='<div class="sty-tile botgate" data-botgate="1" style="--pc:#7fae6a">'
+    +'<div class="sty-cover"></div><div class="sty-grad"></div>'
+    +'<div class="sty-av" style="display:flex;align-items:center;justify-content:center;font-size:19px">\ud83e\udd16</div>'
+    +'<div class="sty-play">\u25b6</div>'
+    +'<div class="sty-name">The Bot\u2019s Reel</div>'
+  +'</div>';
   html+='</div></div>';
 
   /* ---------- TRENDING — the hottest lobbies right now (by who's on the floor) ---------- */
@@ -9280,7 +9422,35 @@ function bindFeed(host){
   const cr=host.querySelector('[data-new="room"]'); if(cr)cr.addEventListener('click',()=>{try{newRoomFlow()}catch(e){}});
   const cg=host.querySelector('[data-new="gath"]'); if(cg)cg.addEventListener('click',()=>{try{newGatheringFlow()}catch(e){}});
   host.querySelectorAll('[data-new="story"]').forEach(cs=>cs.addEventListener('click',()=>{try{storyCreateChooser()}catch(e){}}));   // #stories2 — camera-first create (link lives inside the chooser)
-  host.querySelectorAll('.sty-tile[data-si]').forEach(t=>t.addEventListener('click',()=>{try{openStoryViewer(+t.getAttribute('data-si'))}catch(e){}}));   // #hub — tap a real story → full-page viewer
+  host.querySelectorAll('[data-botgate]').forEach(b=>b.addEventListener('click',()=>{try{openStoryViewer(9999)}catch(e){}}));   // #botreel — 9999 clamps to the door
+  /* #stories10 — a tile answers TWO ways: quick tap → the viewer; press-and-HOLD
+     (≈.55s, still finger) → strike YOUR story, themed confirm first. Holding a
+     tile that isn't yours just says so; the demo reel can't be struck. */
+  host.querySelectorAll('.sty-tile[data-si]').forEach(t=>{
+    let tm=null,lp=false,sx=0,sy=0;
+    const fire=()=>{
+      lp=true;setTimeout(()=>{lp=false;},650);   // a stale flag must never eat the NEXT tap
+      try{if(navigator.vibrate)navigator.vibrate(18)}catch(e){}
+      const s=storiesFeed()[+t.getAttribute('data-si')];
+      if(!s){try{toast("The demo reel can't be struck — it fades once real stories land")}catch(e){}return;}
+      if(!s.mine){try{toast('Only your own stories can be struck')}catch(e){}return;}
+      shConfirm('Strike this story off the wall? It goes for good.',
+        async()=>{await deleteStory(s.id);},
+        {title:'STRIKE THE STORY',icon:'🗑',okText:'Strike it'});
+    };
+    const start=e=>{const p=e.touches?e.touches[0]:e;sx=p.clientX;sy=p.clientY;lp=false;clearTimeout(tm);tm=setTimeout(fire,550);};
+    const move=e=>{const p=e.touches?e.touches[0]:e;if(Math.abs(p.clientX-sx)>12||Math.abs(p.clientY-sy)>12)clearTimeout(tm);};
+    const end=()=>clearTimeout(tm);
+    t.addEventListener('touchstart',start,{passive:true});
+    t.addEventListener('touchmove',move,{passive:true});
+    t.addEventListener('touchend',end,{passive:true});
+    t.addEventListener('mousedown',start);
+    t.addEventListener('mousemove',move);
+    t.addEventListener('mouseup',end);
+    t.addEventListener('mouseleave',end);
+    t.addEventListener('contextmenu',e=>e.preventDefault());
+    t.addEventListener('click',()=>{if(lp){lp=false;return;}try{openStoryViewer(+t.getAttribute('data-si'))}catch(e){}});
+  });
   host.querySelectorAll('.feed-inv[data-inv]').forEach(b=>b.addEventListener('click',e=>{
     e.stopPropagation();
     try{inviteWord(b.getAttribute('data-inv'), b.getAttribute('data-name'), b.getAttribute('data-detail')||'', b.getAttribute('data-rid')||'')}catch(_){}
