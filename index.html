@@ -5261,7 +5261,18 @@ try{Object.keys(DISPATCH_DATA).forEach(k=>ensureRecentRow(k,DISPATCH_DATA[k]));}
 try{publishCall();}catch(e){console.warn('publishCall',e);}
 try{renderCallStart();}catch(e){}
 window.addDispatchData=function(key,data){   // ← the dispatch bot calls this with each new sheet
-  DISPATCH_DATA[key]=Object.assign({},DISPATCH_DATA[key]||{},data);
+  const _prev=DISPATCH_DATA[key]||{};
+  const _merged=Object.assign({},_prev,data);
+  /* #totcas — a hand-corrected sheet is STICKY. The bot's parser undercounts the grand total
+     (it sums only the boards it recognises), so once someone types the real TOTAL in the Sheet
+     Editor, an incoming bot write must not silently clobber it back down. Manual total/casual/
+     flops win; the bot's fresh boards / ships / generated still come through. */
+  if(_prev.manual_edit && data && !data.manual_edit){
+    if(_prev.total) _merged.total=Object.assign({},(data&&data.total)||{},_prev.total);
+    if(_prev.flops!=null) _merged.flops=_prev.flops;
+    _merged.manual_edit=_prev.manual_edit;
+  }
+  DISPATCH_DATA[key]=_merged;
   try{const ex=JSON.parse(localStorage.getItem(K('dispatch'))||'{}');ex[key]=DISPATCH_DATA[key];
       localStorage.setItem(K('dispatch'),JSON.stringify(ex))}catch(e){}
   try{if(typeof syncTonightBoard==="function")syncTonightBoard();}catch(e){}   // #rebuild — a landed sheet now drives the ships/board card, not the sample
@@ -5349,8 +5360,7 @@ function xpSheet(d,label){
   let cas=(d.total&&d.total.cas!=null)?d.total.cas:null;
   if(cas==null&&d.boards) cas=Object.keys(d.boards).filter(k=>!NONCAS.has(k)).reduce((s,k)=>s+((d.boards[k]&&d.boards[k].total)||0),0);
   h+='<div class="xp-tot">Total <b>'+(tot!=null?tot.toLocaleString():'—')+'</b>'
-    +(cas!=null?' · Casual <b style="color:var(--copper-hi)">'+cas.toLocaleString()+'</b>':'')
-    +(d.flops!=null?' · <b class="xp-open" title="UTR − UTRWork off the sheet: UTR orders not yet covered when this printed.">'+d.flops.toLocaleString()+'</b> UTR still open':'')+'</div>';
+    +(cas!=null?' · Casual <b style="color:var(--copper-hi)">'+cas.toLocaleString()+'</b>':'')+'</div>';
   if(d.boards){
     const all=Object.keys(d.boards).sort((a,b)=>d.boards[b].total-d.boards[a].total);
     const casual=all.filter(k=>!NONCAS.has(k));
