@@ -4482,7 +4482,8 @@ function publishCall(){
     const cats=V4.categories(nd2,callSlot);
     mom=V4.momentum(isAM);
     const ex=V4.expect(dowIdx,isAM);
-    const _fc=DISPATCH_DATA[key], _cas=casualJobsOf(_fc);
+    const _fc=DISPATCH_DATA[key]; let _cas=casualJobsOf(_fc);
+    if(_fc&&_fc.total&&_fc.total.cas>0) _cas=_fc.total.cas;   /* #totcas — an explicit casual count from the sheet wins over the board sum */
     /* #v5 — the SHEET TOTAL drives the call (spillover over the registered pool). Take it
        whenever the sheet carries a total, even if the per-board casual breakdown didn't parse
        — otherwise a big board (e.g. 2780) silently fell back to the weekday average. */
@@ -5343,7 +5344,12 @@ function xpSheet(d,label){
   const NONCAS=new Set(["Crane","Crane Top Handler","Winch","Mechanics","Carpenter"]);   // casuals can't take these
   let h='<div class="xp-h">'+label+'</div>';
   const tot=d.total?d.total.total:null;
-  h+='<div class="xp-tot"><b>'+(tot!=null?tot.toLocaleString():'—')+'</b> total jobs'
+  /* #totcas — Total = every job on the sheet (the number the prediction runs on); Casual =
+     casual-eligible only. Casual uses the explicit field if entered, else the casual-board sum. */
+  let cas=(d.total&&d.total.cas!=null)?d.total.cas:null;
+  if(cas==null&&d.boards) cas=Object.keys(d.boards).filter(k=>!NONCAS.has(k)).reduce((s,k)=>s+((d.boards[k]&&d.boards[k].total)||0),0);
+  h+='<div class="xp-tot">Total <b>'+(tot!=null?tot.toLocaleString():'—')+'</b>'
+    +(cas!=null?' · Casual <b style="color:var(--copper-hi)">'+cas.toLocaleString()+'</b>':'')
     +(d.flops!=null?' · <b class="xp-open" title="UTR − UTRWork off the sheet: UTR orders not yet covered when this printed.">'+d.flops.toLocaleString()+'</b> UTR still open':'')+'</div>';
   if(d.boards){
     const all=Object.keys(d.boards).sort((a,b)=>d.boards[b].total-d.boards[a].total);
@@ -12392,6 +12398,7 @@ window.addEventListener('resize',()=>{if($w('wbw').classList.contains('on'))wbFi
         ? 'editing the sheet that’s in <span style="color:#586067">('+esc(s.src||'no src')+')</span>'
         : '<span style="color:#d8a544">no sheet here yet — you’re creating one by hand</span>';
       document.getElementById('shTotal').value=(s.total&&s.total.total!=null)?s.total.total:'';
+      {const c=document.getElementById('shCasual'); if(c) c.value=(s.total&&s.total.cas!=null)?s.total.cas:'';}
       document.getElementById('shFlops').value=(s.flops!=null)?s.flops:'';
       const box=document.getElementById('shBoards');
       const names=s.boards?Object.keys(s.boards).sort((a,b)=>((s.boards[b]&&s.boards[b].total)||0)-((s.boards[a]&&s.boards[a].total)||0)):[];
@@ -12418,6 +12425,8 @@ window.addEventListener('resize',()=>{if($w('wbw').classList.contains('on'))wbFi
         const tot=parseInt((document.getElementById('shTotal')||{}).value,10);
         if(!(tot>0)){ say('✗ enter the sheet’s total jobs','#f2a184'); return; }
         slice.total=Object.assign({},slice.total||{},{total:tot});
+        const casV=parseInt((document.getElementById('shCasual')||{}).value,10);
+        if(casV>0) slice.total=Object.assign({},slice.total,{cas:casV}); else if(slice.total) delete slice.total.cas;
         const fl=(document.getElementById('shFlops')||{}).value;
         if(fl!==''&&!isNaN(parseInt(fl,10))) slice.flops=parseInt(fl,10); else delete slice.flops;
         const boards={};
@@ -12469,9 +12478,11 @@ window.addEventListener('resize',()=>{if($w('wbw').classList.contains('on'))wbFi
         +'<select id="shWhich" style="flex:1;background:#0b0d0f;border:1px solid rgba(122,130,138,.4);color:#c9d1d9;border-radius:7px;font:12px monospace;padding:7px 8px"></select></div>';
       html+='<div id="shState" style="color:#8f979e;font-size:10.5px;margin:4px 0 10px"></div>';
       html+=h('THE NUMBERS');
-      html+='<div style="display:flex;gap:8px;margin:6px 0 10px">'
+      html+='<div style="display:flex;gap:8px;margin:6px 0 4px">'
         +'<label style="flex:1;color:#8f979e;font-size:10px">TOTAL JOBS<br><input id="shTotal" type="number" inputmode="numeric" style="width:100%;margin-top:3px;background:#0b0d0f;border:1px solid rgba(238,180,107,.45);color:#eeb46b;border-radius:7px;font:700 14px monospace;padding:7px 8px"></label>'
-        +'<label style="flex:1;color:#8f979e;font-size:10px">UTR STILL OPEN (flops)<br><input id="shFlops" type="number" inputmode="numeric" style="width:100%;margin-top:3px;background:#0b0d0f;border:1px solid rgba(122,130,138,.4);color:#f2a184;border-radius:7px;font:700 14px monospace;padding:7px 8px"></label></div>';
+        +'<label style="flex:1;color:#8f979e;font-size:10px">CASUAL JOBS<br><input id="shCasual" type="number" inputmode="numeric" style="width:100%;margin-top:3px;background:#0b0d0f;border:1px solid rgba(238,180,107,.3);color:#eeb46b;border-radius:7px;font:700 14px monospace;padding:7px 8px"></label>'
+        +'<label style="flex:1;color:#8f979e;font-size:10px">UTR STILL OPEN (flops)<br><input id="shFlops" type="number" inputmode="numeric" style="width:100%;margin-top:3px;background:#0b0d0f;border:1px solid rgba(122,130,138,.4);color:#f2a184;border-radius:7px;font:700 14px monospace;padding:7px 8px"></label></div>'
+        +'<div style="color:#586067;font-size:9.5px;margin:0 0 10px;line-height:1.4">TOTAL = every job on the sheet — this is the number the prediction runs on. CASUAL = the casual-eligible jobs only.</div>';
       html+=h('THE BOARDS · jobs per board');
       html+='<div id="shBoards"></div>';
       html+='<button id="shAdd" style="margin:6px 0 12px;background:none;border:1px dashed rgba(122,130,138,.5);color:#8f979e;border-radius:7px;font:700 10px monospace;padding:6px 10px;cursor:pointer">+ add a board row</button>';
