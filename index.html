@@ -1637,6 +1637,9 @@ window.DEVLOG=(function(){
         <div class="wire-meters" id="wMeters"></div>
         <div class="wire-runaway steady" id="wRun" style="display:none"></div>
         <div id="myOdds" style="margin-top:12px;text-align:center"></div>
+        <div style="text-align:center;margin-top:12px">
+          <button type="button" onclick="recalcPredictions()" style="font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--copper-hi,#eeb46b);background:var(--plate-2,#161a1e);border:1px solid var(--line,#2a3138);border-radius:8px;padding:9px 18px;cursor:pointer">↻ Recalculate</button>
+        </div>
       </div>
     </div>
 
@@ -3945,6 +3948,16 @@ function renderCallStart(){
 /* #114 — the predictions re-figure the moment data lands, wherever it lands from:
    a logged board, a wire correction, a bot sheet, or the boot seed. */
 function repredict(){try{renderCallStart();}catch(e){} try{publishCall();}catch(e){}}
+/* #recalc — manual "run the numbers again" button on the wire. Re-pulls live weather,
+   folds in any boards logged since load, and re-figures the call + odds from scratch. */
+function recalcPredictions(){
+  try{ if(typeof V4!=="undefined"&&V4.loadWeather) V4.loadWeather(); }catch(e){}
+  try{ if(typeof V4!=="undefined"&&V4.learnFromRecent) V4.learnFromRecent(); }catch(e){}
+  try{ repredict(); }catch(e){}
+  try{ if(typeof renderRecentBoards==="function") renderRecentBoards(); }catch(e){}
+  try{ toast("↻ Predictions recalculated"); }catch(e){}
+}
+window.recalcPredictions=recalcPredictions;
 /* #114b — the shared anchor: the last board that actually RAN (everything at/after
    the pending board is future data and must never anchor a prediction) */
 function lastCompletedBoard(){
@@ -4286,13 +4299,72 @@ const V4 = (function(){
     const s=arr.reduce((a,x)=>a+x,0); return arr.map(x=>x/s);
   }
 
+  /* ---- v5: REGISTERED-CAPACITY + SPILLOVER (the real driver of casual movement) ----
+     Movement isn't set by the casual job COUNT — it's set by how far total demand clears the
+     (roughly fixed) registered pool. Below the pool, registered members mop nearly everything
+     up and the board barely moves; once total saturates them, the overflow spills to the
+     casual hall and the board runs deep. We fit that capacity knee from the log itself. */
+  const ATT_BASE = 0.22;                 // the come-down/attendance regime baked into historical movements
+  let _capCache = {};
+  function _corr(xs, ys){
+    const n=xs.length; if(n<3) return 0;
+    let mx=0,my=0; for(let i=0;i<n;i++){mx+=xs[i];my+=ys[i];} mx/=n; my/=n;
+    let sxy=0,sx=0,sy=0; for(let i=0;i<n;i++){const a=xs[i]-mx,b=ys[i]-my; sxy+=a*b; sx+=a*a; sy+=b*b;}
+    return (sx&&sy)? sxy/Math.sqrt(sx*sy) : 0;
+  }
+  /* the registered pool's capacity: the total-jobs knee where casuals start getting tapped.
+     Fit off the log (rows are [ch,tot,dow,act,hm,mo,i]); stable ~2300 AM / ~1975 PM. */
+  function fitCapacity(isAM){
+    const kk=isAM?'AM':'PM'; if(_capCache[kk]!=null) return _capCache[kk];
+    const rows=log(isAM), def=isAM?2300:1975;
+    if(rows.length<60){ _capCache[kk]=def; return def; }
+    const tot=rows.map(r=>r[1]), act=rows.map(r=>r[3]);
+    let bC=def,bR=-2;
+    for(let C=1800;C<=2600;C+=25){ const sp=tot.map(t=>t>C?t-C:0); const r=_corr(sp,act); if(r>bR){bR=r;bC=C;} }
+    _capCache[kk]=bC; return bC;
+  }
+  /* neighbours chosen by SPILLOVER similarity (+ mild weekday / recency / season) — not by
+     the casual count, and with the old momentum term dropped (it was swamping the match). */
+  function spilloverKnn(isAM,dow,totHat,month){
+    const rows=log(isAM), n=rows.length; if(n<40) return null;
+    const C=fitCapacity(isAM), spHat=totHat>C?totHat-C:0, cands=[];
+    for(let j=0;j<n;j++){
+      const r=rows[j], sp=r[1]>C?r[1]-C:0;
+      let d=Math.pow((sp-spHat)/120,2) + 0.4*(r[2]===dow?0:1) + Math.pow(0.5*(n-j)/365,2);
+      let md=Math.abs(r[5]-month); md=Math.min(md,12-md); d+=Math.pow(0.3*md,2);
+      cands.push([d,r[3]]);
+    }
+    cands.sort((a,b)=>a[0]-b[0]);
+    const k=Math.min(25,n), pmf=new Array(27).fill(0);
+    for(let i=0;i<k;i++) pmf[Math.min(cands[i][1],26)]+=1/k;
+    return pmf;
+  }
+  /* recent come-down / attendance (came ÷ called). Low turnout ⇒ more numbers called per
+     job ⇒ the board runs further. Read live from the catch model; null if we have none. */
+  function recentAtt(){
+    try{ if(typeof catchModel==="function"){ const g=catchModel().global; if(g>0) return g; } }catch(e){}
+    try{ if(typeof COMEDOWN_CAL!=="undefined") return COMEDOWN_CAL.ratio(); }catch(e){}
+    return null;
+  }
+  /* stretch the movement axis by m (letters ∝ 1/attendance): low attendance pushes mass out */
+  function warpPMF(pmf,m){
+    if(Math.abs(m-1)<0.02) return pmf;
+    const out=new Array(27).fill(0);
+    for(let j=0;j<27;j++){ if(pmf[j]<=0) continue; const k=Math.min(26,Math.max(0,Math.round(j*m))); out[k]+=pmf[j]; }
+    return out;
+  }
+
   /* ---- the call ---- */
   function predict(o){
     try{
       const isAM=!!o.isAM, dow=o.dow, month=(o.date?o.date.getMonth()+1:7);
       const cats=o.cats||{list:[],shutdown:false,rain:false,heavy:false};
       if(cats.shutdown){ const p=new Array(27).fill(0); p[0]=0.9;p[1]=0.08;p[2]=0.02; return p; }
-      let pmf=knn(isAM,dow,o.chHat,o.totHat,o.mom,month) || geomFallback(dow,isAM);
+      /* v5: spillover-over-registered-capacity is the primary driver. The old casual/momentum
+         kNN and the geometric prior stay as fallbacks if the spillover fit isn't ready. */
+      let pmf = spilloverKnn(isAM,dow,o.totHat,month)
+             || knn(isAM,dow,o.chHat,o.totHat,o.mom,month)
+             || geomFallback(dow,isAM);
       // SEPARATE category behaviour — blend the strongest-supported applicable one
       let bestW=0,best=null;
       (cats.list||[]).forEach(function(c){
@@ -4303,6 +4375,10 @@ const V4 = (function(){
       if(best){ pmf=pmf.map((x,i)=>(1-bestW)*x+bestW*best[i]); }
       // live heavy-rain nudge: thin turnout tends to push the board a touch further
       if(cats.heavy){ const lift=new Array(27).fill(0); for(let i=1;i<27;i++) lift[i]=pmf[i-1]; pmf=pmf.map((x,i)=>0.8*x+0.2*lift[i]); }
+      // attendance regime: low casual turnout ⇒ the board reaches deeper (letters ∝ 1/att)
+      const ra=recentAtt();
+      if(ra&&ra>0){ let m=ATT_BASE/ra; m=Math.max(0.85,Math.min(1.5,m)); pmf=warpPMF(pmf,m); try{window._v4att={recent:+ra.toFixed(3),mult:+m.toFixed(2)};}catch(e){} }
+      else { try{window._v4att=null;}catch(e){} }
       const s=pmf.reduce((a,x)=>a+x,0)||1; return pmf.map(x=>x/s);
     }catch(err){ if(window.console)console.warn('V4.predict',err); return null; }
   }
@@ -4377,8 +4453,9 @@ const V4 = (function(){
   learnFromRecent();
   return { predict:predict, categories:categories, momentum:momentum, expect:expect,
            learnBoard:learnBoard, learnFromRecent:learnFromRecent, loadWeather:loadWeather, setRain:setRain, setStopWork:setStopWork,
+           capacityFor:fitCapacity, recentAtt:recentAtt,
            get boardsToCh(){return boardsToCh;}, get earlyRatio(){return earlyRatio;}, get cpl(){return cpl;},
-           _log:log, _knn:knn, _catPMF:catPMF };
+           _log:log, _knn:knn, _catPMF:catPMF, _spilloverKnn:spilloverKnn };
 })();
 window.V4=V4; window.setRain=V4.setRain; window.setStopWork=V4.setStopWork;
 try{ V4.loadWeather(); }catch(e){}
@@ -4406,18 +4483,22 @@ function publishCall(){
     mom=V4.momentum(isAM);
     const ex=V4.expect(dowIdx,isAM);
     const _fc=DISPATCH_DATA[key], _cas=casualJobsOf(_fc);
+    /* #v5 — the SHEET TOTAL drives the call (spillover over the registered pool). Take it
+       whenever the sheet carries a total, even if the per-board casual breakdown didn't parse
+       — otherwise a big board (e.g. 2780) silently fell back to the weekday average. */
+    const _shTot=(_fc&&_fc.total&&(_fc.total.total||(typeof _fc.total==="number"?_fc.total:0)))||0;
+    if(_shTot) ex.tot=_shTot;
     if(_cas!=null){
-      const hasTot=!!(_fc.total&&_fc.total.total);
-      ex.ch=_cas*V4.boardsToCh;                       /* casual BOARDS -> the hall scale the logs train on (kills the old skew) */
-      if(!hasTot) ex.ch=ex.ch/Math.max(0.4,V4.earlyRatio); /* an EARLY-only sheet is partial -> scale up to expected FINAL */
-      if(hasTot) ex.tot=_fc.total.total;
-      source=hasTot?'FINAL':'EARLY';
+      ex.ch=_cas*V4.boardsToCh;                       /* casual BOARDS -> the hall scale the logs train on */
+      if(!_shTot) ex.ch=ex.ch/Math.max(0.4,V4.earlyRatio); /* an EARLY-only sheet is partial -> scale up to expected FINAL */
+      source=_shTot?'FINAL':'EARLY';
     } else if(window.EARLY_COUNTS){
-      ex.ch=(window.EARLY_COUNTS.ch||ex.ch); ex.tot=(window.EARLY_COUNTS.tot||ex.tot); source='EARLY';
-    } else { source=isAM?'AM':'EST'; }
+      ex.ch=(window.EARLY_COUNTS.ch||ex.ch); if(!_shTot) ex.tot=(window.EARLY_COUNTS.tot||ex.tot); source='EARLY';
+    } else { source=_shTot?'FINAL':(isAM?'AM':'EST'); }
     if(_dropTot>0){ ex.ch=Math.max(ex.ch||0,_dropTot*V4.boardsToCh); if(source!=='FINAL')source='EARLY'; }   /* #liverecalc */
     pmf=V4.predict({isAM:isAM,dow:dowIdx,chHat:ex.ch,totHat:ex.tot,mom:mom,date:nd2,cats:cats});
-    window._v4dbg={source:source,ch:Math.round(ex.ch),tot:Math.round(ex.tot),cats:cats.list,shutdown:!!cats.shutdown,mom:+(mom||0).toFixed(2)};
+    const _cap=(typeof V4.capacityFor==="function")?V4.capacityFor(isAM):null;
+    window._v4dbg={source:source,ch:Math.round(ex.ch),tot:Math.round(ex.tot),cap:_cap,spill:(_cap!=null?Math.max(0,Math.round(ex.tot)-_cap):null),att:(window._v4att||null),cats:cats.list,shutdown:!!cats.shutdown,mom:+(mom||0).toFixed(2)};
   }catch(_v4e){ if(window.console)console.warn('V4 fallback',_v4e); pmf=null; }
   if(!pmf){
     if(!isAM){
@@ -12450,7 +12531,7 @@ window.addEventListener('resize',()=>{if($w('wbw').classList.contains('on'))wbFi
                         :('<span style="color:#f2a184">FAIL</span> · '+esc(i.err)+' <span style="color:#586067">('+i.at+')</span>'));});
       html+=h('THE PENDING BOARD & THE ENGINE');
       try{html+=row('pending board',esc((typeof callSlot!=='undefined')?callSlot:'?')+' · starts '+esc((typeof pendingStartCard==='function'&&pendingStartCard())||'—'));}catch(e){}
-      try{const v=window._v4dbg;if(v)html+=row('engine inputs','source '+esc(v.source)+' · ch '+v.ch+' · tot '+v.tot+' · mom '+v.mom+(v.shutdown?' · SHUTDOWN':''));else html+=row('engine inputs','no run yet');}catch(e){}
+      try{const v=window._v4dbg;if(v)html+=row('engine inputs','source '+esc(v.source)+' · tot '+v.tot+(v.cap!=null?' · cap '+v.cap+' · spill '+v.spill:'')+(v.att?' · att '+Math.round(v.att.recent*100)+'% ×'+v.att.mult:'')+' · mom '+v.mom+(v.shutdown?' · SHUTDOWN':''));else html+=row('engine inputs','no run yet');}catch(e){}
       try{html+=row('sheets on device',(typeof DISPATCH_DATA!=='undefined')?(Object.keys(DISPATCH_DATA).length+' · newest '+esc(Object.keys(DISPATCH_DATA).sort().pop()||'—')):'—');}catch(e){}
       try{html+=row('record rows',(typeof RECENT!=='undefined')?RECENT.length+' boards on the record':'—');}catch(e){}
       /* #jul23b — DISPATCH HOTLINE lives here now (moved off the Wire tab) */
