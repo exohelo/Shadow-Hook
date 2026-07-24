@@ -94,9 +94,10 @@ def parse_row(tokens):
 def find_row(text_lines, name):
     """Find a board's line; return (its 8 value tokens, line index) or (None, -1)."""
     for i, ln in enumerate(text_lines):
-        low = ln.lower()
-        if low.strip().startswith(name.lower()):
-            rest = ln[len(name):]
+        raw = ln.lstrip()                 # tesseract indents table rows — match AND slice the same string,
+        low = raw.lower()                 # else an indented board (e.g. "  Hold …") slices wrong and is dropped
+        if low.startswith(name.lower()):
+            rest = raw[len(name):]
             # the name must END here — 'Crane' must not swallow a 'Crane Top Handler' line
             if rest.lstrip()[:1].isalpha():
                 continue
@@ -289,7 +290,7 @@ def parse_page(text):
     if boards:
         summed = {c: sum(b[c] for b in boards.values()) for c in COLS}
         summed["total"] = sum(b["total"] for b in boards.values())
-        printed = _printed_total(lines, last_row_i)
+        printed = _printed_total(lines, last_row_i, warnings)
         if printed:
             total = printed
             if printed["total"] != summed["total"]:
@@ -305,12 +306,19 @@ def parse_page(text):
         out["flops"] = flops
     return out
 
-def _printed_total(lines, last_row_i):
+def _printed_total(lines, last_row_i, warnings=None):
     """The sheet's own totals row: either labelled TOTAL(S), or the cell row right
     after the last board row (on the real sheets it's unlabelled: '0 280 327 49 91
     0 0 747'). Cells can be OCR junk ('747' scans as 'TAT') — keep every cell-ish
-    token and let parse_row repair/rebuild, trusting only a row whose checksum
-    holds or whose Total was rebuilt from its own clean columns."""
+    token and let parse_row repair/rebuild.
+
+    Two tiers, so one mis-OCR'd column can't throw away the headline number:
+      1. a row whose checksum holds (or whose Total was rebuilt from clean columns);
+      2. failing that, a totals row whose printed grand-total cell is itself a clean
+         number — trust it even if a middle column garbled (the same 'trust the clean
+         printed Total' rule parse_row already uses per row). Only if BOTH tiers miss
+         does the caller fall back to summing the boards, which a dropped/garbled
+         board row can silently shrink."""
     cands = []
     for i, ln in enumerate(lines):
         if re.match(r"\s*(grand\s+)?totals?\b", ln, re.I):
@@ -326,9 +334,19 @@ def _printed_total(lines, last_row_i):
             if len(cells) >= 7 and len(digitish) >= len(cells) - 1:   # a cells-only line
                 cands.append(cells)
                 break
+    # tier 1 — a totals row that fully checks out
     for cells in cands:
         row, ok = parse_row(cells)
         if ok and row["total"] > 0:
+            return {c: row[c] for c in COLS}
+    # tier 2 — trust a clean printed grand total even when a column mis-OCR'd
+    for cells in cands:
+        row, _ = parse_row(cells)
+        if row.get("total", 0) > 0 and "_total_mismatch" in row:
+            mm = row["_total_mismatch"]
+            if warnings is not None:
+                warnings.append(f"totals row: columns summed {mm['cols_sum']} but the printed total is "
+                                f"{mm['printed_total']} — trusting the printed total (a column mis-OCR'd)")
             return {c: row[c] for c in COLS}
     return None
 
