@@ -285,16 +285,20 @@ def parse_page(text):
         if not ok and "_total_mismatch" in row:
             warnings.append(f"{name}: cols summed {row['_total_mismatch']['cols_sum']} but printed total {row['_total_mismatch']['printed_total']}")
 
-    # grand total — prefer the sheet's own totals row over summing the boards
+    # grand total — reconcile the sheet's own totals row against the sum of the boards.
+    # A correctly-read grand total corroborates the board sum; a totals row that reads
+    # many times higher (a period/cumulative row, a serial, or glued cells) is a mis-grab,
+    # not the headline. Anchor to the boards so it can't post a wild number — e.g. 7,181
+    # on a ~1,300-job sheet.
     total = None
     if boards:
         summed = {c: sum(b[c] for b in boards.values()) for c in COLS}
         summed["total"] = sum(b["total"] for b in boards.values())
-        printed = _printed_total(lines, last_row_i, warnings)
+        printed = _printed_total(lines, last_row_i, summed["total"], warnings)
         if printed:
             total = printed
             if printed["total"] != summed["total"]:
-                warnings.append(f"boards summed {summed['total']} but the sheet's totals row prints {printed['total']} — using the printed row")
+                warnings.append(f"boards summed {summed['total']} but using the sheet's totals row {printed['total']}")
         else:
             total = summed
 
@@ -306,19 +310,18 @@ def parse_page(text):
         out["flops"] = flops
     return out
 
-def _printed_total(lines, last_row_i, warnings=None):
+def _printed_total(lines, last_row_i, board_sum=None, warnings=None):
     """The sheet's own totals row: either labelled TOTAL(S), or the cell row right
     after the last board row (on the real sheets it's unlabelled: '0 280 327 49 91
     0 0 747'). Cells can be OCR junk ('747' scans as 'TAT') — keep every cell-ish
     token and let parse_row repair/rebuild.
 
-    Two tiers, so one mis-OCR'd column can't throw away the headline number:
-      1. a row whose checksum holds (or whose Total was rebuilt from clean columns);
-      2. failing that, a totals row whose printed grand-total cell is itself a clean
-         number — trust it even if a middle column garbled (the same 'trust the clean
-         printed Total' rule parse_row already uses per row). Only if BOTH tiers miss
-         does the caller fall back to summing the boards, which a dropped/garbled
-         board row can silently shrink."""
+    board_sum (the summed board totals) anchors the choice, because a correctly-read
+    grand total is approximately the sum of the boards. Among the candidates we pick the
+    one CLOSEST to that sum, prefer a row whose checksum holds, and REJECT any that read
+    implausibly high — a cumulative/period row, a serial, or glued cells otherwise lands
+    a wild headline (the 7,181-on-a-1,300-job-sheet bug). If nothing plausible remains,
+    return None and the caller uses the board sum, which every board row corroborates."""
     cands = []
     for i, ln in enumerate(lines):
         if re.match(r"\s*(grand\s+)?totals?\b", ln, re.I):
@@ -334,19 +337,38 @@ def _printed_total(lines, last_row_i, warnings=None):
             if len(cells) >= 7 and len(digitish) >= len(cells) - 1:   # a cells-only line
                 cands.append(cells)
                 break
-    # tier 1 — a totals row that fully checks out
+
+    scored = []                                   # (row, checksum_ok, total)
     for cells in cands:
         row, ok = parse_row(cells)
-        if ok and row["total"] > 0:
-            return {c: row[c] for c in COLS}
-    # tier 2 — trust a clean printed grand total even when a column mis-OCR'd
-    for cells in cands:
-        row, _ = parse_row(cells)
-        if row.get("total", 0) > 0 and "_total_mismatch" in row:
-            mm = row["_total_mismatch"]
+        if row.get("total", 0) > 0:
+            scored.append((row, ok, row["total"]))
+    if not scored:
+        return None
+
+    if board_sum and board_sum > 0:
+        cap = board_sum * 1.5 + 100               # a real grand total is the boards plus, at most, a few unlisted rows
+        plausible = [s for s in scored if s[2] <= cap]
+        if not plausible:
             if warnings is not None:
-                warnings.append(f"totals row: columns summed {mm['cols_sum']} but the printed total is "
-                                f"{mm['printed_total']} — trusting the printed total (a column mis-OCR'd)")
+                highs = sorted({s[2] for s in scored})
+                warnings.append(f"ignored totals row(s) {highs} — implausibly high vs the {board_sum} jobs on "
+                                f"the boards; using the board sum")
+            return None
+        plausible.sort(key=lambda s: (abs(s[2] - board_sum), 0 if s[1] else 1))   # closest to boards, clean checksum breaks ties
+        row, ok, _t = plausible[0]
+        if not ok and "_total_mismatch" in row and warnings is not None:
+            mm = row["_total_mismatch"]
+            warnings.append(f"totals row: columns summed {mm['cols_sum']} but printed total {mm['printed_total']} "
+                            f"— trusting the printed total (a column mis-OCR'd)")
+        return {c: row[c] for c in COLS}
+
+    # no anchor available — prefer a checksum-clean row, then a clean printed total
+    for row, ok, _t in scored:
+        if ok:
+            return {c: row[c] for c in COLS}
+    for row, ok, _t in scored:
+        if "_total_mismatch" in row:
             return {c: row[c] for c in COLS}
     return None
 
