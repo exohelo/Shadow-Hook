@@ -2528,6 +2528,38 @@ window.DEVLOG=(function(){
   </div>
 
 
+  <!-- #48d — ITS · International Transportation Service interactive yard viewer · 10 phases + berths -->
+  <div class="yiw" id="itw">
+    <div class="yi-top">
+      <button class="yi-back" id="itBack" type="button" aria-label="Back">‹</button>
+      <div class="yi-id"><span class="ico">🗺</span><div><b id="itName">ITS</b><span id="itSub">—</span></div></div>
+      <button class="yi-guidebtn" id="itGuideBtn" type="button">📖 GUIDE</button>
+    </div>
+    <div class="yi-search">
+      <input id="itSearch" placeholder="Find a row, berth or gate — G-9, PT-04, Flip Line…" autocomplete="off">
+      <div class="yi-sug" id="itSug"></div>
+    </div>
+    <div class="yi-vp" id="itVp">
+      <button class="yi-reset" id="itReset" type="button">⤢ FIT</button>
+      <button class="yi-legend-btn" id="itLegBtn" type="button">☰ LEGEND</button>
+      <div class="yi-stage" id="itStage"></div>
+      <div class="yi-hint">PINCH ZOOM · DRAG · TAP A SPOT · DOUBLE-TAP</div>
+      <div class="yi-legend" id="itLegend"><div class="lgc">
+        <h4>ITS Yard Legend</h4><div id="itLegList"></div>
+        <button class="close" id="itLegClose" type="button">Close</button>
+      </div></div>
+      <div class="yi-guide" id="itGuide"><div class="ygc">
+        <div class="yg-top"><b>ITS TERMINAL GUIDE</b><button id="itGuideClose" type="button">✕</button></div>
+        <div class="yg-body" id="itGuideBody"></div>
+      </div></div>
+      <div class="yi-info" id="itInfo">
+        <button class="close-i" id="itInfoClose" type="button">✕</button>
+        <div class="ih"><span class="swatch" id="itSw"></span><span class="nm" id="itInfoNm">—</span><span class="cat" id="itInfoCat"></span></div>
+        <div class="desc" id="itInfoDesc"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- send word to the keymaster -->
   <div class="sheet" id="wordSheet">
     <div class="sheet-card" style="text-align:left">
@@ -12641,6 +12673,537 @@ window.addEventListener('resize',()=>{if($w('wbw').classList.contains('on'))wbFi
     }
     btn.addEventListener('click',function(){ pane.style.display=(pane.style.display==='none'?'block':'none'); if(pane.style.display==='block')render(); });
   }catch(e){ try{console.warn('devlog panel failed:',e);}catch(_){} }
+})();
+</script>
+
+<script>
+/* #48d — ITS interactive vector yard map (International Transportation Service, Pier G) */
+/* ================= ITS · International Transportation Service — interactive vector yard map =================
+   Vector redraw of the posted ITS wall map (1281 Pier G Way, Long Beach), in the sign's own orientation and
+   proportions (nearly square): vessel berths down the RIGHT edge — G-236/Phase 1 upper · Slip Fill slip &
+   Berth G-235 middle · G-232/Phase 0 lower; gate/admin/ops across the TOP; North & South rail yards down the
+   LEFT; THUMS island center-left; West Arrival at the bottom. Ten phases (0–9) + Phase 5 rail annex.
+   Tap-to-select, search, legend, and the ITS Terminal Guide. Hooks into openYardMap(): ITS opens this. */
+(function(){
+"use strict";
+const VBW=2200, VBH=1880;
+const IZ={
+  op:"ITS", name:"ITS · INT'L TRANSPORTATION SERVICE", sub:"Pier G · Long Beach · Berths G-232 ↔ G-236",
+  vb:[0,0,VBW,VBH],
+  cats:{
+    inb   :{c:"#1a2230",s:"#6f9bd0",t:"INBOUND ROW",d:"Inbound container row (blue). Grounded imports — end caps are the first & last piles."},
+    exp   :{c:"#1b2a20",s:"#6f9e78",t:"EXPORT / EMPTY",d:"Export / empty row (green). Boxes staged to load, or empties staged to return."},
+    wheel :{c:"#2a2410",s:"#d9a04f",t:"WHEELED ROW",d:"Wheeled row (yellow) — containers sitting on chassis."},
+    chas  :{c:"#34251a",s:"#e0955f",t:"CHASSIS PIT",d:"Chassis pit — hook / drop the skeletal trailers that haul boxes over the road."},
+    haz   :{c:"#3a1512",s:"#e0584a",t:"HAZARDOUS",d:"Hazardous cargo row (SS-3 HAZ). Placarded boxes live here — keep clear unless it's your move."},
+    berth :{c:"#152e3a",s:"#5f97b8",t:"VESSEL BERTH",d:"Wharf crane position (PT) along the berth. Ship works alongside — stay out from under the hook."},
+    gate  :{c:"#3a2a17",s:"#eeb46b",t:"GATE / ENTRANCE",d:"Terminal gate / entrance. Check in here and mind the guard shack."},
+    rail  :{c:"#161a1d",s:"#7d868c",t:"RAIL / TRACKS",d:"On-dock rail — trains built & worked here. Watch the rail-warning stars."},
+    fac   :{c:"#181c1f",s:"#8f979e",t:"FACILITY",d:"Terminal facility / building."},
+    park  :{c:"#191d20",s:"#8f979e",t:"PARKING",d:"Parking area."},
+    flip  :{c:"#6e3c17",s:"#e08a3c",t:"FLIP LINE",d:"Flip line — dock unit that switches a container from a pulled (own) chassis to a push (pull) chassis."},
+    marshal:{c:"#5a1512",s:"#e8564a",t:"EMERGENCY MARSHALLING",d:"Designated emergency marshalling site — muster point in an emergency."},
+    thums :{c:"#24262b",s:"#9aa0a6",t:"THUMS ISLAND",d:"THUMS island access. Oil-island road runs through — keep to the marked lane."},
+    constr:{c:"#211c26",s:"#c07a7a",t:"CONSTRUCTION",d:"Slip Fill Project construction area — closed. Berths G-235 / G-227 work zone."},
+    exam  :{c:"#1c2333",s:"#7d9bc0",t:"CBP / EXAM",d:"US Customs & Border Protection exam / RPM area."}
+  },
+  legend:[["inb","Inbound row"],["exp","Export / empty row"],["wheel","Wheeled row"],
+    ["haz","Hazardous (SS-3 HAZ)"],["chas","Chassis pit"],["flip","Flip line"],
+    ["berth","Vessel berth (PT)"],["gate","Gate / entrance"],["rail","Rail yard / tracks"],
+    ["exam","CBP / exam area"],["marshal","Emergency marshalling 1–7"],["fac","Facility / building"],
+    ["park","Parking"],["thums","THUMS island"],["constr","Construction (slip fill)"]],
+  spots:[]
+};
+
+/* ============================ SPOTS ============================ */
+(function(){
+  const S=IZ.spots;
+  const add=(id,label,cat,x,y,w,h,extra)=>{S.push(Object.assign({id,label:label||id,cat,x,y,w,h},extra||{}));};
+  const rows=(list,x,y,w,h,vgap)=>list.forEach((r,i)=>add(r[0],r[1],r[2],x,y+i*(h+vgap),w,h,Object.assign({ln:r[3],rn:r[4]},r[5]||{})));
+  // vertical columns left→right (tall & narrow, top/bottom end numbers)
+  const cols=(list,x,y,w,h,hgap)=>list.forEach((c,i)=>add(c[0],c[1],c[2],x+i*(w+hgap),y,w,h,Object.assign({rot:1,tn:c[3],bn:c[4]},c[5]||{})));
+
+  /* ---------- PHASE 5 ANNEX (top-left) ---------- */
+  add("STOR2132","Storage Tracks 21-32","rail",140,66,300,48,{desc:"On-dock storage tracks 21-32 (Phase 5 annex)."});
+  add("BRIDGEITS","Bridge to ITS","fac",150,124,46,132,{rot:1,desc:"Bridge to ITS — links the Phase 5 annex to the main terminal."});
+  add("CBPEXAM","CBP Exam Area","exam",216,140,140,30,{desc:"US Customs & Border Protection exam area (Phase 5)."});
+  add("PH5_7","7","marshal",368,140,38,30,{desc:"Emergency marshalling site 7 (Phase 5)."});
+  add("PH5CHAS","Chassis Pit","chas",216,300,72,58,{desc:"Phase 5 chassis pit."});
+  add("PH5BLDG","Ph. 5 Bldg","fac",300,306,60,30,{desc:"Phase 5 building."});
+  add("CC5","CC-5","wheel",412,86,24,50,{rot:1});
+  add("BB5","BB-5","wheel",412,142,24,50,{rot:1});
+  add("AA5","AA-5","wheel",344,300,84,22);
+
+  /* ---------- TOP GATE / ADMIN ---------- */
+  add("GG5CHAS","GG5 Chassis Pit","chas",1090,64,150,40,{desc:"GG5 chassis pit, by the in/out gate."});
+  add("STOR4144","Storage Tracks 41-44","rail",1258,68,176,40,{desc:"On-dock storage tracks 41-44."});
+  add("GATEHOUSE","Gate House","fac",1116,140,104,42,{fa:1,aed:1,desc:"Gate house — security, first aid kit & AED. Notify Security via Ch. 1 in an emergency."});
+  rows([["TT3A","TT-3","wheel"],["TT3B","TT-3","wheel"],["TT3C","TT-3","wheel"],["TT3D","TT-3","wheel"]],1096,192,58,20,4);
+  add("PIERJ","In / Out Gate — Pier J","gate",1096,290,210,34,{desc:"Main in/out gate area, Pier J — radios & P-trucks check in/out."});
+  add("OTRTRB","OTR Trouble Area","fac",1180,332,110,40,{desc:"Over-the-road trucker trouble area — docket & box problems sorted here."});
+  add("ADMIN","Admin · A","fac",1300,246,96,38,{desc:"Administration Building (A)."});
+  add("ITSMGMT","ITS Mgmt · OCU","fac",1300,288,96,36,{desc:"ITS management / OCU parking."});
+  add("TROUBLEE","Assist · E","fac",1300,204,96,34,{desc:"Trouble Assist (E)."});
+  add("M1","1","marshal",1406,246,30,26,{desc:"Emergency marshalling site 1."});
+  add("M2","2","marshal",1406,276,30,26,{desc:"Emergency marshalling site 2."});
+  add("M3","3","marshal",1406,306,30,26,{desc:"Emergency marshalling site 3."});
+
+  /* ---------- TOP OPS (right of gate) ---------- */
+  add("EASTARR","East Arrival — Pier G Way","gate",1560,150,240,38,{desc:"East arrival gate — Pier G Way."});
+  add("EG1","EG-1","fac",1548,206,48,24,{eg:1,desc:"Emergency Generator #1."});
+  add("MARINEOPS","Marine Ops · B","fac",1560,234,116,48,{fa:1,aed:1,desc:"Marine Operations Building (B) — first aid kit & AED."});
+  add("RADIOBRK","Radio / Break Rm","fac",1560,286,116,26,{desc:"Radios & break room."});
+  add("SHUTTLE","Shuttle Pickup","fac",1560,316,116,26,{desc:"Shuttle pick-up."});
+  add("M4","4","marshal",1688,234,30,26,{desc:"Emergency marshalling site 4."});
+  add("M5","5","marshal",1688,308,30,26,{desc:"Emergency marshalling site 5."});
+  add("ILWUVES","ILWU Vessel Pkg","park",1728,234,150,50,{desc:"ILWU vessel parking."});
+  add("TERMENT","Terminal Entrance","gate",1728,288,150,44,{desc:"Terminal entrance — radios & P-trucks check in/out."});
+  add("MGMTPKG","Mgmt Parking","park",1560,346,120,50,{desc:"Management parking."});
+  add("TOPPKG1","Top Pkg","park",1436,346,116,30);
+  add("PTRKPKG","P-Truck Pkg","park",1688,346,140,44);
+  add("UTRPKG1","UTR Pkg","park",1834,346,150,44,{desc:"UTR parking."});
+
+  /* ---------- GG-4 / FUEL + CBP RPM ---------- */
+  add("GG4CHAS","GG4 Chassis","chas",640,760,150,48,{desc:"GG4 chassis pit."});
+  add("FUEL","Fuel","fac",640,814,150,28,{desc:"Fuel island."});
+  add("CBPRPM","CBP · Rail RPM Area","exam",452,1010,44,178,{rot:1,desc:"US Customs Rail RPM (radiation portal monitor) area — rail boxes scanned here."});
+
+  /* ---------- PHASE 3 (rows) ---------- */
+  add("SS3","SS-3 HAZ","haz",1150,456,466,24,{desc:"SS-3 hazardous cargo row. Placarded boxes — keep clear unless it's your move."});
+  rows([
+    ["RR3","RR3","wheel",null,"63"],["R2","R-2","inb","63","03"],["Q2","Q-2","inb","81","01"],
+    ["L2","L-2","inb","63","01"],["K3","K-3","inb","23","01"],["K2","K-2","inb","27","01"],
+    ["K2W","K2W","wheel","91","45"],["J2W","J2W","wheel","91","01"]
+  ],1150,490,466,22,14);
+
+  /* ---------- PHASE 2 (rows) ---------- */
+  rows([
+    ["H2","H-2","inb","79","01"],["G2","G-2","inb","81","01"],["D2","D-2","inb","83","01"],
+    ["E2","E-2","inb","83","01"],["B2","B-2","inb","43","01"],["B3","B-3","inb","83",null]
+  ],1150,812,466,22,12);
+
+  /* ---------- PHASE 1 — each row is ONE lane numbered top→bottom, broken by the
+     PHASE 1 cross-aisle into an UPPER block (05→55 / 09→61 / 15→61) stacked over a
+     LOWER block (57→81 / 63→89 / 63→87).  Trucks enter each block from the top (↓).
+     Columns left→right:  F-1 [aisle] E-1·D-1 [aisle] C-1·B-1 [aisle] A-1  ( · = touching ) */
+  (function(){
+    // per lane: x(left), width, upper[top,bot], lower[top,bot]
+    const lane=[
+      {id:"F1",lb:"F-1",x:1628,w:40,u:["05","55"],l:["57","81"]},
+      {id:"E1",lb:"E-1",x:1712,w:24,u:["05","55"],l:["57","81"]},
+      {id:"D1",lb:"D-1",x:1738,w:24,u:["05","55"],l:["57","81"]},
+      {id:"C1",lb:"C-1",x:1812,w:28,u:["09","61"],l:["63","89"]},
+      {id:"B1",lb:"B-1",x:1842,w:28,u:["09","61"],l:["63","87"]},
+      {id:"A1",lb:"A-1",x:1918,w:32,u:["15","61"],l:["63","87"]}
+    ];
+    const UY=556,UH=196,LY=806,LH=140;   // taller upper block · cross-aisle gap · lower block
+    lane.forEach(L=>{
+      add("P1U_"+L.id,L.lb,"exp",L.x,UY,L.w,UH,{rot:1,tn:L.u[0],bn:L.u[1],arr:1,desc:"Phase 1 row "+L.lb+" — upper block (slots "+L.u[0]+"–"+L.u[1]+"). Trucks enter from the top."});
+      add("P1L_"+L.id,L.lb,"exp",L.x,LY,L.w,LH,{rot:1,tn:L.l[0],bn:L.l[1],arr:1,desc:"Phase 1 row "+L.lb+" — lower block (slots "+L.l[0]+"–"+L.l[1]+"), leads to the G-236 berths."});
+    });
+    // grey head-cap at the top of the A-1 hostler lane (matches the posted map)
+    add("P1CAP"," ","fac",1918,524,32,30,{cap:1,desc:"A-1 hostler-lane head cap."});
+  })();
+
+  /* ---------- G-236 BERTHS — PT-12 [gap] PT-01·02·03 [gap] PT-04·05·06 ---------- */
+  (function(){const ys=[556,626,680,734,806,862,918], pt=["PT-12","PT-01","PT-02","PT-03","PT-04","PT-05","PT-06"];
+    pt.forEach((p,i)=>add("Ba"+i,p,"berth",2090,ys[i],54,34,{desc:"Wharf crane position "+p+" — Berth G-236 (Phase 1)."}));})();
+
+  /* ---------- PHASE 4 (horizontal rows — left/right) ---------- */
+  rows([["B4","B-4","exp","79","01"],["D4","D-4","inb","73","01"],["E4","E-4","inb","67","01"]],620,858,340,26,20);
+
+  /* ---------- PHASE 6 (vertical columns) ---------- */
+  cols([
+    ["L6","L-6","inb","01","59"],["K6","K-6","inb","01","59"],["J6","J-6","inb","01","79"],
+    ["E6","E-6","exp","01","79"],["D6","D-6","exp","01","79"],["C6","C-6","exp","01","79"],["B6","B-6","exp","01","79"]
+  ],620,1006,42,412,26);
+
+  /* ---------- PHASE 7 — vertical columns numbered top→bottom with ↓ arrows.
+     Left block G-7/F-7/E-7/B-7 runs full height; right block L-7/K-7/J-7/H-7 is the UPPER
+     band, with Phase 8's L-8/K-8/J-8 stacked directly beneath it. ---------- */
+  cols([
+    ["G7","G-7","inb","015","109",{arr:1}],["F7","F-7","inb","001","109",{arr:1}],
+    ["E7","E-7","inb","89","01",{wbldg:1,arr:1,desc:"Row E-7 — the W marker is the North Rail Yard Compressor Bldg."}],["B7","B-7","inb","71","01",{arr:1}]
+  ],120,1440,42,256,24);
+  cols([
+    ["L7","L-7","inb","13","39",{arr:1}],["K7","K-7","inb","13","39",{arr:1}],
+    ["J7","J-7","inb","15","51",{arr:1}],["H7","H-7","exp","15","47",{arr:1}]
+  ],420,1440,42,150,24);
+  add("VV","VV","fac",236,1404,44,24,{desc:"VV building marker."});
+  add("MM8CHAS","MM8 Chassis","chas",378,1584,40,154,{rot:1,desc:"MM8 chassis pit."});
+
+  /* ---------- PHASE 8 — C-8/F-8/G-8/H-8 stay horizontal rows (← arrows). L-8/K-8/J-8 are
+     VERTICAL columns stacked beneath L-7/K-7/J-7, and the Flip Line is a VERTICAL bar
+     beneath H-7. I8/KK-8 & LL-8 are wheeled blocks below the rows. ---------- */
+  rows([
+    ["C8","C-8","inb","51","87",{arrL:1}],["F8","F-8","inb","55","91",{arrL:1}],
+    ["G8","G-8","inb","55","91",{arrL:1}],["H8","H-8","inb","55","91",{arrL:1}]
+  ],744,1440,356,22,16);
+  add("KK8","I8 / KK-8","wheel",744,1600,212,24,{ln:"18",desc:"Wheeled row I8 / KK-8 (Phase 8)."});
+  add("LL8","LL-8","wheel",744,1634,212,24,{desc:"Wheeled row LL-8 (Phase 8)."});
+  // L-8 · K-8 · J-8 vertical columns beneath L-7 · K-7 · J-7; Flip Line beneath H-7
+  add("L8","L-8","inb",420,1600,48,138,{rot:1,tn:"55",bn:"97",arr:1,desc:"Row L-8 (Phase 8) — stacked under L-7."});
+  add("K8","K-8","inb",486,1600,42,138,{rot:1,tn:"49",bn:"97",arr:1,desc:"Row K-8 (Phase 8) — stacked under K-7."});
+  add("J8","J-8","inb",552,1600,42,138,{rot:1,tn:"49",bn:"97",arr:1,desc:"Row J-8 (Phase 8) — stacked under J-7."});
+  add("FLIP","Flip Line","flip",618,1600,40,138,{rot:1,desc:"Flip line — switches a box from a pulled (own) chassis to a push (pull) chassis."});
+
+  /* ---------- PHASE 9 (rows) — B9W on top, then the TO PHASE 9-0 road, then C/F/G/H-9 ---------- */
+  add("B9W","B9W","wheel",1160,1440,350,22,{ln:"01",rn:"89",desc:"Row B9W — wheeled row on top of Phase 9."});
+  rows([
+    ["C9","C-9","inb","01","91"],["F9","F-9","inb","01","89"],
+    ["G9","G-9","inb","01","89"],["H9","H-9","inb","03","89"]
+  ],1160,1494,350,22,14);
+
+  /* ---------- CONSTRUCTION (runs right to the water's edge; Berth G-235 is its face) ---------- */
+  add("CONSTR","Slip Fill Project Construction Area","constr",1150,1034,934,388,{big:1,desc:"Slip Fill Project construction area — closed off. Berths G-235 & G-227 work zone."});
+  add("BERTHG235","Berth G-235","berth",2090,1034,54,388,{rot:1,desc:"Berth G-235 — the wharf face of the slip fill construction area, on the water line."});
+  add("BERTHG227","Berth G-227","berth",1206,1392,260,20,{desc:"Berth G-227."});
+
+  /* ---------- PHASE 0 (aka Phase 10) — each lane numbered top→bottom, broken by the PHASE 0
+     cross-aisle into an UPPER band (87/85→51/49) stacked over a LOWER band (53/49/47→01).
+     H-0 & G-0 run only in the lower band (wider, to the left).  Roadability bar on the left. */
+  add("ROADAB","Roadability","flip",1508,1470,26,196,{rot:1,desc:"Roadability (K) — truck / chassis road-check before boxes roll out the gate to the berths."});
+  (function(){
+    const UY=1452,UH=128,LY=1608,LH=162;
+    // UPPER band — high numbers (top→bottom), left group 87→51 · right group 85→49
+    const up=[
+      {id:"P0UF","lb":"F-0",x:1648,w:26,t:"87",b:"51"},
+      {id:"P0UE","lb":"E-0",x:1682,w:26,t:"87",b:"51"},
+      {id:"P0UD","lb":"D-0",x:1716,w:26,t:"87",b:"51"},
+      {id:"P0UE2","lb":"E-0",x:1806,w:26,t:"85",b:"49"},
+      {id:"P0UD2","lb":"D-0",x:1840,w:26,t:"85",b:"49"},
+      {id:"P0UA","lb":"A-0",x:1912,w:30,t:"85",b:"49"}
+    ];
+    up.forEach(c=>add(c.id,c.lb,"exp",c.x,UY,c.w,UH,{rot:1,tn:c.t,bn:c.b,arr:1,desc:"Phase 0 row "+c.lb+" — upper block (slots "+c.b+"–"+c.t+")."}));
+    // LOWER band — low numbers (top→bottom to 01/05); H-0 & G-0 are taller & wider, to the left
+    const lo=[
+      {id:"P0LH","lb":"H-0",x:1550,w:36,t:"53",b:"01",yy:1596,hh:174},
+      {id:"P0LG","lb":"G-0",x:1600,w:36,t:"49",b:"01",yy:1600,hh:170},
+      {id:"P0LF","lb":"F-0",x:1648,w:26,t:"49",b:"01"},
+      {id:"P0LE","lb":"E-0",x:1682,w:26,t:"49",b:"01"},
+      {id:"P0LD","lb":"D-0",x:1716,w:26,t:"49",b:"01"},
+      {id:"P0LC","lb":"C-0",x:1806,w:26,t:"47",b:"01"},
+      {id:"P0LB","lb":"B-0",x:1840,w:26,t:"47",b:"01"},
+      {id:"P0LA","lb":"A-0 · PR",x:1912,w:30,t:"47",b:"05"}
+    ];
+    lo.forEach(c=>add(c.id,c.lb,"exp",c.x,c.yy||LY,c.w,c.hh||LH,{rot:1,tn:c.t,bn:c.b,arr:1,desc:"Phase 0 row "+c.lb+" — lower block (slots "+c.b+"–"+c.t+"), leads to the G-232 berths."}));
+    // grey head-caps at the bottom (berth end) of the A-0 blocks
+    add("P0UCAP"," ","fac",1912,1582,30,14,{cap:1,desc:"A-0 upper hostler-lane cap."});
+    add("P0LCAP"," ","fac",1912,1772,30,14,{cap:1,desc:"A-0 lower (PR) hostler-lane cap."});
+  })();
+
+  /* ---------- G-232 BERTHS (right edge, lower) ---------- */
+  ["PT-21","PT-22","PT-23","PT-24","PT-25","PT-26","PT-27"].forEach((p,i)=>add("Bb"+i,p,"berth",2090,1450+i*52,54,32,{desc:"Wharf crane position "+p+" — Berth G-232 (Phase 0)."}));
+
+  /* ---------- SERVICE AREA (below Phase 8 & Phase 9) ----------
+     LEFT cluster (under Phase 8): Tophandler / P-Truck / CY-Rail parking + marshalling 6.
+     CENTER-RIGHT cluster (under Phase 9): UTR, CY-Rail bldg, reefer M&R + wash (K), power shop. */
+  // left cluster — directly below I8/KK-8 & LL-8
+  add("TOPHAND","Tophandler Parking","park",744,1670,126,44,{desc:"Top-handler parking."});
+  add("PTRKPKG2","P-Truck Parking","park",878,1670,112,44,{desc:"P-truck parking."});
+  add("CYRAILPK","CY / Rail / M&R Pkg","park",744,1722,208,26,{desc:"Container-yard / rail / M&R parking."});
+  add("M6","6","marshal",760,1756,30,28,{desc:"Emergency marshalling site 6."});
+  // center-right cluster — below Phase 9
+  add("UTRPKG2","UTR Parking","park",1160,1648,104,26,{desc:"UTR parking."});
+  add("JJ9","JJ-9","wheel",1272,1648,80,22);
+  add("KK9","KK-9","wheel",1272,1672,80,22);
+  add("LL9","LL-9","wheel",1272,1700,80,22);
+  add("MM9","MM-9","wheel",1272,1724,80,22);
+  add("CYRAILBL","CY / Rail Bldg","fac",1160,1682,100,60,{desc:"Container-yard / rail building."});
+  add("PR0","PR","fac",1160,1748,46,22,{desc:"Public restroom."});
+  add("EG2","EG-2","fac",1212,1748,52,22,{eg:1,desc:"Emergency Generator #2."});
+  add("MR","M&R Reefer","fac",1364,1684,120,30,{desc:"Maintenance & Repair — reefer (J). Refrigerated boxes serviced here."});
+  add("REEFRWASH","Reefer Wash · K","fac",1364,1718,120,30,{desc:"Reefer Wash Building (K)."});
+  add("POWERSHOP","Power Shop / Crane / Chassis / Parts","fac",1160,1780,340,28,{desc:"Power shop — crane chassis & parts."});
+  add("BOMBCART","TT-0 Bombcart Pkg","chas",1552,1782,102,42,{desc:"TT-0 bombcart parking."});
+  add("WESTARR","◄ WEST ARRIVAL · PIER G AVENUE","gate",804,1824,620,32,{desc:"West Arrival — Pier G Avenue exit road."});
+})();
+IZ.byId={}; IZ.spots.forEach(s=>IZ.byId[s.id]=s);
+
+/* ============================ FURNITURE ============================ */
+function izFurniture(){
+  const t=(x,y,txt,size,col,rot,ls,anch,weight,fam)=>`<text x="${x}" y="${y}" fill="${col||'#8f979e'}" font-family="${fam||"'IBM Plex Mono',monospace"}" font-size="${size||13}" letter-spacing="${ls==null?1.5:ls}" text-anchor="${anch||'middle'}" font-weight="${weight||400}" ${rot?`transform="rotate(${rot} ${x} ${y})"`:''}>${txt}</text>`;
+  const star=(x,y,r)=>{let p='';for(let i=0;i<10;i++){const a=-Math.PI/2+i*Math.PI/5,rr=i%2?r*0.42:r;p+=(i?'L':'M')+(x+rr*Math.cos(a)).toFixed(1)+','+(y+rr*Math.sin(a)).toFixed(1);}return `<path d="${p}Z" fill="#12151a" stroke="#7d868c" stroke-width="1"/>`;};
+  let g=`<rect x="6" y="6" width="${VBW-12}" height="${VBH-12}" rx="12" fill="none" stroke="rgba(220,214,201,.1)"/>`;
+  // orientation (this wall map: North = left · Pier G Way / East gate = top · Harbor & berths = right · West Arrival = bottom)
+  g+=t(VBW/2,34,"▲ PIER G WAY · EAST ARRIVAL & GATES",15,'#eeb46b',0,3,'middle',600);
+  g+=t(VBW/2,VBH-14,"▼ PIER G AVENUE",14,'#8f979e',0,3,'middle',600);
+  g+=t(22,VBH/2,"◄ NORTH · RAIL YARDS",12,'#c9803f',-90,2);
+  g+=t(VBW-22,VBH/2,"HARBOR · VESSEL BERTHS ►",12,'#5f97b8',90,2);
+  // Phase 5 annex frame
+  g+=`<rect x="96" y="46" width="380" height="330" rx="10" fill="rgba(20,23,26,.5)" stroke="rgba(220,214,201,.14)"/>`;
+  g+=t(286,368,"PHASE 5",16,'#c9803f',0,3,'middle',700,"'Anton',sans-serif");
+  g+=star(126,64,10)+star(240,64,10);
+  // North rail yard (lower-left) — dense bundle of dashed tracks curving up toward the CBP gate
+  for(let i=0;i<9;i++){const o=i*13;g+=`<path d="M${26+o},1822 C${150+o},1480 ${312+o},1120 ${420+o},700" fill="none" stroke="#59626a" stroke-width="1.15" stroke-dasharray="6 6"/>`;}
+  g+=t(150,1548,"NORTH RAIL YARD",12,'#8f979e',-56,3,'middle',600);
+  g+=t(268,1648,"TRACKS 03-09",10,'#7d868c',-56,2);
+  // South rail yard (upper-center-left) — dashed tracks fanning down-right toward THUMS / Phase 4
+  for(let i=0;i<7;i++){const yy=504+i*15;g+=`<path d="M296,${yy+88} C500,${yy+14} 700,${yy+40} 884,${yy-18}" fill="none" stroke="#59626a" stroke-width="1.1" stroke-dasharray="6 6"/>`;}
+  g+=t(540,590,"SOUTH RAIL YARD · TRACKS 12-17",10,'#7d868c',-8,2);
+  g+=t(430,680,"RW4",11,'#b3552a',0,2,'middle',600);
+  [ [340,700],[440,760],[560,600],[700,560],[280,900],[200,1080],[170,1420] ].forEach(p=>g+=star(p[0],p[1],11));
+  // THUMS island — lopsided hexagon: top edge rises to the right, chamfered top-right corner, flat bottom
+  g+=`<polygon points="636,566 866,540 930,602 916,708 636,708" fill="#24262b" stroke="#9aa0a6" stroke-width="1.6" fill-opacity="0.92"/>`;
+  g+=t(786,632,"THUMS",19,'#c8ccd0',0,3,'middle',700,"'Anton',sans-serif");
+  g+=t(790,552,"TO PHASE 6·7·8",9,'#b3552a',0,1.5);
+  g+=t(800,712,"TO PHASE 1·2·3·4",9,'#b3552a',0,1.5);
+  g+=t(710,748,"GG-4",10,'#8f979e',0,2,'middle',600);
+  // compass (North points LEFT on this sign)
+  g+=(function(){const cx=286,cy=560,r=40;let s=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="rgba(220,214,201,.16)"/>`;
+    const dirs=[['N',-1,0,'#c9803f'],['E',0,-1,'#8f979e'],['S',1,0,'#8f979e'],['W',0,1,'#8f979e']];
+    dirs.forEach(d=>{s+=`<path d="M${cx},${cy} L${cx+d[1]*r*0.72},${cy+d[2]*r*0.72}" stroke="${d[3]}" stroke-width="${d[0]==='N'?2.4:1.4}"/>`;});
+    dirs.forEach(d=>{s+=t(cx+d[1]*(r+11),cy+d[2]*(r+11)+4,d[0],11,d[3],0,1,'middle',700);});
+    return s;})();
+  // big phase labels
+  const pl=(x,y,n)=>t(x,y,"PHASE "+n,22,'#dcd6c9',0,4,'middle',700,"'Anton',sans-serif");
+  g+=pl(1326,432,"3"); g+=pl(1326,790,"2");
+  // PHASE 1 wordmark — reads up the cross-aisle between D-1 and C-1 (the ↓ arrows now sit inside each block)
+  g+=t(1786,660,"PHASE 1",22,'#dcd6c9',-90,3,'middle',700,"'Anton',sans-serif");
+  // Phase 1 hostler lane (HL-1), rail/utility stars, PS boxes, red markers & grey cap
+  (function(){
+    const gold=(x,y,r)=>{let p='';for(let i=0;i<10;i++){const a=-Math.PI/2+i*Math.PI/5,rr=i%2?r*0.42:r;p+=(i?'L':'M')+(x+rr*Math.cos(a)).toFixed(1)+','+(y+rr*Math.sin(a)).toFixed(1);}return `<path d="${p}Z" fill="#e5c33a" stroke="#6e5410" stroke-width="0.9"/>`;};
+    const redm=(x,y,w,h)=>`<rect x="${x-w/2}" y="${y-h/2}" width="${w}" height="${h}" rx="1.5" fill="#c0392b" stroke="#7a231a" stroke-width="0.8"/>`;
+    const psb=(x,y)=>`<g><rect x="${x-11}" y="${y-8}" width="22" height="16" rx="2" fill="#14171a" stroke="#8f979e" stroke-width="1"/><text x="${x}" y="${y}" dy="0.34em" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="9" fill="#c9803f" font-weight="600">PS</text></g>`;
+    // HL-1 hostler-lane labels down the berth face (between A-1 and the G-236 berths)
+    [640,772,900].forEach(y=>g+=t(2000,y,"HL-1",11,'#e0584a',-90,2,'middle',700));
+    // HL-1 markers flanking A-1 (both sides), as on the posted map
+    g+=t(1902,650,"HL-1",10,'#e0584a',-90,2,'middle',600);
+    g+=t(1902,882,"HL-1",10,'#e0584a',-90,2,'middle',600);
+    // utility stars along the hostler lane + one to the left of F-1
+    [[2032,560,9],[2032,704,9],[2032,884,9],[1600,704,10]].forEach(s=>g+=gold(s[0],s[1],s[2]));
+    // PS boxes on the hostler lane
+    g+=psb(2032,764); g+=psb(2032,808);
+    // red markers — at the top of F-1 and at the A-1 cross-aisle break
+    g+=redm(1636,548,15,9); g+=redm(1660,548,15,9);
+    g+=redm(1936,780,15,10); g+=redm(1900,780,15,10);
+  })();
+  g+=pl(884,836,"4");
+  g+=t(1106,1224,"PHASE 6",18,'#dcd6c9',-90,3,'middle',700,"'Anton',sans-serif");
+  g+=t(398,1500,"PHASE 7",18,'#dcd6c9',-90,3,'middle',700,"'Anton',sans-serif");
+  /* PHASE 8 & PHASE 9 are drawn on top of their rows via izTop() */
+  /* PHASE 0 wordmark is drawn on top, stretched over H-0 / G-0, via izTop() */
+  // road labels
+  // TO PHASE 9-0 road — horizontal band between B9W and the C/F/G/H-9 block
+  (function(){const y=1481;
+    g+=`<path d="M1180,${y} L1252,${y}" stroke="#8f979e" stroke-width="1.5" fill="none"/><path d="M1247,${y-4} L1253,${y} L1247,${y+4}" fill="none" stroke="#8f979e" stroke-width="1.5"/>`;
+    g+=`<path d="M1490,${y} L1418,${y}" stroke="#8f979e" stroke-width="1.5" fill="none"/><path d="M1423,${y-4} L1417,${y} L1423,${y+4}" fill="none" stroke="#8f979e" stroke-width="1.5"/>`;
+    g+=t(1335,y+3,"TO PHASE 9-0",10,'#b3552a',0,1.5,'middle',600);})();
+  g+=t(590,1420,"TO PHASE 7-8-9-0",9,'#b3552a',0,1.5,'middle',600);
+  g+=t(700,988,"TO PHASE 6",9,'#b3552a',0,1.5,'middle',600);
+  // service-area building/zone letters + ZH-9 road tag
+  g+=t(1078,1694,"H",22,'#d8d2c4',0,1,'middle',700,"'Anton',sans-serif");
+  g+=t(772,1806,"J",22,'#d8d2c4',0,1,'middle',700,"'Anton',sans-serif");
+  g+=t(1300,1816,"ZH-9",10,'#7d868c',0,2,'middle',600);
+  // hostler lanes along the berth face
+  // Phase 0 hostler lane (HL-0), utility stars & red markers down the G-232 berth face
+  (function(){
+    const gold=(x,y,r)=>{let p='';for(let i=0;i<10;i++){const a=-Math.PI/2+i*Math.PI/5,rr=i%2?r*0.42:r;p+=(i?'L':'M')+(x+rr*Math.cos(a)).toFixed(1)+','+(y+rr*Math.sin(a)).toFixed(1);}return `<path d="${p}Z" fill="#e5c33a" stroke="#6e5410" stroke-width="0.9"/>`;};
+    const redm=(x,y,w,h)=>`<rect x="${x-w/2}" y="${y-h/2}" width="${w}" height="${h}" rx="1.5" fill="#c0392b" stroke="#7a231a" stroke-width="0.8"/>`;
+    [1500,1592,1684,1762].forEach(y=>g+=t(2004,y,"HL-0",11,'#e0584a',-90,2,'middle',700));
+    g+=t(1958,1522,"HL-0",10,'#e0584a',-90,2,'middle',600);
+    g+=t(1958,1706,"HL-0",10,'#e0584a',-90,2,'middle',600);
+    [[2032,1470,9],[2032,1574,9],[2032,1676,9],[2032,1764,9]].forEach(s=>g+=gold(s[0],s[1],s[2]));
+    g+=redm(1936,1594,12,9); g+=redm(1900,1594,12,9);
+  })();
+  // berth group labels — G-236 reads UP the wharf strip, in the PT-03 / PT-04 gap (as posted)
+  g+=t(2160,712,"G-236",16,'#7fb2cf',-90,3,'middle',700);
+  g+=t(2160,1632,"G-232",16,'#7fb2cf',-90,3,'middle',700);
+  // ---- emergency overlay (renders under boxes, so on-box marks stay hidden) ----
+  const hyd=(x,y)=>`<g><rect x="${x-2.6}" y="${y-5}" width="5.2" height="10" rx="2" fill="#e5c33a" stroke="#6e5410" stroke-width="0.7"/><line x1="${x-3.4}" y1="${y-1}" x2="${x+3.4}" y2="${y-1}" stroke="#6e5410" stroke-width="0.7"/></g>`;
+  const exg=(x,y)=>`<path d="M${x-6},${y-6} L${x+6},${y+6} M${x+6},${y-6} L${x-6},${y+6}" stroke="#d8483f" stroke-width="3" stroke-linecap="round"/>`;
+  const cross=(x,y)=>`<g><rect x="${x-7}" y="${y-7}" width="14" height="14" rx="2.5" fill="#c0392b"/><path d="M${x},${y-4.6} L${x},${y+4.6} M${x-4.6},${y} L${x+4.6},${y}" stroke="#fff" stroke-width="2.2"/></g>`;
+  [[1500,340],[1470,470],[1500,800],[600,760],[600,1400],[1540,1660],[2054,720],[1600,1820],[300,1240],[840,660],[1150,1620],[1470,900],[2054,1420],[1002,1668],[1138,1772],[1030,1808]].forEach(p=>g+=hyd(p[0],p[1]));
+  [[1470,118],[1040,1560],[1476,470],[500,1660],[1058,1716]].forEach(p=>g+=exg(p[0],p[1]));
+  [[1104,130],[1548,222],[1322,1660],[1036,1692],[1104,1748]].forEach(p=>g+=cross(p[0],p[1]));
+  return g;
+}
+
+/* Labels that must sit ON TOP of the row boxes (furniture renders under boxes) */
+function izTop(){
+  const lab=(x,y,txt)=>`<text x="${x}" y="${y}" fill="#f0ead9" font-family="'Anton',sans-serif" font-size="24" letter-spacing="5" text-anchor="middle" font-weight="700" paint-order="stroke" stroke="#0b0d0f" stroke-width="3.5" stroke-linejoin="round" style="pointer-events:none">${txt}</text>`;
+  const vlab=(x,y,txt,sz)=>`<text x="${x}" y="${y}" fill="#f0ead9" font-family="'Anton',sans-serif" font-size="${sz}" letter-spacing="7" text-anchor="middle" font-weight="700" transform="rotate(-90 ${x} ${y})" paint-order="stroke" stroke="#0b0d0f" stroke-width="3.5" stroke-linejoin="round" style="pointer-events:none">${txt}</text>`;
+  return lab(1335,1520,"PHASE 9")+lab(922,1478,"PHASE 8")+vlab(1593,1638,"PHASE 0",26);
+}
+
+/* ============================ RENDER ENGINE ============================ */
+const iz={x:0,y:0,scale:1,min:.2,max:6,sel:null};
+function $i(id){return document.getElementById(id);}
+function esc(s){return (s==null?'':(''+s)).replace(/&/g,'&amp;').replace(/</g,'&lt;');}
+
+function izRender(){
+  const st=$i('itStage');if(!st)return;const vb=IZ.vb;let shapes='';
+  IZ.spots.forEach(sp=>{
+    const cat=IZ.cats[sp.cat]||IZ.cats.fac;
+    const rx=5, cx=sp.x+sp.w/2, cy=sp.y+sp.h/2;
+    const fill=(sp.cat==='inb'||sp.cat==='exp'||sp.cat==='wheel')?'#e7e1d4':'#ece6d9';
+    let label='', ends='';
+    const numTxt=(x,y,v)=>`<text x="${x}" y="${y}" fill="#9aa1a8" font-family="'IBM Plex Mono',monospace" font-size="10" text-anchor="middle" dy="0.32em" style="pointer-events:none">${esc(v)}</text>`;
+    if(sp.rot){
+      const fs=Math.max(8.5,Math.min(sp.h/(String(sp.label).length*0.6), sp.w*0.66, 15));
+      const ly=sp.arr?cy+Math.min(sp.h*0.17,24):cy;   // arr blocks: drop the label below the ↓
+      label=`<text x="${cx}" y="${ly}" text-anchor="middle" dy="0.32em" transform="rotate(-90 ${cx} ${ly})" fill="${fill}" font-family="'Barlow Condensed',sans-serif" font-weight="700" font-size="${fs.toFixed(1)}" letter-spacing="0.3" style="pointer-events:none">${esc(sp.label)}</text>`;
+      if(sp.tn!=null)ends+=numTxt(cx,sp.y+11,sp.tn);
+      if(sp.bn!=null)ends+=numTxt(cx,sp.y+sp.h-8,sp.bn);
+    }else{
+      const fs=Math.max(8.5,Math.min(sp.w/(String(sp.label).length*0.56), sp.h*0.64, sp.big?30:14));
+      label=`<text x="${cx}" y="${cy}" dy="0.32em" text-anchor="middle" fill="${sp.big?'#c07a7a':fill}" font-family="${sp.big?"'Anton',sans-serif":"'Barlow Condensed',sans-serif"}" font-weight="700" font-size="${fs.toFixed(1)}" letter-spacing="0.2" style="pointer-events:none">${esc(sp.label)}</text>`;
+      if(sp.ln!=null)ends+=numTxt(sp.x+14,cy,sp.ln);
+      if(sp.rn!=null)ends+=numTxt(sp.x+sp.w-14,cy,sp.rn);
+    }
+    const strokeW=sp.big?1.6:(sp.cat==='berth'?1.5:1.3);
+    let extra='';
+    if(sp.wbldg){extra=`<rect x="${cx-12}" y="${cy-12}" width="24" height="24" rx="3" fill="#22272c" stroke="#8f979e" stroke-width="1.2"/><text x="${cx}" y="${cy}" dy="0.34em" text-anchor="middle" font-family="'Anton',sans-serif" font-size="13" fill="#dcd6c9" style="pointer-events:none">W</text>`;}
+    if(sp.arr){const a1=sp.y+24,a2=sp.y+Math.min(54,sp.h*0.42);extra+=`<path d="M${cx},${a1} L${cx},${a2} M${cx-4},${a2-6} L${cx},${a2} L${cx+4},${a2-6}" stroke="#aeb4ba" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"/>`;}
+    if(sp.arrL){const ax=cx+sp.w*0.17,ay=cy;extra+=`<path d="M${ax+18},${ay} L${ax},${ay} M${ax+6},${ay-4} L${ax},${ay} L${ax+6},${ay+4}" stroke="#aeb4ba" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round" style="pointer-events:none"/>`;}
+    if(sp.cap){extra+=`<rect x="${sp.x+2}" y="${sp.y+2}" width="${sp.w-4}" height="${sp.h-4}" rx="3" fill="#3b4046" stroke="#9aa0a6" stroke-width="1.1" style="pointer-events:none"/>`;}
+    shapes+=`<g class="sp" data-id="${sp.id}"><rect x="${sp.x}" y="${sp.y}" width="${sp.w}" height="${sp.h}" rx="${rx}" fill="${cat.c}" stroke="${cat.s}" stroke-width="${strokeW}" stroke-opacity="0.9"/>${label}${ends}${extra}</g>`;
+  });
+  st.innerHTML=`<svg width="${vb[2]}" height="${vb[3]}" viewBox="${vb.join(' ')}" xmlns="http://www.w3.org/2000/svg">${izFurniture()}${shapes}${izTop()}</svg>`;
+}
+function izApply(){const st=$i('itStage');if(st)st.style.transform=`translate(${iz.x}px,${iz.y}px) scale(${iz.scale})`;}
+function izFit(){
+  const vp=$i('itVp');if(!vp||!vp.clientWidth)return;const vb=IZ.vb;
+  const s=Math.min(vp.clientWidth/vb[2],vp.clientHeight/vb[3])*0.97;
+  iz.scale=s;iz.min=s*.85;iz.max=Math.max(s*9,5);
+  iz.x=(vp.clientWidth-vb[2]*s)/2;iz.y=(vp.clientHeight-vb[3]*s)/2;izApply();
+}
+function izZoomAt(pt,f){const r=$i('itVp').getBoundingClientRect();const px=pt.x-r.left,py=pt.y-r.top;
+  const ns=Math.min(iz.max,Math.max(iz.min,iz.scale*f)),k=ns/iz.scale;
+  iz.x=px-(px-iz.x)*k;iz.y=py-(py-iz.y)*k;iz.scale=ns;}
+function izCenterOn(sp,zoom){const vp=$i('itVp');const ns=zoom||Math.max(iz.min*2.4,Math.min(iz.max,1.1));iz.scale=ns;
+  const cx=sp.x+sp.w/2,cy=sp.y+sp.h/2;iz.x=vp.clientWidth/2-cx*ns;iz.y=vp.clientHeight/2-cy*ns;izApply();}
+function izSelect(id,center){
+  const sp=IZ.byId[id];if(!sp)return;iz.sel=id;
+  document.querySelectorAll('#itStage .sp').forEach(g=>g.classList.toggle('sel',g.dataset.id===id));
+  const cat=IZ.cats[sp.cat]||IZ.cats.fac;
+  $i('itSw').style.background=cat.s;$i('itInfoNm').textContent=sp.label;
+  $i('itInfoCat').textContent=cat.t;$i('itInfoDesc').textContent=sp.desc||cat.d;
+  $i('itInfo').classList.add('on');if(center)izCenterOn(sp);
+}
+function izCloseInfo(){$i('itInfo').classList.remove('on');
+  document.querySelectorAll('#itStage .sp').forEach(g=>g.classList.remove('sel'));iz.sel=null;}
+function izSearch(q){
+  const sug=$i('itSug');q=q.trim().toLowerCase();
+  if(!q){sug.classList.remove('on');sug.innerHTML='';return;}
+  const score=s=>{const id=s.id.toLowerCase(),lb=s.label.toLowerCase();
+    if(id===q||lb===q)return 0;if(id.startsWith(q)||lb.startsWith(q))return 1;
+    if(lb.includes(q))return 2;if(id.includes(q))return 3;return 9;};
+  const hits=IZ.spots.map(s=>[s,score(s)]).filter(a=>a[1]<9).sort((a,b)=>a[1]-b[1]).slice(0,9).map(a=>a[0]);
+  if(!hits.length){sug.classList.remove('on');sug.innerHTML='';return;}
+  sug.innerHTML=hits.map(s=>{const c=IZ.cats[s.cat]||IZ.cats.fac;
+    return `<button data-id="${s.id}"><span class="dot" style="background:${c.s}"></span>${esc(s.label)}<span class="t">${c.t}</span></button>`;}).join('');
+  sug.classList.add('on');
+}
+
+/* ============================ TERMINAL GUIDE ============================ */
+const GUIDE={
+  safety:"SPEED LIMIT 10 MPH. Wear all PPE — safety vest, hard hat, safety shoes. In an emergency, notify Security via Channel 1.",
+  marshal:[["1–6","Designated emergency marshalling sites across the terminal — by the gate, ops & phases."],["7","Phase 5 marshalling site."]],
+  bldgs:[["A","Administration Bldg"],["B","Operations Bldg"],["E","Trouble Assist"],["F","Emergency Generator"],
+    ["H","West Arrival"],["J","Maintenance & Repair Bldg"],["K","Reefer Wash Bldg"],
+    ["T","Berth G-232 Restroom Bldg"],["W","North Rail Yard Compressor Bldg"]],
+  symbols:[["★ Rail Warning System","Rail crossing / active track — stop, look, and never race a train."],
+    ["✚ First Aid Kit","First aid kit station."],["❤ AED","Automated External Defibrillator."],
+    ["Wind Sock","Read the wind for spills & haz."],["✕ Emergency Gate","Kept clear for evacuation."],
+    ["⛽ Fire Hydrant","Keep the pad clear."],["EG Generator","Emergency Generators 1 & 2."],
+    ["PR Public Restroom","Public restroom."]],
+  colors:[["Inbound (blue)","Loaded import rows."],["Export / Empty (green)","Export stacks & empty returns."],
+    ["Wheeled (yellow)","Boxes on chassis."],["Chassis (salmon)","Chassis pits — GG4, GG5, MM8."]],
+  terms:[["Bombcart","Cart with slanted guides that secures a mounted container; hauls boxes within the terminal."],
+    ["Flip Line","Dock unit that switches a container from a pulled (own) chassis to a push (pull) chassis."],
+    ["HL (Hostler Lane)","Hostler / UTR lane running the face of a phase (HL-0, HL-1)."],
+    ["PT","Wharf crane position along a berth (PT-01 … PT-27)."],
+    ["Reefer","Temperature-controlled (refrigerated) container."],
+    ["Roadability","Truck / chassis road-check area before boxes roll out the gate."],
+    ["End Caps","First & last pile of a container row."]]
+};
+function izRenderGuide(){
+  const g=GUIDE;
+  const dl=a=>`<dl class="yg-terms">${a.map(p=>`<dt>${esc(p[0])}</dt><dd>${esc(p[1])}</dd>`).join('')}</dl>`;
+  return `
+    <div class="yg-safe">⚠ ${esc(g.safety)}</div>
+    <h5 class="yg-h">🧭 FINDING YOUR WAY</h5>
+    <p style="font-size:13.5px;color:var(--steel);line-height:1.5">This is the posted wall-map orientation: the <b>vessel berths run down the right</b> (G-236 up top, the Slip Fill construction slip in the middle, G-232 at the bottom), the <b>gate, admin & ops</b> run across the top (Pier G Way / East Arrival), the <b>rail yards</b> down the left, and West Arrival (Pier G Avenue) at the bottom. Phases connect by the red <b>TO PHASE…</b> haul roads.</p>
+    <h5 class="yg-h">🚩 EMERGENCY MARSHALLING</h5>${dl(g.marshal)}
+    <h5 class="yg-h">🏢 BUILDINGS</h5>${dl(g.bldgs)}
+    <h5 class="yg-h">⛑ SYMBOLS ON THIS MAP</h5>${dl(g.symbols)}
+    <h5 class="yg-h">🎨 ROW COLORS</h5>${dl(g.colors)}
+    <h5 class="yg-h">📖 TERMS</h5>${dl(g.terms)}
+    <p class="yg-src">Traced from the posted ITS terminal wall map — International Transportation Service, LLC, 1281 Pier G Way Avenue, Long Beach, CA 90802. Locations are approximate — obey posted signs and your foreman.</p>`;
+}
+
+/* ============================ OPEN / CLOSE + WIRING ============================ */
+function openItsYard(op,label){
+  $i('itName').textContent=IZ.name;
+  $i('itSub').textContent=(label&&label!==IZ.op)?label:IZ.sub;
+  izRender();izCloseInfo();
+  $i('itSearch').value='';$i('itSug').classList.remove('on');
+  $i('itLegend').classList.remove('on');$i('itGuide').classList.remove('on');
+  $i('itw').classList.add('on');
+  requestAnimationFrame(()=>{izFit();requestAnimationFrame(izFit);});
+}
+function closeItsYard(){$i('itw').classList.remove('on');}
+window.openItsYard=openItsYard;window.closeItsYard=closeItsYard;
+
+try{ if(typeof YARD_MAPS!=='undefined'){ YARD_MAPS["ITS"]={interactive:true,its:true,note:"interactive — 10 phases, berths & rail; tap any spot, 📖 for the guide"}; } }catch(e){}
+(function(){const orig=window.openYardMap;
+  window.openYardMap=function(op,label){
+    if(op==='ITS')return openItsYard(op,label);
+    if(typeof orig==='function')return orig(op,label);
+  };})();
+try{ if(typeof renderPorts==='function'){ const s=document.getElementById('portSearch'); renderPorts(s?s.value:""); } }catch(e){}
+try{ if(typeof renderDockets==='function') renderDockets(); }catch(e){}
+
+/* ---- event wiring ---- */
+izRender();
+$i('itBack').addEventListener('click',closeItsYard);
+$i('itReset').addEventListener('click',izFit);
+$i('itLegBtn').addEventListener('click',()=>{
+  $i('itLegList').innerHTML=IZ.legend.map(([k,name])=>{const c=IZ.cats[k];
+    return `<div class="lg"><span class="dot" style="background:${c.c};border:1.5px solid ${c.s}"></span>${name}</div>`;}).join('')
+    +`<div class="lg"><span class="dot" style="background:none;border:0;position:relative"><svg width="15" height="15" style="position:absolute;left:0;top:0"><path d="M7.5,1 L9,6 L14,6 L10,9 L11.5,14 L7.5,11 L3.5,14 L5,9 L1,6 L6,6 Z" fill="#12151a" stroke="#7d868c" stroke-width="1"/></svg></span>Rail warning star</div>`;
+  $i('itLegend').classList.add('on');
+});
+$i('itLegClose').addEventListener('click',()=>$i('itLegend').classList.remove('on'));
+$i('itGuideBtn').addEventListener('click',()=>{const gb=$i('itGuideBody');if(!gb.dataset.built){gb.innerHTML=izRenderGuide();gb.dataset.built="1";}$i('itGuide').classList.add('on');});
+$i('itGuideClose').addEventListener('click',()=>$i('itGuide').classList.remove('on'));
+$i('itInfoClose').addEventListener('click',izCloseInfo);
+const itSearchEl=$i('itSearch');
+itSearchEl.addEventListener('input',e=>izSearch(e.target.value));
+$i('itSug').addEventListener('click',e=>{const b=e.target.closest('button[data-id]');if(!b)return;
+  itSearchEl.value='';$i('itSug').classList.remove('on');izSelect(b.dataset.id,true);});
+
+/* ---- pan / pinch / tap engine ---- */
+(function(){
+  const vp=$i('itVp');if(!vp)return;
+  const pts=new Map();let lastDist=0,lastMid=null,lastTap=0,downT=null,moved=0;
+  vp.addEventListener('pointerdown',e=>{
+    if(e.target.closest&&e.target.closest('.yi-info,.yi-legend,.yi-guide,.yi-reset,.yi-legend-btn'))return;
+    vp.setPointerCapture(e.pointerId);pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(pts.size===1){downT=e.target;moved=0;const now=Date.now();
+      if(now-lastTap<300){if(iz.scale>iz.min*1.7)izFit();else{izZoomAt({x:e.clientX,y:e.clientY},2.3);izApply();}lastTap=0;downT=null;}
+      else lastTap=now;}
+    if(pts.size===2){const a=[...pts.values()];lastDist=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y);
+      lastMid={x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2};downT=null;}
+  });
+  vp.addEventListener('pointermove',e=>{if(!pts.has(e.pointerId))return;const p=pts.get(e.pointerId);
+    if(pts.size===1){const dx=e.clientX-p.x,dy=e.clientY-p.y;moved+=Math.abs(dx)+Math.abs(dy);iz.x+=dx;iz.y+=dy;izApply();}
+    p.x=e.clientX;p.y=e.clientY;
+    if(pts.size===2){const a=[...pts.values()];const d=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y);
+      const mid={x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2};
+      if(lastDist>0)izZoomAt(mid,d/lastDist);
+      if(lastMid){iz.x+=mid.x-lastMid.x;iz.y+=mid.y-lastMid.y;}
+      lastDist=d;lastMid=mid;izApply();}
+  });
+  const up=e=>{
+    if(pts.size===1&&downT&&moved<8){const g=downT.closest&&downT.closest('.sp');if(g)izSelect(g.dataset.id);}
+    pts.delete(e.pointerId);lastDist=0;lastMid=null;downT=null;
+  };
+  vp.addEventListener('pointerup',up);vp.addEventListener('pointercancel',up);
+  vp.addEventListener('wheel',e=>{e.preventDefault();izZoomAt({x:e.clientX,y:e.clientY},e.deltaY<0?1.15:.87);izApply();},{passive:false});
+})();
+window.addEventListener('resize',()=>{if($i('itw').classList.contains('on'))izFit();});
 })();
 </script>
 </body>
