@@ -3888,7 +3888,7 @@ tickDisp();setInterval(tickDisp,1000);
    Prototype: feed simulated from member scans; backend makes it truly shared. */
 function OPENP(){ // board opened near here (lazy — RECENT is declared later in this script)
   /* #114b — the live board opens one card past the last COMPLETED board's end */
-  try{const l=lastCompletedBoard(); if(l)return l.end?nextCard(l.end):(l.start||"C4900");}catch(e){}
+  try{const l=lastCompletedBoard(); if(l)return handoffCard(l)||"C4900";}catch(e){}   /* #noflop0 — a board that didn't move re-opens on its own card */
   try{return (RECENT[RECENT.length-1]||{start:"C4900"}).start}catch(e){return "C4900"}
 }
 function posVal(p){ // rank a position in board order relative to the open letter (board wraps)
@@ -3970,6 +3970,56 @@ try{const _br=JSON.parse(localStorage.getItem(K('boardresults'))||'{}');
 }catch(e){}
 
 const AZ="ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+/* ===== #noflop0 — CORRECT THE RECORD IN PLACE =====
+   Boards logged BEFORE the no-move rule existed handed the next dispatch one card
+   past a window that never advanced: a board sealed V5044 → V5044 pushed its
+   follower to V5045. On every boot, re-anchor that follower back onto V5044.
+   Deliberately narrow, so it can run forever without eating good data:
+     · only a board whose start and end are the SAME card triggers it
+     · only the board DIRECTLY after it (AM→same-day PM, PM→next-day AM)
+     · only if that board's start is exactly the stale off-by-one value —
+       a start a hand set to anything else is left alone
+   Idempotent: once corrected, the follower no longer matches and nothing happens. */
+try{(function(){
+  const DOW=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  const ordk=x=>x.date+(String(x.slot).endsWith("AM")?"_1":"_2");
+  const nextBoardKey=r=>{
+    if(String(r.slot).endsWith("AM"))return r.date+"_"+String(r.slot).slice(0,3)+"_PM";
+    const d=new Date(r.date+"T12:00");d.setDate(d.getDate()+1);
+    const iso=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+    return iso+"_"+DOW[d.getDay()]+"_AM";
+  };
+  const sorted=[...RECENT].sort((a,b)=>ordk(a)<ordk(b)?-1:(ordk(a)>ordk(b)?1:0));
+  const fixed=[];
+  /* PASS 1 — a SEALED board whose start sits one card ahead of its end. That start
+     is the old off-by-one, not a cycle around the book. Snap it onto the card the
+     board actually sat on. (5,333 casuals did not flop on a 484-job sheet.) */
+  sorted.forEach(r=>{ if(normalizeHeld(r))fixed.push(r); });
+  /* PASS 2 — the board FOLLOWING a held board. It was handed one card too far, so
+     pull it back. Read from a snapshot taken before pass 2 starts, so a row this
+     loop just repaired can never be re-read as if it were original data — that's
+     what would turn a second held board into a board that "moved" one card. */
+  const snap=sorted.map(r=>({start:r.start,end:r.end}));
+  for(let i=0;i<sorted.length-1;i++){
+    const cur=sorted[i],nxt=sorted[i+1],cs=snap[i],ns=snap[i+1];
+    if(!cs.start||!cs.end||!sameCard(cs.start,cs.end))continue;          // this board moved, or isn't sealed
+    if(nxt.date+"_"+nxt.slot!==nextBoardKey(cur))continue;               // gap in the record — never ripple across it
+    if(ns.start!==nextCard(cs.end))continue;                             // not the stale value — leave it be
+    if(ns.end&&sameCard(ns.start,ns.end))continue;                       // the follower was HELD too — moving its start would invent movement it never made
+    nxt.start=cs.start;                                                  // back to the card the board is still sitting on
+    if(nxt.end)nxt.act=(AZ.indexOf(String(nxt.end)[0])-AZ.indexOf(String(nxt.start)[0])+26)%26;
+    if(fixed.indexOf(nxt)<0)fixed.push(nxt);
+  }
+  if(fixed.length){
+    try{const st=JSON.parse(localStorage.getItem(K('boardresults'))||'{}');
+      fixed.forEach(x=>{const kk=x.date+"_"+x.slot;
+        st[kk]=Object.assign(st[kk]||{},{date:x.date,slot:x.slot,start:x.start},(x.act!=null?{act:x.act}:{}));});
+      /* the repaired rows are the record now — the wire's stale copies get normalized
+         again on arrival (bwApplyRow), so the two can't fight across a reload */
+      localStorage.setItem(K('boardresults'),JSON.stringify(st));}catch(e){}
+    try{console.log('[#noflop0] re-anchored '+fixed.length+' board'+(fixed.length>1?'s':'')+' behind a board that did not move');}catch(e){}
+  }
+})();}catch(e){}
 // which board is next — #110: a board stays "next/live" until its dispatch ENDS.
 // #202 — official end is 9:30 / 19:30 (per the hall timeline), so tonight doesn't
 // become UP NEXT until 9:30 and tomorrow morning doesn't post until 19:30 — now in
@@ -4003,6 +4053,95 @@ setInterval(function(){
 /* the next board opens on the card AFTER the last one dispatched:
    day ends on W4912 → night opens W4913 */
 function nextCard(id){const m=/^([A-Z])(\d+)$/.exec(id||"");return m?m[1]+(parseInt(m[2],10)+1):id;}
+/* ═══════════ #noflop0 — HELD vs CYCLED: two very different dead boards ═══════════
+   A board that ends BEHIND where it started can mean one of two things, and the
+   record has to tell them apart, because the numbers are opposite ends of the scale:
+
+     CYCLE — the casuals never covered the jobs, so the board ran all the way
+             around the book and came back on itself. Thousands of cards called.
+             This is REAL and the wrap math below counts it in full. Untouched.
+
+     HELD  — the window never advanced at all. Nobody was called, 0 flopped, and
+             the next dispatch opens back on the very same card.
+
+   Held shows up two ways in the record:
+     · start === end                 — "V5044 → V5044", logged straight
+     · end is ONE card behind start  — "V5045 → V5044". Not a 5,333-card cycle:
+       that's the old chain rule's off-by-one. The board before it sat on V5044
+       and handed V5045 forward when it should have handed V5044 back, so the
+       start was written one card too far and the seal landed behind it.
+   One card back is the off-by-one signature and nothing else — a board cannot
+   call 5,332 cards off a sheet with a few hundred jobs on it. Two or more cards
+   back is left alone and still reads as a genuine cycle.
+
+   Everything below — span, flop count, chain, handoff, badges — reads the rule
+   from here, so no two parts of the record can disagree about the same board. */
+function sameCard(a,b){
+  const m1=/^([A-Z])(\d+)$/.exec(String(a||"").toUpperCase()),
+        m2=/^([A-Z])(\d+)$/.exec(String(b||"").toUpperCase());
+  return !!(m1&&m2&&m1[1]===m2[1]&&parseInt(m1[2],10)===parseInt(m2[2],10));
+}
+/* end sits EXACTLY one card behind start — the stale-start signature.
+   Two ways to be "one back", because two different things write a start:
+     · the chain wrote nextCard(end) — plain +1 inside a letter, dead number or not
+     · a hand wrote the real next card on the board — so ask the ACTIVE board, which
+       skips dead numbers and rolls the letter (V5056 → W3031 is one card, not 5,333) */
+function oneCardBack(start,end){
+  const S=String(start||"").toUpperCase(), E=String(end||"").toUpperCase();
+  const m1=/^([A-Z])(\d+)$/.exec(S), m2=/^([A-Z])(\d+)$/.exec(E);
+  if(!m1||!m2)return false;
+  if(m1[1]===m2[1]&&parseInt(m2[2],10)+1===parseInt(m1[2],10))return true;
+  try{ if(typeof nextActive==="function"){const nx=nextActive(E,1)[0]; if(nx&&sameCard(nx,S))return true;} }catch(e){}
+  return false;
+}
+/* how many cards are on the board right now (joiners included) */
+function activeTotal(){ let n=0; try{ for(const L in ACTIVE) n+=(ACTIVE[L]||[]).length; }catch(e){} return n; }
+/* true = it walked (or cycled) · false = HELD · null = not sealed yet, unknown */
+function boardMoved(r){
+  if(!r||!r.start||!r.end)return null;
+  if(sameCard(r.start,r.end))return false;        // logged straight: it sat there
+  if(oneCardBack(r.start,r.end))return false;     // stale start: it sat on its end
+  return true;
+}
+/* the card a HELD board is actually sitting on (null if it moved) */
+function heldCard(r){
+  if(boardMoved(r)!==false)return null;
+  return oneCardBack(r.start,r.end)?r.end:r.start;   // a stale start defers to the sealed end
+}
+/* a genuine CYCLE — it came back around onto itself. Defined by the DISTANCE it
+   walked, not by the letters: V3064 → U5056 is just as much a lap of the book as
+   C4900 → C4850, and both have to be called what they are. */
+function boardCycled(r){
+  if(!r||!r.start||!r.end||boardMoved(r)===false)return false;
+  const sp=countActiveSpan(r.start,r.end), tot=activeTotal();
+  return !!(sp!=null&&tot&&sp>=Math.floor(tot*0.95));
+}
+/* CARDS THIS BOARD ACTUALLY CALLED. Same as the raw span, except a held board
+   calls nobody. A cycle still counts every card — that's the point of a cycle. */
+function calledSpan(start,end){
+  if(!start||!end)return null;
+  if(boardMoved({start:start,end:end})===false)return 0;
+  return countActiveSpan(start,end);
+}
+function boardCalled(r){ return r?calledSpan(r.start,r.end):null; }
+/* THE HANDOFF: the one card the next dispatch opens on.
+     sealed + moved/cycled → the card after its end        (W4912 → W4913)
+     sealed + HELD         → that same card, straight back (V5044 → V5044)
+     still running         → it already carries its own start */
+function handoffCard(r){
+  if(!r)return "";
+  if(!r.end)return r.start||"";
+  const h=heldCard(r); if(h)return h;              // it didn't move — stay put
+  return nextCard(r.end);
+}
+/* Repair a stale start in place: "V5045 → V5044" is really "V5044 → V5044".
+   Returns true if the row changed. Safe to run on the same row forever. */
+function normalizeHeld(r){
+  if(!r||!r.start||!r.end)return false;
+  if(!oneCardBack(r.start,r.end))return false;
+  r.start=r.end; r.act=0;
+  return true;
+}
 function renderCallStart(){
   const el=document.getElementById('callStart'); if(!el)return;
   /* #58 — label stays small & copper, the Casual ID gets the size and the shine.
@@ -4016,7 +4155,7 @@ function renderCallStart(){
   const _po=_pd+(String(callSlot).endsWith("AM")?"_1":"_2");
   const past=RECENT.filter(r=>_ok(r)<_po);
   const last=past[past.length-1];
-  const id=last?(last.end?nextCard(last.end):(last.start||"")):"";
+  const id=last?handoffCard(last):"";   /* #noflop0 — one handoff rule, so "Starting on" can't drift off the record */
   el.innerHTML='<span class="cs-lbl">Starting on</span> <b class="cs-id">'+(id||"—")+'</b>';
 }
 /* #114 — the predictions re-figure the moment data lands, wherever it lands from:
@@ -4046,7 +4185,7 @@ function lastCompletedBoard(){
    "Starting on" header and the prediction anchor on this, so they can never disagree. */
 function pendingStartCard(){
   try{ const last=(typeof lastCompletedBoard==="function"&&lastCompletedBoard())||null;
-       if(last) return last.end?nextCard(last.end):(last.start||""); }catch(e){}
+       if(last) return handoffCard(last); }catch(e){}   /* #noflop0 */
   return "";
 }
 renderCallStart();
@@ -4620,7 +4759,7 @@ function catchModel(){
     if(_catchCache&&_catchCacheN===done.length)return _catchCache;
     const letter={}; let gDown=0,gCalled=0;
     done.forEach(r=>{
-      const called=countActiveSpan(r.start,r.end), down=boardDown(r);
+      const called=boardCalled(r), down=boardDown(r);   /* #noflop0 — a held board teaches the model nothing */
       if(called==null||down==null||called<=0)return;
       gCalled+=called; gDown+=Math.min(down,called);
       const sl=LSEQ.indexOf(r.start[0].toUpperCase()),sn=parseInt(r.start.slice(1),10);
@@ -5266,6 +5405,9 @@ function myBoardStatus(r){
   if(r.act==null)return '';
   if(!(typeof savedAcct!=="undefined"&&savedAcct&&savedAcct.id))return '';
   if(savedAcct.since && r.date < savedAcct.since)return '';
+  /* #noflop0 — the window never advanced, so no card was reached. Nobody was "at the
+     window" on a held board, not even the hand it was sitting on. */
+  if(boardMoved(r)===false)return V('miss','⚑','Board Held');
   const myL=savedAcct.id[0];
   const dd=(AZ.indexOf(myL)-AZ.indexOf(r.start[0])+26)%26;
   if(dd<r.act)return V('flop','😢','Flop');
@@ -5289,6 +5431,11 @@ function countActiveSpan(start,end){
   if(sl<0||el<0)return null;
   const sn=parseInt(start.slice(1),10), en=parseInt(end.slice(1),10);
   if(isNaN(sn)||isNaN(en))return null;
+  /* #noflop0 — start === end: the window never advanced. Nobody was called, so the
+     span is ZERO, not the one card it's sitting on. (A board that wrapped the whole
+     book back onto its own card was never representable here either way — the
+     wrap branch below only triggers on end < start.) */
+  if(sl===el&&sn===en)return 0;
   let letters=(el-sl+26)%26; if(letters===0&&en<sn)letters=26;  // board wrapped the whole book
   let count=0;
   for(let k=0;k<=letters;k++){
@@ -5311,8 +5458,11 @@ function boardDown(r){
   return null;
 }
 function flopCount(r){
-  const span=countActiveSpan(r.start,r.end);
+  const span=boardCalled(r);                       /* #noflop0 — held boards call nobody; a cycle still counts in full */
   if(span==null)return null;
+  /* #noflop0 — the board never moved: no cards called means nobody flopped. That's
+     a known ZERO, not missing data, so it prints without waiting on the Drop Log. */
+  if(span===0)return 0;
   const down=boardDown(r);
   if(down!=null&&span>=down)return span-down;   // the speaker call — real math
   return null;  // no come-down data → no number. The Drop Log fills this in.
@@ -5380,7 +5530,9 @@ function ensureRecentRow(key,data){
     const ordk=r=>r.date+(String(r.slot).endsWith("AM")?"_1":"_2");
     const thisk=date+(slot.endsWith("AM")?"_1":"_2");
     const prior=RECENT.filter(r=>ordk(r)<thisk).sort((a,b)=>ordk(a)<ordk(b)?-1:1).pop();
-    const start=prior?nextCard(prior.end||prior.start||"A0000"):"A0000";
+    /* #noflop0 — a sealed prior hands off by the rule (a board that didn't move gives
+       its own card back); an unsealed prior keeps the old one-past-its-start guess. */
+    const start=prior?((prior.end?handoffCard(prior):nextCard(prior.start||"A0000"))||"A0000"):"A0000";
     const tot=casTot;
     RECENT.push({date:date,slot:slot,start:start,tot:tot,rain:false,hol:false});
     RECENT.sort((a,b)=>ordk(a)<ordk(b)?-1:(ordk(a)>ordk(b)?1:0));
@@ -5547,7 +5699,7 @@ function renderRecentBoards(){
   // pending / up-next
   (function(){
     const lastR=SHOWN[SHOWN.length-1]||{};
-    const startP=nextCard(lastR.end||lastR.start)||"—";
+    const startP=(lastR.end?handoffCard(lastR):nextCard(lastR.start))||"—";   /* #noflop0 */
     const pd=_pd;
     const key=pd+"_"+callSlot;
     /* #110 — the UP NEXT card always leads the record now; a data row for the same
@@ -5582,20 +5734,33 @@ function renderRecentBoards(){
   const derivedAM={};
   (function(){let prev=null;SHOWN.forEach(r=>{
     if(r.slot.endsWith("PM")&&!hasAM[r.date]&&prev){const from=prev.end||prev.start;
-      derivedAM[r.date]={start:nextCard(from),end:prevCard(r.start),mv:(AZ.indexOf(r.start[0])-AZ.indexOf(from[0])+26)%26};}
+      /* #noflop0 — the inferred AM opens where the night before actually handed off,
+         and closes one card before the night board opened. If those two cross (the
+         inferred end lands behind the inferred start), the missing AM board didn't
+         move either — show it held on its card instead of a backwards range. */
+      const _ds=(prev.end?handoffCard(prev):nextCard(from)), _de=prevCard(r.start);
+      const _dheld=sameCard(_ds,_de)||oneCardBack(_ds,_de);
+      derivedAM[r.date]={start:_ds,end:(_dheld?_ds:_de),held:_dheld,mv:(AZ.indexOf(r.start[0])-AZ.indexOf(from[0])+26)%26};}
     prev=r;});})();
   const hasAM2=Object.assign({},hasAM);
 
   [...SHOWN].reverse().forEach(r=>{
     items.push({win:winOf(r.date), build:()=>{
       const endP=r.end||(r.act!=null?AZ[(AZ.indexOf(r.start[0])+r.act)%26]:"pending");
-      const fl=flopCount(r), sp=countActiveSpan(r.start,r.end), dn=boardDown(r);
+      const fl=flopCount(r), sp=boardCalled(r), dn=boardDown(r);   /* #noflop0 */
       const att=(sp&&dn!=null)?Math.round(dn/sp*100):null;
       const key=r.date+'_'+r.slot, dd=DISPATCH_DATA[key];
       /* #115c — the familiar wording, better set: weighted, quietly tinted numbers */
       const hi=(v,cls)=>'<b class="rbn'+(cls?' '+cls:'')+'">'+v+'</b>';
       const line1=(r.tot?hi(r.tot.toLocaleString())+' jobs'+(dn!=null?' · '+hi(dn.toLocaleString(),'dn')+' came down':''):'');
-      const line2=(fl!=null?hi(fl.toLocaleString(),'fl')+' Casual Flopped'+(att!=null?' · '+hi(att+'%','att')+' Attendance':''):'');
+      /* #noflop0 — a board that sat on its card says so on the record. 0 flopped is a
+         FACT here (nothing was called), not a missing come-down, and there's no
+         attendance to figure against a span of zero. A real CYCLE keeps its full
+         count and gets said out loud too, so the two can never be confused. */
+      const still=(boardMoved(r)===false), hc=still?heldCard(r):null, cyc=boardCycled(r);
+      const line2=still
+        ? (hi('0','fl')+' Casual Flopped · <b class="rbn">the board did not move</b>')
+        : (fl!=null?hi(fl.toLocaleString(),'fl')+' Casual Flopped'+(att!=null?' · '+hi(att+'%','att')+' Attendance':'')+(cyc?' · <b class="rbn">cycled the book</b>':''):'');
       const score=(line1?'<div class="rb-line">'+line1+'</div>':'')
                  +(line2?'<div class="rb-line">'+line2+'</div>':'');
       const when=(r.rain?'🌧 ':'')+(r.hol?'🕯 ':'');
@@ -5603,7 +5768,11 @@ function renderRecentBoards(){
       const _status=myBoardStatus(r);
       card.innerHTML='<div class="rb-glyph">'+glyph(r.slot)+'</div><div class="rb-main">'
         +'<div class="rb-top">'+when+fmtD(r.date)+' · '+r.slot.replace('_',' ')+(dd?' <span class="rb-sheet">▤ SHEET ▾</span>':'')+'</div>'
-        +(r.start?'<div class="rb-range">'+r.start+' <span class="rb-arrow">→</span> '+endP+'</div>':'')   /* the hero stays on top */
+        /* #noflop0 — a held board shows the ONE card it sat on (a stale start is not
+           printed as if it were real), with a loop for an arrow. A cycle keeps its
+           arrow and is labelled for what it is. */
+        +(r.start?'<div class="rb-range">'+(still?hc:r.start)+' <span class="rb-arrow">'+(still?'&#10227;':'&rarr;')+'</span> '+(still?hc:endP)
+          +(still?' <span class="pill red">HELD</span>':(cyc?' <span class="pill gold">CYCLED</span>':''))+'</div>':'')   /* the hero stays on top */
         +score
         +(window.bwChips?window.bwChips(key):'')   /* #112 — the wire's post/confirm/heist line */
         +'</div>'
@@ -5624,7 +5793,8 @@ function renderRecentBoards(){
         const card=document.createElement('div'); card.className='rbcard day'; card.style.opacity='.5';
         card.innerHTML='<div class="rb-glyph">☀</div><div class="rb-main"><div class="rb-top">'+fmtD(r.date)+' · '+r.slot.slice(0,3)+' AM</div>'
           +'<div class="rb-stats"><span class="rb-chip">no final yet</span></div>'
-          +(dv?'<div class="rb-range">'+dv.start+' <span class="rb-arrow">→</span> '+dv.end+'</div>':'')+'</div>';
+          /* #noflop0 — an inferred board that didn't move gets the held loop, not a backwards arrow */
+          +(dv?'<div class="rb-range">'+dv.start+' <span class="rb-arrow">'+(dv.held?'&#10227;':'&rarr;')+'</span> '+dv.end+(dv.held?' <span class="pill red">HELD</span>':'')+'</div>':'')+'</div>';
         return {card};
       }});
     }
@@ -6061,7 +6231,7 @@ function dropCommit(){
     let r=RECENT.find(x=>x.date+"_"+x.slot===k);
     if(!r){
       const l=(typeof lastCompletedBoard==="function")?lastCompletedBoard():null;
-      r={date:date,slot:slot,start:l?(l.end?nextCard(l.end):(l.start||"")):"",rain:false,hol:false};
+      r={date:date,slot:slot,start:l?handoffCard(l):"",rain:false,hol:false};   /* #noflop0 */
       RECENT.push(r);
       RECENT.sort((a,b)=>{const ka=a.date+(String(a.slot).endsWith("AM")?"_1":"_2"),kb=b.date+(String(b.slot).endsWith("AM")?"_1":"_2");return ka<kb?-1:ka>kb?1:0;});
     }
@@ -6115,7 +6285,10 @@ function renderDropLog(){
     const _sr=RECENT.find(x=>x.date+"_"+x.slot===dropKey());
     const _sb=document.getElementById('noflopBtn'), _si=document.getElementById('noflopEnd');
     if(_sb&&_si){
-      if(_sr&&_sr.end){_sb.disabled=true;_sb.textContent="⚑ SEALED AT "+_sr.end+" — ON THE WIRE";_si.disabled=true;if(!_si.value)_si.value=_sr.end;}
+      /* #noflop0 — a HELD board keeps the held wording through every re-render
+         (this runs on the 45s pull and the 60s tick, and used to stomp it back). */
+      const _hc=(typeof heldCard==="function")?heldCard(_sr):null;
+      if(_sr&&_sr.end){_sb.disabled=true;_sb.textContent=_hc?("⚑ HELD ON "+_hc+" — BOARD DID NOT MOVE"):("⚑ SEALED AT "+_sr.end+" — ON THE WIRE");_si.disabled=true;if(!_si.value)_si.value=_sr.end;}
       else{_sb.disabled=false;_sb.textContent="⚑ NO FLOP — Dispatch Is Over";_si.disabled=false;}
     }
   }catch(e){}
@@ -10778,18 +10951,32 @@ function brSyncStart(){const r=_brCur(),s=document.getElementById('brStart');
   if(r){s.value=r.start||'';return;}
   /* #117 — a board being sealed live has no row yet: its start is one card past
      the last completed board's end (the chain rule, applied forward) */
-  try{const l=lastCompletedBoard();s.value=l?(l.end?nextCard(l.end):(l.start||'')):'';}catch(e){s.value='';}
+  try{const l=lastCompletedBoard();s.value=l?handoffCard(l):'';}catch(e){s.value='';}   /* #noflop0 */
 }
 function brPreview(){
   const start=((document.getElementById('brStart')||{}).value||'').toUpperCase().trim();
   const end=((document.getElementById('brEnd')||{}).value||'').toUpperCase().trim();
   const came=_brNum('brFlex')+_brNum('br1')+_brNum('br2');
   const el=document.getElementById('brPreview'); if(!el)return;
-  let called=null; try{called=countActiveSpan(start,end);}catch(e){}
+  let called=null; try{called=calledSpan(start,end);}catch(e){}   /* #noflop0 */
   const when=String((_brCur()||{}).slot||'').endsWith('AM')?'THIS MORNING':'TONIGHT';
   if(!start||!end||called==null){
     el.innerHTML='<div class="lb-score" style="opacity:.6"><div class="lb-flop"><div class="lb-flop-num">&mdash;</div>'
       +'<div class="lb-flop-lbl">ENTER START &amp; END CARDS</div></div></div>';return;}
+  /* #noflop0 — call it what it is. A HELD board (same card in and out, or a start
+     left one card ahead of the seal) never moved: 0 flopped, no attendance to
+     figure against a span of zero, and the next board opens right back on it.
+     Whatever was keyed into the come-down boxes is still shown, never swallowed. */
+  const _hc=heldCard({start:start,end:end});
+  if(_hc){
+    el.innerHTML='<div class="lb-score"><div class="lb-flop">'
+      +'<div class="lb-flop-num">0</div>'
+      +'<div class="lb-flop-lbl">CASUALS FLOPPED '+when+'</div></div>'
+      +'<div class="lb-att-row" style="justify-content:center;gap:8px"><b>&#9873; THE BOARD DID NOT MOVE</b></div>'
+      +(sameCard(start,end)?'':'<div class="lb-att-row" style="justify-content:center"><span>start reads '+start+' &mdash; logging it as '+_hc+'</span></div>')
+      +'<div class="lb-tiles"><div><b>0</b><span>CALLED</span></div>'
+      +'<div><b>'+came.toLocaleString()+'</b><span>CAUGHT</span></div>'
+      +'<div><b>'+_hc+'</b><span>NEXT BOARD OPENS ON</span></div></div></div>';return;}
   const flops=Math.max(0,called-came), att=called?Math.round(came/called*100):0;
   el.innerHTML='<div class="lb-score">'
     +'<div class="lb-flop"><div class="lb-flop-num">'+flops.toLocaleString()+'</div>'
@@ -10823,11 +11010,14 @@ function openBoardSheet(){
 }
 function saveBoardResult(){
   const sel=document.getElementById('brBoard'); if(!sel)return; const k=sel.value;
-  const start=((document.getElementById('brStart')||{}).value||'').toUpperCase().trim();
+  let start=((document.getElementById('brStart')||{}).value||'').toUpperCase().trim();
   const end=((document.getElementById('brEnd')||{}).value||'').toUpperCase().trim();
   const came=_brNum('brFlex')+_brNum('br1')+_brNum('br2');
-  let called=null; try{called=countActiveSpan(start,end);}catch(e){}
+  let called=null; try{called=calledSpan(start,end);}catch(e){}   /* #noflop0 */
   if(!start||!end||called==null){try{toast('Add the start & end cards');}catch(e){}return;}
+  /* #noflop0 — a start left one card ahead of the seal is the old off-by-one, not a
+     cycle. Store the board on the card it actually sat on, the way it's previewed. */
+  if(oneCardBack(start,end))start=end;
   const act=(AZ.indexOf(end[0])-AZ.indexOf(start[0])+26)%26;
   const parts=k.split('_'), date=parts[0], slot=parts.slice(1).join('_');
   const r=RECENT.find(x=>x.date+'_'+x.slot===k);
@@ -10870,7 +11060,11 @@ function chainBoards(fromKey){
     const cur=sorted[j],nxt=sorted[j+1];
     if(!cur.end)break;                                   // nothing confirmed to hand off
     if(nxt.date+"_"+nxt.slot!==nextBoardKey(cur))break;  // gap in the record — chain stops
-    const ns=nextCard(cur.end);
+    const ns=handoffCard(cur);                           /* #noflop0 — a board that didn't move hands its OWN card forward, not one past it */
+    /* #noflop0 — never re-anchor a follower that is ITSELF held: it has its own
+       anchor (the card it sat on), and dragging its start back would fabricate
+       movement it never made. Same guard the boot pass uses. The ripple stops. */
+    if(nxt.end&&boardMoved(nxt)===false)break;
     if(nxt.start===ns)break;                             // already in sync — the ripple stops
     nxt.start=ns;
     if(nxt.end)nxt.act=(AZ.indexOf(nxt.end[0])-AZ.indexOf(ns[0])+26)%26;
@@ -10930,6 +11124,14 @@ function bwApplyRow(row){
   if(!r){r={date:date,slot:slot,rain:false,hol:false};RECENT.push(r);
     RECENT.sort((a,b)=>{const ka=a.date+(String(a.slot).endsWith('AM')?'_1':'_2'),kb=b.date+(String(b.slot).endsWith('AM')?'_1':'_2');return ka<kb?-1:ka>kb?1:0;});}
   Object.assign(r,row.patch);
+  /* #noflop0 — the wire carries rows logged BEFORE the held rule existed, so a
+     stale "V5045 → V5044" start rides back in on every sync and would quietly undo
+     the boot repair. Normalize on the way in, and push the fix back to storage so
+     the record on this device and the wire's copy converge instead of fighting. */
+  try{ if(normalizeHeld(r)){
+    const st=_brStore(); st[k]=Object.assign(st[k]||{},{date:r.date,slot:r.slot,start:r.start,act:0});
+    localStorage.setItem(K('boardresults'),JSON.stringify(st));
+  } }catch(e){}
   try{chainBoards(k);}catch(e){}
 }
 /* every device applies its own credit consequences exactly once */
@@ -11186,11 +11388,15 @@ function noFlopSeal(){
   let r=RECENT.find(x=>x.date+"_"+x.slot===k);
   if(!r){
     const l=(typeof lastCompletedBoard==="function")?lastCompletedBoard():null;
-    r={date:date,slot:slot,start:l?(l.end?nextCard(l.end):(l.start||"")):"",rain:false,hol:false};
+    r={date:date,slot:slot,start:l?handoffCard(l):"",rain:false,hol:false};   /* #noflop0 */
     RECENT.push(r);
     RECENT.sort((a,b)=>{const ka=a.date+(String(a.slot).endsWith("AM")?"_1":"_2"),kb=b.date+(String(b.slot).endsWith("AM")?"_1":"_2");return ka<kb?-1:ka>kb?1:0;});
   }
-  const start=r.start||"";
+  /* #noflop0 — if the seal lands one card BEHIND the start, the start was written a
+     card too far by the old chain rule. The board sat on the card just sealed; log
+     it that way rather than as a 5,333-card cycle around the whole book. */
+  let start=r.start||"";
+  if(oneCardBack(start,end))start=end;
   const came=u.total||r.down||0;
   const flex=u.list.filter(x=>x.cat==="FLEX").reduce((a,x)=>a+x.n,0);
   const patch={date:date,slot:slot,start:start,end:end,
@@ -11199,14 +11405,18 @@ function noFlopSeal(){
   Object.assign(r,patch);
   try{const st=_brStore();st[k]=Object.assign(st[k]||{},patch);localStorage.setItem(K('boardresults'),JSON.stringify(st));}catch(e){}
   try{chainBoards(k);}catch(e){}
-  try{const called=countActiveSpan(start,end);if(called!=null)window.addComeDown(k,came,called);}catch(e){}
+  try{const called=calledSpan(start,end);if(called!=null)window.addComeDown(k,came,called);}catch(e){}   /* #noflop0 */
   try{renderRecentBoards();}catch(e){}
   try{repredict();}catch(e){}
   try{bwSubmitResult(k,patch);}catch(e){}
   inp.disabled=true;
   const b=document.getElementById('noflopBtn');
-  if(b){b.disabled=true;b.textContent="⚑ SEALED AT "+end+" — ON THE WIRE";}
-  try{toast("⚑ NO FLOP — board sealed at "+end);}catch(e){}
+  /* #noflop0 — a board sealed on the card it opened on NEVER MOVED. Say so plainly:
+     0 casuals flopped, and the next dispatch opens back on that same card. */
+  const hc=heldCard({start:start,end:end});
+  if(b){b.disabled=true;b.textContent=hc?("⚑ HELD ON "+hc+" — BOARD DID NOT MOVE"):("⚑ SEALED AT "+end+" — ON THE WIRE");}
+  if(hc)msg.textContent="> the board did not move — 0 casuals flopped · next dispatch opens back on "+hc;
+  try{toast(hc?("⚑ NO FLOP — the board never moved off "+hc):("⚑ NO FLOP — board sealed at "+end));}catch(e){}
 }
 (function(){
   const on=(id,ev,fn)=>{const e=document.getElementById(id);if(e)e.addEventListener(ev,fn);};
