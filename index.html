@@ -4,10 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#0b0d0f">
-<script>/* #70 — apply day/night before first paint so there's no flash. AUTO follows
-   the sun over San Pedro Bay (approx sunrise/sunset by month, local clock). */
+<script>/* #70 — apply day/night before first paint so there's no flash.
+   #shift — AUTO now runs on the SHIFT CLOCK, not the sun: day 05:00–16:00,
+   night 16:00–05:00, on the phone's own clock. AUTO is also the default now,
+   so a hand who has never touched the toggle still gets day at 5 AM.
+   The window is duplicated in DAYMODE_START/DAYMODE_END below — this copy has to be
+   self-contained because it runs before any of the app's code exists. */
 try{var _dl=localStorage.getItem('shadowhook_daylight');
-if(_dl==='1'||(_dl==='auto'&&(function(){var SR=[6.98,6.75,7.17,6.33,5.83,5.68,5.87,6.25,6.58,6.92,6.42,6.83],SS=[17.05,17.57,19.0,19.42,19.83,20.08,20.08,19.75,19.08,18.33,16.92,16.75],d=new Date(),h=d.getHours()+d.getMinutes()/60;return h>=SR[d.getMonth()]&&h<SS[d.getMonth()]})()))document.documentElement.classList.add('daylight')}catch(e){}</script>
+if(_dl==='1'||((_dl===null||_dl==='auto')&&(function(){var h=new Date().getHours();return h>=5&&h<16})()))document.documentElement.classList.add('daylight')}catch(e){}</script>
 <!-- #45 — installable app: manifest + icons + iOS meta. Once added to the home
      screen it opens full-screen with no address bar, like a native app. -->
 <link rel="manifest" href="manifest.webmanifest">
@@ -4951,26 +4955,43 @@ window.addEventListener('appinstalled',()=>{deferredInstall=null;setInstalled(tr
   if(wasInstalled()){reinstallMode=true;setInstalled(false);try{localStorage.removeItem("shadowhook_installbar")}catch(e){}}
   if(isiOS)setTimeout(()=>showInstallBar(true),7000);
 })();
-/* ===== #70 — DAYLIGHT MODE: ☀ day · ☾ night · A auto, maps-style =====
-   AUTO switches on sunrise/sunset over San Pedro Bay, and where the phone
-   exposes its ambient-light sensor to the browser (some Androids), real
-   lux readings override the clock — bright sun flips it light on the spot. */
-const DAY_SR=[6.98,6.75,7.17,6.33,5.83,5.68,5.87,6.25,6.58,6.92,6.42,6.83]; /* approx sunrise, local */
-const DAY_SS=[17.05,17.57,19.0,19.42,19.83,20.08,20.08,19.75,19.08,18.33,16.92,16.75]; /* approx sunset */
-let _luxBright=null; /* null = no sensor reading yet; true/false once the sensor speaks */
-function dayModePref(){try{return localStorage.getItem('shadowhook_daylight')||'0'}catch(e){return '0'}}
-function sunIsUp(){const d=new Date(),h=d.getHours()+d.getMinutes()/60,m=d.getMonth();return h>=DAY_SR[m]&&h<DAY_SS[m]}
+/* ===== #70/#shift — DAYLIGHT MODE: ☀ day · ☾ night · A auto =====
+   AUTO used to chase sunrise/sunset over San Pedro Bay, with an ambient-light
+   sensor allowed to override the clock. It now runs on the SHIFT CLOCK:
+
+       05:00 → 16:00   day
+       16:00 → 05:00   night
+
+   Fixed hours, phone's own clock, no sensor override — the mode a hand sees
+   at any hour is predictable, which a lux reading flipping mid-shift is not.
+   AUTO is also the default (dayModePref falls back to 'auto', not '0'), so a
+   hand who never touches the ☀/☾ chip still gets day at 5 AM. Anyone who has
+   explicitly picked day or night keeps that pick — their key is already set.
+   NOTE: these two numbers are mirrored in the pre-paint script at the top of
+   the file. Change both together.
+   NAMING: not DAY_START/DAY_END — the dispatch clock already owns DAY_END
+   (9:30 AM, when day dispatch closes). Redeclaring it threw a SyntaxError that
+   took the whole script block with it. These are DAYMODE_*, theme only. */
+const DAYMODE_START=5;   /* day theme begins 05:00 */
+const DAYMODE_END=16;    /* day theme ends   16:00 (4 PM) */
+function dayModePref(){try{return localStorage.getItem('shadowhook_daylight')||'auto'}catch(e){return 'auto'}}
+function sunIsUp(){const h=new Date().getHours();return h>=DAYMODE_START&&h<DAYMODE_END}
+function dayWindowLabel(){
+  const f=h=>{const ap=h>=12?'PM':'AM',x=h%12||12;return x+' '+ap;};
+  return f(DAYMODE_START)+' – '+f(DAYMODE_END);
+}
 function applyDaylight(){
   const pref=dayModePref();
-  const on = pref==='1' || (pref==='auto' && (_luxBright!==null?_luxBright:sunIsUp()));
+  const on = pref==='1' || (pref==='auto' && sunIsUp());   /* #shift — the clock decides, nothing else */
   document.documentElement.classList.toggle('daylight',on);
   const b=document.getElementById('dayBtn');
   if(b){
     b.textContent = pref==='auto'?'A':(pref==='1'?'☀':'☾');
     b.classList.toggle('auto',pref==='auto');
-    b.title = pref==='auto'?'Auto — follows the sun (tap: night)':(pref==='1'?'Daylight on (tap: auto)':'Night on (tap: daylight)');
+    b.title = pref==='auto'?('Auto — day '+dayWindowLabel()+' (tap: night)'):(pref==='1'?'Daylight on (tap: auto)':'Night on (tap: daylight)');
   }
-  const m=document.querySelector('meta[name="theme-color"]'); if(m)m.setAttribute('content',on?'#ece7da':'#0b0d0f');
+  /* #daylight — the browser chrome follows the page, and the page is #f0f2f5 now */
+  const m=document.querySelector('meta[name="theme-color"]'); if(m)m.setAttribute('content',on?'#f0f2f5':'#0b0d0f');
 }
 (function(){
   const b=document.getElementById('dayBtn');
@@ -4978,25 +4999,19 @@ function applyDaylight(){
     const next={'0':'1','1':'auto','auto':'0'}[dayModePref()]||'1';
     try{localStorage.setItem('shadowhook_daylight',next)}catch(e){}
     applyDaylight();
-    if(typeof toast==='function')toast(next==='auto'?'A · AUTO — follows the sun':next==='1'?'☀ Daylight':'☾ Night');
+    if(typeof toast==='function')toast(next==='auto'?('A · AUTO — day '+dayWindowLabel()):next==='1'?'☀ Daylight':'☾ Night');
   });
   applyDaylight();
-  /* the clock keeps auto honest through sunrise & sunset */
-  setInterval(()=>{if(dayModePref()==='auto')applyDaylight()},60000);
-  /* real light sensor, where the browser allows it (HTTPS + permission) */
-  try{
-    if('AmbientLightSensor' in window){
-      const s=new AmbientLightSensor({frequency:.5});
-      s.addEventListener('reading',()=>{
-        const lux=s.illuminance;
-        if(lux>=4000)_luxBright=true;        /* bright daylight */
-        else if(lux<=800)_luxBright=false;   /* indoors / dusk — hysteresis in between */
-        if(dayModePref()==='auto')applyDaylight();
-      });
-      s.addEventListener('error',()=>{_luxBright=null});
-      s.start();
-    }
-  }catch(e){}
+  /* #shift — the clock keeps AUTO honest across 05:00 and 16:00. Checks every
+     30s so the flip lands within half a minute of the hour, and again the
+     moment the app comes back to the foreground (a phone asleep in a pocket
+     through 4 PM doesn't run timers). */
+  setInterval(()=>{if(dayModePref()==='auto')applyDaylight()},30000);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&dayModePref()==='auto')applyDaylight()});
+  window.addEventListener('focus',()=>{if(dayModePref()==='auto')applyDaylight()});
+  /* #shift — the ambient-light sensor no longer votes. It could flip a hand to
+     night at 9 AM inside a container or to day at 2 AM under a floodlight,
+     which is exactly the unpredictability the fixed window is here to remove. */
 })();
 function notifyPrefOn(){ try{return localStorage.getItem(K("notify"))==="1"}catch(e){return false} }
 function setNotifyPref(v){ try{localStorage.setItem(K("notify"), v?"1":"0")}catch(e){} }
