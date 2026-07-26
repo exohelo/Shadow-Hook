@@ -1344,6 +1344,8 @@ html.daylight .hdr-seal{background:radial-gradient(circle at 50% 30%,#f6eed8,#e5
   border:1px solid var(--line-soft);border-radius:11px;font-size:12px;line-height:1.4;color:var(--steel);text-align:left}
 .prof-dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--steel)}
 .prof-dot.on{background:#7fae6a;box-shadow:0 0 8px rgba(127,174,106,.6)}
+/* #fix4 — signed out but a backend IS configured: not green, not grey. Amber. */
+.prof-dot.warn{background:var(--warn);box-shadow:0 0 8px rgba(216,165,68,.55)}
 .prof-actions{display:flex;flex-direction:column;gap:10px;margin-top:15px}
 .btn-logout{cursor:pointer;width:100%;border:1px solid rgba(179,85,42,.7);border-radius:10px;padding:15px;
   background:linear-gradient(184deg,#3a1c11,#22110b);font-family:'Anton',sans-serif;font-size:16px;letter-spacing:.12em;
@@ -3734,15 +3736,63 @@ function localEnter(){
              profile columns, so reading them back would restore nothing and could only
              demote a ring the KV sync had already restored correctly. */
           try{ renderCredits(); circleChip(); renderCircles(); }catch(e){}
-          const a=loadAcct()||{}; a.handle=prof.handle; a.id=prof.card_id; a.name=prof.full_name; if(!a.since)a.since=prof.since||todayISO(); saveAcct(a);
+          /* #fix4 — the server owns identity. `if(!a.since)` let a leftover local record
+             keep its own join date, so a device that had auto-rolled a handle at the
+             gate today reported "member since" today while the real account read
+             three weeks earlier. Server first, local only as a fallback. */
+          const a=loadAcct()||{}; a.handle=prof.handle; a.id=prof.card_id; a.name=prof.full_name;
+          a.since=prof.since||a.since||todayISO();
+          saveAcct(a);
         }
         bootScreen(()=>enterApp('dockets'),true);
         return;
       }
     }catch(e){ console.warn('session restore failed', e); }
   }
-  if(savedAcct&&savedAcct.handle){ localEnter(); }
+  /* #fix4 — NO MORE GHOST ENTRY. This used to call localEnter() unconditionally, so a
+     device holding a leftover local account walked straight into the app wearing a
+     handle it had auto-rolled at the gate, its own Circle I and its own 0 ⬡ — while
+     the profile panel told the member they were "synced on every device". One card
+     then looked like two members. The signed-in account owns the identity, so when a
+     backend is configured and the browser thinks it's online, this device has to sign
+     in before it can wear that card. Genuinely offline (or no backend at all) still
+     enters on the local cache exactly as before — the escape hatch below covers the
+     case where navigator.onLine lies. */
+  if(savedAcct&&savedAcct.handle){
+    const backendUp = !!window.SB && (navigator.onLine!==false);
+    if(backendUp) askSignIn(savedAcct);
+    else localEnter();
+  }
 })();
+/* Show the gate with a plain explanation instead of silently entering as the cached
+   identity. Signing in IS the gate flow — same card, same password — so this just
+   makes the member pass through it once on this device. */
+function askSignIn(acct){
+  try{
+    const gp=document.getElementById('gatePage'); if(!gp){ localEnter(); return; }
+    /* the gate is shown by the .on class, not an inline style — #gatePage{display:none}
+       with #gatePage.on{display:block}. Setting style.display="" just falls back to
+       the none. Add the class (and clear any inline none a previous path left). */
+    gp.style.display=""; gp.classList.add('on');
+    let note=document.getElementById('gateSignIn');
+    if(!note){
+      note=document.createElement('div'); note.id='gateSignIn'; note.className='card';
+      note.style.cssText='margin-bottom:14px;border-color:rgba(216,165,68,.45)';
+      const host=gp.querySelector('.card'); if(host&&host.parentNode)host.parentNode.insertBefore(note,host);
+      else gp.appendChild(note);
+    }
+    note.innerHTML='<div class="card-h" style="color:var(--warn)">Sign in <span class="sl">//</span> This Device</div>'
+      +'<div class="card-b">'
+      +'<p class="sub" style="margin-bottom:10px">This device has <b>'+esc(acct.handle||'a handle')+'</b> saved locally but isn\'t signed in, '
+      +'so it can\'t see your rings, your marks or your Port Bucks — and anything you log here stays stranded on this browser.</p>'
+      +'<p class="sub" style="margin-bottom:12px">Verify the same dispatch # and password below and your real account takes over here.</p>'
+      +'<button class="btn-ghost" id="gateStayLocal" type="button" style="width:100%;border:0;color:#586067">Work offline on this device instead</button>'
+      +'</div>';
+    const stay=document.getElementById('gateStayLocal');
+    if(stay)stay.addEventListener('click',()=>{ try{note.remove();}catch(e){} try{gp.classList.remove('on');}catch(e){} localEnter(); });
+    try{ window.scrollTo(0,0); }catch(e){}
+  }catch(e){ console.warn('askSignIn', e); localEnter(); }
+}
 /* #32 — Take My Place: lock the handle, set the passcode, board through the loading screen */
 document.getElementById('enterBtn').addEventListener('click',async ()=>{
   const hEl=document.getElementById('handlePick'),hm=document.getElementById('handleMsg'),pm=document.getElementById('passMsg');
@@ -3771,6 +3821,7 @@ document.getElementById('enterBtn').addEventListener('click',async ()=>{
            is !=null, so finishEnter durably wrote 0 over this card's real balance on
            any transient failure. Pass null instead → finishEnter re-reads the device's
            own number. Same guard for a NULL port_bucks column. */
+        if(prof&&prof.since)pa.since=prof.since;   // #fix4 — the account's real join date, not this device's
         finishEnter(prof?prof.handle:h, pa, (prof&&prof.port_bucks!=null)?(+prof.port_bucks||0):null);
         return;
       }
@@ -3809,7 +3860,9 @@ function finishEnter(handle, pa, balance){
   document.getElementById('meHandle').textContent=handle;
   document.getElementById('meName').textContent=pa.name||"";
   document.getElementById('meCircle').textContent="Circle I · "+(pa.id||"");
-  const a=loadAcct()||{}; a.handle=handle; a.id=pa.id; a.name=pa.name; a.nameKey=pa.nameKey; if(!a.since)a.since=todayISO(); saveAcct(a);
+  const a=loadAcct()||{}; a.handle=handle; a.id=pa.id; a.name=pa.name; a.nameKey=pa.nameKey;
+  a.since=pa.since||a.since||todayISO();   // #fix4 — a server join date beats this device's
+  saveAcct(a);
   /* #fix(bucks) — the ACCT_ID above just repointed every K() key at a different card,
      but CREDITS/CIRCLE_LVL still hold the numbers read at boot under the OLD id.
      The backend-off sign-in passes balance=null, so the old code skipped this block
@@ -13050,11 +13103,21 @@ window.addEventListener('resize',()=>{if($w('wbw').classList.contains('on'))wbFi
     if(verified){ v.textContent="✓ Verified Casual"; v.classList.remove('no'); }
     else{ v.textContent="Unverified — verify at the gate"; v.classList.add('no'); }
 
-    var online=!!(window.SB);
-    $('pfDot').classList.toggle('on',online);
-    $('pfSync').textContent = online
+    /* #fix4 — this used to read !!(window.SB), which is true the moment the Supabase
+       LIBRARY loads, whether or not anybody is signed in. So a signed-out device sat
+       there reporting "Synced to your Brotherhood account — same login on every
+       device" while holding a stale local handle, its own Circle I and 0 ⬡. That one
+       line is what made a signed-out phone look like a second account. Three honest
+       states now: signed in, backend available but signed out, no backend at all. */
+    var signedIn=!!(window.SB && window.__shkUid);
+    var canSignIn=!!(window.SB) && !signedIn;
+    $('pfDot').classList.toggle('on',signedIn);
+    $('pfDot').classList.toggle('warn',canSignIn);
+    $('pfSync').textContent = signedIn
       ? "Synced to your Brotherhood account — same login on every device"
-      : "Saved on this device";
+      : canSignIn
+        ? "Not signed in on this device — sign in to sync your handle, rings and Port Bucks"
+        : "Saved on this device";
     showBuild();
   }
 
