@@ -3218,6 +3218,23 @@ const LETTER_STAND={};RACE_LIST.forEach(x=>{const L=x[0][0];(LETTER_STAND[L]=LET
    shape as always, so the reel, the flop math and every other consumer read on */
 const ACTIVE={};RACE_LIST.forEach(x=>{const L=x[0][0],n=parseInt(x[0].slice(1),10);(ACTIVE[L]=ACTIVE[L]||[]).push(n)});
 Object.keys(ACTIVE).forEach(L=>ACTIVE[L].sort((a,b)=>a-b)); // active dispatch IDs by letter — lets the reel skip dead numbers
+/* #shipped — a FROZEN copy of the board as it ships, taken before addActiveId
+   merges this device's joiners and card scans. Board CLASSIFICATION (held vs a
+   real cycle) must read this, never the live ACTIVE: the live roster differs
+   per phone, so the same wire row would score 0 flopped on one hand's screen
+   and 5,319 on another's, and each would persist its own answer. */
+const SHIPPED_ACTIVE={};Object.keys(ACTIVE).forEach(L=>{SHIPPED_ACTIVE[L]=ACTIVE[L].slice()});
+const SHIPPED_TOTAL=Object.keys(SHIPPED_ACTIVE).reduce((s,L)=>s+SHIPPED_ACTIVE[L].length,0);
+/* the next card after `pos` on the shipped board — skips dead numbers, rolls the letter */
+function shippedNextActive(pos){
+  const m=/^([A-Z])(\d+)$/.exec(String(pos||"").toUpperCase()); if(!m)return null;
+  const SEQ="ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  let li=SEQ.indexOf(m[1]); if(li<0)return null;
+  const n=parseInt(m[2],10);
+  let arr=SHIPPED_ACTIVE[SEQ[li]]||[], i=arr.findIndex(x=>x>n), guard=0;
+  while((i<0||i>=arr.length)&&guard<27){ li=(li+1)%26; arr=SHIPPED_ACTIVE[SEQ[li]]||[]; i=arr.length?0:-1; guard++; }
+  return (i>=0&&i<arr.length)?SEQ[li]+arr[i]:null;
+}
 const LSEQ="ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 /* #204 — NEW CASUALS JOIN CONSTANTLY. Their board number has to land on the ACTIVE board
    so the reel, the called-count, and the flop math all count them. addActiveId inserts a
@@ -4095,7 +4112,9 @@ function oneCardBack(start,end){
   const m1=/^([A-Z])(\d+)$/.exec(S), m2=/^([A-Z])(\d+)$/.exec(E);
   if(!m1||!m2)return false;
   if(m1[1]===m2[1]&&parseInt(m2[2],10)+1===parseInt(m1[2],10))return true;
-  try{ if(typeof nextActive==="function"){const nx=nextActive(E,1)[0]; if(nx&&sameCard(nx,S))return true;} }catch(e){}
+  /* the SHIPPED board, not the live one — see #shipped. Using ACTIVE here made
+     the answer depend on which cards this particular phone had scanned. */
+  try{ const nx=shippedNextActive(E); if(nx&&sameCard(nx,S))return true; }catch(e){}
   return false;
 }
 /* how many cards are on the board right now (joiners included) */
@@ -4143,6 +4162,12 @@ function handoffCard(r){
 function normalizeHeld(r){
   if(!r||!r.start||!r.end)return false;
   if(!oneCardBack(r.start,r.end))return false;
+  /* A guard on countActiveSpan was tried here and removed: for ANY one-card-back
+     pair the span is ~the whole book by definition (end < start takes the wrap
+     branch), so it fired every time and disabled normalisation completely.
+     start/end alone genuinely cannot separate "stale start" from "lapped the
+     book" — the documented call stands: one card back is the off-by-one, because
+     a board cannot call 5,332 cards off a sheet carrying a few hundred jobs. */
   r.start=r.end; r.act=0;
   return true;
 }
@@ -4289,13 +4314,86 @@ window.addComeDown=function(key,camedown,called){
 };
 let SH_PMF=null;                                  // published distribution — renderMyOdds reads it
 window.EARLY_COUNTS=null;                         // the #23 bot posts {ch,tot} here when it lands
+/* ═══════ #sheetfix — ONE definition of "members only", OCR-tolerant ═══════
+   The dispatch PDFs on ilwu13.com are SCANS with no text layer, so the worker
+   OCRs them and the board labels come back however the scan reads: "CRANE",
+   "Crane ", "MECHANIC", "Crane Top Handler " with a trailing space. This list
+   used to exist in three separate places (casualJobsOf, xpSheet, and
+   TB_MEMBERS_ONLY), all exact-match and case-sensitive — so one bad character
+   and crane/winch/mechanics silently became CASUAL boards: extra bars on the
+   sheet, an inflated CASUAL BOARDS subtotal, and the "⚿ Members only" line
+   vanishing entirely. Meanwhile the prediction reads the explicit total.cas
+   and stays right — "prediction good, sheet wrong".
+
+   Normalize hard (case, spacing, punctuation) and match a canonical set with
+   the aliases a scan actually produces. Exact matches only, never prefixes:
+   "Crane Chaser" IS casual work and must not get swept up by "Crane". */
+function normBoardName(s){
+  return String(s==null?"":s).toUpperCase()
+    .replace(/[.\u2019']/g,"")        // periods, curly + straight apostrophes
+    .replace(/[^A-Z0-9]+/g," ")       // slashes, dashes, NBSP, stray OCR marks
+    .trim().replace(/\s+/g," ");
+}
+/* built lazily inside a hoisted function: casualJobsOf is itself hoisted and
+   callable from the top of the file, so it must not depend on a `const` that
+   is initialised further down (that TDZ shape has already caused one fatal
+   SyntaxError in this codebase). */
+let _memBoards=null;
+function membersOnlyBoards(){
+  return _memBoards||(_memBoards=new Set([
+    "CRANE","CRANES",
+    "CRANE TOP HANDLER","CRANE TOPHANDLER","CRANE TH","TOP HANDLER","TOPHANDLER",
+    "WINCH","WINCHES","WINCH DRIVER","WINCH DRIVERS",
+    "MECHANIC","MECHANICS",
+    "CARPENTER","CARPENTERS"
+  ]));
+}
+function isMembersOnlyBoard(name){ return membersOnlyBoards().has(normBoardName(name)); }
+/* a board row's count, however the payload spells it (missing / string / null).
+   xpSheet used to call b.total.toLocaleString() straight — one board row with no
+   readable number threw a TypeError that escaped the Recent Boards render loop
+   and truncated the whole record. */
+function boardCount(b){ const n=Number(b&&b.total); return isFinite(n)?n:0; }
+/* the sheet's grand total, whether it arrived as {total:{total:N}} or a bare N */
+function sheetGrandTotal(d){
+  if(!d||d.total==null)return null;
+  if(typeof d.total==="number")return isFinite(d.total)?d.total:null;
+  const n=Number(d.total.total); return isFinite(n)?n:null;
+}
+/* THE one place casual/members figures are computed. Everything that shows a
+   number off a sheet reads this, so the row, the header and the subtotal can
+   no longer disagree with each other. */
+function sheetTotals(d){
+  const grand=sheetGrandTotal(d);
+  const stated=(d&&d.total&&typeof d.total==="object"&&d.total.cas!=null&&isFinite(Number(d.total.cas)))
+    ? Number(d.total.cas) : null;
+  const casual=[],members=[];
+  if(d&&d.boards)for(const k in d.boards){
+    (isMembersOnlyBoard(k)?members:casual).push([k,boardCount(d.boards[k])]);
+  }
+  casual.sort((a,b)=>b[1]-a[1]); members.sort((a,b)=>b[1]-a[1]);
+  const summed=casual.reduce((s,x)=>s+x[1],0);
+  const have=casual.length>0;
+  /* #totcas semantics, exactly as the engine already applies them at publishCall:
+     an explicit casual count wins over the board sum ONLY when it is > 0. A
+     sheet that OCRs cas as 0 must fall back to the rows, not feed 0 into the
+     prediction. (I got this wrong on the first pass — `stated!=null` would have
+     let a zero win.) `stated` is still kept so the mismatch check can use it. */
+  return {grand:grand, stated:stated, summed:have?summed:null,
+          cas:((stated!=null&&stated>0)?stated:(have?summed:null)),
+          casual:casual, members:members,
+          /* the sheet says one casual figure and its own rows add to another —
+             surface it instead of printing both and hoping nobody notices */
+          mismatch:(stated!=null&&stated>0&&have&&stated!==summed)};
+}
 /* casual-eligible job count off a dispatch forecast — crane/winch/mechanics/etc. go to
-   registered members and never move the casual board, so they don't weight the prediction. */
+   registered members and never move the casual board, so they don't weight the prediction.
+   #sheetfix — honours an explicit total.cas the same way the sheet and the engine do;
+   it used to ignore it, which is how the collapsed row and the open sheet disagreed. */
 function casualJobsOf(dd){
   if(!dd||!dd.boards)return null;
-  const NON={"Crane":1,"Crane Top Handler":1,"Winch":1,"Mechanics":1,"Carpenter":1};
-  let s=0,any=false; for(const k in dd.boards){ if(!NON[k]){ s+=dd.boards[k].total||0; any=true; } }
-  return any?s:null;
+  const t=sheetTotals(dd);
+  return t.cas!=null?t.cas:null;
 }
 /* ── #91 — THE WIRE STAGE: paint the call onto the board ──────────────────────
    Pure presentation off the engine's numbers (start letter, band lo/med/hi, move%,
@@ -5539,9 +5637,18 @@ function ensureRecentRow(key,data){
        minus the members-only boards (crane, winch, mechanics…). 991 on the sheet
        is 966 on the casual board — that's the number the record and the
        predictions run on. Falls back to the sheet total on boards-less sheets. */
-    const casTot=(data.total)?((typeof casualJobsOf==="function"&&casualJobsOf(data))||data.total.total||null):null;
+    /* #sheetfix — same source as the open sheet (sheetTotals), and tolerant of a
+       bare-number total. It used to read data.total.total directly, which is
+       undefined when the worker posts total as a plain number. */
+    const _st=(typeof sheetTotals==="function")?sheetTotals(data):null;
+    /* a zero casual count (board names OCR'd, numbers didn't) must fall through
+       to the grand total the way it always did — writing 0 here blanked the
+       row's whole "N jobs · N came down" line and then persisted the 0. */
+    const casTot=_st?((_st.cas||_st.grand)||null):null;
     const have=RECENT.find(r=>r.date===date&&r.slot===slot);
-    if(have){ if(have.tot==null&&casTot!=null)have.tot=casTot; return; }   // a landed final fills the row's count
+    /* a corrected sheet must be able to move this number. It used to latch on the
+       FIRST value ever written, so a bad first OCR pass was permanent. */
+    if(have){ if(casTot!=null&&have.tot!==casTot)have.tot=casTot; return; }
     const ordk=r=>r.date+(String(r.slot).endsWith("AM")?"_1":"_2");
     const thisk=date+(slot.endsWith("AM")?"_1":"_2");
     const prior=RECENT.filter(r=>ordk(r)<thisk).sort((a,b)=>ordk(a)<ordk(b)?-1:1).pop();
@@ -5593,27 +5700,30 @@ function xpEarlyCompact(dd){
   return h;
 }
 function xpSheet(d,label){
-  const NONCAS=new Set(["Crane","Crane Top Handler","Winch","Mechanics","Carpenter"]);   // casuals can't take these
-  let h='<div class="xp-h">'+label+'</div>';
-  const tot=d.total?d.total.total:null;
-  /* #totcas — Total = every job on the sheet (the number the prediction runs on); Casual =
-     casual-eligible only. Casual uses the explicit field if entered, else the casual-board sum. */
-  let cas=(d.total&&d.total.cas!=null)?d.total.cas:null;
-  if(cas==null&&d.boards) cas=Object.keys(d.boards).filter(k=>!NONCAS.has(k)).reduce((s,k)=>s+((d.boards[k]&&d.boards[k].total)||0),0);
-  h+='<div class="xp-tot">Total <b>'+(tot!=null?tot.toLocaleString():'—')+'</b>'
-    +(cas!=null?' · Casual <b style="color:var(--copper-hi)">'+cas.toLocaleString()+'</b>':'')+'</div>';
-  if(d.boards){
-    const all=Object.keys(d.boards).sort((a,b)=>d.boards[b].total-d.boards[a].total);
-    const casual=all.filter(k=>!NONCAS.has(k));
-    const members=all.filter(k=>NONCAS.has(k)&&d.boards[k].total>0);
-    const max=Math.max(1,...casual.map(k=>d.boards[k].total),1);
-    let casTot=0;
-    casual.forEach(k=>{const b=d.boards[k], pct=Math.round(b.total/max*100); casTot+=b.total||0;
-      h+='<div class="xp-row"><span class="xp-name">'+k+'</span>'
-        +'<span class="xp-track" title="'+xpOrderLine(b).replace(/"/g,'')+'"><i style="width:'+pct+'%"></i></span>'
-        +'<b>'+b.total.toLocaleString()+'</b></div>';});
-    h+='<div class="xp-row xp-sum"><span class="xp-name">CASUAL BOARDS</span><span class="xp-track"></span><b>'+casTot.toLocaleString()+'</b></div>';
-    if(members.length)h+='<div class="xp-mem">⚿ Members only: '+members.map(k=>'<b>'+k+' '+d.boards[k].total+'</b>').join(' · ')+' — registered work, not on the casual board</div>';
+  /* #sheetfix — every figure here comes from sheetTotals(), the same call the
+     collapsed board row and the prediction use, so the panel can't contradict
+     the row above it. Board names are escaped: they are OCR output and free
+     text from the Sheet Editor, and they used to go into innerHTML raw. */
+  const t=sheetTotals(d);
+  let h='<div class="xp-h">'+acEsc(label)+'</div>';
+  h+='<div class="xp-tot">Total <b>'+(t.grand!=null?t.grand.toLocaleString():'—')+'</b>'
+    +(t.cas!=null?' · Casual <b style="color:var(--copper-hi)">'+t.cas.toLocaleString()+'</b>':'')+'</div>';
+  if(t.casual.length||t.members.length){
+    const max=Math.max(1,...t.casual.map(x=>x[1]));
+    t.casual.forEach(([k,n])=>{const pct=Math.round(n/max*100);
+      h+='<div class="xp-row"><span class="xp-name">'+acEsc(k)+'</span>'
+        +'<span class="xp-track" title="'+acEsc(xpOrderLine(d.boards[k]||{}))+'"><i style="width:'+pct+'%"></i></span>'
+        +'<b>'+n.toLocaleString()+'</b></div>';});
+    if(t.summed!=null)
+      h+='<div class="xp-row xp-sum"><span class="xp-name">CASUAL BOARDS</span><span class="xp-track"></span><b>'+t.summed.toLocaleString()+'</b></div>';
+    /* the sheet states one casual figure and its own rows add to another. That
+       means the breakdown and the total came from different reads of the scan —
+       say so rather than printing two numbers and letting the eye pick. */
+    if(t.mismatch)
+      h+='<div class="xp-mem" style="color:var(--ember)">&#9888; the stated casual count ('+t.stated.toLocaleString()
+        +') doesn\u2019t match these rows ('+t.summed.toLocaleString()+') \u2014 the breakdown is from a different read of the sheet. Trust the paper.</div>';
+    const mem=t.members.filter(x=>x[1]>0);
+    if(mem.length)h+='<div class="xp-mem">\u26bf Members only: '+mem.map(([k,n])=>'<b>'+acEsc(k)+' '+n+'</b>').join(' \u00b7 ')+' \u2014 registered work, not on the casual board</div>';
   }
   return h;
 }
@@ -5754,8 +5864,8 @@ function renderRecentBoards(){
          inferred end lands behind the inferred start), the missing AM board didn't
          move either — show it held on its card instead of a backwards range. */
       const _ds=(prev.end?handoffCard(prev):nextCard(from)), _de=prevCard(r.start);
-      const _dheld=sameCard(_ds,_de)||oneCardBack(_ds,_de);
-      derivedAM[r.date]={start:_ds,end:(_dheld?_ds:_de),held:_dheld,mv:(AZ.indexOf(r.start[0])-AZ.indexOf(from[0])+26)%26};}
+      const _dhc=heldCard({start:_ds,end:_de});   /* one rule — don't re-derive it here */
+      derivedAM[r.date]={start:(_dhc||_ds),end:(_dhc||_de),held:!!_dhc,mv:(AZ.indexOf(r.start[0])-AZ.indexOf(from[0])+26)%26};}
     prev=r;});})();
   const hasAM2=Object.assign({},hasAM);
 
@@ -10788,7 +10898,7 @@ try{ syncTonightBoard(); }catch(e){}   /* cold-start: derive from the seeded DIS
 function tbCrew(s){return s.crew||0;}
 /* boards a casual can't be dispatched to — mirrors the union-only codes in JOB_CATALOG
    (Crane/Winch/Top Handler = Skill II/III; Mechanics/Carpenter = registered trades). */
-const TB_MEMBERS_ONLY=new Set(["Crane","Crane Top Handler","Winch","Mechanics","Carpenter"]);
+/* #sheetfix — third copy of this list, retired: use the shared OCR-tolerant test */
 /* #92 — which board the card shows, by operational period. The vessels (window.TONIGHT_BOARD)
    are OCR'd off the night ship-sheet; the MORNING/day board's job numbers arrive on the
    dispatch sheet during the night dispatch and live in DISPATCH_DATA[<today>_<DOW>_AM].
@@ -10828,8 +10938,8 @@ function renderTonightBoard(){
   set('tbShipCt',ships.filter(s=>!s.cancelled).length);
   // ── THE BREAKDOWN — split casual-eligible from members-only (matches Dockets ▸ The Job) ──
   const all=(b.boards||[]);
-  const casual=all.filter(x=>x[1]>0 && !TB_MEMBERS_ONLY.has(x[0]));
-  const members=all.filter(x=>x[1]>0 && TB_MEMBERS_ONLY.has(x[0]));
+  const casual=all.filter(x=>x[1]>0 && !isMembersOnlyBoard(x[0]));
+  const members=all.filter(x=>x[1]>0 && isMembersOnlyBoard(x[0]));
   const max=Math.max(1,...casual.map(x=>x[1]),1);
   const bel=document.getElementById('tbBoards');
   if(bel)bel.innerHTML=casual.map(([cat,v])=>{
@@ -11091,7 +11201,7 @@ function chainBoards(fromKey){
     /* #noflop0 — never re-anchor a follower that is ITSELF held: it has its own
        anchor (the card it sat on), and dragging its start back would fabricate
        movement it never made. Same guard the boot pass uses. The ripple stops. */
-    if(nxt.end&&boardMoved(nxt)===false)break;
+    if(nxt.end&&boardMoved(nxt)===false)continue;   /* it anchors itself; keep walking so later boards still re-anchor (matches the boot pass) */
     if(nxt.start===ns)break;                             // already in sync — the ripple stops
     nxt.start=ns;
     if(nxt.end)nxt.act=(AZ.indexOf(nxt.end[0])-AZ.indexOf(ns[0])+26)%26;
@@ -11159,6 +11269,16 @@ function bwApplyRow(row){
     const st=_brStore(); st[k]=Object.assign(st[k]||{},{date:r.date,slot:r.slot,start:r.start,act:0});
     localStorage.setItem(K('boardresults'),JSON.stringify(st));
   } }catch(e){}
+  /* #noflop0 — also re-run the chain from the board DIRECTLY BEFORE this one.
+     A wire row carries the stale start that the boot pass repaired; chaining
+     only forward from k never re-reads the held predecessor, so the screen
+     flip-flopped against localStorage depending on which row synced last. */
+  try{
+    const _ord=x=>x.date+(String(x.slot).endsWith("AM")?"_1":"_2");
+    const _sorted=[...RECENT].sort((a,b)=>_ord(a)<_ord(b)?-1:1);
+    const _i=_sorted.findIndex(x=>x.date+"_"+x.slot===k);
+    if(_i>0){const p=_sorted[_i-1];chainBoards(p.date+"_"+p.slot);}
+  }catch(e){}
   try{chainBoards(k);}catch(e){}
 }
 /* every device applies its own credit consequences exactly once */
@@ -14044,6 +14164,105 @@ html.daylight .btn-arcade.pending .ba-label{color:#4a4f58;text-shadow:none}
 html.daylight .btn-arcade.pending .ba-sub{color:#6b7079;opacity:1}
 html.daylight .btn-arcade.pending .ba-badge{background:#fff;border-color:var(--line)}
 html.daylight .btn-arcade.pending .ba-ico{color:#6b7079}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PART 5 — REVIEW FIXES
+
+   An adversarial pass over the whole daylight layer found live controls that
+   were still unreadable. Each of these was measured in the browser, not
+   guessed at. Grouped by what went wrong.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── 1 · --btn-hi/--btn-lo are a BUTTON PLATE, not the accent ──
+   Part 1 redefined them as copper. Thirteen rules in the original sheet use
+   them as `background:linear-gradient(var(--btn-hi),var(--btn-lo))` WITH
+   `color:var(--copper-hi)` as the ink — so copper ink landed on a copper fill
+   at 1.14–1.47:1 and the labels vanished: the wire-report Send, the story
+   comment send, the GIF-key SAVE and its ▸, and the INSTALL button. Put the
+   tokens back to a light plate; the primaries that should be solid copper set
+   their own background explicitly a few rules down. */
+html.daylight{--btn-hi:#fff4e8; --btn-lo:#ffe9d3;}
+html.daylight #installGo{background:var(--copper) !important;background-image:none !important;color:#fff !important;border-color:var(--copper) !important}
+
+/* ── 2 · the badge-unlock modal was being treated as full-screen media ──
+   .bpop is the celebration modal, not a photo viewer, and its text was tuned
+   for a light card. Part 1 painted it #000 and aimed the light-card rule at
+   `.bpop-card`, which does not exist — the real container is .bpop-stage. */
+html.daylight .bpop{background:rgba(15,17,20,.55)}
+html.daylight .bpop-stage{
+  background:#fff;background-image:none;border:1px solid var(--line);
+  border-radius:22px;box-shadow:var(--shadow-3)}
+html.daylight .bpop-sub{color:var(--steel)}
+html.daylight .bpop-kicker{color:var(--copper-hi)}
+html.daylight .bpop-name{
+  background:none;-webkit-background-clip:border-box;background-clip:border-box;
+  color:var(--copper-hi);-webkit-text-fill-color:var(--copper-hi);filter:none;animation:none}
+
+/* ── 3 · the emergency call button: only its DISABLED state got re-skinned ──
+   Once a port is picked the JS sets href, `:not([href])` stops matching, and
+   the markup's inline dark gradient took over — a near-black slab with salmon
+   text, in the state you'd actually be using it in. */
+html.daylight #emgCall[href]{
+  background:var(--ember) !important;background-image:none !important;
+  border:1px solid #9e2415 !important;color:#fff !important;box-shadow:var(--shadow-1) !important}
+html.daylight #emgCall[href]:active{background:#9e2415 !important}
+
+/* ── 4 · the live board position (replaces the clock during dispatch) ──
+   #f4e3c2 cream on the white topbar measured 1.24:1 — the struck-through
+   previous card read more clearly than the current one. */
+html.daylight .reel-cur{color:var(--bone);text-shadow:none}
+html.daylight .reel-cur #reelCur{color:var(--copper-hi);font-weight:700}
+html.daylight .reel-arrow{color:var(--copper)}
+/* the header countdown: part 1 aimed at .hc-val, which doesn't exist */
+html.daylight .dclock,html.daylight .hdr-console .dclock{text-shadow:none;color:var(--copper-hi)}
+html.daylight .hdr-console .dclock.standby{color:#8a6200;text-shadow:none;animation:none}
+
+/* ── 5 · "Log the Board" — the sheet's headline number was 2.04:1 ── */
+html.daylight .lb-flop-num{color:#a02011;text-shadow:none}
+html.daylight .lb-flop-lbl{color:#8a2214}
+html.daylight .lb-title{text-shadow:none;color:var(--bone)}
+html.daylight .lb-tiles>div{background:var(--well);background-image:none;border:1px solid var(--line-soft)}
+html.daylight .lb-tiles b{color:var(--bone)}
+html.daylight .lb-tiles span{color:var(--steel)}
+html.daylight .lb-att-row b{text-shadow:none;color:var(--bone)}
+
+/* ── 6 · the VERIFIED badge was the invisible one (1.78:1) ──
+   Note the inversion: the unverified variant used --steel and read fine, so
+   the good state was the one nobody could see. */
+html.daylight .prof-verified{color:#0f6b33;border-color:#a9d6ba;background:#e8f5ec}
+html.daylight .prof-verified.no{color:var(--steel);border-color:var(--line);background:var(--plate-3)}
+
+/* ── 7 · the social "add" tiles: dashed affordance at 1.16:1 on white ──
+   (1,3,0) in the original beat part 2's (1,2,1), so the fix never applied. */
+html.daylight #socialFeed .chan.create,html.daylight #socialFeed .evt.create{
+  border-color:#d9b98f;background:#fffaf4}
+html.daylight #socialFeed .chan.create .chan-av,
+html.daylight #socialFeed .evt.create .evt-date{
+  background:#fff4e8;border-color:#d9b98f;color:var(--copper-hi)}
+
+/* ── 8 · hover feedback the layer accidentally erased ──
+   `html.daylight .scan-console` (0,2,1) outranked `.scan-console:hover` (0,2,0). */
+html.daylight .scan-console:hover{background:#fff4e8;border-color:#d9b98f}
+html.daylight #scr-ports .send-word:hover{background:#ffe9d3}
+
+/* ── 9 · glows that survived because a keyframe rewrites the property every
+   frame, or because an ID selector outranked the reset. Animations beat
+   author-normal declarations, so these need !important or animation:none. */
+html.daylight .wire-stop,html.daylight .tk-hero,html.daylight .heat.hot,
+html.daylight .dclock,html.daylight .beta-badge{filter:none !important}
+html.daylight #scr-ledger .tk-meter .bar,html.daylight #scr-ledger .tk-meter .bar i{box-shadow:none}
+html.daylight #scr-ledger .race-tile .v,html.daylight #scr-dockets .detail .stat .v,
+html.daylight #scr-ledger #yGross,html.daylight #weekGross,html.daylight #ratHrs,
+html.daylight #predStop,html.daylight #recentBoards .rb-range .rb-arrow,
+html.daylight .dl-pay b,html.daylight .dl-tot-n,html.daylight .dl-ttl,
+html.daylight .rh-target,html.daylight .six-days.hot,html.daylight #njAdd,
+html.daylight .heist-title,html.daylight .heist-amt,html.daylight .scan-tx .sl1,
+html.daylight .pc-ic,html.daylight #scr-dockets .empty-state .es-ico{
+  text-shadow:none;filter:none}
+html.daylight .heist-title,html.daylight .heist-amt{color:#a02011}
+
+/* ── 10 · the header seal's lift was set in part 1 then cancelled in part 2 ── */
+html.daylight .hdr-seal{box-shadow:var(--shadow-1)}
 </style>
 
 </body>
