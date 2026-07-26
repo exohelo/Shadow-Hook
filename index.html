@@ -1704,7 +1704,7 @@ window.DEVLOG=(function(){
         </div>
         <span class="dl-onair"><i></i>ON AIR</span>
       </div>
-      <div class="dl-pay">every drop you catch pays <b>+10 ⬡</b></div>
+      <div class="dl-pay">every drop you catch pays <b>+10 ⬡</b> <span style="opacity:.72">· first 6 a board</span></div><!-- #fix3: the cap is real, say so -->
       <div class="dl-hint" id="dropHint">150 UTR now… 40 swing later — they drop it in waves. Punch in each call.</div>
       <div class="row2">
         <div><label class="lbl" for="dropN">How many</label><input class="field dl-num" id="dropN" type="text" inputmode="numeric" placeholder="150"></div>
@@ -1822,7 +1822,7 @@ window.DEVLOG=(function(){
         <div class="row3" style="margin-bottom:12px">
           <div><span class="lbl">The Job *</span><input class="field" id="njCat" list="jobCodes" placeholder="UTR, S, D, CLERK…" autocapitalize="characters"><datalist id="jobCodes"></datalist></div>
           <div><span class="lbl">Shift *</span><select class="field" id="njShift"><option>Day</option><option>Night</option></select></div>
-          <div><span class="lbl">Date *</span><input class="field" id="njDate" type="date"></div>
+          <div><span class="lbl">Date *</span><input class="field" id="njDate" type="date"></div><!-- #fix2: max set to today at boot -->
         </div>
         <div class="row2" style="margin-bottom:12px;align-items:end">
           <div><span class="lbl">Hours paid</span><input class="field" id="njHours" type="number" min="1" max="16" step="0.5" placeholder="8"></div>
@@ -2214,14 +2214,20 @@ window.DEVLOG=(function(){
   <div class="sheet" id="rulesSheet">
     <div class="sheet-card" style="text-align:left">
       <div class="big" style="font-size:20px;letter-spacing:.06em;text-align:center">⬡ PORT BUCKS</div>
-      <p class="sub" style="margin:8px 0 12px">The Order pays for the work that keeps the tool sharp. Every action below mints Port Bucks on the spot:</p>
+      <p class="sub" style="margin:8px 0 12px">The Order pays for the work that keeps the tool sharp. What each action mints:</p>
       <table class="baseline-tbl">
         <tr><td>Seal a docket</td><td>+10</td></tr>
-        <tr><td>Feed the live board during dispatch</td><td>+15</td></tr>
-        <tr><td>Send word — number, map, correction, idea</td><td>+20</td></tr>
-        <tr><td>Share the Order with a casual</td><td>+25</td></tr>
-        <tr><td>Earn a new mark</td><td>+50</td></tr>
+        <tr><td>Log a drop on the wire</td><td>+10 <span style="opacity:.7">· 6 a board</span></td></tr>
+        <tr><td>Feed the live board during dispatch</td><td>+15–20</td></tr>
+        <tr><td>First to log today's board</td><td>+50–500</td></tr>
+        <tr><td>Send word — number, map, correction, idea</td><td>+20 <span style="opacity:.7">· 3 a day</span></td></tr>
+        <tr><td>Share the Order with a casual</td><td>+25 <span style="opacity:.7">· once</span></td></tr>
+        <tr><td>Earn a new mark</td><td>+50 <span style="opacity:.7">· buck marks excepted</span></td></tr>
       </table>
+      <!-- #fix3(bucks) — the old table said "on the spot" with no caps, while the code
+           capped drops at 6 a board, send-word at 3 a day and the share bounty at once
+           ever, paid 50–500 for a board log that wasn't listed at all, and pays nothing
+           for the four balance-threshold marks. Every row now matches the code. -->
       <p class="sub" style="margin-top:12px">When the Armory opens, gear moves for <b style="color:var(--bone)">cash or Port Bucks</b>. Straight talk: early exchange rates will be steep — the Order can't give away cannons before there's powder in the keg. As the Armory earns, the rates loosen and the grinders get paid. Port Bucks never expire.</p>
       <button class="btn-ghost" style="width:100%;margin-top:14px" onclick="document.getElementById('rulesSheet').classList.remove('on')">Understood</button>
     </div>
@@ -2870,7 +2876,12 @@ function K(s){return "shadowhook_"+s+"_"+ACCT_ID;}
   function mine(key){
     var a=card(); if(!a) return false;
     if(key.indexOf('shadowhook_')!==0) return false;
-    if(key.indexOf('_'+a)===-1) return false;
+    /* #fix3(bucks) — endsWith, not indexOf. The card pattern is /^[A-Z]\d{3,5}$/, so
+       D492 is a valid card AND a prefix of D4928: with a='D492', indexOf('_D492') found
+       a match inside 'shadowhook_credits_D4928' and the equality test on the next line
+       didn't catch it, so D4928's keys — credits included — were uploaded into D492's
+       user_kv rows and scattered to D492's other devices. */
+    if(key.slice(-(('_'+a).length))!=='_'+a) return false;
     if(key==='shadowhook_credits_'+a) return false;
     return true;
   }
@@ -2911,6 +2922,14 @@ function K(s){return "shadowhook_"+s+"_"+ACCT_ID;}
           reopens: its fresh work wins over an older server copy) ---- */
   async function flushAllLocal(gapsOnly, skip){   // gapsOnly=true → never clobber existing server rows; skip={key:1} → omit those keys
     var uid=window.__shkUid; if(!window.SB||!uid) return false;
+    /* #fix3(bucks) — bail WITHOUT clearing the dirty flag when the card isn't known yet.
+       On the sign-in-after-logout path Supabase emits SIGNED_IN → onSess → pull() before
+       finishEnter has run, so ACCT_ID is still "anon", loadAcct() was just wiped, and
+       card() returns null. mine() then rejects every key, rows comes back empty, and the
+       old code took the !rows.length branch and called clearDirty() — throwing away the
+       outbox without pushing a single row. pull() would then overwrite local with the
+       older server copy. That is how a just-bought 1,500 ⬡ ring could vanish. */
+    if(!card()) return false;
     var a=card()||'', rows=[];
     try{
       for(var i=0;i<localStorage.length;i++){
@@ -2958,7 +2977,15 @@ function K(s){return "shadowhook_"+s+"_"+ACCT_ID;}
     if(res&&res.error){ console.warn('[cloud] pull',res.error.message); return; }
     var rows=(res&&res.data)||[], seen={}, changed=0;
     // server wins for every key it already holds
-    rows.forEach(function(row){ seen[row.k]=1; if(apply(row.k,row.v)) changed++; });
+    /* #fix3(bucks) — settle() every applied row. It was wired ONLY into the realtime
+       handler below, so the boot path — which is the common one — wrote the server's
+       badge list to disk and left the in-memory BADGES flags at their boot state. It
+       leaned entirely on the location.reload() further down, which is skipped whenever
+       sessionOK() is false (embedded webview, private mode) or HYDR already survives a
+       previous reload. unlockBadge() guards only on the in-memory flag and then pays
+       +50 ⬡, and its disk write dedupes the index — so the re-award left no trace.
+       Same exposure for CIRCLE_LVL, which decides what the member is charged. */
+    rows.forEach(function(row){ seen[row.k]=1; if(apply(row.k,row.v)){ changed++; try{ settle(row.k); }catch(e){} } });
     // MIGRATION / GAP-FILL: push up any Work ID data this device holds that the
     // server is still missing — never clobbering what's already up there. This is
     // what carries a pre-existing member's whole history into the cloud the first
@@ -3010,9 +3037,25 @@ function K(s){return "shadowhook_"+s+"_"+ACCT_ID;}
       if(a && key==='shadowhook_dockets_'+a && typeof DOCKETS!=='undefined'){
         var arr=JSON.parse(localStorage.getItem(key)||'[]'); DOCKETS.length=0; arr.forEach(function(j){DOCKETS.push(j);});
       }
+      /* #fix2(bucks) — the badge list rides this mirror (mine() excludes only the
+         credits key) but the in-memory BADGES array was never refreshed from it, and
+         unlockBadge() guards ONLY on that array — then pays +50 ⬡. So: earn a mark on
+         the phone, the tablet receives the new badge list AND the new dockets, but its
+         BADGES[ix][2] is still 0; the next checkMarks() there re-fires the same mark
+         and pays another 50 ⬡, and line ~8048 finds the index already listed so the
+         second payout leaves no trace. Rebuild the flags whenever the list lands.
+         CIRCLE_LVL rides the same mirror and gates what the member is charged. */
+      if(a && key==='shadowhook_badges_'+a && typeof BADGES!=='undefined'){
+        var ids=JSON.parse(localStorage.getItem(key)||'[]');
+        BADGES.forEach(function(b){ b[2]=0; });
+        ids.forEach(function(ix){ if(BADGES[ix]) BADGES[ix][2]=1; });
+      }
+      if(a && key==='shadowhook_circle_'+a && typeof CIRCLE_LVL!=='undefined'){
+        CIRCLE_LVL=Math.min(6,Math.max(1,+localStorage.getItem(key)||1));
+      }
     }catch(e){}
     if(_soft) return; _soft=setTimeout(function(){ _soft=null;
-      ['renderWeek','renderYear','renderBoards','renderDayReport','renderCredits'].forEach(function(fn){ try{ if(typeof window[fn]==='function') window[fn](); }catch(e){} });
+      ['renderWeek','renderYear','renderBoards','renderDayReport','renderCredits','renderBadges','renderCircles','circleChip'].forEach(function(fn){ try{ if(typeof window[fn]==='function') window[fn](); }catch(e){} });
     },250);
   }
 
@@ -3551,12 +3594,106 @@ async function sbLoadProfile(){
     return Object.assign({}, pr.data, (pv&&pv.data)||{});
   }catch(e){ console.warn('sbLoadProfile', e); return null; }
 }
+/* #fix3(bucks) — the round-2 sequence guard was not enough. It stopped a STALE response
+   from winning, but it assumed the server applies requests in issue order, which nothing
+   guarantees: two apply_bucks calls 5 ms apart are independent HTTP requests, and if the
+   server applies B then A, A's reply is the final balance while B's is intermediate —
+   the client cannot tell which. It also had two holes: if the newest request errored,
+   NO answer was ever applied and nothing retried; and K('credits') was evaluated at
+   response time, so a reply landing after an account switch wrote one card's balance
+   into another card's key.
+   New rule: a response is authoritative only if its request never overlapped another.
+   The moment two overlap, stop trusting individual replies and do ONE authoritative
+   re-read when the burst drains. */
+let _bucksInFlight=0, _bucksOverlap=false;
+function sbRefreshBucks(){
+  if(!window.SB || !window.__shkUid) return;
+  const acct=ACCT_ID;
+  try{
+    window.SB.from('profiles').select('port_bucks').eq('id',window.__shkUid).maybeSingle()
+      .then(function(r){
+        if(!r || r.error || acct!==ACCT_ID) return;      // switched cards mid-flight — not ours to write
+        const v=r.data && r.data.port_bucks;
+        if(typeof v==='number'){ try{CREDITS=v;localStorage.setItem(K('credits'),CREDITS);}catch(e){} try{renderCredits();}catch(e){} }
+      }).catch(function(e){ console.warn('bucks refresh', e); });
+  }catch(e){}
+}
 function sbApplyBucks(delta, reason){   // push an earn/spend to the server; server balance wins
   if(!window.SB || !delta) return;
+  /* #fix2(bucks) — onSess() sets __shkUid to a uid when a session is live and to
+     explicit null when there isn't one; it is undefined only before getSession()
+     has resolved. Discriminate on ===null so a signed-out member (local-fallback
+     entry) stops firing a doomed RPC per chat message, WITHOUT dropping deltas
+     during the boot window when the session is merely not-yet-known. */
+  if(window.__shkUid===null) return;
+  const acct=ACCT_ID;                       // whose balance this delta belongs to
+  _bucksInFlight++; if(_bucksInFlight>1) _bucksOverlap=true;
+  const solo=!_bucksOverlap;
+  const done=function(){
+    _bucksInFlight=Math.max(0,_bucksInFlight-1);
+    if(_bucksInFlight===0 && _bucksOverlap){ _bucksOverlap=false; sbRefreshBucks(); }
+  };
   window.SB.rpc('apply_bucks',{p_delta:delta,p_reason:reason||""}).then(function(r){
-    if(r.error){ console.warn('apply_bucks:', r.error.message); return; }
-    if(typeof r.data==='number'){ try{CREDITS=r.data;localStorage.setItem(K('credits'),CREDITS);}catch(e){} try{renderCredits();}catch(e){} }
-  }).catch(function(e){ console.warn('apply_bucks', e); });
+    if(r.error){ console.warn('apply_bucks:', r.error.message); _bucksOverlap=true; return; }
+    if(acct!==ACCT_ID) return;               // the member changed cards while this was in flight
+    if(solo && !_bucksOverlap && typeof r.data==='number'){
+      try{CREDITS=r.data;localStorage.setItem(K('credits'),CREDITS);}catch(e){} try{renderCredits();}catch(e){}
+    }
+  }).catch(function(e){ console.warn('apply_bucks', e); _bucksOverlap=true; })
+    .then(done, done);
+}
+/* #fix(bucks) — EVERY localStorage key is namespaced by ACCT_ID via K(), but the
+   account-scoped globals below are read ONCE at script-eval time, under whatever
+   ACCT_ID was live at boot. Any path that reassigns ACCT_ID has to re-read them,
+   or the PREVIOUS account's numbers ride into the new card and the first earn or
+   charge overwrites that card's real balance. (Repro before this fix: log out,
+   sign back in on a card holding 4,300 ⬡ → chip reads 0 → seal one docket →
+   shadowhook_credits_<card> is rewritten to 10 and the 4,300 is gone.)
+   CIRCLE_LVL rides along because it decides what the member is CHARGED —
+   a Boatswain who reloads under a stale ring pays full price. */
+/* #fix2(bucks) — cap the docket date picker at today so the future-shift payout can't
+   even be reached from the UI (the seal path validates it too — belt and braces). */
+try{ (function(){ const d=document.getElementById('njDate'); if(d)d.setAttribute('max',todayISO()); })(); }catch(e){}
+/* #fix3(bucks) — TDZ-safe read of CIRCLE_LVL. `typeof CIRCLE_LVL!=='undefined'` does NOT
+   protect a `let` binding in its temporal dead zone — typeof throws for let/const, unlike
+   var. The existing uses of that idiom in this file are safe only by accident: they all
+   sit inside event handlers that can't fire before the declaration executes. Anything
+   that runs during script evaluation (renderSocialFeed() is called at eval time) needs
+   this instead, or the ReferenceError kills the rest of the script. */
+function circleLvl(){ try{ return CIRCLE_LVL; }catch(e){ return 1; } }
+function reloadAcctBucks(){
+  try{ CREDITS=+localStorage.getItem(K('credits'))||0; }catch(e){}
+  try{ CIRCLE_LVL=Math.min(6,Math.max(1,+localStorage.getItem(K('circle'))||1)); }catch(e){}
+  /* #fix2(bucks) — BADGES has to come along. It is loaded the same boot-time-only way,
+     and unlockBadge() hard-returns on an already-set flag BEFORE it pays out, so a
+     stale array costs real money in both directions: a flag left set from the old
+     namespace makes that mark permanently unearnable for the new card (no popup, no
+     +50 ⬡), and a flag left clear after a logout lets checkMarks() re-award marks the
+     member already owns, 50 ⬡ each, once per login cycle. Clear, then re-apply from
+     the new namespace. */
+  /* #fix3(bucks) — parse BEFORE clearing, the way settle() does. Clearing first meant a
+     corrupt or empty value — JSON.parse('') throws, and the cloud apply() writes
+     String(v!=null?v:'') — wiped every mark flag with nothing to restore them, and the
+     catch swallowed it. checkMarks() would then re-award the whole wall at +50 a mark
+     while the stored index list deduped the writes, leaving no trace. */
+  try{
+    const raw=localStorage.getItem(K('badges'));
+    /* Absence of data is not the same as "no marks". A missing key (null) genuinely
+       means this card has earned none — clear. But an EMPTY STRING is only ever
+       produced by the cloud apply() writing String(v!=null?v:'') for a null row, and
+       treating that as an empty list would wipe the wall; so would a non-array or
+       unparseable value. In those cases keep what's in memory and leave it alone. */
+    let ids=null;
+    if(raw===null) ids=[];
+    else if(raw!==''){ try{ const parsed=JSON.parse(raw); if(Array.isArray(parsed)) ids=parsed; }catch(e){} }
+    if(ids){
+      BADGES.forEach(b=>{ b[2]=0; });
+      ids.forEach(ix=>{ if(BADGES[ix])BADGES[ix][2]=1; });
+      renderBadges();
+    }
+  }catch(e){}
+  try{ renderCredits(); }catch(e){}
+  try{ circleChip(); renderCircles(); }catch(e){}
 }
 
 function localEnter(){
@@ -3581,8 +3718,22 @@ function localEnter(){
           document.getElementById('meHandle').textContent=prof.handle;
           document.getElementById('meName').textContent=prof.full_name||"";
           document.getElementById('meCircle').textContent="Circle I · "+(prof.card_id||"");
-          try{ CREDITS=+prof.port_bucks||0; localStorage.setItem(K('credits'),CREDITS); }catch(e){}
-          try{ renderCredits(); }catch(e){}
+          /* #fix(bucks) — ACCT_ID just changed, so re-read this card's own numbers
+             BEFORE deciding whether the server should override them. */
+          reloadAcctBucks();
+          /* #fix(bucks) — a NULL port_bucks column (a freshly claimed profile) used to
+             coerce to 0 through `+prof.port_bucks||0` and wipe a real local balance.
+             Only let the server win when it actually HAS a number. */
+          if(prof.port_bucks!=null){ try{ CREDITS=+prof.port_bucks||0; localStorage.setItem(K('credits'),CREDITS); }catch(e){} }
+          /* #note(bucks) — profiles.circle / .badges / .is_keymaster are SELECTed above
+             and deliberately NOT applied here. They look like a missing restore, but
+             they aren't: the cloud-KV write-through mirrors every K() key through
+             user_kv, and mine() excludes ONLY shadowhook_credits_<card> ("port bucks
+             excluded: own atomic path"). So K('circle') and K('badges') already ride
+             cross-device on their own. Nothing in this client ever WRITES those three
+             profile columns, so reading them back would restore nothing and could only
+             demote a ring the KV sync had already restored correctly. */
+          try{ renderCredits(); circleChip(); renderCircles(); }catch(e){}
           const a=loadAcct()||{}; a.handle=prof.handle; a.id=prof.card_id; a.name=prof.full_name; if(!a.since)a.since=prof.since||todayISO(); saveAcct(a);
         }
         bootScreen(()=>enterApp('dockets'),true);
@@ -3615,7 +3766,12 @@ document.getElementById('enterBtn').addEventListener('click',async ()=>{
         const si=await window.SB.auth.signInWithPassword({email:email,password:pass});
         if(si.error){ pm.textContent="> that password doesn't match this card"; undo(); return; }
         const prof=await sbLoadProfile();
-        finishEnter(prof?prof.handle:h, pa, prof?(+prof.port_bucks||0):0);
+        /* #fix(bucks) — sbLoadProfile() returns null on a thrown error, an RLS denial,
+           a network blip or a missing row. The old `prof?…:0` passed a hard 0, which
+           is !=null, so finishEnter durably wrote 0 over this card's real balance on
+           any transient failure. Pass null instead → finishEnter re-reads the device's
+           own number. Same guard for a NULL port_bucks column. */
+        finishEnter(prof?prof.handle:h, pa, (prof&&prof.port_bucks!=null)?(+prof.port_bucks||0):null);
         return;
       }
       if(up.error){ pm.textContent="> "+up.error.message; undo(); return; }
@@ -3628,7 +3784,12 @@ document.getElementById('enterBtn').addEventListener('click',async ()=>{
         else{ pm.textContent="> "+cl.error.message; }
         undo(); return;
       }
-      finishEnter(h, pa, 0);
+      /* #fix2(bucks) — was `finishEnter(h, pa, 0)`, the same hard-zero hazard fixed on
+         the sign-in path above: a card that earned bucks with the backend off, then
+         claimed a server account, had them written away. Keep the device's balance
+         and carry it up as the account's opening delta so both sides agree. */
+      finishEnter(h, pa, null);
+      try{ if(CREDITS>0) sbApplyBucks(CREDITS, 'opening balance carried from this device'); }catch(e){}
       return;
     }catch(e){ console.warn(e); pm.textContent="> couldn't reach the backend — try again"; undo(); return; }
   }
@@ -3649,6 +3810,18 @@ function finishEnter(handle, pa, balance){
   document.getElementById('meName').textContent=pa.name||"";
   document.getElementById('meCircle').textContent="Circle I · "+(pa.id||"");
   const a=loadAcct()||{}; a.handle=handle; a.id=pa.id; a.name=pa.name; a.nameKey=pa.nameKey; if(!a.since)a.since=todayISO(); saveAcct(a);
+  /* #fix(bucks) — the ACCT_ID above just repointed every K() key at a different card,
+     but CREDITS/CIRCLE_LVL still hold the numbers read at boot under the OLD id.
+     The backend-off sign-in passes balance=null, so the old code skipped this block
+     entirely: no reload, no renderCredits(), and the first earn wrote the stale
+     number over the card's real balance. Re-read on every entry. */
+  /* #fix2(bucks) — reload ALWAYS, then let a server balance override. The first pass
+     put the reload only on the else branch, so the backend-ON path (balance!=null)
+     still ran the whole session on the PREVIOUS card's CIRCLE_LVL and BADGES:
+     a Boatswain signing back in was quoted 250 ⬡ for a room instead of 125, and
+     buying "Circle II" then wrote 2 over their stored 5 — which rode user_kv to
+     their other phones. Only CREDITS was ever covered. */
+  reloadAcctBucks();
   if(balance!=null){ try{CREDITS=balance;localStorage.setItem(K('credits'),CREDITS);}catch(e){} try{renderCredits();}catch(e){} }
   document.getElementById('gatePage').style.display="none";
   bootScreen(()=>enterApp('dockets'));
@@ -6487,7 +6660,11 @@ document.getElementById('dropAdd').addEventListener('click',()=>{
     cid:Date.now().toString(36)+"-"+Math.floor(Math.random()*1e8).toString(36)};   // #118 — travels the wire under this id
   if(o.drops.some(function(x){return x.cat===d.cat&&x.n===d.n&&(x.ph||dropPhase(x.ts))===d.ph&&Math.abs(x.ts-d.ts)<12*60000;})){toast("Already logged that call this wave (counted once)");inp.value="";return;}
   o.drops.push(d);
-  if(o.paid<6){o.paid++;addCredits(10,"drop logged on the wire");toast("✓ Drop logged · +10 ⬡");try{rainCoins(9);}catch(e){}}   /* #dl2 — a paid catch sprinkles coins */
+  /* #fix2(bucks) — tag what this drop paid, the way a sealed docket tags j.earned, so
+     striking it can claw the same amount back. Without it a member could log six
+     drops (+60 ⬡), delete all six — taking the data back off the wire — and keep
+     the money for contributing nothing. */
+  if(o.paid<6){o.paid++;d.earned=10;addCredits(10,"drop logged on the wire");toast("✓ Drop logged · +10 ⬡");try{rainCoins(9);}catch(e){}}   /* #dl2 — a paid catch sprinkles coins */
   else toast("✓ Drop logged — pay caps at 6 a board");
   dropSave(o);dropRecompute();renderDropLog();
   try{dwPush(d);}catch(e){}                     // #118 — every member's log hears it
@@ -6497,7 +6674,12 @@ document.getElementById('dropAdd').addEventListener('click',()=>{
 });
 document.getElementById('dropList').addEventListener('click',e=>{
   const b=e.target.closest('button[data-di]');if(!b)return;
-  const o=dropData();o.drops.splice(parseInt(b.dataset.di,10),1);
+  const o=dropData();const gone=o.drops.splice(parseInt(b.dataset.di,10),1)[0];
+  /* #fix2(bucks) — claw back exactly what this drop paid, mirroring the docket strike.
+     o.paid is deliberately NOT decremented: the cap slot stays spent, so a
+     delete/re-add cycle can't walk past the 6-a-board ceiling. */
+  const refund=(gone&&gone.earned)||0;
+  if(refund)try{spendCredits(refund,"drop struck from the wire");}catch(_){}
   dropSave(o);dropRecompute();renderDropLog();
   try{dwDelete(b.dataset.cid);}catch(e){}       // #118 — struck drops leave the wire too
   try{renderRecentBoards();}catch(e){}
@@ -6540,6 +6722,16 @@ function cwLoad(){
 }
 function cwPersist(){try{localStorage.setItem(CW_KEY+"_board",JSON.stringify({slot:callSlot,state:CWstate,ts:Date.now()}))}catch(e){}}
 function cwSeedDemo(){ /* live: no seeded activity — the wire fills only from real member reports */ }
+/* #dead(jul26) — CWstate NEVER LEAVES THIS DEVICE. cwSeedDemo is empty and there is no
+   backend sync, so the only writer of st.first is cwSubmit, which sets iAmFirst=true
+   on the same line. Therefore st.first!=null always implies YOU were first, which
+   means cwFieldHTML's ✓/✗ branch (guarded on !st.iAmFirst) can never render, cwConfirm
+   is never callable, st.yes/st.no never move, st.chal is never set, and st.live is
+   never true. Net: `addCredits(cwFirstPay(f))` below is the only reachable balance
+   move in this whole subsystem — a number pays out on submit and can never be
+   confirmed, challenged, overruled or clawed back. Anything you type earns.
+   Restoring the design means pushing CWstate to a shared table so other hands'
+   reports actually arrive; the local flags alone cannot get there. */
 cwLoad();
 
 function cwMuted(){return Date.now()<CWme.mutedUntil}
@@ -6590,7 +6782,14 @@ function cwSubmit(f){
   }
   cwAfter(f);
 }
-/* ⚔ side 'a' = the original number stands · side 'b' = the correction carries */
+/* ⚔ side 'a' = the original number stands · side 'b' = the correction carries
+   #dead(jul26) — cwVote is the ONLY caller of cwResolveHeist, and it returns two lines
+   in if st.iAmFirst||st.iAmChal. So on entry to cwResolveHeist both flags are
+   guaranteed false — and every consequence in there is gated on exactly those two
+   flags. The pay transfer, the claw-back and the CWme.bad penalty are all
+   permanently dead, and heistPop always resolves to (false,false), which is why that
+   banner can never name the local member. Compare bwSettleAll, which does it right:
+   it settles from the ROW's heist_from/by against bwMe(), not from local flags. */
 function cwVote(f,side){
   if(cwMuted())return;
   const st=CWstate[f.id];
@@ -7431,6 +7630,11 @@ document.getElementById('njAdd').onclick=()=>{
     return;
   }
   if(hoursRaw&&(!(hours>0)||hours>16)){alert("Hours paid looks off — enter a number between 1 and 16, or leave it blank for standard.");return;}
+  /* #fix2(bucks) — the date field had no upper bound and the seal never checked one, so
+     a member could step the picker forward and seal a +10 ⬡ docket for every day of
+     next year. restViolation caps it at one docket per calendar date, but there is no
+     shortage of calendar dates. ISO strings compare correctly as text. */
+  if(date>todayISO()){alert("That shift hasn't happened yet — you can't seal a docket for a future date.");return;}
 
   const j={date,ship:ship||"—",terminal:termOk,category,shift,start:start||undefined,hours:hours||undefined,flex:flex||undefined,clerkPct:clerkPct||undefined,board:"",queue:"",photo:(window.scanThumb||null),_id:Date.now()};
   const editId=window.njEditId||null;
@@ -7475,6 +7679,10 @@ document.getElementById('njAdd').onclick=()=>{
    photo sticky on top when there is one — and manualClose() sends it home.
    Sealing/updating closes it via njClearForm; walking away cancels the edit. */
 function manualOpen(photo){
+  /* #fix3(bucks) — refresh the ceiling every time the form opens. It was set once at boot,
+     so a hoot hand who opened the app at 21:00 and logged the shift after midnight found
+     today greyed out in the native picker. */
+  try{ const dd=document.getElementById('njDate'); if(dd)dd.setAttribute('max',todayISO()); }catch(e){}
   const s=document.getElementById('manualSheet'),dock=document.getElementById('manualDock'),card=document.getElementById('njFormCard');
   if(dock&&card&&card.parentNode!==dock)dock.appendChild(card);
   const w=document.getElementById('njPhotoWrap'),im=document.getElementById('njPhotoImg');
@@ -7784,15 +7992,29 @@ renderPorts();
     const t=document.getElementById('wordType').value, m=document.getElementById('wordMsg').value.trim();
     return {subject:"[Shadow Hook] "+t, body:m+"\n\n— sent from the app · "+new Date().toLocaleDateString()};
   }
+  /* #fix2(bucks) — a mailto: hand-off returns NO signal that anything was sent, so this
+     payout is unverifiable by construction and used to be unlimited: open the sheet,
+     tap "Send It", +20 ⬡, repeat. Cap what an unverifiable action can mint per day.
+     The marks below still unlock normally — only the bucks are capped. */
+  const WORD_PAY_CAP=3;
+  function wordPaidToday(){ try{ const s=JSON.parse(localStorage.getItem(K('wordpay'))||'{}');
+    return (s.d===todayISO())?(+s.n||0):0; }catch(e){ return 0; } }
+  function wordMarkPaid(){ try{ localStorage.setItem(K('wordpay'),JSON.stringify({d:todayISO(),n:wordPaidToday()+1})); }catch(e){} }
   function reward(cat,hadShots){
-    addCredits(20,"word sent to the Keymaster");unlockBadge(bixLate("Messenger"));
+    if(wordPaidToday()<WORD_PAY_CAP){ wordMarkPaid(); addCredits(20,"word sent to the Keymaster"); }
+    else try{toast("✓ Word sent — ⬡ pay caps at "+WORD_PAY_CAP+" reports a day");}catch(e){}
+    unlockBadge(bixLate("Messenger"));
     if(hadShots||/map/i.test(cat))unlockBadge(bixLate("Mapmaker"));
     if(/phone number/i.test(cat))unlockBadge(bixLate("Number Runner"));
     window._fixCount=(window._fixCount||0)+1; if(window._fixCount>=5)unlockBadge(bixLate("The Fixer"));
   }
   document.getElementById('wordSend').addEventListener('click',async()=>{
     const w=build();
-    if(!w.body.trim()&&!shots.length)return document.getElementById('wordMsg').focus();
+    /* #fix2(bucks) — this guard could never fire: build() always appends
+       "\n\n— sent from the app · <date>", so w.body.trim() is never empty and a blank
+       report sent (and paid) happily. Check what the member actually typed. */
+    const typed=(document.getElementById('wordMsg').value||"").trim();
+    if(!typed&&!shots.length)return document.getElementById('wordMsg').focus();
     const cat=document.getElementById('wordType').value;
     if(shots.length){
       const files=shots.map((s,i)=>new File([s.file],shotName(i,s.file),{type:s.file.type||'image/jpeg'}));
@@ -7949,7 +8171,14 @@ function chime(){ // little payout arpeggio
 function unlockBadge(ix){ // fire the casino moment for a genuinely new mark
   if(ix<0||!BADGES[ix]||BADGES[ix][2])return;
   BADGES[ix][2]=1;renderBadges();chime();
-  if(typeof addCredits==="function"&&!/Port Bucks|High Roller|True North/.test(BADGES[ix][1])){setTimeout(()=>addCredits(50,"new mark earned"),600)}
+  /* #fix3(bucks) — pay NOW, not on a 600 ms timer. The mark hits disk two lines below
+     and unlockBadge hard-returns on the restored flag, so anything that tore the page
+     down inside that window forfeited the 50 ⬡ permanently, with no toast and no way
+     to ever recover it. Teardown in 600 ms is routine here: the service worker's
+     controllerchange reload fires on every deploy, pull() reloads on first hydrate,
+     and a batch scan can trip three marks at once right before the member closes the
+     app. Quiet, so the mark popup stays the celebration — buckPop still floats it. */
+  if(typeof addCredits==="function"&&!/Port Bucks|High Roller|True North/.test(BADGES[ix][1])){try{addCredits(50,"new mark earned",true)}catch(e){}}
   try{const s=JSON.parse(localStorage.getItem(K('badges')))||[];if(!s.includes(ix)){s.push(ix);localStorage.setItem(K('badges'),JSON.stringify(s))}}catch(e){}
   const [ic,nm]=BADGES[ix];const parts=nm.split(' · ');
   bpopShow(ic,parts[0],parts[1]||'',true,true,BADGES[ix][3]||0);
@@ -8007,6 +8236,19 @@ function renderCredits(){
   const hv=document.getElementById('meBucksV');if(hv)hv.textContent=CREDITS.toLocaleString();
   if(typeof window.renderBoards==="function")try{window.renderBoards()}catch(e){} // #5 — bucks board tracks the balance live
 }
+/* #fix3(bucks) — two tabs on one account never saw each other's balance. The credits key
+   is deliberately kept out of the user_kv mirror ("own atomic path"), and nothing
+   listened for the same-origin storage event — so tab B kept showing a pre-purchase
+   number, passed payCredits' affordability gate on it, and wrote its stale total back
+   over tab A's. This is the one key that needs the listener precisely BECAUSE it is
+   excluded from the sync everything else rides. */
+window.addEventListener('storage',function(e){
+  try{
+    if(!e || e.key!==K('credits')) return;
+    const v=+e.newValue; if(!isFinite(v)) return;
+    CREDITS=v; renderCredits();
+  }catch(_){}
+});
 renderCredits();
 let toastT=null;
 /* ===== modern dialog — replaces the browser's stock alert()/confirm() popups.
@@ -8062,8 +8304,17 @@ function addCredits(n,reason,quiet){
 }
 function spendCredits(n,reason){
   if(!n)return;
-  CREDITS=Math.max(0,CREDITS-n);try{localStorage.setItem(K('credits'),CREDITS)}catch(e){}
-  renderCredits();toast("−"+n+" ⬡ · "+reason);
+  /* #fix2(bucks) — a claw-back must always take back what was actually PAID, so it
+     stays the full n on both sides. My first pass clamped the pushed delta to the
+     member's current balance, which opened a clean exploit: seal a docket (+10),
+     spend it to zero, then strike the docket — the claw-back found a 0 balance,
+     took 0, and the 10 ⬡ was free. Repeat per docket, unbounded.
+     The local clamp at zero went with it: it was the ONLY reason the two sides ever
+     read differently, and with the backend off it silently forgave the debt. A
+     negative balance is the honest state — it means the member spent money the
+     record says they didn't earn, and payCredits already refuses to spend from it. */
+  CREDITS=CREDITS-n;try{localStorage.setItem(K('credits'),CREDITS)}catch(e){}
+  renderCredits();buckPop(-n);toast("−"+n+" ⬡ · "+reason);
   const chip=document.getElementById('meBucks');if(chip){chip.classList.remove('bump');void chip.offsetWidth;chip.classList.add('bump');}
   try{sbApplyBucks(-n,reason);}catch(e){}                    // persist to the server (no-op if backend off)
 }
@@ -8105,8 +8356,14 @@ function jackpot(amount, reason){
 }
 function awardJackpot(amount, reason){
   if(!amount)return;
-  try{addCredits(amount, reason, true);}catch(e){}   // quiet — the jackpot IS the celebration
-  jackpot(amount, reason);
+  /* #fix(bucks) — the old form swallowed a failed addCredits and then played the full
+     count-up and coin rain anyway, celebrating money the member never received.
+     Only run the show if the balance actually moved. */
+  let paid=false;
+  try{addCredits(amount, reason, true); paid=true;}   // quiet — the jackpot IS the celebration
+  catch(e){ try{console.warn('awardJackpot: credit failed', e);}catch(_){} }
+  if(paid) jackpot(amount, reason);
+  else try{toast('⚓ Logged — the payout didn’t land. Try again.');}catch(_){}
 }
 /* slot-style payout: usually modest, sometimes a real win */
 function bucksSpin(tiers){
@@ -8179,6 +8436,10 @@ function checkMarks(){ // real rules on real data — marks are earned, never gi
 const BOARDS={hrs_week:[],hrs_month:[],hrs_year:[],pb_week:[],pb_month:[],pb_year:[]};
 const lbState={metric:'hrs',period:'week'};
 function myBoardValue(metric,period){
+  /* #known(bucks) — `period` is deliberately ignored for bucks: there is no per-period
+     buck ledger on the device (only a running balance), so week / month / year all
+     report the same lifetime number under a period label. Honest fix needs the
+     backend to keep dated buck rows; until then the tag is the thing that lies. */
   if(metric==='pb')return CREDITS; // per-period buck ledgers arrive with the backend
   const now=new Date();let from;
   if(period==='week'){from=new Date(now);from.setDate(now.getDate()-((now.getDay()+6)%7));from.setHours(0,0,0,0);}
@@ -8197,11 +8458,21 @@ function renderBoards(){
      glow-badged avatars, XP-style fill bars behind ranks 4+, pulsing YOU row. */
   const mine=myBoardValue(metric,period);
   const handle=((document.getElementById('meHandle')||{}).textContent||'YOU').trim()||'YOU';
-  let rows=(BOARDS[metric+'_'+period]||[]).slice(0,10).map(a=>({h:a[0],v:+a[1],you:false}));
+  /* #fix(bucks) — `you:false` was hardcoded, so once the backend fills BOARDS the
+     member rendered TWICE: once from their server row, and again in the trailing
+     YOU row below, carrying a different number (their local lifetime CREDITS).
+     max() then mixed the two scales and pinned the YOU bar near 100%. Match on
+     handle so the member is recognised in the list and the duplicate row drops. */
+  const myH=handle.toUpperCase();
+  let rows=(BOARDS[metric+'_'+period]||[]).slice(0,10).map(a=>({h:a[0],v:+a[1],you:String(a[0]||'').trim().toUpperCase()===myH}));
   const empty=!rows.length;
   if(empty)rows=[{h:handle,v:mine,you:true}];
   const youOn=rows.some(r=>r.you);
-  const max=Math.max(mine,1,...rows.map(r=>r.v));
+  /* #fix2(bucks) — `mine` only belongs in the scale when it is actually drawn. Once the
+     member is matched into the server list the trailing YOU row is suppressed, but
+     their local lifetime CREDITS was still setting max — so a 5,000 ⬡ member looking
+     at a board that tops out at 300 pinned every bar to the 4% floor. */
+  const max=Math.max(1,...rows.map(r=>r.v),(youOn?0:mine));
   const av=h=>(h.replace(/[^A-Za-z0-9]/g,'').slice(0,2).toUpperCase()||'??');
   const slot=(r,place)=>{
     if(!r)return '<div class="pod-col p'+place+'"><div class="pod-av open">?</div><div class="pod-h open">OPEN</div><div class="pod-v">—</div><div class="pod-base"><span>'+place+'</span></div></div>';
@@ -8270,6 +8541,11 @@ function wireFact(){
   const doy=Math.floor((Date.now()-new Date(new Date().getFullYear(),0,0))/864e5);
   return facts[doy%facts.length];
 }
+/* #dead(jul26) — ORPHANED. The Day Count card's markup was removed from the document
+   (the same pass that took out openBucksBoard above), so drGrid / drFirst / drDate /
+   drFact no longer exist. This bails on its first line and all three call sites —
+   here, saveDK() and the cloud settle() — are permanent silent no-ops. Kept intact
+   so the card can be dropped back in; DO NOT read it as working code. */
 function renderDayReport(){
   const g=document.getElementById('drGrid');if(!g)return;
   const cell=(v,k)=>'<div class="stat"><div class="v">'+v+'</div><div class="k">'+k+'</div></div>';
@@ -8469,7 +8745,11 @@ async function chatOutbound(msg){ // {kind, body, url, cost}
   const by=(typeof ACCT_ID==='string'?ACCT_ID:''), handle=chatMyHandle();
   renderChatRow({id:cid,room:room,by_id:by,by_handle:handle,kind:msg.kind,body:msg.body||'',url:msg.url||'',created_at:new Date().toISOString()}); // optimistic
   const el=document.querySelector('#chatFeed [data-cid="'+cid+'"]'); if(el)el.style.opacity='.5';
-  if(!window.SB||!room){if(el)el.style.opacity='';return;}   // no backend → stays local (old behaviour)
+  /* #fix2(bucks) — payCredits already took the fare, but this row is DOM-only: nothing
+     is persisted and nothing reaches another member, so it dies on reload. Charging
+     for it is charging for a message no one receives. Hand the bucks back, the same
+     way the genuine send-failure path below does. */
+  if(!window.SB||!room){if(el)el.style.opacity='';if(msg.cost)try{addCredits(msg.cost,'refund',true);}catch(_){}return;}   // no backend → stays local (old behaviour)
   try{
     const {error}=await window.SB.from('messages').insert({id:cid,room:room,by_id:by,by_handle:handle,kind:msg.kind,body:msg.body||'',url:msg.url||''});
     if(error)throw error;
@@ -8488,7 +8768,7 @@ async function chatSendMedia(file,kind,cost){
   const blob=URL.createObjectURL(file);
   renderChatRow({id:cid,room:room,by_id:by,by_handle:handle,kind:kind,url:blob,created_at:new Date().toISOString()}); // sender sees it instantly
   const el=document.querySelector('#chatFeed [data-cid="'+cid+'"]'); if(el)el.style.opacity='.5';
-  if(!window.SB||!room){if(el)el.style.opacity='';return;}
+  if(!window.SB||!room){if(el)el.style.opacity='';if(cost)try{addCredits(cost,'refund',true);}catch(_){}return;}   // #fix2 — nothing uploaded, nothing charged
   try{
     const ext=((file.name||'').split('.').pop()||(kind==='video'?'mp4':'jpg')).toLowerCase().replace(/[^a-z0-9]/g,'')||'bin';
     const path=String(room).replace(/[^a-zA-Z0-9_-]/g,'_')+'/'+cid+'.'+ext;
@@ -8544,6 +8824,20 @@ function payCredits(n,reason,quiet){
   CREDITS-=n;try{localStorage.setItem(K('credits'),CREDITS)}catch(e){}
   renderCredits();buckPop(-n);if(!quiet)toast("−"+n+" ⬡ · "+reason);
   const chip=document.getElementById('meBucks');if(chip){chip.classList.remove('bump');void chip.offsetWidth;chip.classList.add('bump');}
+  /* #fix(bucks) — THE BIG ONE. This is the function every real purchase uses (chat,
+     media, GIFs, rooms, gatherings, the rename desk, circle rings) and it used to
+     deduct locally and tell the server NOTHING, while addCredits/spendCredits both
+     synced. Two consequences, both live:
+       · every purchase reversed itself — sbApplyBucks assigns the server's answer
+         verbatim ("server balance wins"), and the server never saw the debit, so
+         the next earn or the next sign-in handed the bucks straight back;
+       · the refund paths (chat send failed, room create failed) refund through
+         addCredits, which DOES sync — so a failed 250 ⬡ room create was a clean
+         +250 on the server, repeatable.
+     Note the credits key is deliberately excluded from the cloud-KV mirror
+     (see mine() — "port bucks excluded: own atomic path"), so apply_bucks is the
+     ONLY way a spend can ever reach the server. */
+  try{sbApplyBucks(-n,reason);}catch(e){}
   return true;
 }
 window.payCredits=payCredits;
@@ -8684,10 +8978,13 @@ async function runGifQuery(term){
     gifNote('Couldn’t reach GIPHY. Your key may be over its daily limit — try later, or ⚙ change key. You can still paste a GIF link below.');
   }
 }
+let _gifBusy=false;
 function sendGif(url){
+  if(_gifBusy)return; // #fix3(bucks) — the picker stays hit-testable while it fades; one tap, one charge
   if(!/^https?:\/\/\S+/i.test(url)){toast('That doesn’t look like a link');return;}
   if(CREDITS<GIF_COST){closeGifPicker();openBrokeSheet(GIF_COST);return;}   // #76/#77 — show the funds sheet unobstructed
   if(!payCredits(GIF_COST,'GIF',true))return;                              // #61 — quiet 1 ⬡ deduction
+  _gifBusy=true; setTimeout(()=>{_gifBusy=false;},600);
   chatOutbound({kind:'gif', url:String(url), cost:GIF_COST});              // #chat-live — share to the room
   closeGifPicker();
 }
@@ -8719,16 +9016,28 @@ function openPaySheet(o){ // {title,sub,price,fields:[{k,label,ph}],go,onPaid}
     +o.fields.map(f=>f.type==='select'
       ?'<span class="lbl">'+f.label+'</span><select class="field" data-k="'+f.k+'" style="margin-bottom:12px">'+(f.opts||[]).map(op=>'<option value="'+esc(op[0])+'">'+esc(op[1])+'</option>').join('')+'</select>'
       :'<span class="lbl">'+f.label+'</span><input class="field" data-k="'+f.k+'"'+(f.opt?' data-opt="1"':'')+' placeholder="'+esc(f.ph||'')+'" value="'+esc(f.v||'')+'" style="margin-bottom:12px" maxlength="'+(f.max||60)+'">').join('')
-    +'<div class="sixstrip" style="margin:2px 0 14px;justify-content:space-between"><span>Price <b class="mono" style="color:var(--copper-hi)">'+(o.price?o.price+' ⬡':'FREE')+'</b></span><span>Your stack <b class="mono" style="color:'+(CREDITS>=o.price?'var(--ok)':'var(--ember)')+'">'+CREDITS.toLocaleString()+' ⬡</b></span></div>'
+    +'<div class="sixstrip" style="margin:2px 0 14px;justify-content:space-between"><span>Price <b class="mono" style="color:var(--copper-hi)">'+(o.price?o.price+' ⬡':'FREE')+'</b></span><span>Your stack <b class="mono" style="color:'+((!o.price||CREDITS>=o.price)?'var(--ok)':'var(--ember)')+'">'+CREDITS.toLocaleString()+' ⬡</b></span></div>'
     +'<button class="btn" id="payGo" type="button">'+(o.price?'⬡ PAY '+o.price+' — ':'✓ ')+o.go+'</button>'
     +'<button class="btn-ghost" id="payNo" type="button" style="width:100%;margin-top:10px;border:0;color:#586067">Never mind</button></div>';
   sh.querySelector('#payNo').addEventListener('click',()=>sh.classList.remove('on'));
+  let _payBusy=false;   /* #fix3(bucks) — .sheet transitions visibility over .25s, and a
+     visibility transition holds `visible` for the whole run — so the button stayed
+     hit-testable for 250ms AFTER classList.remove('on'). A double-tap (or an iOS
+     double-fire) ran payCredits twice off the same closure: 500 ⬡ for one rename,
+     300 ⬡ for one gathering. Latch it. */
   sh.querySelector('#payGo').addEventListener('click',()=>{
+    if(_payBusy)return; 
     const vals={};let ok=true;
     sh.querySelectorAll('input[data-k],select[data-k]').forEach(i=>{const v=i.value.trim();vals[i.dataset.k]=v;if(!v&&!i.dataset.opt){ok=false;i.focus();}});
     if(!ok)return;
     if(o.validate){const err=o.validate(vals);if(err){toast(err);return;}}   // checked BEFORE any bucks move
     if(o.price&&!payCredits(o.price,o.title.toLowerCase()))return;
+    _payBusy=true;
+    /* #fix2(bucks) — the Armory Patron unlock used to sit HERE, which fired it before
+       o.onPaid had a chance to fail. Both server create-flows refund on failure, so a
+       duplicate room name or a dropped wire ended as: 250 debited, 250 refunded, plus
+       the mark AND its +50 ⬡ — a net gain for a purchase that never happened. It now
+       hangs on each success branch instead. */
     sh.classList.remove('on');
     o.onPaid(vals);
   });
@@ -9758,10 +10067,16 @@ async function svcSend(){
       const el=list&&list.querySelector('[data-crid="'+tmp+'"]');
       if(el){el.classList.remove('pend');const x=el.querySelector('.svc-x');if(x)x.setAttribute('data-loc','1');}
       toast('The wire dropped — held on this phone');
+      /* #fix3(bucks) — refund. chatOutbound and chatSendMedia both hand the fare back
+         when the message never leaves the device; svcSend was missed in that pass.
+         holdLocal() writes to _svcStore() on THIS phone only — nobody else ever sees
+         the comment — so charging 1 ⬡ for it is charging for nothing. */
+      try{addCredits(1,'refund',true);}catch(_){}
     }
     return;
   }
   holdLocal();
+  try{addCredits(1,'refund',true);}catch(_){}   // #fix3 — no backend: same story, same refund
 }
 (function(){   // #stories5 — drawer wiring
   const on=(id,ev,fn)=>{const e=document.getElementById(id);if(e)e.addEventListener(ev,fn);};
@@ -10042,7 +10357,10 @@ function renderSocialFeed(){
   });
   html+='<div class="chan create feedIn"'+step()+' data-new="room"><div class="chan-av">🗝</div>'
     +'<div class="chan-main"><div class="chan-top"><span class="chan-name">Open a Room</span></div><div class="chan-msg">name it, run it — yours for good</div></div>'
-    +'<span class="pill gold">250 ⬡</span></div>';
+    /* #fix3(bucks) — was hardcoded 250, so a Boatswain who paid 1,500 ⬡ for "rooms at
+       half price" was still shown 250 on the row and only saw 125 once the pay sheet
+       opened. Charged correctly, quoted wrongly — it hid the perk they bought. */
+    +'<span class="pill gold">'+((circleLvl()>=5)?125:ROOM_COST)+' ⬡</span></div>';
   html+='</div>';
 
   /* ---------- GATHERINGS ---------- */
@@ -10080,7 +10398,7 @@ function renderSocialFeed(){
   });
   html+='<div class="evt create feedIn"'+step()+' data-new="gath"><div class="evt-date glyph">📣</div>'
     +'<div class="evt-main"><div class="evt-name">Start a Gathering</div><div class="evt-meta"><span>BBQ, meet-up, watch party — rally the Order</span></div></div>'
-    +'<span class="pill gold">150 ⬡</span></div>';
+    +'<span class="pill gold">'+((circleLvl()>=4)?100:GATH_COST)+' ⬡</span></div>';   // #fix3 — Quartermaster rate, same as the pay sheet
   html+='</div>';
 
   host.innerHTML=html;
@@ -10222,6 +10540,7 @@ window.newRoomFlow=function(){
           if(r.data)ALL_ROOMS.push(r.data);
           renderSocialFeed();
           unlockBadge(bixLate("Room Founder"));                   // #8
+          try{unlockBadge(bixLate("Armory Patron"))}catch(e){}   // #fix2 — only once the room actually minted
           openRoom(v.n,'🗣','your room');
           if(priv)toast('🗝 Private room open — tap its ⤴ to hand out keys');
         }catch(e){
@@ -10232,6 +10551,7 @@ window.newRoomFlow=function(){
       }
       MY_ROOMS.push({n:v.n,d:new Date().toLocaleDateString()});saveSocial();renderSocialFeed();
       unlockBadge(bixLate("Room Founder"));                       // #8
+      try{unlockBadge(bixLate("Armory Patron"))}catch(e){}       // #fix2
       openRoom(v.n,'🗣','your room');
       toast('Offline — the room lives on this phone and rides up next sign-in');}});
 };
@@ -10252,6 +10572,7 @@ window.newGatheringFlow=function(){
           if(r.data)ALL_GATHS.push(r.data);
           renderSocialFeed();
           unlockBadge(bixLate("Rally Caller"));                   // #8
+          try{unlockBadge(bixLate("Armory Patron"))}catch(e){}   // #fix2 — only once the gathering actually posted
           toast("🕯 Gathering called — every hand sees it. Tap its ⤴ to invite directly");
         }catch(e){
           try{addCredits(price,'refund',true)}catch(_){}
@@ -10261,6 +10582,7 @@ window.newGatheringFlow=function(){
       }
       const h=document.getElementById('meHandle');MY_GATHS.push({n:v.n,w:v.w,p:v.p,by:h?h.textContent:'you'});
       saveSocial();renderSocialFeed();unlockBadge(bixLate("Rally Caller"));  // #8
+      try{unlockBadge(bixLate("Armory Patron"))}catch(e){}       // #fix2
       toast("🕯 Gathering called — rides up Order-wide next sign-in");}});
 };
 /* legacy hooks kept so any other caller still works — both refresh the feed */
@@ -10358,9 +10680,19 @@ function showCircleSheet(i){
     +'<button class="btn-ghost" id="circNo" type="button" style="width:100%;margin-top:12px;border:0;color:#586067">Close</button></div>';
   sh.querySelector('#circNo').addEventListener('click',()=>sh.classList.remove('on'));
   const go=sh.querySelector('#circGo');
+  let _ringBusy=false;   // #fix3(bucks) — see openPaySheet: the sheet is clickable for 250ms after it closes
   if(go)go.addEventListener('click',()=>{
+    if(_ringBusy||lvl<=CIRCLE_LVL)return;          // already bought, or a second tap on the same ring
     if(!payCredits(c.p,"Circle "+ROMAN[i]+" · "+c.n))return;
+    _ringBusy=true;
     CIRCLE_LVL=lvl;try{localStorage.setItem(K('circle'),CIRCLE_LVL)}catch(e){}
+    try{unlockBadge(bixLate("Armory Patron"))}catch(e){}
+    /* #fix2(bucks) — REMOVED the profiles.update({circle}) write I added here. It was
+       redundant (K('circle') already rides user_kv via the cloud-KV write-through —
+       mine() excludes only the credits key), it could push a REGRESSED level over a
+       good one, and its error branch was a lie: an UPDATE that RLS filters out
+       matches zero rows and comes back 204 with error:null, so it would have failed
+       silently rather than warning. The setItem above is the sync. */
     sh.classList.remove('on');renderCircles();circleChip();
     if(CIRCLE_LVL>=5)unlockBadge(bixLate("Ring Bearer"));   // #8
     toast("◈ Circle "+ROMAN[i]+" — you are "+c.n+" now");
@@ -10391,6 +10723,7 @@ window.renameFlow=function(){
       const h=v.h.trim().toUpperCase().replace(/\s+/g,"_");
       document.getElementById('meHandle').textContent=h;
       const a=loadAcct()||{};a.handle=h;saveAcct(a);
+      if(!free)try{unlockBadge(bixLate("Armory Patron"))}catch(e){}   // #fix2 — a paid rename is a purchase
       toast("⚓ The Order knows you as "+h+" now");
     }});
 };
@@ -10722,6 +11055,17 @@ function sealScan(p){
   const w=liveWindow();
   const rawShift=p.shift||((w==="DAY"||(!w&&nowLA().getHours()<14))?"Day":"Night");
   const trS=startTraits(p.start,rawShift);   // #27 — flex & hoot from the scanned start time
+  /* #fix3(bucks) — round 2 CLAMPED a misread future date to today, which quietly wrote a
+     wrong date into what the app presents as the member's pay record — and could then
+     trip "you already logged this job" for a job they never logged. The manual seal
+     REJECTS a future date; make the scan agree. Drop the bad date and hand the member
+     the form with their photo on top, the same road an unreadable docket takes. */
+  if(p.date&&p.date>todayISO()){
+    const bad=p.date; p.date="";
+    alert("Docket read: "+p.pos+". The date came back as "+bad+" — that shift hasn't happened yet. Check it against the slip and seal it by hand.");
+    try{scanHandOff(p);}catch(e){}
+    return;
+  }
   const j={date:p.date||todayISO(),
     ship:p.ship||"—",
     terminal:p.terminal||"\u2014",
@@ -10832,15 +11176,31 @@ const SHARE_TXT="You've been marked. The Order of The Shadow Hook — a private 
 document.getElementById('shareSms').href="sms:?&body="+encodeURIComponent(SHARE_TXT+SHARE_URL);
 document.getElementById('shareMail').href="mailto:?subject="+encodeURIComponent("The Order of The Shadow Hook")+"&body="+encodeURIComponent(SHARE_TXT+SHARE_URL);
 document.getElementById('shareBtn').addEventListener('click',async()=>{
-  if(navigator.share){try{await navigator.share({title:"The Order of The Shadow Hook",text:SHARE_TXT,url:SHARE_URL});unlockBadge(TOWN_CRIER)}catch(e){}}
+  if(navigator.share){try{await navigator.share({title:"The Order of The Shadow Hook",text:SHARE_TXT,url:SHARE_URL});shareReward()}catch(e){}}
   else document.getElementById('shareCopy').click();
 });
-document.getElementById('shareSms').addEventListener('click',()=>setTimeout(()=>unlockBadge(TOWN_CRIER),800));
-document.getElementById('shareMail').addEventListener('click',()=>setTimeout(()=>unlockBadge(TOWN_CRIER),800));
+/* #fix2(bucks) — the +25 used to hang off shareCopy ALONE, ungated and outside its own
+   try/catch: every tap of "⧉ Copy Link" minted 25 ⬡, forever, whether the clipboard
+   write worked or not — roughly 150 ⬡ a second, and nothing was ever shared. The other
+   three share buttons paid nothing at all, so the Armory's "+25 share the Order" was
+   simultaneously unlimited and unreachable depending on which button you pressed.
+   One helper now: pays once per member, from any share road, and rides the same
+   once-ever mark the rest of the share paths already unlock. */
+function shareReward(){
+  let already=false;
+  try{ already=!!localStorage.getItem(K('sharepaid')); }catch(e){}
+  unlockBadge(TOWN_CRIER);
+  if(already)return;
+  try{ localStorage.setItem(K('sharepaid'),'1'); }catch(e){}
+  addCredits(25,"spread the word");
+}
+document.getElementById('shareSms').addEventListener('click',()=>setTimeout(shareReward,800));
+document.getElementById('shareMail').addEventListener('click',()=>setTimeout(shareReward,800));
 document.getElementById('shareCopy').addEventListener('click',async()=>{
-  try{await navigator.clipboard.writeText(SHARE_TXT+SHARE_URL);document.getElementById('shareCopy').textContent="✓ Copied"}
+  let copied=false;
+  try{await navigator.clipboard.writeText(SHARE_TXT+SHARE_URL);document.getElementById('shareCopy').textContent="✓ Copied";copied=true}
   catch(e){prompt("Copy the link:",SHARE_URL)}
-  unlockBadge(TOWN_CRIER);addCredits(25,"spread the word");
+  if(copied)shareReward();
 });
 /* ===== MAYDAY: verified port emergency lines ===== */
 const EMERGENCY=[
@@ -11171,8 +11531,12 @@ function saveBoardResult(){
   try{drawWG();}catch(e){}                             // refresh the chart
   document.getElementById('boardSheet').classList.remove('on');
   /* #112 — the log rides the wire: first hand posts it (jackpot), a matching entry
-     confirms it, a different entry challenges it — the crowd settles the heist */
-  try{bwSubmitResult(k,patch);}catch(e){try{awardJackpot(bucksSpin(),'logging the board');}catch(_){try{toast('⚓ Board logged');}catch(__){}}}
+     confirms it, a different entry challenges it — the crowd settles the heist
+     #fix(bucks) — the old catch here paid a FULL jackpot with no firstEver check, no
+     ledger check and no ledger write, so if it ever fired it repeated on every save
+     of every board, including repeated corrections of the same one. noFlopSeal
+     already had the right form (bare catch); match it — log, don't mint. */
+  try{bwSubmitResult(k,patch);}catch(e){try{console.warn('bwSubmitResult failed',e);}catch(_){}try{toast('⚓ Board logged');}catch(__){}}
 }
 
 /* ===== #111 — THE CHAIN: boards hand off card-to-card =====
@@ -11281,23 +11645,36 @@ function bwApplyRow(row){
   }catch(e){}
   try{chainBoards(k);}catch(e){}
 }
-/* every device applies its own credit consequences exactly once */
+/* every device applies its own credit consequences exactly once
+   #dead(jul26) — dormant in this build: nothing writes row.heist_from, because it is
+   only ever set inside bwSide(), which has no call site (see the note there). Kept
+   correct anyway — sbLoadBoardWire does select('*') and trusts whatever the table
+   holds, so one row from an older build or a manual insert fires this immediately. */
 function bwSettleAll(){
-  const L=bwL(), me=bwMe(); let dirty=false;
+  const L=bwL(), me=bwMe();
   Object.values(window.BW).forEach(row=>{
     const f=L[row.k]=L[row.k]||{};
+    /* #fix(bucks) — write the ledger FIRST, per row, and wrap the mutators. The old
+       code set an in-memory flag and saved once after the loop with spendCredits /
+       addCredits unwrapped — and both reach unwrapped toast()/unlockBadge()/chime().
+       A throw there escaped the forEach, escaped bwSettleAll, and was swallowed by
+       sbLoadBoardWire's outer catch: the credits had already moved but NO flag was
+       written, so the next realtime event or 12 s poll paid again, forever.
+       Re-paying is unbounded; losing one payout is not — so flag first.
+       NOTE: bwLSave still swallows storage failures (quota, Safari private mode).
+       In that state this can still repeat — the real fix is an idempotency key on
+       the apply_bucks RPC so the server refuses a delta it has already applied. */
     if(row.heist_from&&row.heist_from===me&&!f.lifted){
-      f.lifted=true;dirty=true;
-      spendCredits(BW_HEIST,'board '+row.k.slice(5)+' — corrected by the wire, pay lifted');
+      f.lifted=true; bwLSave(L);
+      try{ spendCredits(BW_HEIST,'board '+row.k.slice(5)+' — corrected by the wire, pay lifted'); }catch(e){}
       try{heistPop(false,true,BW_HEIST,'BOARD RECORD');}catch(e){}
     }
     if(row.heist_from&&row.by===me&&!f.heistPaid){
-      f.heistPaid=true;dirty=true;
-      addCredits(BW_HEIST,'⚔ heist — your board correction carried');
+      f.heistPaid=true; bwLSave(L);
+      try{ addCredits(BW_HEIST,'⚔ heist — your board correction carried'); }catch(e){}
       try{heistPop(true,false,BW_HEIST,'BOARD RECORD');}catch(e){}
     }
   });
-  if(dirty)bwLSave(L);
 }
 async function sbLoadBoardWire(){
   if(!window.SB){try{DEVLOG.data('board_wire',{ok:false,err:'no backend client'});}catch(e){} return;}
@@ -11432,28 +11809,72 @@ function bwSubmitResult(k,patch){
   const wp={start:patch.start,end:patch.end,act:patch.act,ch:patch.ch,down:patch.down,flex:patch.flex,firstEnd:patch.firstEnd||null};
   const prev=window.BW[k];
   const firstEver=!(prev&&prev.patch);
+  /* #fix3(bucks) — the jackpot is for logging the board you just worked, but the sheet
+     offers the last 14 boards, all of them already seeded with data that never passed
+     through window.BW. So firstEver read TRUE for every one of them: pick a historical
+     board, type any card id over the pre-filled start, save, collect an average 109 ⬡ —
+     fifteen keys deep, ~1,600 ⬡ expected and up to 7,500, for typing card numbers.
+     Two fresh keys appear daily, so it never ran out. Sealing a real docket pays 10.
+     Gate the payout on the board being current; the log itself still posts normally. */
+  let bwFresh=false;
+  try{ const d=String(k).slice(0,10);
+       const age=(Date.parse(todayISO()+"T12:00")-Date.parse(d+"T12:00"))/864e5;
+       bwFresh=isFinite(age)&&age>=0&&age<=1; }catch(e){}
   /* #live — a sealed/logged board is FACT the moment it's posted, shared with every
      hand instantly. No awaiting-confirms, no votes, no babysitting: if a number is
      wrong, anyone re-logs it and the correction becomes the record on the spot
      (last word stands). The built-in log/correction is the fix, not a jury. */
   const r2 = (prev&&prev.patch)?prev:bwBlank(k);
   r2.patch=wp; r2.by=me; r2.by_handle=bwMyHandle();
+  /* #dead(jul26) — this overwrites bwBlank's status:'posted' on every submit, which is
+     why bwVote's `row.status!=='posted'` guard can never pass. Left as-is on purpose:
+     the log-is-fact model below is deliberate, and the confirm path has no call site
+     anyway. Anyone re-enabling confirms has to reconcile these two. */
   r2.status='live'; r2.yes=2; r2.no=0;
   r2.chal=null; r2.chal_by=null; r2.chal_handle=null; r2.chal_yes=0; r2.chal_no=0;
+  /* #fix(bucks) — clear the heist stamp too. r2 reuses the raw server row, so a board
+     that was ever heisted stayed stamped forever and bwPush wrote the stale stamp
+     back. bwSettleAll keys its payout on row.by, which every correction reassigns —
+     so every later hand who re-logged that board collected +40 for a heist they
+     never fought, and the original victim re-logging it silently refunded their own
+     penalty (heist_from===me AND by===me both hold, but heistPaid was unset). */
+  r2.heist_from=null; r2.heist_handle=null;
   window.BW[k]=r2;
   try{bwApplyRow(r2);}catch(e){}          // land it on the record now
   bwPush(r2);                             // share as fact with everyone (realtime carries it)
   try{renderRecentBoards();}catch(e){}
   try{repredict();}catch(e){}
-  if(firstEver && !L[k].postRewarded){
+  /* #fix(bucks) — flag-before-award is deliberate (a lost jackpot beats an unbounded
+     re-pay), and awardJackpot no longer throws, so the flag can't outrun a failure.
+     What this still CANNOT do is prove the member was first Order-wide: firstEver
+     comes from window.BW, which starts {} on every load and is filled by an async
+     read that this file documents as routinely failing (see 'empty/blocked response'
+     in sbLoadBoardWire, and the RLS note on the hall line). With that read down —
+     or with any submit landing before it resolves — every hand on the crew collects
+     the first-log jackpot for the same board. Fixing that needs the server to own
+     "who posted first", not this cache. */
+  if(firstEver && bwFresh && !L[k].postRewarded){
     L[k].postRewarded=true; bwLSave(L);
     try{awardJackpot(bucksSpin(),'logging the board');}catch(e){try{toast('⚓ Board logged — it’s the record now');}catch(_){}}
   }else{
     bwLSave(L);
-    try{toast(firstEver?'⚓ Board logged — shared with the Order':'⚓ Board corrected — updated for everyone');}catch(e){}
+    try{toast(firstEver&&!bwFresh?'⚓ Board back-filled — on the record, no ⬡ for old boards'
+             :firstEver?'⚓ Board logged — shared with the Order':'⚓ Board corrected — updated for everyone');}catch(e){}
   }
 }
-/* ✓/✗ on a posted log — first two confirmers get paid */
+/* ✓/✗ on a posted log — first two confirmers get paid
+   #dead(jul26) — UNREACHABLE, three ways over. Do not treat BW_CONFIRM as live:
+     1. no call site — bwVote and bwSide are never invoked anywhere in this file, and
+        the only renderer that could expose them (bwChips) deliberately emits static
+        text with no buttons, per the #live note there;
+     2. the guard below can never pass — bwBlank sets status:'posted', but
+        bwSubmitResult overwrites it with 'live' before the row is ever stored or
+        pushed, so every real row on the wire is 'live';
+     3. row.chal is only ever assigned null across the whole file, so bwSide's guard
+        can't pass either — which means heist_from is never written, which is why
+        both branches of bwSettleAll are dormant.
+   The header comment above advertises +10 confirms and ±40 heists as live behaviour.
+   They are not. Wiring them back on needs the votes to actually reach other members. */
 function bwVote(k,yes){
   const row=window.BW[k]; if(!row||row.status!=='posted'||row.chal)return;
   const me=bwMe(), L=bwL(); L[k]=L[k]||{};
@@ -11467,7 +11888,10 @@ function bwVote(k,yes){
   bwLSave(L); bwPush(row);
   try{renderRecentBoards();}catch(e){}
 }
-/* the jury on a challenge: back the original or back the correction */
+/* the jury on a challenge: back the original or back the correction
+   #dead(jul26) — UNREACHABLE: no call site, and row.chal (the guard below) is only
+   ever assigned null in this file. This is the sole writer of row.heist_from, which
+   is why bwSettleAll never fires. See the note on bwVote. */
 function bwSide(k,side){
   const row=window.BW[k]; if(!row||!row.chal)return;
   const me=bwMe(), L=bwL(); L[k]=L[k]||{};
@@ -12613,7 +13037,12 @@ window.addEventListener('resize',()=>{if($w('wbw').classList.contains('on'))wbFi
     $('pfCircle').textContent = (circLabel&&circLabel.toLowerCase()!=="unverified")
                                   ? (circParts[0].trim()||circLabel) : "—";
     $('pfHours').textContent  = (txt($('meHours'))||"0 hrs").replace(/\s*on the book\s*$/i,"")||"0 hrs";
-    $('pfBucks').textContent  = (txt($('meBucksV'))||"0")+" ⬡";
+    /* #fix(bucks) — this used to scrape the header chip's formatted text, so the
+       profile could only ever be as fresh as the chip: on any path where
+       renderCredits() hadn't run it confidently reported the PREVIOUS account's
+       balance, and the ||"0" fallback turned a missing chip into a hard zero.
+       Read the number itself. */
+    $('pfBucks').textContent  = ((typeof CREDITS==='number'&&isFinite(CREDITS))?CREDITS:0).toLocaleString()+" ⬡";
     $('pfSince').textContent  = fmtSince(a.since);
 
     var verified=!!card;
