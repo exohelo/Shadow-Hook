@@ -1346,6 +1346,11 @@ html.daylight .hdr-seal{background:radial-gradient(circle at 50% 30%,#f6eed8,#e5
 .prof-dot.on{background:#7fae6a;box-shadow:0 0 8px rgba(127,174,106,.6)}
 /* #fix4 — signed out but a backend IS configured: not green, not grey. Amber. */
 .prof-dot.warn{background:var(--warn);box-shadow:0 0 8px rgba(216,165,68,.55)}
+/* #hull — the ⚓? pin on a board row whose ship has no hull number on file yet */
+.hullpin{background:rgba(201,128,63,.13);border:1px solid rgba(201,128,63,.4);color:var(--copper-hi);
+  font-family:'IBM Plex Mono',monospace;font-size:11px;line-height:1;padding:3px 6px;border-radius:6px;
+  cursor:pointer;vertical-align:middle;margin-left:5px}
+.hullpin:active{background:rgba(201,128,63,.3)}
 .prof-actions{display:flex;flex-direction:column;gap:10px;margin-top:15px}
 .btn-logout{cursor:pointer;width:100%;border:1px solid rgba(179,85,42,.7);border-radius:10px;padding:15px;
   background:linear-gradient(184deg,#3a1c11,#22110b);font-family:'Anton',sans-serif;font-size:16px;letter-spacing:.12em;
@@ -7902,18 +7907,90 @@ function decodeBoardJobs(str){
    until then this seed covers the current board and anything unknown falls back to
    a name search, so every ship still links somewhere useful. */
 const VESSEL_IMO={
+  /* --- the original seed. Every one of these was re-verified against its
+         VesselFinder detail page: all 16 land on the right hull. Two notes:
+         · YM WILLPOWER 1019785 LOOKS wrong — it isn't. The IMO series has rolled
+           past the 9-prefix and 10xxxxx numbers are now being issued; the check
+           digit validates and the page returns YM WILLPOWER. Don't "fix" it.
+         · PRESIDENT HW BUSH was renamed PRESIDENT BUSH. Same hull, same IMO —
+           both names are listed so the board links either way. --- */
   "GUNDE MAERSK":9359014,"HMM HANUL":9869239,"EVER LAUREL":9595474,
   "COSCO BELGIUM":9516404,"XIN DA YANG ZHOU":9337949,"MSC LORENZA":9962598,
   "MSC NITYA B":9778117,"YM UPWARD":9337468,"ADAMASTOS":9951147,
   "YM MILESTONE":9484998,"ONE CONTRIBUTION":9629914,"PELICAN I":9960526,
   "COSCO TAICANG":9355575,"CSCL AUTUMN":9645891,"YM WILLPOWER":1019785,
-  "PRESIDENT HW BUSH":9938353
+  "PRESIDENT HW BUSH":9938353,"PRESIDENT BUSH":9938353,
+  /* --- ONE (Ocean Network Express) — the Bird-class boxships on the transpac --- */
+  "ONE FUTURE":9936393,"ONE APUS":9806079,"ONE BLUE JAY":9741372,
+  "ONE COLUMBA":9806055,"ONE CYGNUS":9806081,"ONE FALCON":9741425,
+  "ONE GRUS":9806067,"ONE HAWK":9741413,"ONE IBIS":9741384,
+  "ONE OWL":9741449,"ONE STORK":9784788,"ONE WREN":9784776,
+  "ONE CRANE":9741401,"ONE SWAN":9741437,
+  /* --- Matson — the US-flag Hawaii / Guam service out of Long Beach --- */
+  "DANIEL K. INOUYE":9719056,"KAIMANA HILA":9719068,"LURLINE":9814600,
+  "MATSONIA":9814612,"MANOA":7907984,"MANUKAI":9244130,
+  "MANULANI":9273674,"MAUNAWILI":9268538,"MAHIMAHI":7907996,
+  /* --- MSC --- */
+  "MSC GAYANE":9770763,"MSC ELOANE":9755957,"MSC AURIGA":9857183,
+  /* --- Maersk --- */
+  "GERDA MAERSK":9359052,"GEORG MAERSK":9320257,"GRETE MAERSK":9302889,
+  "GUDRUN MAERSK":9302877,"GJERTRUD MAERSK":9320233,"MAERSK EMDEN":9456769,
+  "MAERSK EINDHOVEN":9456771,"MAERSK EDINBURGH":9456757,"MAERSK ALGOL":9342528,
+  /* --- CMA CGM --- */
+  "CMA CGM ARGENTINA":9839909,"CMA CGM SWORDFISH":9331000,"CMA CGM XIAMEN":9400069,
+  "CMA CGM TARPON":9331012,"CMA CGM TITAN":9399222,"CMA CGM BLUE WHALE":9317963,
+  "CMA CGM MAGELLAN":9454424,"CMA CGM ARCTIC":9867841,"CMA CGM LITANI":9705055,
+  "CMA CGM INTEGRITY":9897781,
+  /* --- Evergreen --- */
+  "EVER LIBERAL":9604160,"EVER LUCID":9629055,"EVER MODE":9935296,
+  "EVER MATCH":9935387,"EVER MACH":9935210,
+  /* --- Yang Ming --- */
+  "YM WORLD":9684653,"YM WELLBEING":9820908,"YM WIND":9708461,
+  "YM TRAVEL":9878503,"YM WITNESS":9704609,"YM TOGETHER":9789984,
+  /* --- HMM --- */
+  "HMM NURI":9869162,"HMM MIR":9869198,"HMM RAON":9869215,
+  "HMM GARAM":9869186,"HMM ALGECIRAS":9863297,"HMM OSLO":9868326,
+  "HMM COPENHAGEN":9863302,
+  /* --- OOCL --- */
+  "OOCL UTAH":9486087,"OOCL LONDON":9417268,"OOCL SEOUL":9417244,
+  /* --- COSCO / CSCL --- */
+  "COSCO SHIPPING STAR":9795658,"COSCO SHIPPING ALPS":9757864,"COSCO SHIPPING LOTUS":9785811,
+  "CSCL SPRING":9645853,"CSCL SUMMER":9645865,"CSCL WINTER":9645877,
+  /* --- Hapag-Lloyd --- */
+  "LOS ANGELES EXPRESS":9665633,"COLORADO EXPRESS":9349502,"TSINGTAO EXPRESS":9320702,
+  /* --- ZIM --- */
+  "ZIM EAGLE":9960502,"ZIM FALCON":9960514,"ZIM ALBATROSS":9960540
 };
+/* ===== THE HULL BOOK — hulls this device has learned =====
+   The built-in table above can only ever be a snapshot; fleets rotate. So the app
+   also LEARNS. Two ways a hull gets on file:
+     · the board data carries s.imo (the OCR/bot can start sending it any time) —
+       hullLearn() files it automatically the first time that ship is drawn;
+     · a hand pins it by hand from the ⚓? button on the board row.
+   Kept under K('hulls'), so it's per-card and rides user_kv to that member's other
+   phones like every other namespaced key. */
+function hullBook(){ try{ const o=JSON.parse(localStorage.getItem(K('hulls'))||'{}'); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } }
+function hullKey(nm){ return String(nm||"").trim().toUpperCase().replace(/\s+/g,' '); }
+function hullFor(nm){
+  const k=hullKey(nm); if(!k) return null;
+  const learned=hullBook()[k];
+  return learned || VESSEL_IMO[k] || null;      // a hand-pinned hull beats the built-in seed
+}
+function hullLearn(nm,imo){
+  const k=hullKey(nm), n=String(imo||"").replace(/\D/g,"");
+  if(!k || n.length<7 || n.length>8) return false;
+  try{ const o=hullBook(); o[k]=+n; localStorage.setItem(K('hulls'),JSON.stringify(o)); }catch(e){ return false; }
+  return true;
+}
+window.hullFor=hullFor; window.hullLearn=hullLearn;
 function vesselURL(s){
   const nm=String((s&&typeof s==="object")?(s.ship||""):(s||"")).trim();
-  const imo=(s&&typeof s==="object"&&s.imo)?s.imo:VESSEL_IMO[nm.toUpperCase()];
+  /* if the board handed us a hull number, file it before anything else — that is
+     how the book fills itself in once the bot starts sending s.imo */
+  if(s&&typeof s==="object"&&s.imo)try{ hullLearn(nm,s.imo); }catch(e){}
+  const imo=(s&&typeof s==="object"&&s.imo)?s.imo:hullFor(nm);
   if(imo)return "https://www.vesselfinder.com/vessels/details/"+String(imo).replace(/\D/g,"");
-  return "https://www.vesselfinder.com/vessels?name="+encodeURIComponent(nm);   // fallback: search page
+  return "https://www.vesselfinder.com/vessels?name="+encodeURIComponent(nm);   // no hull on file yet: name search
 }
 /* one terminal's slice of tonight's board, rendered. All board fields are OCR/remote —
    every interpolated value is run through acEsc(). */
@@ -7932,8 +8009,13 @@ function tonightBoardHTML(bs, op){
     const badge = aboard>0 ? '<span class="pill grn">⚓ '+aboard+' aboard</span>'
                 : crew>0   ? '<span class="pill gold">'+crew+' hands</span>'
                 :            '<span class="pill">ordered</span>';
+    /* #hull — a ship with a hull on file jumps STRAIGHT to its VesselFinder page:
+       photo, live position, voyage, size, flag. Without one, the link can only run a
+       name search — so offer the ⚓? pin right there and let the hand fix it once. */
+    const _hull=hullFor(s&&s.ship);
     h+='<div class="gaterow" style="align-items:flex-start">'
-      +'<div class="g"><a target="_blank" rel="noopener" href="'+vesselURL(s)+'" onclick="event.stopPropagation()" title="Track '+shipE+' on VesselFinder — live position, photo, size, flag" style="color:var(--copper-hi);text-decoration:none;border-bottom:1px dotted rgba(201,128,63,.6)"><b>'+shipE+'</b></a>'
+      +'<div class="g"><a target="_blank" rel="noopener" href="'+vesselURL(s)+'" onclick="event.stopPropagation()" title="'+(_hull?('Track '+shipE+' on VesselFinder — live position, photo, size, flag'):('No hull on file for '+shipE+' — this opens a name search. Tap ⚓? to pin it.'))+'" style="color:var(--copper-hi);text-decoration:none;border-bottom:1px dotted rgba(201,128,63,.6)"><b>'+shipE+'</b></a>'
+      +(_hull?'':' <button type="button" class="hullpin" data-hullpin="'+shipE+'" title="Pin this ship\u2019s hull number so it links straight to its page" onclick="event.stopPropagation();openHullPin(this.dataset.hullpin)">\u2693?</button>')
       +(s.gang?' <span class="pill gold" title="Gang '+acEsc(String(s.gang))+' dispatched to this ship — off the Gangs Dispatched sheet">⚓ Gang '+acEsc(String(s.gang))+'</span>':'')
       +'<br><span class="sub">'+(meta||"ordered")+(jobsRaw?' · <span class="mono" title="'+jobsDec+'">'+jobsRaw+'</span>':'')+'</span></div>'
       +badge+'</div>';
@@ -7944,6 +8026,44 @@ function tonightBoardHTML(bs, op){
   h+='<p class="sub" style="margin-top:8px;color:#586067">Off the '+acEsc(b.sheet||"")+' dispatch sheet · '+acEsc(b.date||"")+' — the hall’s Job Forecast Report. Berth &amp; crew as posted; can shift by call time.</p></div>';
   return h;
 }
+/* #hull — PIN A HULL. VesselFinder can only deep-link by IMO, and the dispatch sheet
+   only gives us a name, so an unlisted ship falls back to a name search. This closes
+   the loop in-app: the search page the link already opens shows the IMO right under
+   the ship’s name, so the hand copies seven digits back in here once and that ship
+   deep-links from then on — on this phone and any other they sign in on. */
+function openHullPin(shipName){
+  const nm=String(shipName||"").trim(); if(!nm)return;
+  let sh=document.getElementById('hullSheet');
+  if(!sh){ sh=document.createElement('div'); sh.className='sheet'; sh.id='hullSheet'; document.body.appendChild(sh);
+    sh.addEventListener('click',e=>{ if(e.target===sh)sh.classList.remove('on'); }); }
+  const searchURL="https://www.vesselfinder.com/vessels?name="+encodeURIComponent(nm);
+  sh.innerHTML='<div class="sheet-card" style="text-align:left">'
+    +'<div class="big" style="font-size:20px;letter-spacing:.06em;text-align:center">PIN THE HULL</div>'
+    +'<p class="sub" style="margin:8px 0 14px;text-align:center">'+esc(nm)+'</p>'
+    +'<p class="sub" style="margin-bottom:12px">Every ship carries one permanent <b>IMO number</b> — it never changes, even when the ship is renamed or reflagged. Pin it once and this ship opens straight to its own page: photo, live position, voyage, size and flag.</p>'
+    +'<a class="btn-ghost" href="'+searchURL+'" target="_blank" rel="noopener" style="display:block;width:100%;text-align:center;margin-bottom:12px">\u2693 Look it up on VesselFinder</a>'
+    +'<p class="sub" style="margin-bottom:10px;font-size:12.5px">Open your ship there, then copy the 7-digit number shown as <b>IMO</b> under its name.</p>'
+    +'<span class="lbl">IMO number</span>'
+    +'<input class="field" id="hullImo" inputmode="numeric" maxlength="8" placeholder="e.g. 9936393" style="margin-bottom:6px">'
+    +'<div class="field-msg" id="hullMsg"></div>'
+    +'<button class="btn" id="hullGo" type="button" style="margin-top:8px">\u2693 PIN IT</button>'
+    +'<button class="btn-ghost" id="hullNo" type="button" style="width:100%;margin-top:10px;border:0;color:#586067">Never mind</button></div>';
+  sh.querySelector('#hullNo').addEventListener('click',()=>sh.classList.remove('on'));
+  sh.querySelector('#hullGo').addEventListener('click',()=>{
+    const v=(document.getElementById('hullImo').value||"").replace(/\D/g,"");
+    const msg=document.getElementById('hullMsg');
+    if(v.length<7||v.length>8){ msg.textContent="> an IMO is 7 digits — check the number under the ship’s name"; return; }
+    if(!hullLearn(nm,v)){ msg.textContent="> couldn’t save that — try again"; return; }
+    sh.classList.remove('on');
+    try{ toast('\u2693 '+nm+' pinned — it links straight to its page now'); }catch(e){}
+    /* redraw whatever is on screen so the link swaps over immediately */
+    try{ const q=document.getElementById('portSearch'); renderPorts(q?q.value:""); }catch(e){}
+    try{ renderHarborBoard(); }catch(e){}
+  });
+  sh.classList.add('on');
+  setTimeout(()=>{ try{ document.getElementById('hullImo').focus(); }catch(e){} },80);
+}
+window.openHullPin=openHullPin;
 function renderPorts(q){
   q=(q||"").toLowerCase();
   const el=document.getElementById('portList');el.innerHTML="";
