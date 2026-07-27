@@ -10452,8 +10452,7 @@ function svPageHTML(s,i){
   const emb=storyEmbed(s.url);
   if(emb&&s._vshape)emb.shape=s._vshape;   // #vshape — a probed Short takes the portrait frame
   const rail='<div class="sv-rail">'
-      +'<div class="sv-av">🎭</div>'+likeBtn+cmBtn
-      +'<button data-open="'+u+'"><span class="ic">🔗</span>Open</button>'
+      +'<div class="sv-av">'+(s.bot?'⚓':'🎭')+'</div>'+likeBtn+cmBtn
       +'<button data-share="'+u+'"><span class="ic">⤴</span>Share</button>'
       
     +'</div>';
@@ -10466,9 +10465,11 @@ function svPageHTML(s,i){
       +'</div>'
       +'<div class="sv-shade top"></div>'
       +rail
-      +'<div class="sv-cap"><div class="sv-h">\ud83c\udfad '+esc(s.by)+'</div>'
+      +'<div class="sv-cap"><div class="sv-h">'+(s.bot?'\u2693':'\ud83c\udfad')+' '+esc(s.by)+'</div>'
         +(s.note&&s.note.trim()?'<div class="sv-note">'+esc(s.note)+'</div>':'')
-        +'<div class="sv-t">'+p.ico+' '+esc(p.label)+' \u00b7 playing in the Hall \u00b7 '+agoShort(s.ts)+'</div></div>'
+        /* #stream — a wire-fed clip has no author and no age, so "playing in the
+           Hall \u00b7 " with an empty timestamp just reads broken. Name the source. */
+        +'<div class="sv-t">'+(s.bot?('\u2693 off the wire \u00b7 '+esc(s.q||'the waterfront')):(p.ico+' '+esc(p.label)+' \u00b7 playing in the Hall \u00b7 '+agoShort(s.ts)))+'</div></div>'
       +hint
     +'</div>';
   }
@@ -10478,9 +10479,9 @@ function svPageHTML(s,i){
       +'<div class="sh-ico">'+brandMark()+'</div><div class="sh-plat">'+BRAND_NAME+'</div>'
       +'<div class="sh-open">▶ Watch the clip ↗</div></div>'
     +rail
-    +'<div class="sv-cap"><div class="sv-h">🎭 '+esc(s.by)+'</div>'
+    +'<div class="sv-cap"><div class="sv-h">'+(s.bot?'⚓':'🎭')+' '+esc(s.by)+'</div>'
       +(s.note&&s.note.trim()?'<div class="sv-note">'+esc(s.note)+'</div>':'')
-      +'<div class="sv-t">'+esc(linkHost(s.url))+' ↗ · '+agoShort(s.ts)+'</div></div>'
+      +'<div class="sv-t">'+(s.bot?('⚓ off the wire · '+esc(s.q||'the waterfront')):(esc(linkHost(s.url))+' ↗ · '+agoShort(s.ts)))+'</div></div>'
     +hint
   +'</div>';
 }
@@ -10496,6 +10497,8 @@ function openStoryViewer(startIdx){
   v.classList.add('on'); v.setAttribute('aria-hidden','false'); document.body.style.overflow='hidden';
   svBind(track);
   try{svcCounts();}catch(e){}   /* #stories5 — 💬 badges for the reel */
+  _fedStart=_svList.length;                 // #stream — everything past here is wire-fed
+  try{svBotKick();}catch(e){}               // #stream — lay the road before anyone swipes to it
   const idx=Math.max(0,Math.min(_svList.length-1,startIdx||0));
   /* #stories9 — position + first play run SYNCHRONOUSLY, still inside the tap:
      that's the gesture window where the browser allows SOUND. The rAF pass
@@ -10605,6 +10608,7 @@ function svUpdateIx(){
   const track=document.getElementById('svTrack'), ix=document.getElementById('svIx'); if(!track||!ix)return;
   const i=Math.round(track.scrollTop/Math.max(1,track.clientHeight));
   ix.textContent=Math.min(_svList.length,i+1)+' / '+_svList.length;
+  try{if(_svList.length&&i>=_svList.length-2)svBotMore();}catch(e){}   // #stream — two from the end, lay more
   /* #stories2 — only the clip in view plays; everything off-screen holds still */
   track.querySelectorAll('video.sv-mediafull').forEach(v=>{
     const pg=v.closest('.sv-page'), on=pg&&(+pg.getAttribute('data-si')===i);
@@ -10669,6 +10673,8 @@ function svBind(track){
     if(like){toggleStoryLike(like.getAttribute('data-like'));svLikeUI(like.closest('.sv-page'),like.getAttribute('data-like'));return;}
     const cm=e.target.closest('[data-cm]');   // #stories5 — 💬 opens the talk
     if(cm){openComments(cm.getAttribute('data-cm'));return;}
+    /* the rail's 🔗 Open button is gone, but data-open still rides the .sv-hero
+       card — the only way to reach a link that has no in-app player. */
     const open=e.target.closest('[data-open]');
     if(open){try{window.open(open.getAttribute('data-open'),'_blank','noopener');}catch(_){}return;}
     const sh=e.target.closest('[data-share]');
@@ -10815,6 +10821,134 @@ async function svcSend(){
   });
 })();
 
+
+/* ===== #stream — THE SHADOW HOOK KEEPS THE REEL ROLLING =====
+   The crew's stories are usually a handful; the reel shouldn't dead-end on the
+   last one. So once you swipe past what the hands have shared, waterfront clips
+   append behind them and the stream just keeps going.
+
+   No hand-off page, no vibe picker — the seam is silent. The only tell is the
+   caption, which says the clip came off the wire instead of naming a hand.
+
+   Content comes from two roads, in order:
+     1. the wire's own searcher (the `bot-search` edge function, YouTube key held
+        server-side as a secret) — a legacy on-device key is still honored
+     2. the Keymaster's crate (`bot_feed` table, BOT-FEED-SETUP.sql) as fallback
+   With NEITHER wired, nothing appends and the reel ends on the crew's last
+   story — exactly today's behaviour, no error, no empty page.
+
+   Queries are fixed to the waterfront and rotate so the stream doesn't loop the
+   same dozen clips. Both searchers ask for short + #shorts, which biases hard
+   toward vertical clips that fill the story frame; anything landscape that slips
+   through gets centre-cropped by .sv-embedwrap.w. */
+const FEED_QUERIES=[
+  'shipping containers',
+  'shipping import export news',
+  'container ship loading',
+  'port container terminal',
+  'container crane operations',
+  'longshoreman dock work'
+];
+let _qIx=0;                                   // rotates one step per batch
+function nextQuery(){const q=FEED_QUERIES[_qIx%FEED_QUERIES.length];_qIx++;return q;}
+let BOT_POOL=[];try{BOT_POOL=JSON.parse(localStorage.getItem('shadowhook_botfeed')||'[]');}catch(e){}
+let _botBusy=false,_botToken='',_botTokenQ='',_botCycle=0,_fedStart=0;
+function _ytKey(){try{return localStorage.getItem('shadowhook_ytkey')||'';}catch(e){return '';}}
+async function sbLoadBotFeed(){
+  if(!window.SB)return;
+  try{
+    const r=await window.SB.from('bot_feed').select('url,title,tags').eq('active',true).limit(200);
+    if(!r.error&&r.data){BOT_POOL=r.data;try{localStorage.setItem('shadowhook_botfeed',JSON.stringify(BOT_POOL));}catch(e){}}
+    else if(r.error)console.warn('[stream] crate:',r.error.message,'— run BOT-FEED-SETUP.sql');
+  }catch(e){}
+}
+function botPoolPick(q){
+  const words=String(q||'').toLowerCase().split(/\s+/).filter(Boolean);
+  let rows=BOT_POOL.filter(r=>{
+    const hay=((r.tags||'')+' '+(r.title||'')).toLowerCase();
+    return words.some(w=>hay.indexOf(w)>-1);
+  });
+  if(!rows.length)rows=BOT_POOL.slice();
+  rows=rows.filter(r=>{try{return !!storyEmbed(r.url)}catch(e){return false}});
+  for(let i=rows.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));const t=rows[i];rows[i]=rows[j];rows[j]=t;}
+  return rows;
+}
+function _ytParse(j){return {token:j.nextPageToken||'',list:(j.items||[]).map(it=>({url:'https://www.youtube.com/watch?v='+(it.id&&it.id.videoId||''),title:((it.snippet||{}).title||'')})).filter(x=>/v=[\w-]{6,}/.test(x.url))};}
+let _botFnDead=false;   // bot-search edge function absent/unset → stop asking this session
+async function ytSearch(q,pageToken){
+  const term=q+' #shorts';   /* #vshape — bias the hunt toward vertical, story-shaped clips */
+  if(window.SB&&window.SB.functions&&!_botFnDead){
+    try{
+      const r=await window.SB.functions.invoke('bot-search',{body:{q:term,pageToken:pageToken||''}});
+      if(!r.error&&r.data&&r.data.items)return _ytParse(r.data);
+      _botFnDead=true;
+    }catch(e){_botFnDead=true;}
+  }
+  const k=_ytKey();if(!k)return null;   // legacy on-device key still honored
+  const u='https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoEmbeddable=true&safeSearch=strict&videoDuration=short&maxResults=12&q='+encodeURIComponent(term)+(pageToken?'&pageToken='+encodeURIComponent(pageToken):'')+'&key='+encodeURIComponent(k);
+  const r=await fetch(u);if(!r.ok)throw new Error('HTTP '+r.status);
+  return _ytParse(await r.json());
+}
+function botEntries(rows,q){
+  return rows.map(r=>({id:'fed-'+String(r.url).replace(/[^\w-]/g,'').slice(-14)+'-'+(_botCycle),bot:true,by:'The Shadow Hook',url:r.url,note:r.title||'',t:r.title||'',plat:'youtube',ts:0,mine:false,q:q}));
+}
+/* #vshape — probe each clip once so true verticals take the portrait frame */
+async function _shapePass(ents){
+  await Promise.all(ents.map(async s=>{try{if(await probeShort(ytIdOf(s.url)))s._vshape='v';}catch(e){}}));
+  return ents;
+}
+function svAppendBot(entries){
+  const track=document.getElementById('svTrack');if(!track||!entries.length)return;
+  const base=_svList.length;
+  entries.forEach((s,k)=>{_svList.push(s);track.insertAdjacentHTML('beforeend',svPageHTML(s,base+k));});
+  _svListLen=_svList.length;
+  try{svUpdateIx();}catch(e){}
+  try{svcCounts();}catch(e){}
+}
+/* first batch — fired as the viewer opens, so the road past the crew is already
+   laid by the time anyone swipes that far */
+async function svBotKick(){
+  if(_botBusy)return;_botBusy=true;
+  try{
+    const q=nextQuery();
+    try{
+      const r=await ytSearch(q,'');
+      if(r&&r.list.length){_botToken=r.token;_botTokenQ=q;
+        svAppendBot(await _shapePass(botEntries(r.list,q)));return;}
+    }catch(e){console.warn('[stream] search:',(e&&e.message)||e);}
+    await sbLoadBotFeed();                       // no searcher → the crate
+    const rows=botPoolPick(q);
+    if(rows.length)svAppendBot(await _shapePass(botEntries(rows,q)));
+    else console.warn('[stream] nothing to feed — deploy bot-search, or fill bot_feed on the wire');
+  }finally{_botBusy=false;}
+}
+/* nearing the end -> lay more road. Walks to the next page of the SAME query
+   while there is one, then rotates to the next query. */
+async function svBotMore(){
+  if(_botBusy)return;
+  if(_svList.length>=200)return;                 // hard stop: nobody swipes 200 deep
+  _botBusy=true;
+  try{
+    if(_botToken){
+      try{
+        const r=await ytSearch(_botTokenQ,_botToken);
+        if(r&&r.list.length){_botToken=r.token;
+          svAppendBot(await _shapePass(botEntries(r.list,_botTokenQ)));return;}
+        _botToken='';
+      }catch(e){_botToken='';}
+    }
+    const q=nextQuery();                         // out of pages → next query
+    try{
+      const r=await ytSearch(q,'');
+      if(r&&r.list.length){_botToken=r.token;_botTokenQ=q;
+        svAppendBot(await _shapePass(botEntries(r.list,q)));return;}
+    }catch(e){}
+    if(BOT_POOL.length&&_svList.length>_fedStart){   // crate only: shuffle another lap
+      _botCycle++;
+      svAppendBot(await _shapePass(botEntries(botPoolPick(q),q)));
+    }
+  }finally{_botBusy=false;}
+}
 
 /* #hall — the Hall lives ON the Social tab now (no overlay). setHallView() flips the
    two pills; openHub() survives as the road in for share-ins and invite links — it
