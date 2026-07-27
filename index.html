@@ -10010,7 +10010,9 @@ function storyEmbed(url){
     if(m=p.match(/^\/(?:live|embed)\/([\w-]{6,})/))return yt(m[1]);
   }
   if(h==='youtu.be'&&(m=p.match(/^\/([\w-]{6,})/)))return yt(m[1]);
-  if(/tiktok\.com$/.test(h)&&(m=p.match(/\/(?:video|photo)\/(\d{6,})/)))return{src:'https://www.tiktok.com/embed/v2/'+m[1],shape:'v'};
+  /* #snd2 — autoplay muted so the browser never vetoes the start; svEmbedSound
+     unmutes over postMessage inside the tap's gesture window. */
+  if(/tiktok\.com$/.test(h)&&(m=p.match(/\/(?:video|photo)\/(\d{6,})/)))return{src:'https://www.tiktok.com/embed/v2/'+m[1]+'?autoplay=1&muted=1&description=0&music_info=0',shape:'v'};
   if(/instagram\.com$/.test(h)&&(m=p.match(/^\/(p|reel|reels|tv)\/([\w-]{5,})/)))
     return{src:'https://www.instagram.com/'+(m[1]==='reels'?'reel':m[1])+'/'+m[2]+'/embed/',shape:'v'};
   if(/facebook\.com$/.test(h)||h==='fb.watch'){
@@ -10565,8 +10567,12 @@ function svCurrentEmbed(){
   return track.querySelector('.sv-page[data-si="'+i+'"] iframe.sv-embed');
 }
 /* #sndfix — the YouTube bridge: postMessage commands into the player. Retries
-   while the player boots; silently no-ops for platforms with no API (TikTok/IG —
-   their own in-player unmute is tappable now that the caption layer lets taps through). */
+   while the player boots.
+   #snd2 — TikTok has its own player API and now rides the same switch (see
+   svEmbedSound). Instagram and Facebook do NOT: the IG /embed/ iframe exposes
+   nothing at all, and Facebook's unmute() only exists on the JS-SDK player, not
+   the plugins/video.php iframe we use. For those two the fallback stands — their
+   own in-player unmute is tappable, since the caption layer lets taps through. */
 function svYtCmd(f,func,args){
   try{if(f&&f.contentWindow)f.contentWindow.postMessage(JSON.stringify({event:'command',func:func,args:args||[]}),'*');}catch(e){}
 }
@@ -10591,10 +10597,22 @@ window.addEventListener('message',e=>{   // #autonext — YT says "ended" → ne
     if(f&&f.contentWindow===e.source&&!f._svAdvanced){f._svAdvanced=1;svNext();}
   }catch(_){}
 });
+/* #snd2 — TikTok's bridge. Note the shape differs from YouTube's: TikTok wants a
+   real OBJECT carrying the 'x-tiktok-player' key, where YouTube wants a JSON
+   STRING. Sending one format to the other player is silently ignored. */
+function svTtCmd(f,type,value){
+  try{if(f&&f.contentWindow)f.contentWindow.postMessage(Object.assign({'x-tiktok-player':true,type:type},(value===undefined?{}:{value:value})),'*');}catch(e){}
+}
 function svEmbedSound(f,on){
-  if(!f||!/youtube\.com\/embed/.test(String(f.dataset.esrc||'')))return;
-  const fire=()=>{ if(on){svYtCmd(f,'unMute');svYtCmd(f,'setVolume',[100]);svYtCmd(f,'playVideo');} else svYtCmd(f,'mute'); };
-  fire();setTimeout(fire,500);setTimeout(fire,1400);setTimeout(fire,2800);   // player boots async
+  if(!f)return;
+  const src=String(f.dataset.esrc||'');
+  let fire=null;
+  if(/youtube\.com\/embed/.test(src))
+    fire=()=>{ if(on){svYtCmd(f,'unMute');svYtCmd(f,'setVolume',[100]);svYtCmd(f,'playVideo');} else svYtCmd(f,'mute'); };
+  else if(/tiktok\.com\/embed/.test(src))
+    fire=()=>{ if(on){svTtCmd(f,'unMute');svTtCmd(f,'play');} else svTtCmd(f,'mute'); };
+  if(!fire)return;                                   // IG / FB / X / Spotify — no API to talk to
+  fire();setTimeout(fire,500);setTimeout(fire,1400);setTimeout(fire,2800);   // players boot async
 }
 function svSoundSet(on){
   _svSound=!!on;try{localStorage.setItem('shadowhook_svsound',_svSound?'1':'0');}catch(e){}
