@@ -4983,6 +4983,44 @@ const V4 = (function(){
     for(let i=0;i<k;i++) pmf[Math.min(cands[i][1],26)]+=1/k;
     return pmf;
   }
+  /* ── #casaxis — THE CASUAL AXIS ────────────────────────────────────────────────
+     What the sheet actually gives us: the (D/E/N) dispatch PDFs publish the CASUAL
+     job count. The union+casual grand total — the number the hall posts elsewhere,
+     the one the logs carry in their `tot` column — is NOT on the sheet and there is
+     no live feed for it. v5 fed the sheet's casual figure into the spillover model's
+     union-scale total anyway, where it lands far BELOW the ~1975/2275 registered-
+     capacity knee: spillover read ZERO and the call collapsed toward "holds" on
+     every board carrying a real sheet. That is the chronic underestimate — and the
+     reason the ~ESTIMATE (weekday EWMA, honestly on the union scale) kept beating
+     the ✓ FINAL call that supposedly rode the real sheet.
+
+     So match neighbours on the number we HAVE. Same shape as spilloverKnn (weekday +
+     recency + season) but on the casual-hall axis, with momentum back in — it was
+     only ever swamping the match when it rode alongside the broken total. Walk-forward
+     backtest, 2026, median vs actual letters moved (MAE / within ±1):
+                        this      old path    spillover on the TRUE union total
+       PM / night      1.17/73%   1.85/62%    1.45/67%
+       AM / day        1.90/63%   2.92/54%    1.84/63%
+     It matches or beats the union total we can't even get — the casual count is the
+     better predictor of casual movement, which stands to reason. div=90 / momW=1.0
+     sit in a flat region of the parameter grid: robust, not fitted to a peak. */
+  const CAS_DIV=90, CAS_MOMW=1.0;
+  function casualKnn(isAM,dow,chHat,mom,month){
+    const rows=log(isAM), n=rows.length;
+    if(n<40 || !isFinite(chHat) || chHat<=0) return null;
+    const cands=[];
+    for(let j=0;j<n;j++){
+      const r=rows[j];                                   /* [ch,tot,dow,act,hm,mo,i] */
+      let d=Math.pow((r[0]-chHat)/CAS_DIV,2) + 0.4*(r[2]===dow?0:1) + Math.pow(0.5*(n-j)/365,2);
+      let md=Math.abs(r[5]-month); md=Math.min(md,12-md); d+=Math.pow(0.3*md,2);
+      if(r[4]!=null && isFinite(mom)) d+=Math.pow(CAS_MOMW*(r[4]-mom),2);
+      cands.push([d,r[3]]);
+    }
+    cands.sort((a,b)=>a[0]-b[0]);
+    const k=Math.min(25,n), pmf=new Array(27).fill(0);
+    for(let i=0;i<k;i++) pmf[Math.min(cands[i][1],26)]+=1/k;
+    return pmf;
+  }
   /* recent come-down / attendance (came ÷ called). Low turnout ⇒ more numbers called per
      job ⇒ the board runs further. Read live from the catch model; null if we have none. */
   function recentAtt(){
@@ -5004,9 +5042,14 @@ const V4 = (function(){
       const isAM=!!o.isAM, dow=o.dow, month=(o.date?o.date.getMonth()+1:7);
       const cats=o.cats||{list:[],shutdown:false,rain:false,heavy:false};
       if(cats.shutdown){ const p=new Array(27).fill(0); p[0]=0.9;p[1]=0.08;p[2]=0.02; return p; }
-      /* v5: spillover-over-registered-capacity is the primary driver. The old casual/momentum
-         kNN and the geometric prior stay as fallbacks if the spillover fit isn't ready. */
-      let pmf = spilloverKnn(isAM,dow,o.totHat,month)
+      /* #casaxis — the CASUAL count drives the call: it's the number the sheet actually
+         hands us, and it out-predicts the union total we can't get. spilloverKnn is not
+         dead — it just may never again be fed a casual figure wearing the union axis's
+         clothes. Pass o.totIsUnion:true the day a real union+casual feed exists and it
+         takes over; until then the old casual/momentum kNN and the geometric prior stay
+         as fallbacks for a board with no count at all. */
+      let pmf = casualKnn(isAM,dow,o.chHat,o.mom,month)
+             || (o.totIsUnion ? spilloverKnn(isAM,dow,o.totHat,month) : null)
              || knn(isAM,dow,o.chHat,o.totHat,o.mom,month)
              || geomFallback(dow,isAM);
       // SEPARATE category behaviour — blend the strongest-supported applicable one
@@ -5128,29 +5171,42 @@ function publishCall(){
     const ex=V4.expect(dowIdx,isAM);
     const _fc=DISPATCH_DATA[key]; let _cas=casualJobsOf(_fc);
     if(_fc&&_fc.total&&_fc.total.cas>0) _cas=_fc.total.cas;   /* #totcas — an explicit casual count from the sheet wins over the board sum */
-    /* #v5 — the SHEET TOTAL drives the call (spillover over the registered pool). Take it
-       whenever the sheet carries a total, even if the per-board casual breakdown didn't parse
-       — otherwise a big board (e.g. 2780) silently fell back to the weekday average. */
+    /* #casaxis — the sheet's grand total is a CASUAL figure. The D/E/N PDFs publish casual
+       work; the union+casual number is not on the sheet and has no live feed. It used to be
+       written straight into ex.tot — the UNION-scale axis the logs train on — where a 1,434
+       casual sheet sat 800 jobs below the capacity knee, zeroed the spillover signal and
+       called "holds" on a board that ran 16 letters. Now it only stands in as the casual
+       count when the per-board breakdown didn't parse, and ex.tot stays the weekday EWMA:
+       an honest union-scale guess, used by the fallback engines only. */
     const _shTot=(_fc&&_fc.total&&(_fc.total.total||(typeof _fc.total==="number"?_fc.total:0)))||0;
-    if(_shTot) ex.tot=_shTot;
+    if(_cas==null && _shTot>0) _cas=_shTot;   /* breakdown didn't parse — the sheet total is the best casual figure there is */
     if(_cas!=null){
       ex.ch=_cas*V4.boardsToCh;                       /* casual BOARDS -> the hall scale the logs train on */
       if(!_shTot) ex.ch=ex.ch/Math.max(0.4,V4.earlyRatio); /* an EARLY-only sheet is partial -> scale up to expected FINAL */
       source=_shTot?'FINAL':'EARLY';
     } else if(window.EARLY_COUNTS){
-      ex.ch=(window.EARLY_COUNTS.ch||ex.ch); if(!_shTot) ex.tot=(window.EARLY_COUNTS.tot||ex.tot); source='EARLY';
-    } else { source=_shTot?'FINAL':(isAM?'AM':'EST'); }
+      ex.ch=(window.EARLY_COUNTS.ch||ex.ch); source='EARLY';   /* #casaxis — EARLY_COUNTS.tot is the same casual scale; it no longer touches ex.tot */
+    } else { source=isAM?'AM':'EST'; }
     if(_dropTot>0){ ex.ch=Math.max(ex.ch||0,_dropTot*V4.boardsToCh); if(source!=='FINAL')source='EARLY'; }   /* #liverecalc */
     pmf=V4.predict({isAM:isAM,dow:dowIdx,chHat:ex.ch,totHat:ex.tot,mom:mom,date:nd2,cats:cats});
     const _cap=(typeof V4.capacityFor==="function")?V4.capacityFor(isAM):null;
-    window._v4dbg={source:source,ch:Math.round(ex.ch),tot:Math.round(ex.tot),cap:_cap,spill:(_cap!=null?Math.max(0,Math.round(ex.tot)-_cap):null),att:(window._v4att||null),cats:cats.list,shutdown:!!cats.shutdown,mom:+(mom||0).toFixed(2)};
+    /* #casaxis — the readout names the axis the call actually ran on. `cas` is the sheet's
+       casual figure, `ch` that figure on the hall scale (×boardsToCh) = the kNN's match key.
+       totEwma is the weekday union-scale guess, carried for the fallback engines only —
+       it is NOT off the sheet, so it never again gets to masquerade as a real total. */
+    window._v4dbg={source:source,axis:'casual',cas:(_cas!=null?Math.round(_cas):null),ch:Math.round(ex.ch),totEwma:Math.round(ex.tot),cap:_cap,att:(window._v4att||null),cats:cats.list,shutdown:!!cats.shutdown,mom:+(mom||0).toFixed(2)};
   }catch(_v4e){ if(window.console)console.warn('V4 fallback',_v4e); pmf=null; }
   if(!pmf){
     if(!isAM){
       mom=hallMomentumNow(); const ex=hallExpect(dowIdx);
-      const _fc=DISPATCH_DATA[key], _cas=casualJobsOf(_fc);
-      if(_cas!=null){ ex.ch=_cas; const hasTot=!!(_fc.total&&_fc.total.total); if(hasTot)ex.tot=_fc.total.total; source=hasTot?'FINAL':'EARLY'; }
-      else if(window.EARLY_COUNTS){ex.ch=window.EARLY_COUNTS.ch||ex.ch;ex.tot=window.EARLY_COUNTS.tot||ex.tot;source='EARLY';}
+      const _fc=DISPATCH_DATA[key]; let _cas=casualJobsOf(_fc);
+      /* #casaxis — same rule as the main engine: a sheet figure is CASUAL, so it feeds ch.
+         ex.tot keeps the weekday EWMA (union scale) instead of being overwritten with a
+         casual number knnPredict would then match against union-scale neighbours. */
+      const _hasTot=!!(_fc&&_fc.total&&_fc.total.total);
+      if(_cas==null&&_hasTot) _cas=_fc.total.total;
+      if(_cas!=null){ ex.ch=_cas; source=_hasTot?'FINAL':'EARLY'; }
+      else if(window.EARLY_COUNTS){ex.ch=window.EARLY_COUNTS.ch||ex.ch;source='EARLY';}
       else source='EST';
       if(_dropTot>0){ ex.ch=Math.max(ex.ch||0,_dropTot); if(source!=='FINAL')source='EARLY'; }   /* #liverecalc — fallback engine hears the drops too */
       pmf=knnPredict(dowIdx,ex.ch,ex.tot,mom);
@@ -14170,7 +14226,7 @@ window.addEventListener('resize',()=>{if($w('wbw').classList.contains('on'))wbFi
                         :('<span style="color:#f2a184">FAIL</span> · '+esc(i.err)+' <span style="color:#586067">('+i.at+')</span>'));});
       html+=h('THE PENDING BOARD & THE ENGINE');
       try{html+=row('pending board',esc((typeof callSlot!=='undefined')?callSlot:'?')+' · starts '+esc((typeof pendingStartCard==='function'&&pendingStartCard())||'—'));}catch(e){}
-      try{const v=window._v4dbg;if(v)html+=row('engine inputs','source '+esc(v.source)+' · tot '+v.tot+(v.cap!=null?' · cap '+v.cap+' · spill '+v.spill:'')+(v.att?' · att '+Math.round(v.att.recent*100)+'% ×'+v.att.mult:'')+' · mom '+v.mom+(v.shutdown?' · SHUTDOWN':''));else html+=row('engine inputs','no run yet');}catch(e){}
+      try{const v=window._v4dbg;if(v)html+=row('engine inputs','source '+esc(v.source)+' · axis '+esc(v.axis||'casual')+(v.cas!=null?' · casual '+v.cas:'')+' · ch '+v.ch+' · tot(ewma, not off the sheet) '+(v.totEwma!=null?v.totEwma:v.tot)+(v.att?' · att '+Math.round(v.att.recent*100)+'% ×'+v.att.mult:'')+' · mom '+v.mom+(v.shutdown?' · SHUTDOWN':''));else html+=row('engine inputs','no run yet');}catch(e){}
       try{html+=row('sheets on device',(typeof DISPATCH_DATA!=='undefined')?(Object.keys(DISPATCH_DATA).length+' · newest '+esc(Object.keys(DISPATCH_DATA).sort().pop()||'—')):'—');}catch(e){}
       try{html+=row('record rows',(typeof RECENT!=='undefined')?RECENT.length+' boards on the record':'—');}catch(e){}
       /* #jul23b — DISPATCH HOTLINE lives here now (moved off the Wire tab) */
