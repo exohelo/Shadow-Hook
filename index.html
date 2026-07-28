@@ -4887,9 +4887,26 @@ const V4 = (function(){
       const mo=parseInt(String(date).slice(5,7),10)||1;
       const hm=e;                                   // momentum as it stood BEFORE this board
       e = (e===null)? act : 0.3*act+0.7*e;
-      rows.push([ch,tot,dow,act,hm,mo,i]);
+      /* [7] #casaxis — CROSS-SLOT MOMENTUM: the board that ran immediately before a DAY
+         board is the PREVIOUS NIGHT's board (chronology runs D_AM → D_PM → D+1_AM), so
+         it is already dispatched and on the record when the day call is made. Tuning gave
+         it a small but real weight on AM; night boards don't use it. */
+      rows.push([ch,tot,dow,act,hm,mo,i, isAM?prevNightAct(date):null]);
     }
     _cache[kk]=rows; return rows;
+  }
+  let _pmByDate=null;
+  function pmActByDate(){
+    if(_pmByDate) return _pmByDate;
+    _pmByDate={};
+    try{ if(typeof HALL_LOG!=="undefined") HALL_LOG.forEach(function(r){ if(r) _pmByDate[r[0]]=r[4]; }); }catch(e){}
+    return _pmByDate;
+  }
+  function prevNightAct(dateStr){
+    try{ const d=new Date(dateStr+"T12:00:00"); d.setDate(d.getDate()-1);
+      const k=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+      const v=pmActByDate()[k]; return (v==null)?null:v;
+    }catch(e){ return null; }
   }
   function momentum(isAM){
     const rows=log(isAM); let e=null;
@@ -5002,23 +5019,69 @@ const V4 = (function(){
        PM / night      1.17/73%   1.85/62%    1.45/67%
        AM / day        1.90/63%   2.92/54%    1.84/63%
      It matches or beats the union total we can't even get — the casual count is the
-     better predictor of casual movement, which stands to reason. div=90 / momW=1.0
-     sit in a flat region of the parameter grid: robust, not fitted to a peak. */
-  const CAS_DIV=90, CAS_MOMW=1.0;
-  function casualKnn(isAM,dow,chHat,mom,month){
+     better predictor of casual movement, which stands to reason.
+
+     ── TUNED (400 walk-forward iterations, 2026 held out) ─────────────────────────
+     Constants below were fitted by hill-climbing on 2024-25 ONLY, with all of 2026
+     quarantined from the search and looked at once at the end. Selection scored
+     MAE(median) + 0.5·CRPS across four half-year folds plus their spread, so a config
+     had to be good in every regime rather than brilliant in one. Held-out 2026 result:
+                     before        after
+       PM / night   1.17 / 73%   1.13 / 75%   CRPS 0.894 → 0.825
+       AM / day     1.90 / 63%   1.80 / 62%   CRPS 1.470 → 1.326
+     Both searches independently converged on kernel-weighted voting, k≈23 and h≈0.92
+     from different random seeds — that agreement is why these are believed to be
+     signal rather than a fit to noise. Two things were TESTED AND REJECTED: an AM
+     config that won the tune window but failed the holdout (round 1), and a
+     self-calibrating regime-drift correction that helped July but cost everyday ±1
+     accuracy. Both are written up in the review; neither is in this code.
+
+     What is NOT fixed: July 2026 boards (PM MAE 3.0, AM 4.9 vs ~1.0 in Q1). The port
+     changed gear and 3.5 years of quieter neighbours outvote the new regime. That
+     needs data from the new regime, not constants — it will improve on its own as
+     July/August boards land in the log, which is what recw is there to accelerate. */
+  const CAS_P={
+    PM:{div:140,doww:0.90,recw:0.85,monw:0.10,momw:0.60,xmomw:0,    k:23,sm:0.26,h:0.92,dowMode:'class'},
+    AM:{div:142,doww:0.60,recw:0.85,monw:0.30,momw:0.30,xmomw:0.15, k:23,sm:0.38,h:0.92,dowMode:'exact'}
+  };
+  function casualKnn(isAM,dow,chHat,mom,month,xmHat){
     const rows=log(isAM), n=rows.length;
     if(n<40 || !isFinite(chHat) || chHat<=0) return null;
-    const cands=[];
+    const p=CAS_P[isAM?'AM':'PM'];
+    const wknd=x=>x>=5?1:0, myCls=wknd(dow);
+    const cands=new Array(n);
     for(let j=0;j<n;j++){
-      const r=rows[j];                                   /* [ch,tot,dow,act,hm,mo,i] */
-      let d=Math.pow((r[0]-chHat)/CAS_DIV,2) + 0.4*(r[2]===dow?0:1) + Math.pow(0.5*(n-j)/365,2);
-      let md=Math.abs(r[5]-month); md=Math.min(md,12-md); d+=Math.pow(0.3*md,2);
-      if(r[4]!=null && isFinite(mom)) d+=Math.pow(CAS_MOMW*(r[4]-mom),2);
-      cands.push([d,r[3]]);
+      const r=rows[j];                                   /* [ch,tot,dow,act,hm,mo,i,xm] */
+      let d=Math.pow((r[0]-chHat)/p.div,2);
+      /* weekday: 'class' counts a Sat↔Sun mismatch as half a miss — weekend boards run
+         alike, and treating them as unrelated threw away usable neighbours on nights. */
+      d+=(p.dowMode==='exact') ? p.doww*(r[2]===dow?0:1)
+                               : p.doww*(r[2]===dow?0:(wknd(r[2])===myCls?0.5:1));
+      d+=Math.pow(p.recw*(n-j)/365,2);                   /* prefer the recent regime */
+      let md=Math.abs(r[5]-month); md=Math.min(md,12-md); d+=Math.pow(p.monw*md,2);
+      if(r[4]!=null && isFinite(mom)) d+=Math.pow(p.momw*(r[4]-mom),2);
+      if(p.xmomw>0 && r[7]!=null && xmHat!=null) d+=Math.pow(p.xmomw*(r[7]-xmHat),2);
+      cands[j]=[d,r[3]];
     }
     cands.sort((a,b)=>a[0]-b[0]);
-    const k=Math.min(25,n), pmf=new Array(27).fill(0);
-    for(let i=0;i<k;i++) pmf[Math.min(cands[i][1],26)]+=1/k;
+    const k=Math.min(p.k,n), pmf=new Array(27).fill(0);
+    /* KERNEL VOTE: the 5th-nearest night should not carry the same weight as the 23rd.
+       Weights decay with distance, scaled by the k-th neighbour's own distance so the
+       kernel widens on a board with no close matches instead of pretending it has some. */
+    const dk=cands[k-1][0]||1e-9; let tw=0;
+    for(let i=0;i<k;i++){ const w=Math.exp(-cands[i][0]/(p.h*dk+1e-9)); pmf[Math.min(cands[i][1],26)]+=w; tw+=w; }
+    for(let i=0;i<27;i++) pmf[i]/=tw;
+    /* SMOOTH: 25 neighbours voting into 27 discrete letters leaves comb-like gaps that
+       make the band and P(6+) jumpy. Bleed a little mass either side; ends absorb. */
+    if(p.sm>0){
+      const out=new Array(27).fill(0);
+      for(let i=0;i<27;i++){ const v=pmf[i]; if(!v) continue;
+        out[i]+=v*(1-p.sm);
+        if(i>0) out[i-1]+=v*p.sm/2; else out[0]+=v*p.sm/2;
+        if(i<26) out[i+1]+=v*p.sm/2; else out[26]+=v*p.sm/2; }
+      const s=out.reduce((a,x)=>a+x,0)||1;
+      return out.map(x=>x/s);
+    }
     return pmf;
   }
   /* recent come-down / attendance (came ÷ called). Low turnout ⇒ more numbers called per
@@ -5048,7 +5111,7 @@ const V4 = (function(){
          clothes. Pass o.totIsUnion:true the day a real union+casual feed exists and it
          takes over; until then the old casual/momentum kNN and the geometric prior stay
          as fallbacks for a board with no count at all. */
-      let pmf = casualKnn(isAM,dow,o.chHat,o.mom,month)
+      let pmf = casualKnn(isAM,dow,o.chHat,o.mom,month,(o.xm!=null?o.xm:null))
              || (o.totIsUnion ? spilloverKnn(isAM,dow,o.totHat,month) : null)
              || knn(isAM,dow,o.chHat,o.totHat,o.mom,month)
              || geomFallback(dow,isAM);
@@ -5138,7 +5201,7 @@ const V4 = (function(){
   function setStopWork(v){ OVR.stopwork = (v===null?null:!!v); try{repredict();}catch(_){}}
 
   learnFromRecent();
-  return { predict:predict, categories:categories, momentum:momentum, expect:expect,
+  return { predict:predict, categories:categories, momentum:momentum, expect:expect, prevNightAct:prevNightAct, _casualKnn:casualKnn,
            learnBoard:learnBoard, learnFromRecent:learnFromRecent, loadWeather:loadWeather, setRain:setRain, setStopWork:setStopWork,
            capacityFor:fitCapacity, recentAtt:recentAtt,
            get boardsToCh(){return boardsToCh;}, get earlyRatio(){return earlyRatio;}, get cpl(){return cpl;},
@@ -5188,13 +5251,22 @@ function publishCall(){
       ex.ch=(window.EARLY_COUNTS.ch||ex.ch); source='EARLY';   /* #casaxis — EARLY_COUNTS.tot is the same casual scale; it no longer touches ex.tot */
     } else { source=isAM?'AM':'EST'; }
     if(_dropTot>0){ ex.ch=Math.max(ex.ch||0,_dropTot*V4.boardsToCh); if(source!=='FINAL')source='EARLY'; }   /* #liverecalc */
-    pmf=V4.predict({isAM:isAM,dow:dowIdx,chHat:ex.ch,totHat:ex.tot,mom:mom,date:nd2,cats:cats});
+    /* #casaxis — cross-slot momentum for a DAY board: how far last night's board ran.
+       Prefer the record (a sealed board, or one the hotline/wire already ended), and fall
+       back to the night log. Null when last night isn't in yet — the term simply drops. */
+    let _xm=null;
+    if(isAM){
+      try{ const lb=(typeof lastCompletedBoard==="function")?lastCompletedBoard():null;
+           if(lb && String(lb.slot).endsWith('PM') && typeof lb.act==='number') _xm=lb.act; }catch(e){}
+      if(_xm==null){ try{ _xm=V4.prevNightAct(key.slice(0,10)); }catch(e){} }
+    }
+    pmf=V4.predict({isAM:isAM,dow:dowIdx,chHat:ex.ch,totHat:ex.tot,mom:mom,date:nd2,cats:cats,xm:_xm});
     const _cap=(typeof V4.capacityFor==="function")?V4.capacityFor(isAM):null;
     /* #casaxis — the readout names the axis the call actually ran on. `cas` is the sheet's
        casual figure, `ch` that figure on the hall scale (×boardsToCh) = the kNN's match key.
        totEwma is the weekday union-scale guess, carried for the fallback engines only —
        it is NOT off the sheet, so it never again gets to masquerade as a real total. */
-    window._v4dbg={source:source,axis:'casual',cas:(_cas!=null?Math.round(_cas):null),ch:Math.round(ex.ch),totEwma:Math.round(ex.tot),cap:_cap,att:(window._v4att||null),cats:cats.list,shutdown:!!cats.shutdown,mom:+(mom||0).toFixed(2)};
+    window._v4dbg={source:source,axis:'casual',cas:(_cas!=null?Math.round(_cas):null),ch:Math.round(ex.ch),totEwma:Math.round(ex.tot),cap:_cap,att:(window._v4att||null),cats:cats.list,shutdown:!!cats.shutdown,mom:+(mom||0).toFixed(2),lastNight:(_xm!=null?_xm:null)};
   }catch(_v4e){ if(window.console)console.warn('V4 fallback',_v4e); pmf=null; }
   if(!pmf){
     if(!isAM){
