@@ -7228,7 +7228,9 @@ async function cwSync(){
         st.votes=st.votes||{a:1,b:1};
         if(va>st.votes.a){st.votes.a=va;changed=true;}
         if(vb>st.votes.b){st.votes.b=vb;changed=true;}
+        const _wasLive=st.live;
         try{cwResolveHeist(fd);}catch(e){}
+        if(st.live&&!_wasLive)changed=true;   /* #alive — settled here: MUST persist, or a reload re-derives the votes and pays again */
       }
       if(!st.live&&st.yes>=2){st.live=true;changed=true;
         try{if((fd.id==="total"||fd.id==="casual")&&st.first)finRecord(fd.id,st.first.v);}catch(e){}}
@@ -7276,13 +7278,15 @@ function cwSubmit(f){
   cwAfter(f);
 }
 /* ⚔ side 'a' = the original number stands · side 'b' = the correction carries
-   #dead(jul26) — cwVote is the ONLY caller of cwResolveHeist, and it returns two lines
-   in if st.iAmFirst||st.iAmChal. So on entry to cwResolveHeist both flags are
-   guaranteed false — and every consequence in there is gated on exactly those two
-   flags. The pay transfer, the claw-back and the CWme.bad penalty are all
-   permanently dead, and heistPop always resolves to (false,false), which is why that
-   banner can never name the local member. Compare bwSettleAll, which does it right:
-   it settles from the ROW's heist_from/by against bwMe(), not from local flags. */
+   #alive(jul30) — the old #dead(jul26) note here said the heist consequences could
+   never fire: cwVote (the only caller then) bails for authors, so cwResolveHeist
+   only ever ran on neutral devices where iAmFirst/iAmChal are both false. That
+   changed with #countwire: votes now sync, and cwSync calls cwResolveHeist on
+   EVERY device — so the reporter's claw-back, the corrector's payday, the bad-call
+   penalty and a heist banner that names the local member all fire for real now,
+   each on its own phone. Settlement is once-per-device: resolving sets st.live and
+   clears st.chal, the entry guard no-ops every later call, and cwSync persists the
+   settled state (cwPersist) so a reload cannot re-derive the votes and pay twice. */
 function cwVote(f,side){
   if(cwMuted())return;
   const st=CWstate[f.id];
