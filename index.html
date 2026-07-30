@@ -1631,6 +1631,12 @@ window.DEVLOG=(function(){
   <div class="stage">
 
     <!-- #194 retired (jul30) — the BETA ACCESS banner is gone: the Hook is out of the forge. -->
+    <!-- #km — THE KEYMASTER'S BULLETIN: whatever the Command Center pushes shows here on every phone -->
+    <div id="kmBulletin" style="display:none;position:relative;margin:10px 0 8px;padding:10px 34px 10px 12px;border:1px solid rgba(224,73,46,.5);border-radius:12px;background:linear-gradient(135deg,rgba(179,85,42,.16),rgba(20,14,10,.4));font-family:'Barlow Condensed',sans-serif;font-size:14px;line-height:1.45;color:var(--bone)">
+      <b style="color:var(--ember);letter-spacing:.12em;font-size:11px;font-family:'IBM Plex Mono',monospace">☠ THE KEYMASTER</b>
+      <div id="kmBulletinTxt" style="margin-top:3px"></div>
+      <button id="kmBulletinX" type="button" aria-label="Dismiss" style="position:absolute;top:8px;right:8px;background:none;border:0;color:var(--steel);font-size:13px;cursor:pointer">✕</button>
+    </div>
 
     <!-- 6-month rule countdown — lives here so it never crowds the header;
          only appears inside the final 30 days -->
@@ -2749,6 +2755,7 @@ window.DEVLOG=(function(){
       <div class="prof-actions">
         <button class="btn-line gold" id="pfRename" type="button">✎ Change Handle</button>
         <button class="btn-logout" id="pfLogout" type="button">⎋ Log Out</button>
+        <button class="btn-line" id="pfCommand" type="button" style="display:none;flex-basis:100%;border-color:rgba(224,73,46,.55);color:var(--ember)">☠ COMMAND CENTER</button>
       </div>
 
       <details class="prof-about">
@@ -3847,6 +3854,9 @@ function localEnter(){
              profile columns, so reading them back would restore nothing and could only
              demote a ring the KV sync had already restored correctly. */
           try{ renderCredits(); circleChip(); renderCircles(); }catch(e){}
+          /* #km — the crown rides the profile: remember it and light the Command Center door */
+          try{ window.__isKM=!!prof.is_keymaster; localStorage.setItem(K('km'), window.__isKM?'1':'');
+               const _kb=document.getElementById('pfCommand'); if(_kb)_kb.style.display=window.__isKM?'':'none'; }catch(e){}
           /* #fix4 — the server owns identity. `if(!a.since)` let a leftover local record
              keep its own join date, so a device that had auto-rolled a handle at the
              gate today reported "member since" today while the real account read
@@ -4151,9 +4161,9 @@ renderWeek();
 /* six-month rule — the pill stays in the header; the countdown moved to its own
    alert strip under the header so it can't crowd the layout, and it only fires
    inside the FINAL 30 days before the deadline. */
-const SIX_RULE_ACTIVE = true; // admin flips this when the hall suspends the rule
+let SIX_RULE_ACTIVE = true; // #km — the Keymaster flips this live from the Command Center (km_flags.six_rule)
 const lastJob=DOCKETS.map(j=>j.date).sort().pop();
-(function tickSix(){
+function tickSix(){
   const st=document.getElementById('sixState'), al=document.getElementById('sixAlert'), sd=document.getElementById('sixDays');
   if(!SIX_RULE_ACTIVE){st.textContent="OFF ✕";st.className="pill";st.title="6-month rule: suspended by the hall";return}
   st.textContent="ACTIVE ✓";st.className="pill grn";st.title="6-month rule: active — seal a docket every 6 months to hold your spot";
@@ -4173,7 +4183,9 @@ const lastJob=DOCKETS.map(j=>j.date).sort().pop();
   al.innerHTML = days>0
     ? '⚠ <b style="color:#ffb08a">'+days+' day'+(days===1?'':'s')+' left to take a job</b> — the 6-month clock is running. One sealed docket resets it.'
     : '⚠ <b style="color:#ffb08a">6-month window passed</b> — your last sealed job was '+fmtD(lastJob)+'. Take any job and seal the docket to reset the clock.';
-})();
+}
+tickSix();
+window.applySixRule=function(v){ SIX_RULE_ACTIVE=(v!==false); try{tickSix();}catch(e){} };   /* #km */
 
 /* next dispatch — rolling milestone clock
    Day: Flex 6:30 → 1st 7:00 → 2nd 8:10 → end 9:30 · Night: Flex 4:30 → 1st 5:00 → 2nd 6:10 → end 7:00  (#202/#205, per hall timeline)
@@ -13037,13 +13049,14 @@ try{sbLoadBoardWire();}catch(e){}
    board log/correction, or a dispatch sheet from ANY hand lands on every screen at
    once. Falls back to a gentle pull if the socket can't hold (same as chat). */
 let _liveChan=null, _liveOn=false;
-function liveRefreshAll(){ try{dwPull();}catch(e){} try{cwSync();}catch(e){} try{sbLoadSheetLog();}catch(e){} try{sbLoadBoardWire();}catch(e){} try{sbLoadDispatch();}catch(e){} try{sbLoadHallLine();}catch(e){} try{sbLoadSocial();}catch(e){} try{sbLoadStories();}catch(e){} }
+function liveRefreshAll(){ try{dwPull();}catch(e){} try{cwSync();}catch(e){} try{sbLoadKmFlags();}catch(e){} try{sbLoadSheetLog();}catch(e){} try{sbLoadBoardWire();}catch(e){} try{sbLoadDispatch();}catch(e){} try{sbLoadHallLine();}catch(e){} try{sbLoadSocial();}catch(e){} try{sbLoadStories();}catch(e){} }
 function liveSync(){
   if(!window.SB)return;
   try{
     _liveChan=window.SB.channel('order-live-'+Date.now())
       .on('postgres_changes',{event:'*',schema:'public',table:'drop_wire'},      function(){try{dwPull();}catch(e){}})
       .on('postgres_changes',{event:'*',schema:'public',table:'count_wire'},     function(){try{cwSync();}catch(e){}})   /* #countwire */
+      .on('postgres_changes',{event:'*',schema:'public',table:'km_flags'},       function(){try{sbLoadKmFlags();}catch(e){}})   /* #km — the Keymaster's word travels instantly */
       .on('postgres_changes',{event:'*',schema:'public',table:'board_wire'},      function(){try{sbLoadBoardWire();}catch(e){}})
       .on('postgres_changes',{event:'*',schema:'public',table:'dispatch_boards'}, function(){try{sbLoadDispatch();}catch(e){}})
       .on('postgres_changes',{event:'*',schema:'public',table:'hall_line_log'},   function(){try{sbLoadHallLine();}catch(e){}})   /* #hallline — the phone bot's reads land live */
@@ -16201,6 +16214,161 @@ html.arcade.daylight .hud-pos{color:#5b34d6;text-shadow:none}
     applySkin();
     window.applySkin=applySkin;
   }catch(e){ try{console.warn('[arcade]',e)}catch(_){} }
+})();
+</script>
+
+
+<!-- ═══════════ #km — THE KEYMASTER'S COMMAND CENTER ═══════════
+     One door (profile sheet, keymaster accounts only), four rooms:
+     PULSE (the app at a glance) · MINT (grant/lift ⬡) · SWITCHES (engine
+     overrides + six-month rule, obeyed by EVERY phone via km_flags) ·
+     BULLETIN (broadcast to every member's screen). -->
+<div class="sheet" id="kmSheet" role="dialog" aria-modal="true" aria-label="Command center">
+  <div class="sheet-card" style="text-align:left;max-height:82vh;overflow-y:auto">
+    <div class="big" style="font-size:20px;letter-spacing:.08em;text-align:center;color:var(--ember)">☠ COMMAND CENTER</div>
+    <p class="sub" style="margin:6px 0 14px;text-align:center">The Keymaster sees all. Every switch here rides to every phone.</p>
+
+    <div class="card-h" style="margin-top:4px">The Pulse</div>
+    <div id="kmPulse" class="sub" style="line-height:1.8;margin-bottom:14px">reading the wire…</div>
+
+    <div class="card-h">The Mint</div>
+    <div style="display:flex;gap:8px;margin:8px 0 6px">
+      <input class="field" id="kmHandle" placeholder="handle — e.g. MAD MORGAN" style="flex:2">
+      <input class="field" id="kmDelta" placeholder="±⬡ e.g. 100" inputmode="numeric" style="flex:1">
+    </div>
+    <input class="field" id="kmReason" placeholder="reason — shows in the ledger" style="margin-bottom:8px">
+    <button class="btn" id="kmMint" type="button" style="width:100%">⬡ APPLY TO THEIR STACK</button>
+    <div class="sub" id="kmMintMsg" style="margin:6px 0 14px"></div>
+
+    <div class="card-h">The Switches</div>
+    <div class="sub" style="margin:6px 0 2px">Rain (prediction weather)</div>
+    <div class="race-board-tabs" id="kmRain"><button data-v="auto">AUTO</button><button data-v="on">FORCE ON</button><button data-v="off">FORCE OFF</button></div>
+    <div class="sub" style="margin:10px 0 2px">Stop-work / hall shutdown</div>
+    <div class="race-board-tabs" id="kmStop"><button data-v="auto">AUTO</button><button data-v="on">SHUTDOWN</button><button data-v="off">FORCE OPEN</button></div>
+    <div class="sub" style="margin:10px 0 2px">Six-month rule</div>
+    <div class="race-board-tabs" id="kmSix"><button data-v="on">ACTIVE</button><button data-v="off">SUSPENDED</button></div>
+
+    <div class="card-h" style="margin-top:14px">The Bulletin</div>
+    <textarea class="field" id="kmBull" rows="2" placeholder="Word for every hand — leave empty for silence" style="width:100%;resize:vertical;margin:6px 0 8px"></textarea>
+    <button class="btn" id="kmPush" type="button" style="width:100%">☠ PUSH TO EVERY PHONE</button>
+    <div class="sub" id="kmPushMsg" style="margin-top:6px"></div>
+
+    <div class="card-h" style="margin-top:14px">Tools</div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn-ghost" id="kmRefresh" type="button" style="flex:1">↻ Re-pull all wires</button>
+      <button class="btn-ghost" id="kmClose" type="button" style="flex:1">Close</button>
+    </div>
+  </div>
+</div>
+<script>
+/* ============ #km — Command Center logic ============ */
+(function(){
+  const $=id=>document.getElementById(id);
+  /* the bulletin: every phone renders what the Keymaster pushed; dismiss is per-message */
+  function bullHash(s){let h=5381;for(const c of String(s))h=((h*33)^c.charCodeAt(0))>>>0;return h.toString(36);}
+  window.renderBulletin=function(text){
+    const b=$('kmBulletin'),t=$('kmBulletinTxt');if(!b||!t)return;
+    text=String(text||'').trim();
+    if(!text){b.style.display='none';return;}
+    let seen='';try{seen=localStorage.getItem('shadowhook_bulletin_seen')||'';}catch(e){}
+    if(seen===bullHash(text)){b.style.display='none';return;}
+    t.textContent=text;b.style.display='';
+  };
+  const bx=$('kmBulletinX');
+  if(bx)bx.addEventListener('click',function(){
+    try{localStorage.setItem('shadowhook_bulletin_seen',bullHash(($('kmBulletinTxt')||{}).textContent||''));}catch(e){}
+    $('kmBulletin').style.display='none';
+  });
+  /* every phone: obey the flags */
+  window.sbLoadKmFlags=async function(){
+    if(!window.SB)return;
+    try{
+      const r=await window.SB.from('km_flags').select('*').eq('id',1).maybeSingle();
+      if(!r||r.error||!r.data)return;
+      window.KM_FLAGS=r.data;
+      try{if(typeof setRain==='function')setRain(r.data.rain==='on'?true:(r.data.rain==='off'?false:null));}catch(e){}
+      try{if(typeof setStopWork==='function')setStopWork(r.data.stopwork==='on'?true:(r.data.stopwork==='off'?false:null));}catch(e){}
+      try{if(typeof applySixRule==='function')applySixRule(r.data.six_rule!==false);}catch(e){}
+      try{renderBulletin(r.data.bulletin||'');}catch(e){}
+    }catch(e){}
+  };
+  try{sbLoadKmFlags();}catch(e){}
+  /* the door — only a crowned account sees it */
+  try{const kb=$('pfCommand');if(kb&&localStorage.getItem(K('km'))==='1')kb.style.display='';}catch(e){}
+  const door=$('pfCommand');
+  if(door)door.addEventListener('click',function(){
+    try{document.getElementById('profileSheet').classList.remove('on');}catch(e){}
+    kmOpen();
+  });
+  function seg(host,val){ if(!host)return; host.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.v===val)); }
+  function segVal(host,fall){ const b=host?host.querySelector('button.on'):null; return b?b.dataset.v:fall; }
+  ['kmRain','kmStop','kmSix'].forEach(id=>{const h=$(id);if(h)h.addEventListener('click',e=>{const b=e.target.closest('button');if(b)seg(h,b.dataset.v);});});
+  window.kmOpen=function(){
+    const sh=$('kmSheet');sh.classList.add('on');
+    const f=window.KM_FLAGS||{};
+    seg($('kmRain'),f.rain||'auto');seg($('kmStop'),f.stopwork||'auto');seg($('kmSix'),(f.six_rule===false)?'off':'on');
+    if($('kmBull'))$('kmBull').value=f.bulletin||'';
+    kmPulse();
+  };
+  async function kmPulse(){
+    const out=$('kmPulse');if(!out)return;out.textContent='reading the wire…';
+    if(!window.SB){out.textContent='backend off — pulse unavailable';return;}
+    try{
+      const P=await window.SB.from('profiles').select('handle,port_bucks,since');
+      const S=await window.SB.from('sheet_log').select('date,ampm').order('date',{ascending:false}).limit(1);
+      const H=await window.SB.from('hall_line_log').select('ran_at,card,conf').order('id',{ascending:false}).limit(1);
+      const B=await window.SB.from('board_wire').select('k').order('k',{ascending:false}).limit(1);
+      const rows=(P&&P.data)||[];
+      const tot=rows.reduce((s,x)=>s+(+x.port_bucks||0),0);
+      const top=rows.slice().sort((a,b)=>(+b.port_bucks||0)-(+a.port_bucks||0)).slice(0,5)
+        .map(x=>esc(x.handle||'?')+' <b class="mono" style="color:var(--copper-hi)">'+(+x.port_bucks||0).toLocaleString()+'</b>').join(' · ');
+      const s1=(S&&S.data&&S.data[0])?S.data[0].date+' '+S.data[0].ampm:'—';
+      const h1=(H&&H.data&&H.data[0])?((H.data[0].card||'no card')+' @ '+String(H.data[0].conf!=null?H.data[0].conf:'?')):'—';
+      const b1=(B&&B.data&&B.data[0])?B.data[0].k:'—';
+      out.innerHTML='<b>'+rows.length+'</b> claimed accounts · <b>'+tot.toLocaleString()+' ⬡</b> in circulation'
+        +'<br>top stacks: '+(top||'—')
+        +'<br>sheet feed thru <b>'+s1+'</b> · hotline last read <b>'+esc(h1)+'</b> · wire last board <b>'+esc(b1)+'</b>';
+    }catch(e){out.textContent='pulse failed: '+e.message;}
+  }
+  const mint=$('kmMint');
+  if(mint)mint.addEventListener('click',async function(){
+    const msg=$('kmMintMsg');msg.textContent='';
+    const h=($('kmHandle').value||'').trim(), d=parseInt(($('kmDelta').value||'').replace(/[^0-9-]/g,''),10), why=($('kmReason').value||'').trim();
+    if(!h||!isFinite(d)||!d){msg.textContent='> handle and a non-zero ±amount';return;}
+    if(!window.SB){msg.textContent='> backend off';return;}
+    mint.disabled=true;mint.textContent='MINTING…';
+    try{
+      const r=await window.SB.rpc('km_bucks',{p_handle:h,p_delta:d,p_reason:why||'the Keymaster willed it'});
+      if(r.error)throw r.error;
+      msg.innerHTML='✓ '+esc(h)+' now holds <b class="mono" style="color:var(--copper-hi)">'+(+r.data).toLocaleString()+' ⬡</b> — lands on their next open';
+      try{toast('⬡ '+(d>0?'+':'')+d+' → '+h);}catch(e){}
+      kmPulse();
+    }catch(e){msg.textContent='✗ '+e.message;}
+    mint.disabled=false;mint.textContent='⬡ APPLY TO THEIR STACK';
+  });
+  const push=$('kmPush');
+  if(push)push.addEventListener('click',async function(){
+    const msg=$('kmPushMsg');msg.textContent='';
+    if(!window.SB){msg.textContent='> backend off';return;}
+    push.disabled=true;push.textContent='PUSHING…';
+    try{
+      const row={id:1,rain:segVal($('kmRain'),'auto'),stopwork:segVal($('kmStop'),'auto'),
+                 six_rule:segVal($('kmSix'),'on')!=='off',bulletin:($('kmBull').value||'').trim(),
+                 updated_at:new Date().toISOString()};
+      const r=await window.SB.from('km_flags').upsert(row,{onConflict:'id'});
+      if(r.error)throw r.error;
+      msg.textContent='✓ pushed — every phone picks it up live';
+      try{sbLoadKmFlags();}catch(e){}
+      try{toast('☠ The word is out');}catch(e){}
+    }catch(e){msg.textContent='✗ '+e.message+(/policy|permission|security/i.test(e.message||'')?' — is this account crowned in profiles.is_keymaster?':'');}
+    push.disabled=false;push.textContent='☠ PUSH TO EVERY PHONE';
+  });
+  const rf=$('kmRefresh');
+  if(rf)rf.addEventListener('click',function(){try{liveRefreshAll();}catch(e){}try{repredict();}catch(e){}try{toast('↻ every wire re-pulled');}catch(e){}kmPulse();});
+  const cl=$('kmClose');
+  if(cl)cl.addEventListener('click',function(){$('kmSheet').classList.remove('on');});
+  const sh=$('kmSheet');
+  if(sh)sh.addEventListener('click',function(e){if(e.target===sh)sh.classList.remove('on');});
 })();
 </script>
 
