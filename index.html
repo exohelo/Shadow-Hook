@@ -198,7 +198,8 @@ html.daylight .dayBtn{box-shadow:0 5px 14px rgba(70,56,30,.2)}
 .dclock{font-size:15px;letter-spacing:.01em;color:var(--copper-hi);flex:none;min-width:64px}
 .dmid{flex:1;min-width:0}
 .dline{font-size:10.5px;color:var(--steel);line-height:1.3}
-.dline .dname{font-weight:700;letter-spacing:.14em;font-size:10px;color:var(--bone)}
+.dline .dname{font-weight:700;letter-spacing:.07em;font-size:10px;color:var(--bone)}   /* #fit — "NIGHT DISPATCH" no longer truncates on phone width */
+@media (max-width:430px){.dclock{min-width:56px;font-size:14px}.dline .dname{font-size:9.5px}}
 .dsub{margin-top:2px;display:flex;align-items:center;gap:8px}
 .dsub .pill{font-size:8.5px;padding:1px 6px}
 .dacts{display:flex;gap:8px;flex:none}
@@ -1801,6 +1802,7 @@ window.DEVLOG=(function(){
         <div id="myOdds" style="margin-top:12px;text-align:center"></div>
         <div style="text-align:center;margin-top:12px">
           <button type="button" id="recalcBtn" onclick="recalcPredictions()" style="font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--copper-hi,#eeb46b);background:var(--plate-2,#161a1e);border:1px solid var(--line,#2a3138);border-radius:8px;padding:9px 18px;cursor:pointer">↻ Run the Numbers Again</button>
+          <button type="button" id="shareCallBtn" onclick="shareCall()" style="margin-left:8px;font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--copper-hi,#eeb46b);background:var(--plate-2,#161a1e);border:1px solid var(--line,#2a3138);border-radius:8px;padding:9px 14px;cursor:pointer">⤴ Share</button>
         </div>
       </div>
     </div>
@@ -4934,7 +4936,11 @@ const V4 = (function(){
   function log(isAM){
     const kk=isAM?'AM':'PM';
     if(_cache[kk]) return _cache[kk];
-    const src = isAM ? (V4_EMBED.AM_LOG||[]) : (typeof HALL_LOG!=="undefined"?HALL_LOG:[]);
+    let src = isAM ? (V4_EMBED.AM_LOG||[]) : (typeof HALL_LOG!=="undefined"?HALL_LOG:[]);
+    /* #sheetfeed — rows the worker pulled from the community sheet SINCE the embedded
+       logs were built ride on the end of the training set, so the engine stays
+       current without anyone re-shipping index.html. */
+    try{const ex=(window.SHEET_EXTRA&&window.SHEET_EXTRA[kk])||[]; if(ex.length)src=src.concat(ex);}catch(e){}
     const rows=[]; let e=null;
     for(let i=0;i<src.length;i++){
       const r=src[i]; if(!r) continue;
@@ -5276,7 +5282,8 @@ const V4 = (function(){
   function setStopWork(v){ OVR.stopwork = (v===null?null:!!v); try{repredict();}catch(_){}}
 
   learnFromRecent();
-  return { predict:predict, categories:categories, momentum:momentum, expect:expect, prevNightAct:prevNightAct, _casualKnn:casualKnn,
+  function clearCache(){ _cache={}; _capCache={}; _pmByDate=null; }
+  return { predict:predict, categories:categories, momentum:momentum, expect:expect, prevNightAct:prevNightAct, _casualKnn:casualKnn, _clearCache:clearCache,
            learnBoard:learnBoard, learnFromRecent:learnFromRecent, loadWeather:loadWeather, setRain:setRain, setStopWork:setStopWork,
            capacityFor:fitCapacity, recentAtt:recentAtt,
            get boardsToCh(){return boardsToCh;}, get earlyRatio(){return earlyRatio;}, get cpl(){return cpl;},
@@ -5703,6 +5710,7 @@ function maybeLivePing(pos){
     localStorage.setItem(K("liveNotif"),k);
     const title="⚓ Board’s coming up on you";
     const body=my+" · they’re calling "+pos+", about "+Math.max(0,gap-1)+" cards out. Get to the window.";
+    try{buzz([60,50,60,50,120]);}catch(e){}   /* #haptics — triple-pulse: the board is coming for YOUR card */
     if(SW_REG&&SW_REG.showNotification)SW_REG.showNotification(title,{body:body,tag:"shadowhook-live",vibrate:[200,80,200]});
     else{try{new Notification(title,{body:body,tag:"shadowhook-live"});}catch(e){}}
   }catch(e){}
@@ -7026,6 +7034,9 @@ function renderBabyFeed(){
 window.renderBabyFeed=renderBabyFeed;
 function renderDropLog(){
   try{renderBabyFeed();}catch(e){}
+  /* #hud — the DISPATCH MODE chip rides the same clock as the drop console */
+  try{const hc=document.getElementById('hudChip'); if(hc)hc.style.display=dropWindowOpen()?'':'none';
+      if(!dropWindowOpen()&&window._hudInt)hudClose();}catch(e){}
   const card=document.getElementById('dropCard'); if(!card)return;
   const _dw=dropWindowOpen(), _nf=noflopWindowOpen();
   card.style.display=(_dw||_nf)?'':'none';
@@ -7092,6 +7103,10 @@ setInterval(function(){
   hEl.classList.add('fade');
   setTimeout(function(){_dhIx=(_dhIx+1)%DROP_HINTS.length;hEl.textContent=DROP_HINTS[_dhIx];hEl.classList.remove('fade');},420);
 },5200);
+/* #haptics — game feedback that works where audio can't (a loud hall, a silent phone).
+   One helper; no-ops on iOS Safari (no vibrate API) and under prefers-reduced-motion. */
+function buzz(p){try{if(navigator.vibrate&&!(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches))navigator.vibrate(p)}catch(e){}}
+window.buzz=buzz;
 document.getElementById('dropAdd').addEventListener('click',()=>{
   const inp=document.getElementById('dropN');
   const n=parseInt((inp.value||"").replace(/\D/g,""),10);
@@ -7106,7 +7121,7 @@ document.getElementById('dropAdd').addEventListener('click',()=>{
      striking it can claw the same amount back. Without it a member could log six
      drops (+60 ⬡), delete all six — taking the data back off the wire — and keep
      the money for contributing nothing. */
-  if(o.paid<6){o.paid++;d.earned=10;addCredits(10,"drop logged on the wire");toast("✓ Drop logged · +10 ⬡");try{rainCoins(9);}catch(e){}}   /* #dl2 — a paid catch sprinkles coins */
+  if(o.paid<6){o.paid++;d.earned=10;addCredits(10,"drop logged on the wire");toast("✓ Drop logged · +10 ⬡");try{buzz(30);}catch(e){}try{rainCoins(9);}catch(e){}}   /* #dl2 — a paid catch sprinkles coins */
   else toast("✓ Drop logged — pay caps at 6 a board");
   dropSave(o);dropRecompute();renderDropLog();
   try{dwPush(d);}catch(e){}                     // #118 — every member's log hears it
@@ -7202,8 +7217,9 @@ function cwPush(fid,kind,v){
     const k=cwWireKey(); if(!k)return;
     const a=(typeof loadAcct==="function"&&loadAcct())||{};
     const cid=(a.id||"anon")+"_"+kind+"_"+fid+"_"+k;
+    const _acc=(function(){try{return Math.round(((typeof CWme!=="undefined"&&CWme.acc)||0.5)*100)}catch(e){return 50}})();
     window.SB.from('count_wire').upsert({cid:cid,k:k,f:fid,v:String(v==null?"":v),kind:kind,
-      by:a.id||"",by_handle:a.handle||"a hand",ts:Date.now()},{onConflict:'cid'}).then(()=>{},()=>{});
+      by:a.id||"",by_handle:a.handle||"a hand",ts:Date.now(),acc:_acc},{onConflict:'cid'}).then(()=>{},()=>{});
   }catch(e){}
 }
 async function cwSync(){
@@ -7370,6 +7386,7 @@ function cwAfter(f){
 }
 /* ⚔ the heist announcement — big, loud, and logged for the Keymaster */
 function heistPop(iWon,iLost,amt,label){
+  try{buzz(iWon?[30,40,30,40,60]:[30,40,30]);}catch(e){}   /* #haptics — a heist is felt */
   const me=(typeof savedAcct!=="undefined"&&savedAcct&&savedAcct.handle)?savedAcct.handle.toUpperCase():"YOU";
   const W=iWon?me:"A MASKED HAND", L=iLost?me:"THE WRONG HAND";
   try{const kk=K("heists");const h=JSON.parse(localStorage.getItem(kk)||"[]");
@@ -12893,6 +12910,39 @@ async function sbLoadHallLine(){
 window.sbLoadHallLine=sbLoadHallLine;
 try{sbLoadHallLine();}catch(e){}
 try{cwSync();}catch(e){}   /* #countwire — fold the crowd's count reports in at boot */
+/* #sheetfeed — the worker upserts community-sheet rows into `sheet_log`; anything newer
+   than the embedded logs joins the training set live and the call re-figures. */
+async function sbLoadSheetLog(){
+  if(!window.SB)return;
+  try{
+    const r=await window.SB.from('sheet_log').select('date,ampm,ch,tot,act');
+    if(!r||r.error||!Array.isArray(r.data)||!r.data.length){
+      if(r&&r.error){try{DEVLOG.data('sheet_log',{ok:false,err:r.error.message});}catch(e){}}
+      return;
+    }
+    const lastPM=(typeof HALL_LOG!=="undefined"&&HALL_LOG.length)?HALL_LOG[HALL_LOG.length-1][0]:"";
+    const lastAM=(V4_EMBED.AM_LOG&&V4_EMBED.AM_LOG.length)?V4_EMBED.AM_LOG[V4_EMBED.AM_LOG.length-1][0]:"";
+    const ex={AM:[],PM:[]};
+    r.data.slice().sort((a,b)=>String(a.date)<String(b.date)?-1:1).forEach(x=>{
+      const ap=(x.ampm==='AM')?'AM':'PM', last=(ap==='AM')?lastAM:lastPM;
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(String(x.date||'')))return;
+      if(x.date>last && x.ch!=null && x.tot!=null && x.act!=null){
+        const d=new Date(x.date+'T12:00'); const dow=(d.getDay()+6)%7;   /* 0=Mon, same as the embedded logs */
+        ex[ap].push([x.date,dow,+x.ch,+x.tot,+x.act]);
+      }
+    });
+    if(ex.AM.length||ex.PM.length){
+      window.SHEET_EXTRA=ex;
+      try{V4._clearCache();}catch(e){}
+      try{repredict();}catch(e){}
+      try{DEVLOG.data('sheet_log',{ok:true,rows:r.data.length,fresh:ex.AM.length+ex.PM.length,latest:(ex.PM[ex.PM.length-1]||ex.AM[ex.AM.length-1]||[])[0]||'—'});}catch(e){}
+    } else {
+      try{DEVLOG.data('sheet_log',{ok:true,rows:r.data.length,fresh:0});}catch(e){}
+    }
+  }catch(e){try{DEVLOG.data('sheet_log',{ok:false,err:e.message});}catch(_){}}
+}
+window.sbLoadSheetLog=sbLoadSheetLog;
+try{sbLoadSheetLog();}catch(e){}
 /* the Log-the-Board sheet lands here: post, confirm, or challenge — by content */
 function bwSubmitResult(k,patch){
   const me=bwMe(), L=bwL(); L[k]=L[k]||{};
@@ -13017,7 +13067,7 @@ try{sbLoadBoardWire();}catch(e){}
    board log/correction, or a dispatch sheet from ANY hand lands on every screen at
    once. Falls back to a gentle pull if the socket can't hold (same as chat). */
 let _liveChan=null, _liveOn=false;
-function liveRefreshAll(){ try{dwPull();}catch(e){} try{cwSync();}catch(e){} try{sbLoadBoardWire();}catch(e){} try{sbLoadDispatch();}catch(e){} try{sbLoadHallLine();}catch(e){} try{sbLoadSocial();}catch(e){} try{sbLoadStories();}catch(e){} }
+function liveRefreshAll(){ try{dwPull();}catch(e){} try{cwSync();}catch(e){} try{sbLoadSheetLog();}catch(e){} try{sbLoadBoardWire();}catch(e){} try{sbLoadDispatch();}catch(e){} try{sbLoadHallLine();}catch(e){} try{sbLoadSocial();}catch(e){} try{sbLoadStories();}catch(e){} }
 function liveSync(){
   if(!window.SB)return;
   try{
@@ -13078,6 +13128,7 @@ function noFlopSeal(){
   const hc=heldCard({start:start,end:end});
   if(b){b.disabled=true;b.textContent=hc?("⚑ HELD ON "+hc+" — BOARD DID NOT MOVE"):("⚑ SEALED AT "+end+" — ON THE WIRE");}
   if(hc)msg.textContent="> the board did not move — 0 casuals flopped · next dispatch opens back on "+hc;
+  try{buzz(80);}catch(e){}   /* #haptics — the go-home call lands in the hand */
   try{toast(hc?("⚑ NO FLOP — the board never moved off "+hc):("⚑ NO FLOP — board sealed at "+end));}catch(e){}
 }
 (function(){
@@ -14295,7 +14346,7 @@ window.addEventListener('resize',()=>{if($w('wbw').classList.contains('on'))wbFi
     const btn=document.createElement('button');
     btn.id='devLogBtn'; btn.type='button';
     btn.textContent='⚙ dev log';
-    btn.style.cssText='position:fixed;right:10px;bottom:calc(env(safe-area-inset-bottom,0px) + 78px);z-index:9990;'
+    btn.style.cssText='position:fixed;right:10px;bottom:calc(env(safe-area-inset-bottom,0px) + 78px);z-index:39;opacity:.55;'
       +'background:rgba(11,13,15,.82);border:1px solid rgba(238,180,107,.35);color:#8f979e;border-radius:999px;'
       +'font:700 9.5px "IBM Plex Mono",monospace;letter-spacing:.08em;padding:5px 9px;opacity:.6;cursor:pointer';
     document.body.appendChild(btn);
@@ -16090,6 +16141,54 @@ html.arcade.daylight .hall-seg button.on{background:linear-gradient(184deg,#e9e1
   color:#4a26b8;border-color:rgba(91,52,214,.4);box-shadow:none}
 html.arcade.daylight .hall-share{background:#f7f4ff;color:#4a26b8;border-color:rgba(91,52,214,.3)}
 
+
+/* ═══ #hud — DISPATCH MODE: the full-screen game HUD for the live window ═══
+   Readable at arm's length in a loud hall: the number being called huge, your
+   card and distance, the predicted stop, one giant button to log a call. Pure
+   overlay over the existing systems — the +1 button drives the real Drop Log
+   pipeline (pay, wire, re-predict), the scan box drives the real live board. */
+#hudChip{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 72px);
+  z-index:42;display:none;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.16em;
+  padding:9px 16px;border-radius:99px;color:var(--copper-hi);background:var(--plate-2);
+  border:1px solid var(--line);box-shadow:0 10px 26px rgba(0,0,0,.5);cursor:pointer}
+html.arcade #hudChip{color:#fff;border-color:rgba(255,77,210,.6);
+  background:linear-gradient(184deg,rgba(255,77,210,.3),rgba(18,16,31,.95));
+  box-shadow:0 0 18px rgba(255,77,210,.35),0 10px 26px rgba(4,2,12,.5);animation:arcLive 2.2s ease-in-out infinite}
+#hudMode{position:fixed;inset:0;z-index:95;display:none;flex-direction:column;background:var(--void);
+  color:var(--bone);padding:calc(env(safe-area-inset-top,0px) + 14px) 18px calc(env(safe-area-inset-bottom,0px) + 16px)}
+html.arcade #hudMode{background:radial-gradient(ellipse 120% 70% at 50% -10%,rgba(123,92,255,.16),transparent 60%),#08060f}
+.hud-top{display:flex;align-items:center;gap:10px}
+.hud-ttl{font-family:'Anton',sans-serif;font-size:15px;letter-spacing:.14em}
+html.arcade .hud-ttl{color:var(--neon);text-shadow:0 0 14px rgba(77,226,255,.5)}
+.hud-clk{margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--steel)}
+.hud-x{flex:none;width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:var(--plate-2);
+  color:var(--bone);font-size:15px;cursor:pointer}
+.hud-mid{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:0}
+.hud-lab{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.3em;color:var(--steel)}
+.hud-pos{font-family:'Anton',sans-serif;font-size:min(27vw,118px);line-height:1;letter-spacing:.02em}
+html.arcade .hud-pos{color:var(--neon);text-shadow:0 0 22px rgba(77,226,255,.7),0 0 70px rgba(123,92,255,.4)}
+.hud-next{font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--steel)}
+.hud-next b{color:var(--copper-hi)} html.arcade .hud-next b{color:var(--neon2)}
+.hud-you{margin-top:12px;padding:10px 18px;border-radius:14px;border:1px solid var(--line);background:var(--plate);
+  font-family:'IBM Plex Mono',monospace;font-size:13px;text-align:center;line-height:1.6}
+.hud-you b{font-family:'Anton',sans-serif;font-size:19px;letter-spacing:.04em}
+html.arcade .hud-you.near{border-color:rgba(182,255,61,.6);box-shadow:0 0 22px rgba(182,255,61,.25)}
+.hud-stop{margin-top:6px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--steel)}
+.hud-foot{display:flex;flex-direction:column;gap:10px}
+.hud-scan{display:flex;gap:8px}
+.hud-scan input{flex:1;background:var(--well);border:1px solid var(--line);border-radius:12px;color:var(--bone);
+  padding:13px 14px;font-family:'IBM Plex Mono',monospace;font-size:16px;text-transform:uppercase}
+.hud-scan button{flex:none;padding:0 18px;border-radius:12px;border:1px solid var(--line);
+  background:var(--plate-2);color:var(--copper-hi);font-family:'IBM Plex Mono',monospace;font-size:13px;cursor:pointer}
+.hud-big{width:100%;padding:20px 0;border-radius:16px;font-family:'Anton',sans-serif;font-size:21px;
+  letter-spacing:.1em;cursor:pointer;border:1px solid var(--line);background:var(--plate-2);color:var(--bone)}
+html.arcade .hud-big{background:linear-gradient(184deg,rgba(123,92,255,.34),rgba(18,16,31,.94));
+  border-color:rgba(123,92,255,.6);color:#fff;
+  box-shadow:0 7px 0 rgba(60,38,120,.55),0 14px 30px rgba(4,2,12,.55),inset 0 1px 0 rgba(200,180,255,.24)}
+html.arcade .hud-big:active{transform:translateY(5px);box-shadow:0 2px 0 rgba(60,38,120,.55)}
+html.arcade.daylight #hudMode{background:#efecfb}
+html.arcade.daylight .hud-pos{color:#5b34d6;text-shadow:none}
+
 </style>
 
 <script>
@@ -16132,6 +16231,154 @@ html.arcade.daylight .hall-share{background:#f7f4ff;color:#4a26b8;border-color:r
     window.applySkin=applySkin;
   }catch(e){ try{console.warn('[arcade]',e)}catch(_){} }
 })();
+</script>
+
+<!-- #hud — DISPATCH MODE overlay + its entry chip (chip shown only while the window is live) -->
+<button type="button" id="hudChip" onclick="hudOpen()">🎮 DISPATCH MODE</button>
+<div id="hudMode" role="dialog" aria-label="Dispatch mode">
+  <div class="hud-top">
+    <div class="hud-ttl" id="hudTtl">DISPATCH LIVE</div>
+    <div class="hud-clk" id="hudClk">—</div>
+    <button type="button" class="hud-x" id="hudX" aria-label="Close dispatch mode">✕</button>
+  </div>
+  <div class="hud-mid">
+    <div class="hud-lab">THEY'RE CALLING</div>
+    <div class="hud-pos" id="hudPos">—</div>
+    <div class="hud-next" id="hudNext">waiting on the first scan…</div>
+    <div class="hud-you" id="hudYou" style="display:none"></div>
+    <div class="hud-stop" id="hudStop"></div>
+  </div>
+  <div class="hud-foot">
+    <div class="hud-scan">
+      <input id="hudScan" placeholder="last ID called — e.g. G4712" maxlength="6" autocapitalize="characters" autocomplete="off">
+      <button type="button" id="hudScanGo">SCAN</button>
+    </div>
+    <button type="button" class="hud-big" id="hudDrop">⚡ +1 CALL CAME DOWN</button>
+  </div>
+</div>
+
+<script>
+/* ============ #hud — DISPATCH MODE (game HUD over the live systems) ============ */
+(function(){
+  function el(id){return document.getElementById(id)}
+  window.hudOpen=function(){ const h=el('hudMode'); if(!h)return; h.style.display='flex';
+    try{buzz(20)}catch(e){} hudTick();
+    if(window._hudInt)clearInterval(window._hudInt); window._hudInt=setInterval(hudTick,1000); };
+  window.hudClose=function(){ const h=el('hudMode'); if(h)h.style.display='none';
+    if(window._hudInt){clearInterval(window._hudInt);window._hudInt=null;} };
+  function dist(from,to){ // letters (+cards inside the same letter) from the called pos to yours
+    try{
+      const li=LSEQ.indexOf(from[0]), mi=LSEQ.indexOf(to[0]);
+      if(li<0||mi<0)return null;
+      const L=((mi-li)+26)%26;
+      if(L===0){const d=parseInt(to.slice(1),10)-parseInt(from.slice(1),10); return {letters:0,cards:d};}
+      return {letters:L,cards:null};
+    }catch(e){return null}
+  }
+  function hudTick(){
+    const h=el('hudMode'); if(!h||h.style.display==='none')return;
+    if(typeof dropWindowOpen==='function'&&!dropWindowOpen()){ hudClose(); try{toast('Board window closed — dispatch mode out.')}catch(e){} return; }
+    try{ el('hudTtl').textContent=(cwMinsNow()<NIGHT_OPEN?'DAY':'NIGHT')+' DISPATCH · LIVE'; }catch(e){}
+    try{ // countdown to the official end
+      const n=nowLA(), end=new Date(n); const night=n.getHours()*60+n.getMinutes()>=NIGHT_OPEN;
+      end.setHours(night?19:9, night?0:30, 0, 0);
+      const s=Math.max(0,((end-n)/1000)|0);
+      el('hudClk').textContent='ends in '+(s>=3600?(((s/3600)|0)+'h '+String(((s/60)|0)%60).padStart(2,'0')+'m'):(String((s/60)|0).padStart(2,'0')+':'+String(s%60|0).padStart(2,'0')));
+    }catch(e){}
+    const pos=(typeof lastCall!=='undefined'&&lastCall)?lastCall.pos:null;
+    el('hudPos').textContent=pos||'—';
+    if(pos){
+      let nx=[]; try{nx=nextActive(pos,2)}catch(e){}
+      el('hudNext').innerHTML=nx.length?('next up: <b>'+nx.join('</b> then <b>')+'</b>'):'end of the book';
+    } else el('hudNext').textContent='waiting on the first scan…';
+    try{
+      const my=(typeof myBoardId==='function')?myBoardId():null, you=el('hudYou');
+      if(my&&pos){ const d=dist(pos,my);
+        you.style.display='';
+        if(d&&d.letters===0&&d.cards!=null){
+          you.innerHTML=d.cards<=0?('<b>'+my+'</b> — YOUR NUMBER IS UP. GO.'):('<b>'+my+'</b> — same letter · <b>'+d.cards+'</b> cards out');
+          you.classList.add('near'); if(d.cards>-1&&d.cards<=25){try{buzz([40,40,40])}catch(e){}}
+        } else if(d){ you.innerHTML='<b>'+my+'</b> — '+d.letters+' letter'+(d.letters===1?'':'s')+' out';
+          you.classList.toggle('near',d.letters<=1); }
+      } else if(my){ you.style.display=''; you.innerHTML='<b>'+my+'</b> — scan the speaker to see your distance'; you.classList.remove('near'); }
+      else you.style.display='none';
+    }catch(e){}
+    try{ const o=window._lastStageO;
+      el('hudStop').textContent=o?('the call says it stops at '+String.fromCharCode(65+((o.base+o.med)%26))+' · '+o.pmove+'% to move'):''; }catch(e){}
+  }
+  const sg=el('hudScanGo'), si=el('hudScan');
+  if(sg&&si){ const go=()=>{ const v=(si.value||'').toUpperCase().trim(); if(!v)return;
+      let r=false; try{r=submitLiveCall(v)}catch(e){}
+      if(r===true){ si.value=''; try{buzz(25)}catch(e){} try{toast('📡 '+v+' on the wire')}catch(e){} hudTick(); }
+      else if(r==='behind'){ si.value=''; try{toast('Board already past '+v)}catch(e){} }
+      else { si.style.borderColor='var(--ember)'; setTimeout(()=>si.style.borderColor='',900); } };
+    sg.addEventListener('click',go);
+    si.addEventListener('keydown',e=>{if(e.key==='Enter')go();});
+  }
+  const hd=el('hudDrop');
+  if(hd)hd.addEventListener('click',()=>{
+    try{
+      const n=document.getElementById('dropN'), c=document.getElementById('dropCat');
+      if(n&&c){ n.value='1'; c.value='?'; document.getElementById('dropAdd').click(); hudTick(); }
+    }catch(e){}
+  });
+  const hx=el('hudX'); if(hx)hx.addEventListener('click',hudClose);
+})();
+
+/* ============ #sharecall — the call as a shareable card (recruiting, no bot needed) ============ */
+async function shareCall(){
+  try{
+    const o=window._lastStageO; if(!o){try{toast('No call published yet')}catch(e){} return;}
+    const AZ='ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const arcade=document.documentElement.classList.contains('arcade');
+    const W=1080,H=1350, c=document.createElement('canvas'); c.width=W; c.height=H;
+    const x=c.getContext('2d');
+    // backdrop
+    if(arcade){ const g=x.createLinearGradient(0,0,0,H); g.addColorStop(0,'#140f2e'); g.addColorStop(.5,'#08060f'); g.addColorStop(1,'#1a0b22'); x.fillStyle=g; }
+    else { const g=x.createLinearGradient(0,0,0,H); g.addColorStop(0,'#1b1f23'); g.addColorStop(1,'#0b0d0f'); x.fillStyle=g; }
+    x.fillRect(0,0,W,H);
+    const ACC=arcade?'#4de2ff':'#eeb46b', ACC2=arcade?'#ff4dd2':'#b3552a', INK=arcade?'#ece9f5':'#dcd6c9', DIM=arcade?'#9a93b8':'#8f979e';
+    if(arcade){ // glow blobs
+      const b=x.createRadialGradient(W*.2,H*.15,0,W*.2,H*.15,520); b.addColorStop(0,'rgba(123,92,255,.35)'); b.addColorStop(1,'rgba(0,0,0,0)');
+      x.fillStyle=b; x.fillRect(0,0,W,H);
+      const b2=x.createRadialGradient(W*.85,H*.8,0,W*.85,H*.8,560); b2.addColorStop(0,'rgba(255,77,210,.22)'); b2.addColorStop(1,'rgba(0,0,0,0)');
+      x.fillStyle=b2; x.fillRect(0,0,W,H);
+    }
+    const mono=(px)=>px+'px "IBM Plex Mono", monospace', anton=(px)=>px+'px "Anton", sans-serif';
+    x.textAlign='center';
+    x.fillStyle=DIM; x.font=mono(30); x.fillText('⚓ THE ORDER OF THE SHADOW HOOK',W/2,120);
+    x.fillStyle=INK; x.font=anton(58); x.fillText("TONIGHT'S CALL",W/2,215);
+    let slotTx=''; try{ slotTx=callSlot.replace('_',' ')+' · '+todayISO().slice(5).replace('-','/'); }catch(e){}
+    x.fillStyle=DIM; x.font=mono(32); x.fillText(slotTx,W/2,270);
+    // start → stop
+    const startL=(o.start||'?')[0], stopL=AZ[((o.base+o.med)%26+26)%26];
+    x.fillStyle=ACC; x.shadowColor=arcade?ACC:'rgba(238,180,107,.6)'; x.shadowBlur=arcade?60:30;
+    x.font=anton(300); x.fillText(stopL,W/2,660);
+    x.shadowBlur=0;
+    x.fillStyle=INK; x.font=mono(40);
+    x.fillText(o.med<=0?('likely HOLDS on '+startL):('runs '+o.med+' — '+startL+' → '+stopL),W/2,760);
+    // band + odds
+    x.fillStyle=DIM; x.font=mono(30);
+    x.fillText('band '+AZ[(o.base+o.lo+26)%26]+' – '+AZ[(o.base+o.hi)%26]+'   ·   '+o.pmove+'% chance it moves',W/2,830);
+    // meter
+    const mw=680,mh=26,mx0=(W-mw)/2,my=880;
+    x.fillStyle=arcade?'rgba(123,92,255,.16)':'rgba(220,214,201,.12)'; x.fillRect(mx0,my,mw,mh);
+    x.fillStyle=ACC; for(let i=0;i<Math.round(mw*o.pmove/100/22);i++){ x.fillRect(mx0+i*22,my,14,mh); }
+    x.fillStyle=ACC2; x.font=mono(28); x.fillText('🍼 the call bot is still learning — don\'t bet the rent on it',W/2,990);
+    x.fillStyle=DIM; x.font=mono(28); x.fillText('live board · drop log · your odds · the race',W/2,1180);
+    x.fillStyle=INK; x.font=anton(44); x.fillText('RIDE THE WIRE, ESE.',W/2,1250);
+    const blob=await new Promise(res=>c.toBlob(res,'image/png'));
+    if(!blob){try{toast('Could not draw the card')}catch(e){} return;}
+    const file=new File([blob],'shadowhook_call.png',{type:'image/png'});
+    if(navigator.canShare&&navigator.canShare({files:[file]})&&navigator.share){
+      try{ await navigator.share({files:[file],title:'The Shadow Hook — tonight\'s call'}); return; }catch(e){ if(e&&e.name==='AbortError')return; }
+    }
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='shadowhook_call.png';
+    document.body.appendChild(a); a.click(); a.remove();
+    try{toast('⤴ Card saved — post it where the hands are')}catch(e){}
+  }catch(e){ try{toast('Share failed: '+e.message)}catch(_){} }
+}
+window.shareCall=shareCall;
 </script>
 </body>
 </html>
