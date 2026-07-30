@@ -1,0 +1,31 @@
+name: sheet-worker
+on:
+  schedule:
+    - cron: "0 16-23 * * *"   # hourly, 9 AM–4 PM Pacific (PDT). When clocks change in Nov, make it 17-23.
+  workflow_dispatch:          # adds a manual "Run workflow" button for testing
+    inputs:
+      dry:
+        description: "Dry run (parse only, write nothing)"
+        required: false
+        default: "no"
+
+jobs:
+  pull:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install requests
+      - name: Pull the sheet into sheet_log
+        env:
+          SHEET_CSV_URL: ${{ secrets.SHEET_CSV_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          if [ "${{ github.event.inputs.dry }}" = "yes" ]; then
+            python3 bot/sheet_worker.py --dry
+          else
+            python3 bot/sheet_worker.py
+          fi
