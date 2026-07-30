@@ -3776,13 +3776,27 @@ function sbApplyBucks(delta, reason){   // push an earn/spend to the server; ser
     _bucksInFlight=Math.max(0,_bucksInFlight-1);
     if(_bucksInFlight===0 && _bucksOverlap){ _bucksOverlap=false; sbRefreshBucks(); }
   };
-  window.SB.rpc('apply_bucks',{p_delta:delta,p_reason:reason||""}).then(function(r){
-    if(r.error){ console.warn('apply_bucks:', r.error.message); _bucksOverlap=true; return; }
-    if(acct!==ACCT_ID) return;               // the member changed cards while this was in flight
-    if(solo && !_bucksOverlap && typeof r.data==='number'){
-      try{CREDITS=r.data;localStorage.setItem(K('credits'),CREDITS);}catch(e){} try{renderCredits();}catch(e){}
-    }
-  }).catch(function(e){ console.warn('apply_bucks', e); _bucksOverlap=true; })
+  /* #fix5(bucks) — a failed apply_bucks used to console.warn and give up, and the
+     overlap re-read then quietly restored the server's OLD balance: the member saw
+     their purchase "not go down" (or bounce back), with no clue why. Now: one retry
+     after 2.5s, and if the bank still refuses, it lands in the ⚙ dev log — and a
+     SPEND says so out loud, because silent un-charging is how trust dies. */
+  const fire=function(attempt){
+    return window.SB.rpc('apply_bucks',{p_delta:delta,p_reason:reason||""}).then(function(r){
+      if(r.error){
+        if(attempt<2) return new Promise(function(res){setTimeout(res,2500);}).then(function(){return fire(attempt+1);});
+        console.warn('apply_bucks:', r.error.message); _bucksOverlap=true;
+        try{DEVLOG.data('apply_bucks',{ok:false,err:r.error.message+' — delta '+delta+' ('+(reason||'')+') never reached the bank'});}catch(e){}
+        if(delta<0){ try{toast("⚠ That charge didn't reach the bank — it may bounce back. ⚙ dev log has why.");}catch(e){} }
+        return;
+      }
+      if(acct!==ACCT_ID) return;               // the member changed cards while this was in flight
+      if(solo && !_bucksOverlap && typeof r.data==='number'){
+        try{CREDITS=r.data;localStorage.setItem(K('credits'),CREDITS);}catch(e){} try{renderCredits();}catch(e){}
+      }
+    });
+  };
+  fire(1).catch(function(e){ console.warn('apply_bucks', e); _bucksOverlap=true; })
     .then(done, done);
 }
 /* #fix(bucks) — EVERY localStorage key is namespaced by ACCT_ID via K(), but the
