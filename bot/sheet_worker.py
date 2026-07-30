@@ -43,6 +43,7 @@ SERVICE_KEY   = os.environ.get("SUPABASE_SERVICE_KEY", "PASTE_SERVICE_ROLE_KEY_H
 #    Defaults match the sheet's left table as of Jul 2026:
 #    date · shift ("Tue PM") · Total Jobs · Casual Hall Final · Start · Pred Mvmt · Actual Mvmt
 COLS = { "date": 0, "shift": 1, "total": 2, "ch": 3, "act": 6 }
+NAILED_COL = 8   # "Nailed It!" — empty means the movement is not graded yet
 SHIFT_RE = re.compile(r"(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s*(AM|PM)")
 DOW = {"Mon":0,"Tue":1,"Wed":2,"Thu":3,"Fri":4,"Sat":5,"Sun":6}
 
@@ -61,17 +62,29 @@ def infer_year(mm, dd, today):
     return None
 
 def parse(csv_text):
+    """Verified against the sheet's real CSV export (Jul 2026):
+       Date(0) Shift(1) Total Jobs(2) Casual Hall Final(3) Start(4) Pred(5) Actual(6) ... Nailed It!(8).
+       Quirks handled: the date cell is MERGED per day (blank on the AM row → forward-fill);
+       a shift that has counts but no grade yet must stay out (Nailed It! empty = ungraded);
+       only the newest ~100 shift rows are read, so old rows can never mis-year into the feed."""
     today = datetime.date.today()
-    out = []
+    out, last_date, seen_rows = [], None, 0
     for row in csv.reader(io.StringIO(csv_text)):
-        if len(row) <= max(COLS.values()): continue
+        if len(row) <= NAILED_COL: continue
         m = SHIFT_RE.search(str(row[COLS["shift"]]))
+        if not m: continue
+        seen_rows += 1
+        if seen_rows > 100: break                                  # newest-first sheet: 100 rows ≈ 50 days, one year guaranteed
         dm = re.match(r"^\s*(\d{1,2})/(\d{1,2})", str(row[COLS["date"]]))
-        if not m or not dm: continue
-        d = infer_year(int(dm.group(1)), int(dm.group(2)), today)
-        if d is None or d.weekday() != DOW[m.group(1)]: continue   # year sanity via weekday
+        if dm:
+            last_date = infer_year(int(dm.group(1)), int(dm.group(2)), today)
+        d = last_date                                              # merged cell: AM row inherits the PM row's date
+        if d is None or d.weekday() != DOW[m.group(1)]: continue   # weekday sanity
+        if d > today + datetime.timedelta(days=3) or d < today - datetime.timedelta(days=70): continue
         tot, ch, act = num(row[COLS["total"]]), num(row[COLS["ch"]]), num(row[COLS["act"]])
+        nailed = num(row[NAILED_COL])
         if tot is None or ch is None or act is None: continue      # unfinished rows stay out
+        if nailed is None: continue                                # counts in but movement UNGRADED — not final yet
         if tot == 0: continue                                      # hard-shutdown days stay out (engine handles them by rule)
         out.append({"id": f"{d.isoformat()}_{m.group(2)}", "date": d.isoformat(),
                     "ampm": m.group(2), "ch": ch, "tot": tot, "act": act})
