@@ -836,6 +836,8 @@ html.daylight .heist{background:rgba(64,54,38,.6)}
 .race-flag{font-size:26px;filter:drop-shadow(0 0 10px rgba(238,180,107,.5));animation:crownBob 2.2s ease-in-out infinite}
 .race-ttl{font-family:'Anton',sans-serif;font-size:24px;letter-spacing:.06em;color:var(--bone);text-shadow:0 0 18px rgba(238,180,107,.35);line-height:1}
 .race-sub{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.14em;color:var(--steel);margin-top:4px;text-transform:uppercase}
+.race-split{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--steel);text-align:center;margin-top:7px;line-height:1.5}
+.race-split b{color:var(--copper-hi);font-weight:600}
 .race-season{margin-left:auto;flex:none;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.18em;color:var(--copper-hi);border:1px solid rgba(238,180,107,.45);border-radius:99px;padding:4px 10px;background:rgba(238,180,107,.07);text-transform:uppercase}
 .race-board-tabs{display:flex;gap:9px;margin:14px 0 10px}
 .race-board-tabs button{flex:1;font-family:'IBM Plex Mono',monospace;font-size:11.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--steel);background:var(--well);border:1px solid var(--line-soft);border-radius:11px;padding:13px 8px;cursor:pointer;transition:.15s}
@@ -1795,7 +1797,7 @@ window.DEVLOG=(function(){
         <div class="wire-baby" id="babyNote"><span class="bottle">🍼</span> <b>I'M JUST A BABY!</b> — the call bot is still learning the port. Every board makes it a little sharper. Love me, but don't bet the rent on me.</div>
         <div id="myOdds" style="margin-top:12px;text-align:center"></div>
         <div style="text-align:center;margin-top:12px">
-          <button type="button" onclick="recalcPredictions()" style="font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--copper-hi,#eeb46b);background:var(--plate-2,#161a1e);border:1px solid var(--line,#2a3138);border-radius:8px;padding:9px 18px;cursor:pointer">↻ Recalculate</button>
+          <button type="button" id="recalcBtn" onclick="recalcPredictions()" style="font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--copper-hi,#eeb46b);background:var(--plate-2,#161a1e);border:1px solid var(--line,#2a3138);border-radius:8px;padding:9px 18px;cursor:pointer">↻ Run the Numbers Again</button>
         </div>
       </div>
     </div>
@@ -2186,6 +2188,8 @@ window.DEVLOG=(function(){
         <div class="race-tile"><div class="k">GLOBAL RANK</div><div class="v copper-txt" id="rRank">—</div><div class="mv" id="rMove"></div></div>
         <div class="race-tile"><div class="k" id="rDivName">SQUAD</div><div class="v" id="rLetter">—</div><div class="mv" id="rLetterMove"></div></div>
       </div>
+      <!-- #split — the honest math, spelled out: posted + sealed-since = the number your lane rides -->
+      <div class="race-split" id="rSplit" style="display:none"></div>
       <div id="rHunt" style="display:none">
         <div class="race-hunt-head"><span class="k">🎯 HUNTING</span><span class="heat hot" style="margin-left:auto">ON THE CHASE</span></div>
         <div class="race-hunt-body" id="rHuntBody">
@@ -4532,14 +4536,34 @@ function renderCallStart(){
 /* #114 — the predictions re-figure the moment data lands, wherever it lands from:
    a logged board, a wire correction, a bot sheet, or the boot seed. */
 function repredict(){try{renderCallStart();}catch(e){} try{publishCall();}catch(e){}}
-/* #recalc — manual "run the numbers again" button on the wire. Re-pulls live weather,
-   folds in any boards logged since load, and re-figures the call + odds from scratch. */
+/* #recalc/#recalc2 — manual "run the numbers again" button on the wire. The old
+   version only re-ran the math on the SAME inputs — same numbers in, same call out,
+   so the press read as doing nothing. Now it actually goes and gets fresh inputs:
+   live weather, the backend wire (new sheets, board logs, hotline readings, the
+   crowd's drops), folds in anything learned, re-figures — then tells the hand
+   plainly whether the call moved or held. Busy state so the press visibly lands. */
 function recalcPredictions(){
+  const b=document.getElementById('recalcBtn');
+  const before=(window._lastCall&&window._lastCall.stop!=null)?{stop:window._lastCall.stop,pmove:window._lastCall.pmove}:null;
+  if(b){ b.disabled=true; b.textContent="↻ RUNNING THE NUMBERS…"; }
   try{ if(typeof V4!=="undefined"&&V4.loadWeather) V4.loadWeather(); }catch(e){}
+  try{ if(typeof liveRefreshAll==="function") liveRefreshAll(); }catch(e){}   /* fresh sheets · wire · hotline · drops */
   try{ if(typeof V4!=="undefined"&&V4.learnFromRecent) V4.learnFromRecent(); }catch(e){}
   try{ repredict(); }catch(e){}
   try{ if(typeof renderRecentBoards==="function") renderRecentBoards(); }catch(e){}
-  try{ toast("↻ Predictions recalculated"); }catch(e){}
+  /* the pulls are async — give them a beat to land, re-figure once more, then say what happened */
+  setTimeout(function(){
+    try{ repredict(); }catch(e){}
+    try{
+      const after=window._lastCall||{};
+      if(before&&after.stop===before.stop&&after.pmove===before.pmove)
+        toast("↻ Numbers re-run — the call holds: stop "+after.stop+" · "+after.pmove+"% to move");
+      else if(before&&after.stop!=null)
+        toast("↻ The call MOVED: stop "+before.stop+" → "+after.stop+" · now "+after.pmove+"% to move");
+      else toast("↻ Predictions recalculated");
+    }catch(e){}
+    if(b){ b.disabled=false; b.textContent="↻ RUN THE NUMBERS AGAIN"; }
+  },1600);
 }
 window.recalcPredictions=recalcPredictions;
 /* #114b — the shared anchor: the last board that actually RAN (everything at/after
@@ -5726,6 +5750,16 @@ function totalHoursOnBook(){
   DOCKETS.forEach(j=>{ if(!cutoff || (j.date||"")>cutoff){ try{extra+=jobHours(j)||0}catch(e){} } });
   return base+extra;
 }
+/* #split — the 07/13/26 posting covers hours PAID through 2026-05-22 (the report's own
+   cutoff line). A docket dated on/before that day is already INSIDE your posted number —
+   counting it again quietly paid you twice on your own screen. Only work sealed after
+   the cutoff rides on top of the posting; a synced stub still replaces everything. */
+const POSTING_PAID_THRU="2026-05-22";
+function hoursSincePosting(){
+  let extra=0;
+  DOCKETS.forEach(j=>{ if((j.date||"")>POSTING_PAID_THRU){ try{extra+=jobHours(j)||0}catch(e){} } });
+  return extra;
+}
 function updateMeHours(){
   const el=document.getElementById('meHours'); if(!el)return;
   const t=Math.round(totalHoursOnBook());
@@ -5757,6 +5791,7 @@ function updateRace(){
   const id=(typeof ACCT_ID==="string"&&/^[A-Z]\d{3,5}$/.test(ACCT_ID))?ACCT_ID:null;
   if(!id){rk.textContent='—';document.getElementById('rLetter').textContent='—';
     locked.style.display='';hunt.style.display='none';
+    try{const sp=document.getElementById('rSplit');if(sp)sp.style.display='none';}catch(e){}   /* #split — no card, no math line */
     try{renderRaceBoards(null)}catch(e){}
     return;}
   locked.style.display='none';
@@ -5764,7 +5799,16 @@ function updateRace(){
   const onList=(RACE_IDX[id]!=null);
   const start=onList?RACE_IDX[id]+1:N+1;               // posted lane — hands added after start one past the back
   const baseHrs=onList?RACE_LIST[start-1][1]:0;
-  const est=(STUB&&STUB.hours>0)?totalHoursOnBook():baseHrs+totalHoursOnBook();
+  /* #split — no stub: posted + only dockets sealed AFTER the posting's paid-through date
+     (pre-cutoff dockets are already in baseHrs — they must not count twice). A hand NOT
+     on the posting has nothing to double-count: every docket they log climbs for them. */
+  const est=(STUB&&STUB.hours>0)?totalHoursOnBook():baseHrs+(onList?hoursSincePosting():totalHoursOnBook());
+  try{const sp=document.getElementById('rSplit');
+    if(sp){sp.style.display='';
+      if(STUB&&STUB.hours>0){const _x=Math.round(totalHoursOnBook()-STUB.hours);
+        sp.innerHTML='official stub <b>'+STUB.hours.toLocaleString()+'</b> + <b>'+_x.toLocaleString()+'</b> sealed since ≈ <b>'+Math.round(est).toLocaleString()+'</b> hrs on the book';}
+      else if(onList){sp.innerHTML='posted <b>'+baseHrs.toLocaleString()+'</b> (paid thru 5/22) + <b>'+Math.round(hoursSincePosting()).toLocaleString()+'</b> sealed since ≈ <b>'+Math.round(est).toLocaleString()+'</b> hrs on the book';}
+      else{sp.innerHTML='not on the 07/13 posting — every docket climbs: <b>'+Math.round(est).toLocaleString()+'</b> sealed hrs';}}}catch(e){}
   const live=Math.max(1,Math.min(start,raceRankAt(est)));
   const moved=start-live;
   rk.textContent='#'+live.toLocaleString();
