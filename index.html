@@ -1794,7 +1794,7 @@ window.DEVLOG=(function(){
         <div class="wire-runaway steady" id="wRun" style="display:none"></div>
         <!-- #baby — "I'M JUST A BABY": the call bot owns up to still learning. Cute on purpose.
              No numbers here on purpose — how much it has eaten stays under wraps. -->
-        <div class="wire-baby" id="babyNote"><span class="bottle">🍼</span> <b>I'M JUST A BABY!</b> — the call bot is still learning the port. Every board makes it a little sharper. Love me, but don't bet the rent on me.</div>
+        <div class="wire-baby" id="babyNote"><span class="bottle">🍼</span> <b>I'M JUST A BABY!</b> — the call bot is still learning the port. Every board makes it a little sharper. Love me, but don't bet the rent on me.<span id="babyFeed"></span></div>
         <div id="myOdds" style="margin-top:12px;text-align:center"></div>
         <div style="text-align:center;margin-top:12px">
           <button type="button" id="recalcBtn" onclick="recalcPredictions()" style="font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--copper-hi,#eeb46b);background:var(--plate-2,#161a1e);border:1px solid var(--line,#2a3138);border-radius:8px;padding:9px 18px;cursor:pointer">↻ Run the Numbers Again</button>
@@ -6981,7 +6981,27 @@ function dropWindowOpen(){const m=cwMinsNow();return (m>=6*60+30&&m<10*60)||(m>=
    away and the card keeps ONLY the NO FLOP section, so a late hand can still end
    the board — and the sealed label stays visible for the crowd behind them. */
 function noflopWindowOpen(){const m=cwMinsNow();return (m>=6*60+30&&m<12*60)||(m>=NIGHT_OPEN&&m<23*60)}
+/* #feed — the baby asks to be fed when a LIVE input is open. (The old count-question
+   card was retired from the document, so this rides the inputs that actually exist:
+   the Drop Log during dispatch, and the NO FLOP seal after the call.) Runs on the
+   same 60s tick as the drop card, so it flips with the windows. */
+function renderBabyFeed(){
+  try{
+    const bf=document.getElementById('babyFeed'); if(!bf)return;
+    let t='';
+    if(typeof dropWindowOpen==="function"&&dropWindowOpen()){
+      t=' <b>Feed me:</b> the Drop Log is live below — every call you catch sharpens this call, and the wire pays ⬡.';
+    } else if(typeof noflopWindowOpen==="function"&&noflopWindowOpen()){
+      let sealed=false;
+      try{const r=RECENT.find(x=>x.date+"_"+x.slot===dropKey());sealed=!!(r&&(r.end||r.over));}catch(e){}
+      if(!sealed) t=' <b>Feed me:</b> heard the “no flop” call? Seal the board below — first hand on the wire takes the jackpot ⚡.';
+    }
+    bf.innerHTML=t;
+  }catch(e){}
+}
+window.renderBabyFeed=renderBabyFeed;
 function renderDropLog(){
+  try{renderBabyFeed();}catch(e){}
   const card=document.getElementById('dropCard'); if(!card)return;
   const _dw=dropWindowOpen(), _nf=noflopWindowOpen();
   card.style.display=(_dw||_nf)?'':'none';
