@@ -7185,6 +7185,58 @@ function cwParseNum(s){const n=parseInt((s||"").replace(/\D/g,""),10);return isF
 function cwFirstPay(f){return f.pay;}                 // full pay for being first
 function cwConfirmPay(f){return Math.max(3,Math.round(f.pay*0.25));} // smaller cut for confirming
 
+/* ===== #countwire — COUNT REPORTS RIDE THE WIRE =====
+   The Count Window settled on one phone and nowhere else: reports, confirms and
+   heist votes lived in localStorage only, so a lone reporter sat on "CONFIRMING"
+   forever. Same pattern as drop_wire: every local action pushes one row to
+   `count_wire` (cid-keyed, so re-pushes are idempotent), and cwSync folds the
+   crowd's rows back into CWstate — counts only ever grow, i* flags stay local,
+   payouts still fire only on the acting device. Offline: every call no-ops. */
+function cwWireKey(){try{return todayISO()+"_"+callSlot}catch(e){return null}}
+function cwPush(fid,kind,v){
+  try{
+    if(!window.SB)return;
+    const k=cwWireKey(); if(!k)return;
+    const a=(typeof loadAcct==="function"&&loadAcct())||{};
+    const cid=(a.id||"anon")+"_"+kind+"_"+fid+"_"+k;
+    window.SB.from('count_wire').upsert({cid:cid,k:k,f:fid,v:String(v==null?"":v),kind:kind,
+      by:a.id||"",by_handle:a.handle||"a hand",ts:Date.now()},{onConflict:'cid'}).then(()=>{},()=>{});
+  }catch(e){}
+}
+async function cwSync(){
+  try{
+    if(!window.SB||typeof CWstate==="undefined")return;
+    const k=cwWireKey(); if(!k)return;
+    const r=await window.SB.from('count_wire').select('*').eq('k',k);
+    if(!r||r.error||!Array.isArray(r.data))return;
+    const me=((typeof loadAcct==="function"&&loadAcct())||{}).id||"";
+    let changed=false;
+    const num=x=>{const n=+x;return isNaN(n)?x:n;};
+    CW_FIELDS.forEach(fd=>{
+      const st=CWstate[fd.id]; if(!st||st.live)return;
+      const rows=r.data.filter(x=>x.f===fd.id);
+      const reps=rows.filter(x=>x.kind==='report').sort((a,b)=>(a.ts||0)-(b.ts||0));
+      if(reps.length&&st.first==null){st.first={v:num(reps[0].v)};st.iAmFirst=(reps[0].by===me&&me!=="");changed=true;}
+      const chs=rows.filter(x=>x.kind==='chal').sort((a,b)=>(a.ts||0)-(b.ts||0));
+      if(chs.length&&st.chal==null&&st.first!=null){st.chal={v:num(chs[0].v)};st.iAmChal=(chs[0].by===me&&me!=="");
+        st.votes=st.votes||{a:1,b:1};changed=true;}
+      const yes=rows.filter(x=>x.kind==='confirm').length, no=rows.filter(x=>x.kind==='deny').length;
+      if(yes>st.yes){st.yes=yes;changed=true;}
+      if(no>st.no){st.no=no;changed=true;}
+      if(st.chal){
+        const va=1+rows.filter(x=>x.kind==='vote_a').length, vb=1+rows.filter(x=>x.kind==='vote_b').length;
+        st.votes=st.votes||{a:1,b:1};
+        if(va>st.votes.a){st.votes.a=va;changed=true;}
+        if(vb>st.votes.b){st.votes.b=vb;changed=true;}
+        try{cwResolveHeist(fd);}catch(e){}
+      }
+      if(!st.live&&st.yes>=2){st.live=true;changed=true;
+        try{if((fd.id==="total"||fd.id==="casual")&&st.first)finRecord(fd.id,st.first.v);}catch(e){}}
+    });
+    if(changed){try{cwPersist();}catch(e){} try{renderCW();}catch(e){} try{renderSlot();}catch(e){}}
+  }catch(e){}
+}
+window.cwSync=cwSync;
 function cwSubmit(f){
   if(cwMuted())return;
   const st=CWstate[f.id];
@@ -7196,6 +7248,7 @@ function cwSubmit(f){
   if(st.first==null){
     // you're the first hand on this question — full pay
     st.first={v:v}; st.iAmFirst=true;
+    try{cwPush(f.id,'report',v);}catch(e){}   /* #countwire */
     addCredits(cwFirstPay(f), f.label+" — first in");
     CWme.n++; CWme.acc=Math.min(1,CWme.acc+0.02);
     unlockBadge(bixLate("Wire Runner"));
@@ -7216,6 +7269,7 @@ function cwSubmit(f){
          it is one. Wrong hands lose more than face out here. */
       st.chal={v:v}; st.iAmChal=true; st.iVoted=true;
       st.votes={a:1,b:1};   // each author stands behind their own number — neutrals break the tie
+      try{cwPush(f.id,'chal',v);}catch(e){}   /* #countwire */
       toast("⚔ Correction posted — the wire votes. Winner takes the pay.");
     }
   }
@@ -7235,6 +7289,7 @@ function cwVote(f,side){
   if(!st.chal||st.live||st.iVoted)return;
   if(st.iAmFirst||st.iAmChal)return;   // you're a party to the heist — you don't get a vote
   st.iVoted=true; st.votes=st.votes||{a:0,b:0}; st.votes[side]++;
+  try{cwPush(f.id,'vote_'+side,'');}catch(e){}   /* #countwire */
   cwResolveHeist(f);
   cwAfter(f);
 }
@@ -7273,6 +7328,7 @@ function cwTallyConfirm(f, agree, fromSubmit){
   const st=CWstate[f.id];
   if(agree){
     st.yes++;
+    try{cwPush(f.id,'confirm','');}catch(e){}   /* #countwire */
     if(st.confirmers<2){                              // only the first two confirmers get paid
       st.confirmers++;
       addCredits(cwConfirmPay(f), f.label+" confirmed");
@@ -7281,6 +7337,7 @@ function cwTallyConfirm(f, agree, fromSubmit){
     if(st.yes>=2){ st.live=true; if(f.id==="total"||f.id==="casual")finRecord(f.id,st.first.v); }  // two agreements → LIVE (#37 — finals stick to the shift that reported them)
   }else{
     st.no++;
+    try{cwPush(f.id,'deny','');}catch(e){}   /* #countwire */
     CWme.n++;
     if(st.no>=2){                                     // crowd overrules the first report
       // claw back the first reporter's full pay (only THIS device can adjust its own balance,
@@ -12828,6 +12885,7 @@ async function sbLoadHallLine(){
 }
 window.sbLoadHallLine=sbLoadHallLine;
 try{sbLoadHallLine();}catch(e){}
+try{cwSync();}catch(e){}   /* #countwire — fold the crowd's count reports in at boot */
 /* the Log-the-Board sheet lands here: post, confirm, or challenge — by content */
 function bwSubmitResult(k,patch){
   const me=bwMe(), L=bwL(); L[k]=L[k]||{};
@@ -12952,12 +13010,13 @@ try{sbLoadBoardWire();}catch(e){}
    board log/correction, or a dispatch sheet from ANY hand lands on every screen at
    once. Falls back to a gentle pull if the socket can't hold (same as chat). */
 let _liveChan=null, _liveOn=false;
-function liveRefreshAll(){ try{dwPull();}catch(e){} try{sbLoadBoardWire();}catch(e){} try{sbLoadDispatch();}catch(e){} try{sbLoadHallLine();}catch(e){} try{sbLoadSocial();}catch(e){} try{sbLoadStories();}catch(e){} }
+function liveRefreshAll(){ try{dwPull();}catch(e){} try{cwSync();}catch(e){} try{sbLoadBoardWire();}catch(e){} try{sbLoadDispatch();}catch(e){} try{sbLoadHallLine();}catch(e){} try{sbLoadSocial();}catch(e){} try{sbLoadStories();}catch(e){} }
 function liveSync(){
   if(!window.SB)return;
   try{
     _liveChan=window.SB.channel('order-live-'+Date.now())
       .on('postgres_changes',{event:'*',schema:'public',table:'drop_wire'},      function(){try{dwPull();}catch(e){}})
+      .on('postgres_changes',{event:'*',schema:'public',table:'count_wire'},     function(){try{cwSync();}catch(e){}})   /* #countwire */
       .on('postgres_changes',{event:'*',schema:'public',table:'board_wire'},      function(){try{sbLoadBoardWire();}catch(e){}})
       .on('postgres_changes',{event:'*',schema:'public',table:'dispatch_boards'}, function(){try{sbLoadDispatch();}catch(e){}})
       .on('postgres_changes',{event:'*',schema:'public',table:'hall_line_log'},   function(){try{sbLoadHallLine();}catch(e){}})   /* #hallline — the phone bot's reads land live */
