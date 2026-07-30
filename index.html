@@ -1802,6 +1802,21 @@ window.DEVLOG=(function(){
       </div>
     </div>
 
+    <!-- #resurrect(jul30) — THE COUNT WINDOW is BACK. The whole engine (fields,
+         confirms, ⚔ challenges, payouts, accuracy scores) never stopped running —
+         only its markup was cut in an earlier pass, so renderCW bailed on a missing
+         element and the crowd's easiest portbucks earner rendered nowhere. Same IDs
+         the engine already expects: cwAcc · cwMuted · cwIntro · callWindow · cwAllIn. -->
+    <div class="card" id="countCard">
+      <div class="card-h">The Count Window <span class="tag" id="cwAcc">accuracy · new hand</span></div>
+      <div class="card-b">
+        <div id="cwMuted" class="sub" style="display:none;margin-bottom:8px"></div>
+        <p class="sub" id="cwIntro" style="margin-bottom:10px">The wire asks for the numbers it can't see. First accurate report takes the full ⬡ payout — confirms get paid too, and your accuracy rides your name.</p>
+        <div id="callWindow"></div>
+        <div id="cwAllIn" class="sub" style="display:none;margin-top:6px">You're all in on this board — the wire settles the rest, and ⬡ lands as the confirms come in.</div>
+      </div>
+    </div>
+
     <!-- #117 — the "Log the come-down" console button is retired: it duplicated the
          Drop Log (the live job input during dispatch). Sealing the board now lives
          INSIDE the Drop Log, and corrections live on the Recent Boards record. -->
@@ -6989,8 +7004,14 @@ function renderBabyFeed(){
   try{
     const bf=document.getElementById('babyFeed'); if(!bf)return;
     let t='';
+    /* each check guarded on its own — at boot CWme can still be in TDZ, and one
+       throw must not blank the other branches (that ate the boot render once) */
+    let _cwOpen=false;
+    try{_cwOpen=(typeof cwFieldsFor==="function"&&cwFieldsFor().length>0&&!(typeof cwMuted==="function"&&cwMuted()));}catch(e){}
     if(typeof dropWindowOpen==="function"&&dropWindowOpen()){
       t=' <b>Feed me:</b> the Drop Log is live below — every call you catch sharpens this call, and the wire pays ⬡.';
+    } else if(_cwOpen){
+      t=' <b>Feed me:</b> the Count Window is open below — first accurate number takes the full ⬡ payout.';
     } else if(typeof noflopWindowOpen==="function"&&noflopWindowOpen()){
       let sealed=false;
       try{const r=RECENT.find(x=>x.date+"_"+x.slot===dropKey());sealed=!!(r&&(r.end||r.over));}catch(e){}
@@ -7432,6 +7453,7 @@ function cwNextWindowText(){
   return "Final counts are open until the day board opens tomorrow.";
 }
 renderCW();
+try{renderBabyFeed();}catch(e){}   /* #feed — re-run now that the count system is initialized (the first pass ran before CWme existed) */
 setInterval(()=>{ if(document.getElementById('callWindow')) renderCW(); }, 60000); // windows open/close on the clock
 
 /* ================= DOCKETS ================= */
