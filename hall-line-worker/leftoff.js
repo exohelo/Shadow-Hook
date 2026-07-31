@@ -289,6 +289,14 @@ function resolveAboutKey(ft, t, mode){
     } catch (e) { log('warn: could not read board_wire:', e.message); }
   }
   const prevEnd = endOf(WIRE[prevKeyOf(t.key)]);
+  /* #jul30b — PRE-CALL SKIP: if the wire already carries the end card of the
+     board that just ended (a hand sealed it, or an earlier sweep read it),
+     the number is in — exit BEFORE dialing. This is what makes the dense
+     retry schedule free: only sweeps that still NEED a number spend a call. */
+  if (!CFG.force && !CFG.transcript && !CFG.audioFile && endOf(WIRE[t.key])) {
+    log('wire already carries ' + t.key + ' end=' + endOf(WIRE[t.key]) + ' — no call needed.');
+    return;
+  }
   /* get a transcript: flag > audio file > live call — and if a LIVE call hears
      nothing usable, wait and CALL AGAIN (#jul23: the recording is sometimes
      late, mid-cycle, or briefly silent; one dead call must not kill the run). */
