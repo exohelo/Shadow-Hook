@@ -3693,7 +3693,7 @@ async function sbLoadProfile(){
     const u=await window.SB.auth.getUser();
     const uid=u && u.data && u.data.user && u.data.user.id;
     if(!uid) return null;
-    const pr=await window.SB.from('profiles').select('handle,port_bucks,badges,circle,since,is_keymaster').eq('id',uid).maybeSingle();
+    const pr=await window.SB.from('profiles').select('handle,port_bucks,badges,circle,since,is_keymaster,banned').eq('id',uid).maybeSingle();
     const pv=await window.SB.from('profiles_private').select('card_id,full_name,verified').eq('id',uid).maybeSingle();
     if(pr.error){ console.warn('profile load:', pr.error.message); }
     if(!pr.data) return null;
@@ -3856,8 +3856,9 @@ function localEnter(){
           try{ renderCredits(); circleChip(); renderCircles(); }catch(e){}
           /* #km — the crown rides the profile: remember it and light the Command Center door */
           try{ window.__isKM=!!prof.is_keymaster; localStorage.setItem(K('km'), window.__isKM?'1':'');
-               const _kb=document.getElementById('pfCommand'); if(_kb)_kb.style.display=window.__isKM?'':'none';
-               const _dl=document.getElementById('devLogBtn'); if(_dl)_dl.style.display=window.__isKM?'':'none'; }catch(e){}
+               const _kb=document.getElementById('pfCommand'); if(_kb)_kb.style.display=window.__isKM?'':'none'; }catch(e){}
+          /* #km2 — a banned card locks on sight, wherever it signs in */
+          try{ if(prof.banned)showBanLock(''); }catch(e){}
           /* #fix4 — the server owns identity. `if(!a.since)` let a leftover local record
              keep its own join date, so a device that had auto-rolled a handle at the
              gate today reported "member since" today while the real account read
@@ -13050,7 +13051,7 @@ try{sbLoadBoardWire();}catch(e){}
    board log/correction, or a dispatch sheet from ANY hand lands on every screen at
    once. Falls back to a gentle pull if the socket can't hold (same as chat). */
 let _liveChan=null, _liveOn=false;
-function liveRefreshAll(){ try{dwPull();}catch(e){} try{cwSync();}catch(e){} try{sbLoadKmFlags();}catch(e){} try{sbLoadSheetLog();}catch(e){} try{sbLoadBoardWire();}catch(e){} try{sbLoadDispatch();}catch(e){} try{sbLoadHallLine();}catch(e){} try{sbLoadSocial();}catch(e){} try{sbLoadStories();}catch(e){} }
+function liveRefreshAll(){ try{dwPull();}catch(e){} try{cwSync();}catch(e){} try{sbLoadKmFlags();}catch(e){} try{sbLoadNotices();}catch(e){} try{sbLoadSheetLog();}catch(e){} try{sbLoadBoardWire();}catch(e){} try{sbLoadDispatch();}catch(e){} try{sbLoadHallLine();}catch(e){} try{sbLoadSocial();}catch(e){} try{sbLoadStories();}catch(e){} }
 function liveSync(){
   if(!window.SB)return;
   try{
@@ -13058,6 +13059,7 @@ function liveSync(){
       .on('postgres_changes',{event:'*',schema:'public',table:'drop_wire'},      function(){try{dwPull();}catch(e){}})
       .on('postgres_changes',{event:'*',schema:'public',table:'count_wire'},     function(){try{cwSync();}catch(e){}})   /* #countwire */
       .on('postgres_changes',{event:'*',schema:'public',table:'km_flags'},       function(){try{sbLoadKmFlags();}catch(e){}})   /* #km — the Keymaster's word travels instantly */
+      .on('postgres_changes',{event:'*',schema:'public',table:'km_notices'},     function(){try{sbLoadNotices();}catch(e){}})   /* #km2 — warnings & bans land live */
       .on('postgres_changes',{event:'*',schema:'public',table:'board_wire'},      function(){try{sbLoadBoardWire();}catch(e){}})
       .on('postgres_changes',{event:'*',schema:'public',table:'dispatch_boards'}, function(){try{sbLoadDispatch();}catch(e){}})
       .on('postgres_changes',{event:'*',schema:'public',table:'hall_line_log'},   function(){try{sbLoadHallLine();}catch(e){}})   /* #hallline — the phone bot's reads land live */
@@ -14335,10 +14337,10 @@ window.addEventListener('resize',()=>{if($w('wbw').classList.contains('on'))wbFi
       +'background:rgba(11,13,15,.82);border:1px solid rgba(238,180,107,.35);color:#8f979e;border-radius:999px;'
       +'font:700 9.5px "IBM Plex Mono",monospace;letter-spacing:.08em;padding:5px 9px;opacity:.6;cursor:pointer';
     document.body.appendChild(btn);
-    /* #km — the dev log rides behind the crown now: members never see the chip.
-       Its ✎ board editor and every diagnostic live on, reachable from the
-       Command Center's Tools row (and this chip, for crowned accounts). */
-    try{ if(localStorage.getItem(K('km'))!=='1') btn.style.display='none'; }catch(e){}
+    /* #km2 — the floating chip is retired for EVERYONE, Keymaster included: the
+       panel now opens ONLY from Command Center → Tools → ⚙ Dev Log. The button
+       stays in the DOM (hidden) because that path drives it programmatically. */
+    btn.style.display='none';
 
     /* --- the panel --- */
     const pane=document.createElement('div');
@@ -16236,6 +16238,11 @@ html.arcade.daylight .hud-pos{color:#5b34d6;text-shadow:none}
     <div class="card-h" style="margin-top:4px">The Pulse</div>
     <div id="kmPulse" class="sub" style="line-height:1.8;margin-bottom:14px">reading the wire…</div>
 
+    <div class="card-h">The Roster</div>
+    <input class="field" id="kmFind" placeholder="filter — handle, card, name" style="margin:6px 0 6px">
+    <input class="field" id="kmNotice" placeholder="notice text — used by ⚠ warn and 🔨 ban" style="margin-bottom:6px">
+    <div id="kmRoster" class="sub" style="max-height:260px;overflow-y:auto;line-height:1.7;margin-bottom:14px">—</div>
+
     <div class="card-h">The Mint</div>
     <div style="display:flex;gap:8px;margin:8px 0 6px">
       <input class="field" id="kmHandle" placeholder="handle — e.g. MAD MORGAN" style="flex:2">
@@ -16315,6 +16322,7 @@ html.arcade.daylight .hud-pos{color:#5b34d6;text-shadow:none}
     seg($('kmRain'),f.rain||'auto');seg($('kmStop'),f.stopwork||'auto');seg($('kmSix'),(f.six_rule===false)?'off':'on');
     if($('kmBull'))$('kmBull').value=f.bulletin||'';
     kmPulse();
+    try{kmRoster();}catch(e){}
   };
   async function kmPulse(){
     const out=$('kmPulse');if(!out)return;out.textContent='reading the wire…';
@@ -16380,6 +16388,104 @@ html.arcade.daylight .hud-pos{color:#5b34d6;text-shadow:none}
   if(cl)cl.addEventListener('click',function(){$('kmSheet').classList.remove('on');});
   const sh=$('kmSheet');
   if(sh)sh.addEventListener('click',function(e){if(e.target===sh)sh.classList.remove('on');});
+
+  /* ═══ #km2 — THE ROSTER: every member, and the power to reach them ═══ */
+  let _roster=[];
+  window.kmRoster=async function(){
+    const out=$('kmRoster'); if(!out)return;
+    if(!window.SB){out.textContent='backend off';return;}
+    out.textContent='pulling the roster…';
+    try{
+      const r=await window.SB.rpc('km_roster');
+      if(r.error)throw r.error;
+      _roster=r.data||[];
+      kmRosterDraw();
+    }catch(e){out.textContent='roster failed: '+e.message;}
+  };
+  function kmRosterDraw(){
+    const out=$('kmRoster'); if(!out)return;
+    const q=(($('kmFind')||{}).value||'').trim().toLowerCase();
+    const rows=_roster.filter(x=>!q||[x.handle,x.card_id,x.full_name].some(v=>String(v||'').toLowerCase().includes(q)));
+    if(!rows.length){out.textContent=q?'no hand matches "'+q+'"':'no claimed accounts yet';return;}
+    out.innerHTML=rows.map(x=>{
+      const h=esc(x.handle||'?');
+      return '<div style="display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;border-bottom:1px solid var(--line-soft);padding:6px 0">'
+        +'<b style="color:var(--bone)">'+h+'</b>'
+        +'<span class="mono" style="color:var(--copper-hi)">'+esc(x.card_id||'—')+'</span>'
+        +'<span style="color:var(--steel)">'+esc(x.full_name||'')+'</span>'
+        +(x.banned?'<span class="pill red">BANNED</span>':'')
+        +(x.is_keymaster?'<span class="pill gold">☠</span>':'')
+        +'<span style="margin-left:auto" class="mono">'+(+x.port_bucks||0).toLocaleString()+' ⬡</span>'
+        +'<span style="flex-basis:100%;display:flex;gap:6px;margin-top:2px">'
+        +'<button class="btn-ghost km-act" data-a="mint" data-h="'+h+'" style="flex:1;padding:4px 0;font-size:11px">⬡ mint</button>'
+        +'<button class="btn-ghost km-act" data-a="warn" data-h="'+h+'" style="flex:1;padding:4px 0;font-size:11px">⚠ warn</button>'
+        +'<button class="btn-ghost km-act" data-a="ban" data-h="'+h+'" data-b="'+(x.banned?1:0)+'" style="flex:1;padding:4px 0;font-size:11px;color:'+(x.banned?'var(--ok)':'var(--ember)')+'">'+(x.banned?'✓ unban':'🔨 ban')+'</button>'
+        +'</span></div>';
+    }).join('');
+  }
+  const kf=$('kmFind'); if(kf)kf.addEventListener('input',kmRosterDraw);
+  const kr=$('kmRoster');
+  if(kr)kr.addEventListener('click',async function(e){
+    const b=e.target.closest('button.km-act'); if(!b)return;
+    const h=b.dataset.h, a=b.dataset.a, msg=(($('kmNotice')||{}).value||'').trim();
+    if(a==='mint'){ if($('kmHandle'))$('kmHandle').value=h; if($('kmDelta'))$('kmDelta').focus(); try{toast('⬡ mint pre-filled for '+h);}catch(e2){} return; }
+    if(!window.SB){try{toast('backend off');}catch(e2){} return;}
+    b.disabled=true;
+    try{
+      if(a==='warn'){
+        if(!msg){try{toast('Type the notice text first (the box above the roster)');}catch(e2){} b.disabled=false; return;}
+        const r=await window.SB.rpc('km_warn',{p_handle:h,p_msg:msg});
+        if(r.error)throw r.error;
+        try{toast('⚠ warning sent to '+h+' — lands on their next open');}catch(e2){}
+      }else if(a==='ban'){
+        const on=b.dataset.b!=='1';
+        const r=await window.SB.rpc('km_ban',{p_handle:h,p_on:on,p_msg:msg});
+        if(r.error)throw r.error;
+        try{toast(on?('🔨 '+h+' is banned'):('✓ '+h+' is back in the Order'));}catch(e2){}
+        kmRoster();
+      }
+    }catch(err){try{toast('✗ '+err.message);}catch(e2){}}
+    b.disabled=false;
+  });
+
+  /* ═══ #km2 — member side: notices land, bans lock ═══ */
+  window.showBanLock=function(msg){
+    let d=document.getElementById('banLock');
+    if(!d){d=document.createElement('div');d.id='banLock';
+      d.style.cssText='position:fixed;inset:0;z-index:99998;background:rgba(5,4,8,.97);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:30px;color:var(--bone)';
+      document.body.appendChild(d);}
+    d.innerHTML='<div style="font-size:44px">⚑</div>'
+      +'<div style="font-family:Anton,sans-serif;font-size:22px;letter-spacing:.1em;margin:10px 0;color:var(--ember)">CARD SUSPENDED</div>'
+      +'<div class="sub" style="max-width:300px;line-height:1.6">'+(msg?esc(msg):'Your card has been suspended from the Order by the Keymaster.')+'</div>'
+      +'<div class="sub" style="margin-top:14px;color:var(--steel)">Think it\'s a mistake? Send word to the Keymaster.</div>';
+    d.style.display='flex';
+  };
+  window.sbLoadNotices=async function(){
+    if(!window.SB||!window.__shkUid)return;
+    try{
+      const r=await window.SB.from('km_notices').select('*').eq('seen',false).order('id',{ascending:true});
+      if(!r||r.error||!Array.isArray(r.data)||!r.data.length)return;
+      for(const n of r.data){
+        if(n.kind==='ban'){ showBanLock(n.message||''); }
+        else if(n.kind==='unban'){ const d=document.getElementById('banLock'); if(d)d.style.display='none';
+          try{toast('✓ Your card is back in the Order');}catch(e){} }
+        else { showNotice(n.message||''); }
+        try{await window.SB.from('km_notices').update({seen:true}).eq('id',n.id);}catch(e){}
+      }
+    }catch(e){}
+  };
+  function showNotice(msg){
+    let sh2=document.getElementById('noticeSheet');
+    if(!sh2){sh2=document.createElement('div');sh2.className='sheet';sh2.id='noticeSheet';document.body.appendChild(sh2);}
+    sh2.innerHTML='<div class="sheet-card" style="text-align:center">'
+      +'<div class="big" style="font-size:19px;letter-spacing:.07em;color:var(--warn)">⚠ WORD FROM THE KEYMASTER</div>'
+      +'<p class="sub" style="margin:12px 0 16px;text-align:left;line-height:1.65">'+esc(msg)+'</p>'
+      +'<button class="btn" id="noticeOk" type="button" style="width:100%">UNDERSTOOD</button></div>';
+    sh2.querySelector('#noticeOk').addEventListener('click',()=>sh2.classList.remove('on'));
+    sh2.classList.add('on');
+    try{buzz([40,60,40]);}catch(e){}
+  }
+  try{setTimeout(function(){try{sbLoadNotices();}catch(e){}},2500);}catch(e){}
 })();
 </script>
 
