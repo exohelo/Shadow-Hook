@@ -16408,7 +16408,7 @@ html.arcade.daylight .hud-pos{color:#5b34d6;text-shadow:none}
     const rows=_roster.filter(x=>!q||[x.handle,x.card_id,x.full_name].some(v=>String(v||'').toLowerCase().includes(q)));
     if(!rows.length){out.textContent=q?'no hand matches "'+q+'"':'no claimed accounts yet';return;}
     out.innerHTML=rows.map(x=>{
-      const h=esc(x.handle||'?');
+      const h=esc(x.handle||'?'), isF=String(x.card_id||'').trim().toUpperCase()==='D4928'; /* #km3 founder row: ban/uncrown never offered */
       return '<div style="display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;border-bottom:1px solid var(--line-soft);padding:6px 0">'
         +'<b style="color:var(--bone)">'+h+'</b>'
         +'<span class="mono" style="color:var(--copper-hi)">'+esc(x.card_id||'—')+'</span>'
@@ -16419,7 +16419,9 @@ html.arcade.daylight .hud-pos{color:#5b34d6;text-shadow:none}
         +'<span style="flex-basis:100%;display:flex;gap:6px;margin-top:2px">'
         +'<button class="btn-ghost km-act" data-a="mint" data-h="'+h+'" style="flex:1;padding:4px 0;font-size:11px">⬡ mint</button>'
         +'<button class="btn-ghost km-act" data-a="warn" data-h="'+h+'" style="flex:1;padding:4px 0;font-size:11px">⚠ warn</button>'
-        +'<button class="btn-ghost km-act" data-a="ban" data-h="'+h+'" data-b="'+(x.banned?1:0)+'" style="flex:1;padding:4px 0;font-size:11px;color:'+(x.banned?'var(--ok)':'var(--ember)')+'">'+(x.banned?'✓ unban':'🔨 ban')+'</button>'
+        +(isF?'':'<button class="btn-ghost km-act" data-a="ban" data-h="'+h+'" data-b="'+(x.banned?1:0)+'" style="flex:1;padding:4px 0;font-size:11px;color:'+(x.banned?'var(--ok)':'var(--ember)')+'">'+(x.banned?'✓ unban':'🔨 ban')+'</button>')
+        +(isF?'<span class="sub" style="flex:1;text-align:center;padding:4px 0;font-size:11px;color:var(--copper-hi)">⚓ founder</span>'
+             :'<button class="btn-ghost km-act" data-a="crown" data-h="'+h+'" data-k="'+(x.is_keymaster?1:0)+'" style="flex:1;padding:4px 0;font-size:11px;color:'+(x.is_keymaster?'var(--steel)':'var(--copper-hi)')+'">'+(x.is_keymaster?'✕ uncrown':'☠ crown')+'</button>')
         +'</span></div>';
     }).join('');
   }
@@ -16442,6 +16444,12 @@ html.arcade.daylight .hud-pos{color:#5b34d6;text-shadow:none}
         const r=await window.SB.rpc('km_ban',{p_handle:h,p_on:on,p_msg:msg});
         if(r.error)throw r.error;
         try{toast(on?('🔨 '+h+' is banned'):('✓ '+h+' is back in the Order'));}catch(e2){}
+        kmRoster();
+      }else if(a==='crown'){ /* #km3 — hand them a key, or take it back */
+        const on=b.dataset.k!=='1';
+        const r=await window.SB.rpc('km_crown',{p_handle:h,p_on:on,p_msg:msg});
+        if(r.error)throw r.error;
+        try{toast(on?('☠ '+h+' now holds a key to the Command Center'):('✕ crown lifted from '+h));}catch(e2){}
         kmRoster();
       }
     }catch(err){try{toast('✗ '+err.message);}catch(e2){}}
@@ -16469,6 +16477,15 @@ html.arcade.daylight .hud-pos{color:#5b34d6;text-shadow:none}
         if(n.kind==='ban'){ showBanLock(n.message||''); }
         else if(n.kind==='unban'){ const d=document.getElementById('banLock'); if(d)d.style.display='none';
           try{toast('✓ Your card is back in the Order');}catch(e){} }
+        else if(n.kind==='crown'){ /* #km3 — a key lands in their hand, live */
+          try{ window.__isKM=true; localStorage.setItem(K('km'),'1');
+               const kb=document.getElementById('pfCommand'); if(kb)kb.style.display=''; }catch(e){}
+          showCrown(n.message||''); }
+        else if(n.kind==='uncrown'){ /* #km3 — the key dissolves, door closes */
+          try{ window.__isKM=false; localStorage.setItem(K('km'),'');
+               const kb=document.getElementById('pfCommand'); if(kb)kb.style.display='none';
+               const ks=document.getElementById('kmSheet'); if(ks)ks.classList.remove('on'); }catch(e){}
+          try{toast('Your key to the Command Center has been taken back');}catch(e){} }
         else { showNotice(n.message||''); }
         try{await window.SB.from('km_notices').update({seen:true}).eq('id',n.id);}catch(e){}
       }
@@ -16484,6 +16501,19 @@ html.arcade.daylight .hud-pos{color:#5b34d6;text-shadow:none}
     sh2.querySelector('#noticeOk').addEventListener('click',()=>sh2.classList.remove('on'));
     sh2.classList.add('on');
     try{buzz([40,60,40]);}catch(e){}
+  }
+  function showCrown(msg){ /* #km3 — the coronation sheet */
+    let sh3=document.getElementById('crownSheet');
+    if(!sh3){sh3=document.createElement('div');sh3.className='sheet';sh3.id='crownSheet';document.body.appendChild(sh3);}
+    sh3.innerHTML='<div class="sheet-card" style="text-align:center">'
+      +'<div style="font-size:40px">☠</div>'
+      +'<div class="big" style="font-size:19px;letter-spacing:.07em;color:var(--copper-hi)">YOU HOLD A KEY NOW</div>'
+      +'<p class="sub" style="margin:12px 0 6px;line-height:1.65">The Keymaster has crowned you. The Command Center is yours — open your profile and look for the ☠ door.</p>'
+      +(msg?'<p class="sub" style="margin:0 0 16px;text-align:left;line-height:1.65;color:var(--bone)">'+esc(msg)+'</p>':'<div style="height:10px"></div>')
+      +'<button class="btn" id="crownOk" type="button" style="width:100%">CLAIM IT</button></div>';
+    sh3.querySelector('#crownOk').addEventListener('click',()=>sh3.classList.remove('on'));
+    sh3.classList.add('on');
+    try{buzz([40,60,40,60,120]);}catch(e){}
   }
   try{setTimeout(function(){try{sbLoadNotices();}catch(e){}},2500);}catch(e){}
 })();
