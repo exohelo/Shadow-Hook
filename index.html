@@ -13364,8 +13364,12 @@ YZ.byId={}; YZ.spots.forEach(s=>YZ.byId[s.id]=s);
 
 /* ---- decorative furniture: frame, orientation, street names + traffic arrows, lanes ---- */
 function yzFurniture(){
-  const t=(x,y,txt,size,col,rot,ls,anch)=>`<text x="${x}" y="${y}" fill="${col||'#8f979e'}" font-family="'IBM Plex Mono',monospace" font-size="${size||13}" letter-spacing="${ls||1.5}" text-anchor="${anch||'middle'}" ${rot?`transform="rotate(${rot} ${x} ${y})"`:''}>${txt}</text>`;
-  const c='#7fae6a';
+  /* #ymday — rebuilt on every open, so the ink follows the sun: dark text and
+     arrows on the daylight plate, the old light ink on the night plate. */
+  const DAY=document.documentElement.classList.contains('daylight');
+  const INK=DAY?'#6a6252':'#8f979e', TAN=DAY?'#6e5f46':'#c7bda9', SEA=DAY?'#3d6a85':'#4d7f9c';
+  const t=(x,y,txt,size,col,rot,ls,anch)=>`<text x="${x}" y="${y}" fill="${col||INK}" font-family="'IBM Plex Mono',monospace" font-size="${size||13}" letter-spacing="${ls||1.5}" text-anchor="${anch||'middle'}" ${rot?`transform="rotate(${rot} ${x} ${y})"`:''}>${txt}</text>`;
+  const c=DAY?'#4f7f42':'#7fae6a';
   const hA=(x,y,two)=> two
     ? `<path d="M${x-15},${y} L${x-6},${y-5} M${x-15},${y} L${x-6},${y+5} M${x-15},${y} L${x+15},${y} M${x+15},${y} L${x+6},${y-5} M${x+15},${y} L${x+6},${y+5}" stroke="${c}" stroke-width="2.4" fill="none" stroke-linecap="round"/>`
     : `<path d="M${x-15},${y} L${x+15},${y} M${x+15},${y} L${x+6},${y-5} M${x+15},${y} L${x+6},${y+5}" stroke="${c}" stroke-width="2.4" fill="none" stroke-linecap="round"/>`;
@@ -13374,16 +13378,16 @@ function yzFurniture(){
     if(mode!=='down')p+=` M${x-4},${y0+h*1.6} L${x},${y0} L${x+4},${y0+h*1.6}`;
     if(mode!=='up')p+=` M${x-4},${y1-h*1.6} L${x},${y1} L${x+4},${y1-h*1.6}`;
     return `<path d="${p}" stroke="${c}" stroke-width="${w}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`;};
-  let g=`<rect x="4" y="4" width="${VBW-8}" height="${VBH-8}" rx="10" fill="none" stroke="rgba(220,214,201,.1)"/>`;
+  let g=`<rect x="4" y="4" width="${VBW-8}" height="${VBH-8}" rx="10" fill="none" stroke="${DAY?'rgba(70,58,36,.2)':'rgba(220,214,201,.1)'}"/>`;
   // orientation
   g+=t(VBW/2,24,"◤ SAN PEDRO ▲",14,'#c9803f',0,3);
   g+=t(VBW/2,VBH-10,"▼ LONG BEACH",14,'#c9803f',0,3);
-  g+=t(14,VBH/2,"◄ ILWU PARKING LOT",10,'#8f979e',-90,2);
-  g+=t(VBW-14,VBH/2,"WATERSIDE / VESSELS ►",10,'#4d7f9c',90,2);
+  g+=t(14,VBH/2,"◄ ILWU PARKING LOT",10,INK,-90,2);
+  g+=t(VBW-14,VBH/2,"WATERSIDE / VESSELS ►",10,SEA,90,2);
   // street names + arrows, positioned from the (rotated) street spots
   const street=(id,label,mode)=>{const s=YZ.byId[id];if(!s)return;
     const yc=s.y+s.h/2;
-    g+=t(s.x+s.w-6,yc+3.5,label,10.5,'#c7bda9',0,3,'end');
+    g+=t(s.x+s.w-6,yc+3.5,label,10.5,TAN,0,3,'end');
     const n=3,x0=s.x+30,x1=s.x+s.w-140;
     for(let i=0;i<n;i++){const ax=x0+(x1-x0)*i/(n-1);g+=hA(ax,yc,mode==='two');}
   };
@@ -15648,9 +15652,11 @@ html.daylight .prof-seal{
   background:#fff4e8;background-image:none;border:1px solid #e3bb92;color:var(--copper-hi);box-shadow:none}
 html.daylight .btn-logout{
   background:#fdecea;background-image:none;border:1px solid #f0b4ab;color:#a02011;box-shadow:none}
-/* the yard-map viewport keeps its dark plate: the map's own linework is drawn
-   light, so a light backdrop would erase it. Its chrome is re-skinned above. */
-html.daylight .yi-vp{border-color:var(--line)}
+/* #ymday — the black layover is GONE in daylight: the map rides a light plate
+   now, and the furniture builders ink themselves dark when they see the sun
+   (the DAY flag inside yzFurniture). Zone boxes were always dark-filled with
+   light labels, so they read perfectly on either plate. */
+html.daylight .yi-vp{border-color:var(--line);background:radial-gradient(ellipse 90% 60% at 50% 40%,var(--plate-2),var(--void) 80%)}
 
 /* ══════════════════════════════════════════════════════════════════════════
    PART 3 — THE EXPANDABLES
