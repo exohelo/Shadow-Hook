@@ -7033,7 +7033,7 @@ async function dwPull(){
     }
   }catch(e){}
 }
-setInterval(function(){try{dwPull();}catch(e){}},45000);
+setInterval(function(){try{dwPull();}catch(e){} try{if(typeof sbLoadBoardWire==='function')sbLoadBoardWire();}catch(e){}},45000);   /* #noflop2 — the seal rides this pull even if realtime drops that one table */
 try{dwPull();}catch(e){}
 /* #37 — you can only hear the speaker at YOUR dispatch. The log opens with the
    flex call and closes shortly after the board dies — day 6:30→10:00, night
@@ -12750,18 +12750,22 @@ function bwBlank(k){return {k:k,patch:null,by:null,by_handle:null,yes:0,no:0,con
 /* #jul23b — a refused write used to VANISH here (swallowed catch), so a correction
    looked saved but never reached the wire — exactly the "won't let me edit" feel.
    Now every push reports to the Dev Log, and a refusal tells the hand out loud. */
-async function bwPush(row){
+async function bwPush(row,_retry){
   if(!window.SB){try{DEVLOG.data('board_wire WRITE',{ok:false,err:'no backend client'});}catch(e){} return false;}
   try{
     const r=await window.SB.from('board_wire').upsert(row,{onConflict:'k'});
     if(r&&r.error){
-      try{DEVLOG.data('board_wire WRITE',{ok:false,err:r.error.message+' — the wire REFUSED the write; if this mentions row-level security / permission, run shadowhook_fixes.sql'});}catch(e){}
+      /* #noflop2 — one quiet retry first: a NO FLOP pressed on hall wifi drops all
+         the time. Only after the SECOND miss do we tell the hand it didn't ride. */
+      if(!_retry){ setTimeout(function(){try{bwPush(row,1);}catch(e){}},2500); return false; }
+      try{DEVLOG.data('board_wire WRITE',{ok:false,err:r.error.message+' — the wire REFUSED the write; if this mentions row-level security / permission, run noflop_wire.sql'});}catch(e){}
       try{toast('⚠ saved on this phone only — the wire refused the write (⚙ dev log has why)');}catch(e){}
       return false;
     }
     try{DEVLOG.data('board_wire WRITE',{ok:true,rows:1,latest:row&&row.k?('upserted '+row.k):'upserted'});}catch(e){}
     return true;
   }catch(e){
+    if(!_retry){ setTimeout(function(){try{bwPush(row,1);}catch(e2){}},2500); return false; }
     try{DEVLOG.data('board_wire WRITE',{ok:false,err:e.message});}catch(_){}
     try{toast('⚠ saved on this phone only — the wire is unreachable (⚙ dev log has why)');}catch(_){}
     return false;
@@ -13130,7 +13134,8 @@ function liveSync(){
       .on('postgres_changes',{event:'*',schema:'public',table:'gatherings'},      function(){try{socPullSoon();}catch(e){}})   // directory is shared:
       .on('postgres_changes',{event:'*',schema:'public',table:'gathering_rsvps'}, function(){try{socPullSoon();}catch(e){}})   // rooms/RSVPs land live
       .on('postgres_changes',{event:'*',schema:'public',table:'stories'},         function(){try{sbLoadStories();}catch(e){}})   // #hub — the Stories wall lands live
-      .subscribe(function(s){ _liveOn=(s==='SUBSCRIBED'); try{console.log('[live] order sync:',s);}catch(e){} try{DEVLOG.note('realtime: '+s);}catch(e){} });
+      .subscribe(function(s){ _liveOn=(s==='SUBSCRIBED'); try{console.log('[live] order sync:',s);}catch(e){} try{DEVLOG.note('realtime: '+s);}catch(e){}
+        if(_liveOn){try{liveRefreshAll();}catch(e){}} });   /* #noflop2 — the moment the wire (re)connects, catch up on everything missed */
   }catch(e){}
 }
 try{liveSync();}catch(e){}
