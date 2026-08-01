@@ -321,6 +321,13 @@ html.daylight .dayBtn{box-shadow:0 5px 14px rgba(70,56,30,.2)}
 /* #72 — "APM – Yard Map": the name itself is the map button, up in the card header */
 .ymbtn{cursor:pointer;display:inline-flex;align-items:center;gap:7px;background:linear-gradient(184deg,var(--btn-hi),var(--btn-lo));border:1px solid rgba(238,180,107,.45);border-radius:8px;padding:5px 11px;font-weight:700;font-size:13.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--copper-hi);box-shadow:inset 0 1px 0 rgba(238,180,107,.14)}
 .ymbtn:active{transform:translateY(1px);filter:brightness(1.15)}
+/* #ports2 — the header pill is a pure TITLE now (hands kept reading the map
+   button as a name and never pressed it). The map action rides down in the
+   rows, right beside the GO column, lit so it can't be missed. */
+.ymgo{flex:none;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-family:inherit;font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--copper-hi);background:linear-gradient(184deg,var(--btn-hi),var(--btn-lo));border:1px solid rgba(var(--scg),.55);border-radius:7px;padding:7px 11px;box-shadow:0 0 12px rgba(var(--scg),.18),inset 0 1px 0 rgba(var(--scg),.16)}
+.ymgo:active{transform:translateY(1px);filter:brightness(1.15)}
+.ymgo.pending{opacity:.55;box-shadow:none}
+.ym-row .g b{letter-spacing:.05em}
 /* #47 — docket photo viewer */
 .sheet.lb{align-items:center}
 .lb-card{width:100%;max-width:460px;padding:0 16px calc(16px + env(safe-area-inset-bottom));transform:translateY(24px);transition:.25s}
@@ -8978,9 +8985,12 @@ function renderPorts(q){
   const el=document.getElementById('portList');el.innerHTML="";
   TERMINALS.filter(t=>portMatches(t,q)).forEach((t,i)=>{
     const gates=t.gates.map(g=>'<div class="gaterow"><div class="g">'+g.gate+'</div><a target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination='+g.lat+','+g.lng+'">➤ Go</a></div>').join("");
-    // #72 — yard map moved out of the gate rows and into the header:
-    // "APM – Yard Map" next to the name IS the map button now.
+    /* #ports2 — #72 undone, with lessons: the header pill read as a TITLE, so
+       hands never pressed it. The pill stays as the name; the map action now
+       rides its own lit row at the top of the gates, beside the GO column. */
     const pmOp=t.operator.replace(/'/g,""), pmLabel=[t.aka,t.operator].filter(Boolean).join(' · ').replace(/'/g,"");
+    const hasMap=!!YARD_MAPS[pmOp];
+    const ymRow='<div class="gaterow ym-row"><div class="g"><b>THE YARD MAP</b><br><span class="sub">'+(hasMap?'every row &amp; bay · in the vault':'not in the vault yet')+'</span></div><button type="button" class="ymgo'+(hasMap?'':' pending')+'" onclick="openYardMap(\''+pmOp+'\',\''+pmLabel+'\')">🗺 '+(hasMap?'MAP':'SOON')+'</button></div>';
     const now=dockToday(t.operator);
     const bs=shipsForTerminal(t);                       // #88b — tonight's dispatch sheet, this dock's slice
     const bsWorking=bs.filter(s=>!s.cancelled).length;
@@ -8997,7 +9007,7 @@ function renderPorts(q){
       if(lw)intel+='<p class="sub" style="margin-top:6px;color:#586067">Last worked by the Order: <b style="color:var(--steel)">'+lw.ship+'</b> · '+fmtD(lw.date)+' · '+lw.shift+'</p>';
     }
     intel+='</div>';
-    el.insertAdjacentHTML('beforeend','<div class="card"><div class="card-h port-h" data-i="'+i+'" style="cursor:pointer;flex-wrap:wrap"><button type="button" class="ymbtn" onclick="event.stopPropagation();openYardMap(\''+pmOp+'\',\''+pmLabel+'\')">🗺 '+t.operator+' – Yard Map</button>'+(function(){var lead=t.aka?t.aka+' · ':'';var ships=bsWorking>0?'🚢 '+bsWorking+' ship'+(bsWorking>1?'s':'')+' '+boardWhen()+' ▾':'tap for ships ▾';return ' <span class="tag">'+lead+ships+'</span>';})()+'</div><div class="card-b" style="padding-top:8px"><p class="sub" style="margin-bottom:4px">Berths '+t.berths+(t.security?' · security <a style="color:var(--copper-hi)" href="tel:'+t.security.replace(/\D/g,"")+'">'+t.security+'</a>':'')+'</p>'+gates+'</div><div class="detail">'+intel+'</div></div>');
+    el.insertAdjacentHTML('beforeend','<div class="card"><div class="card-h port-h" data-i="'+i+'" style="cursor:pointer;flex-wrap:wrap"><span class="ymbtn">⚓ '+t.operator+'</span>'+(function(){var lead=t.aka?t.aka+' · ':'';var ships=bsWorking>0?'🚢 '+bsWorking+' ship'+(bsWorking>1?'s':'')+' '+boardWhen()+' ▾':'tap for ships ▾';return ' <span class="tag">'+lead+ships+'</span>';})()+'</div><div class="card-b" style="padding-top:8px"><p class="sub" style="margin-bottom:4px">Berths '+t.berths+(t.security?' · security <a style="color:var(--copper-hi)" href="tel:'+t.security.replace(/\D/g,"")+'">'+t.security+'</a>':'')+'</p>'+ymRow+gates+'</div><div class="detail">'+intel+'</div></div>');
   });
   el.querySelectorAll('.port-h').forEach(h=>h.addEventListener('click',()=>{
     const card=h.parentElement;
@@ -15105,6 +15115,7 @@ function closeItsYard(){$i('itw').classList.remove('on');}
 window.openItsYard=openItsYard;window.closeItsYard=closeItsYard;
 
 try{ if(typeof YARD_MAPS!=='undefined'){ YARD_MAPS["ITS"]={interactive:true,its:true,note:"interactive — 10 phases, berths & rail; tap any spot, 📖 for the guide"}; } }catch(e){}
+try{ renderPorts(); }catch(e){} /* #ports2 — the vault maps above register AFTER the first paint; redraw so their 🗺 MAP buttons light instead of reading SOON */
 (function(){const orig=window.openYardMap;
   window.openYardMap=function(op,label){
     if(op==='ITS')return openItsYard(op,label);
