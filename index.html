@@ -5772,6 +5772,16 @@ function fmtStubDate(d){ try{return new Date(d+"T12:00").toLocaleDateString(unde
 function totalHoursOnBook(){
   let base=0, cutoff="";
   if(STUB && STUB.hours>0){ base=STUB.hours; cutoff=STUB.date||""; }
+  else{
+    /* #seed — a hand with no stub doesn't start at ZERO anymore: their card is on
+       the 07/13 posting, so their POSTED hours ride in as the baseline the moment
+       the gate knows them. Header, ladder, and pay estimates all inherit it; a
+       synced stub still replaces everything (that's their "update" path). */
+    try{
+      const id=(typeof ACCT_ID==="string"&&/^[A-Z]\d{3,5}$/.test(ACCT_ID))?ACCT_ID:null;
+      if(id && RACE_IDX[id]!=null){ base=RACE_LIST[RACE_IDX[id]][1]; cutoff=POSTING_PAID_THRU; }
+    }catch(e){}
+  }
   let extra=0;
   DOCKETS.forEach(j=>{ if(!cutoff || (j.date||"")>cutoff){ try{extra+=jobHours(j)||0}catch(e){} } });
   return base+extra;
