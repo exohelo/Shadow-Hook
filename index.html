@@ -4299,11 +4299,34 @@ function liveWindow(){ // between flex and end of the current board
 }
 function winKey(){const w=liveWindow();return w?nowLA().toDateString()+"_"+w:null} // #107 — which board a scan belongs to · #201 LA date
 function submitLiveCall(pos){ // no identity attached — a position IS a worker's number
-  pos=pos.toUpperCase().trim();
+  const r=applyLiveCall(pos,Date.now());
+  if(r===true){ try{lwPush(lastCall.pos);}catch(e){} }   /* #onewire — and every other phone hears it */
+  return r;
+}
+/* #onewire — ONE SHARED BOARD. The clock was always shared (same LA wall-clock
+   math on every phone); the POSITION never was — a scan only ever moved the
+   scanner's own reel, and the "backend makes it truly shared" note above sat
+   unpaid. Paid now: a scan lands locally AND rides live_wire; every phone
+   merges every call and the reel only ever moves FORWARD in board order. */
+function applyLiveCall(pos,ts){
+  pos=String(pos||'').toUpperCase().trim();
   if(posVal(pos)<0)return false;
-  if(!lastCall||posVal(pos)>posVal(lastCall.pos)){lastCall={pos:pos,ts:Date.now(),win:winKey()};return true}
+  if(!lastCall||posVal(pos)>posVal(lastCall.pos)){lastCall={pos:pos,ts:ts||Date.now(),win:winKey()};return true}
   return "behind"; // valid scan, but the board is already past it
 }
+function lwPush(pos){
+  try{ if(!window.SB||!liveWindow())return;
+    window.SB.from('live_wire').insert({k:winKey(),pos:pos,ts:Date.now()}).then(()=>{},()=>{});
+  }catch(e){}
+}
+async function sbLoadLiveCalls(){
+  try{
+    if(!window.SB||!liveWindow())return;
+    const r=await window.SB.from('live_wire').select('pos,ts').eq('k',winKey()).order('id',{ascending:false}).limit(40);
+    if(r&&!r.error&&Array.isArray(r.data))r.data.forEach(x=>{try{applyLiveCall(x.pos,+x.ts||Date.now());}catch(e){}});
+  }catch(e){}
+}
+setTimeout(function(){try{sbLoadLiveCalls();}catch(e){}},1500);   /* #onewire — a phone opened mid-dispatch catches up on where the board is */
 /* demo wire: other members' scans trickle in while a window is live */
 let simPos=null;
 /* live-board positions come from real member scans via the backend — no simulation on launch */
@@ -13090,13 +13113,14 @@ try{sbLoadBoardWire();}catch(e){}
    board log/correction, or a dispatch sheet from ANY hand lands on every screen at
    once. Falls back to a gentle pull if the socket can't hold (same as chat). */
 let _liveChan=null, _liveOn=false;
-function liveRefreshAll(){ try{dwPull();}catch(e){} try{cwSync();}catch(e){} try{sbLoadKmFlags();}catch(e){} try{sbLoadNotices();}catch(e){} try{sbLoadSheetLog();}catch(e){} try{sbLoadBoardWire();}catch(e){} try{sbLoadDispatch();}catch(e){} try{sbLoadHallLine();}catch(e){} try{sbLoadSocial();}catch(e){} try{sbLoadStories();}catch(e){} }
+function liveRefreshAll(){ try{dwPull();}catch(e){} try{cwSync();}catch(e){} try{sbLoadLiveCalls();}catch(e){} try{sbLoadKmFlags();}catch(e){} try{sbLoadNotices();}catch(e){} try{sbLoadSheetLog();}catch(e){} try{sbLoadBoardWire();}catch(e){} try{sbLoadDispatch();}catch(e){} try{sbLoadHallLine();}catch(e){} try{sbLoadSocial();}catch(e){} try{sbLoadStories();}catch(e){} }
 function liveSync(){
   if(!window.SB)return;
   try{
     _liveChan=window.SB.channel('order-live-'+Date.now())
       .on('postgres_changes',{event:'*',schema:'public',table:'drop_wire'},      function(){try{dwPull();}catch(e){}})
       .on('postgres_changes',{event:'*',schema:'public',table:'count_wire'},     function(){try{cwSync();}catch(e){}})   /* #countwire */
+      .on('postgres_changes',{event:'*',schema:'public',table:'live_wire'},      function(){try{sbLoadLiveCalls();}catch(e){}})   /* #onewire — every scan moves every reel */
       .on('postgres_changes',{event:'*',schema:'public',table:'km_flags'},       function(){try{sbLoadKmFlags();}catch(e){}})   /* #km — the Keymaster's word travels instantly */
       .on('postgres_changes',{event:'*',schema:'public',table:'km_notices'},     function(){try{sbLoadNotices();}catch(e){}})   /* #km2 — warnings & bans land live */
       .on('postgres_changes',{event:'*',schema:'public',table:'board_wire'},      function(){try{sbLoadBoardWire();}catch(e){}})
