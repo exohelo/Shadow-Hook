@@ -10218,6 +10218,15 @@ async function sbLoadSocial(){
     const rr=q[0],gg=q[1],vv=q[2],cc=q[3];
     if(rr.error||gg.error){console.warn('[social] load:',(rr.error||gg.error).message,'— run SOCIAL-SETUP.sql');return;}
     ALL_ROOMS=rr.data||[]; ALL_GATHS=gg.data||[];
+    /* #clean1 — key-ring hygiene: a joined-room key whose room no longer exists on
+       the server is a key to a demolished door (deleted rooms used to haunt the
+       floor as "old cache" forever). The select above returns EVERY room, public
+       and private, so pruning against it is safe — and only on a clean response. */
+    try{
+      const _ids={}; ALL_ROOMS.forEach(r=>{_ids[r.id]=1;});
+      const _jr=joinedRooms(), _keep=_jr.filter(j=>!j.id||_ids[j.id]);
+      if(_keep.length!==_jr.length)localStorage.setItem(K('joinedrooms'),JSON.stringify(_keep));
+    }catch(e){}
     RSVP_NAMES={};MY_RSVPS={};
     ((vv&&vv.data)||[]).forEach(v=>{
       (RSVP_NAMES[v.gathering_id]=RSVP_NAMES[v.gathering_id]||[]).push(v.by_handle||'a hand');
@@ -10326,10 +10335,7 @@ async function processPendingJoin(){
 const BUILTIN_ROOMS=[
   {n:"The Hall Floor",ico:"⚓",who:"the whole Order",tagline:"board talk · all divisions · masked handles",hero:true}
 ];
-const BUILTIN_GATHS=[
-  {n:"Harry Bridges Day",ico:"🕯",w:"Tue Jul 28",p:"Contract holiday — all hours OT",pill:"OT"},
-  {n:"CLRC List Watch",ico:"📜",w:"Posting window",p:"Alert armed on ilwu13.com",pill:"ARMED"}
-];
+const BUILTIN_GATHS=[];   /* #clean1 — the sample gatherings (Harry Bridges Day / CLRC List Watch) are retired: the board carries REAL gatherings only */
 
 /* unread + RSVP state — both ride K() keys, so they sync across a member's devices */
 let CHAT_SEEN={};try{CHAT_SEEN=JSON.parse(localStorage.getItem(K('chatseen'))||'{}')}catch(e){}
