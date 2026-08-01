@@ -1817,10 +1817,11 @@ window.DEVLOG=(function(){
       <div class="dl-pay">every drop you catch pays <b>+10 ⬡</b> <span style="opacity:.72">· first 6 a board</span></div><!-- #fix3: the cap is real, say so -->
       <div class="dl-hint" id="dropHint">150 UTR now… 40 swing later — they drop it in waves. Punch in each call.</div>
       <div class="row2">
-        <div><label class="lbl" for="dropN">How many</label><input class="field dl-num" id="dropN" type="text" inputmode="numeric" placeholder="150"></div>
+        <div><label class="lbl" for="dropN">How many</label><input class="field dl-num" id="dropN" type="text" inputmode="numeric" placeholder="0"></div>
         <div><label class="lbl" for="dropCat">What kind</label><select class="field" id="dropCat">
-          <option value="UTR">UTR</option><option value="FLEX">Flex UTR</option><option value="HOLD">Hold</option>
-          <option value="LASH">Lash</option><option value="SWING">Swing</option><option value="DOCK">Dock</option><option value="SL">Swing Lash</option><option value="DSIG">Dock Signal</option><option value="HL">Heavy Lift</option><option value="AUTO">Autos</option><option value="JIT">Jitney</option><option value="CY">CY</option><option value="SWMP">Swamper</option><option value="GEAR">Gear</option>
+          <option value="" disabled selected>Select</option>
+          <option value="UTR">UTR</option><option value="FLEX">Flex</option><option value="HOOTS">Hoots</option><option value="HOLD">Hold</option>
+          <option value="LASH">Lash</option><option value="SWING">Swing</option><option value="DOCK">Dock</option><option value="CRANE">Crane</option><option value="TOP">Top Pick</option><option value="SIDE">Side Pick</option><option value="RAIL">Rail</option><option value="BULL">Bull</option><option value="SL">Swing Lash</option><option value="DSIG">Dock Signal</option><option value="HL">Heavy Lift</option><option value="AUTO">Autos</option><option value="JIT">Jitney</option><option value="CY">CY</option><option value="SWMP">Swamper</option><option value="GEAR">Gear</option>
           <option value="?">They didn't say</option><option value="EST">Ballpark — whole board</option>
         </select></div>
       </div>
@@ -6911,7 +6912,7 @@ function finRecord(id,v){
    farmed. (Single-device for now — the backend cross-checks the crowd's drops.) */
 function dropPhase(ts){var d=nowLA(ts||Date.now()),m=d.getHours()*60+d.getMinutes();if(m>=NIGHT_OPEN)return m<17*60?"FLEX":(m<18*60?"1ST":"2ND");return m<7*60?"FLEX":(m<8*60?"1ST":"2ND");}
 const DROP_WAVE={FLEX:"Flex","1ST":"1st","2ND":"2nd"};
-const DROP_CATS={UTR:"UTR",FLEX:"Flex UTR",HOLD:"Hold",SWING:"Swing",SL:"Swing Lash",LASH:"Lash",DOCK:"Dock",DSIG:"Dock Signal",HL:"Heavy Lift",AUTO:"Autos",JIT:"Jitney",CY:"CY",SWMP:"Swamper",GEAR:"Gear","?":"they didn't say",EST:"ballpark"};
+const DROP_CATS={UTR:"UTR",FLEX:"Flex",HOOTS:"Hoots",HOLD:"Hold",SWING:"Swing",SL:"Swing Lash",LASH:"Lash",DOCK:"Dock",CRANE:"Crane",TOP:"Top Pick",SIDE:"Side Pick",RAIL:"Rail",BULL:"Bull",DSIG:"Dock Signal",HL:"Heavy Lift",AUTO:"Autos",JIT:"Jitney",CY:"CY",SWMP:"Swamper",GEAR:"Gear","?":"they didn't say",EST:"ballpark"};
 function dropWaves(list){var w={FLEX:0,"1ST":0,"2ND":0},est=0;list.forEach(function(x){if(x.cat==="EST"){est=Math.max(est,x.n);return;}var p=x.ph||dropPhase(x.ts);if(w[p]==null)p="2ND";w[p]+=x.n;});return {FLEX:w.FLEX,"1ST":w["1ST"],"2ND":w["2ND"],est:est};}
 function dropData(){try{const d=JSON.parse(localStorage.getItem(K("droplog"))||"{}");return d[dropKey()]||{drops:[],paid:0}}catch(e){return{drops:[],paid:0}}}
 function dropSave(o){try{const kk=K("droplog");const d=JSON.parse(localStorage.getItem(kk)||"{}");d[dropKey()]=o;localStorage.setItem(kk,JSON.stringify(d))}catch(e){}}
@@ -7076,7 +7077,7 @@ function renderDropLog(){
   h+=[...u.list].reverse().map(x=>{
     const tm=nowLA(x.ts);const hh=tm.getHours()%12||12, mm=String(tm.getMinutes()).padStart(2,"0"), ap=tm.getHours()<12?'a':'p';
     const wv=(x.cat==="EST")?null:(x.ph||dropPhase(x.ts));
-    return '<div class="dl-row"><span class="tm">'+hh+':'+mm+ap+'</span><span class="nn">'+(x.cat==="EST"?'~ ':'+')+x.n.toLocaleString()+'</span><span class="meta">'+DROP_CATS[x.cat]
+    return '<div class="dl-row"><span class="tm">'+hh+':'+mm+ap+'</span><span class="nn">'+(x.cat==="EST"?'~ ':'+')+x.n.toLocaleString()+'</span><span class="meta">'+(DROP_CATS[x.cat]||x.cat)
       +(wv?' · '+DROP_WAVE[wv]:'')
       +(x.backed?' · <span class="bk">backed ×'+x.backed+'</span>':'')
       +(!x.mine?' · <span class="by">'+String(x.by_handle||'a hand').replace(/</g,'')+'</span>':'')
@@ -7111,8 +7112,11 @@ document.getElementById('dropAdd').addEventListener('click',()=>{
   const n=parseInt((inp.value||"").replace(/\D/g,""),10);
   if(!isFinite(n)||n<1||n>5000){inp.focus();inp.style.borderColor="var(--ember)";return;}
   inp.style.borderColor="";
+  /* #drop2 — the kind starts on "Select" now; a drop can't ride the wire untyped */
+  const sel=document.getElementById('dropCat');
+  if(!sel.value){sel.style.borderColor="var(--ember)";setTimeout(()=>{sel.style.borderColor="";},900);try{toast("Pick what kind first");}catch(e){}return;}
   const o=dropData();
-  const d={n:n,cat:document.getElementById('dropCat').value,ph:dropPhase(Date.now()),ts:Date.now(),
+  const d={n:n,cat:sel.value,ph:dropPhase(Date.now()),ts:Date.now(),
     cid:Date.now().toString(36)+"-"+Math.floor(Math.random()*1e8).toString(36)};   // #118 — travels the wire under this id
   if(o.drops.some(function(x){return x.cat===d.cat&&x.n===d.n&&(x.ph||dropPhase(x.ts))===d.ph&&Math.abs(x.ts-d.ts)<12*60000;})){toast("Already logged that call this wave (counted once)");inp.value="";return;}
   o.drops.push(d);
