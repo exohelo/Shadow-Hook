@@ -2683,6 +2683,45 @@ window.DEVLOG=(function(){
     </div>
   </div>
 
+
+
+  <style>
+  /* #48e — the TTI stage is the light sign plate; give its guide an opaque backdrop in both themes */
+  #ttGuide{background:rgba(11,13,15,.94)}
+  html.daylight #ttGuide{background:rgba(240,242,245,.97)}
+  </style>
+  <!-- #48e — TTI · Total Terminals International interactive yard viewer · Pier T, berths 134-140 -->
+  <div class="yiw" id="ttw">
+    <div class="yi-top">
+      <button class="yi-back" id="ttBack" type="button" aria-label="Back">‹</button>
+      <div class="yi-id"><span class="ico">🗺</span><div><b id="ttName">TTI</b><span id="ttSub">—</span></div></div>
+      <button class="yi-guidebtn" id="ttGuideBtn" type="button">📖 GUIDE</button>
+    </div>
+    <div class="yi-search">
+      <input id="ttSearch" placeholder="Find a row, berth or spot — MM259, Berth 136, Power Shop…" autocomplete="off">
+      <div class="yi-sug" id="ttSug"></div>
+    </div>
+    <div class="yi-vp" id="ttVp">
+      <button class="yi-reset" id="ttReset" type="button">⤢ FIT</button>
+      <button class="yi-legend-btn" id="ttLegBtn" type="button">☰ LEGEND</button>
+      <div class="yi-stage" id="ttStage"></div>
+      <div class="yi-hint">PINCH ZOOM · DRAG · TAP A SPOT · DOUBLE-TAP</div>
+      <div class="yi-legend" id="ttLegend"><div class="lgc">
+        <h4>TTI Yard Legend</h4><div id="ttLegList"></div>
+        <button class="close" id="ttLegClose" type="button">Close</button>
+      </div></div>
+      <div class="yi-guide" id="ttGuide"><div class="ygc">
+        <div class="yg-top"><b>TTI TERMINAL GUIDE</b><button id="ttGuideClose" type="button">✕</button></div>
+        <div class="yg-body" id="ttGuideBody"></div>
+      </div></div>
+      <div class="yi-info" id="ttInfo">
+        <button class="close-i" id="ttInfoClose" type="button">✕</button>
+        <div class="ih"><span class="swatch" id="ttSw"></span><span class="nm" id="ttInfoNm">—</span><span class="cat" id="ttInfoCat"></span></div>
+        <div class="desc" id="ttInfoDesc"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- send word to the keymaster -->
   <div class="sheet" id="wordSheet">
     <div class="sheet-card" style="text-align:left">
@@ -15208,6 +15247,584 @@ $i('itSug').addEventListener('click',e=>{const b=e.target.closest('button[data-i
 })();
 window.addEventListener('resize',()=>{if($i('itw').classList.contains('on'))izFit();});
 })();
+</script>
+
+<script>
+/* #48e — TTI interactive vector yard map (Total Terminals International, Pier T) */
+/* ================= TTI · TOTAL TERMINALS INTERNATIONAL — interactive vector yard map =================
+   Vector redraw of the posted TTI wall map (Pier T · 301 Hanjin Road, Long Beach, CA 90802), in the sign's
+   own landscape layout and colors: white plate · green container rows · blue West Basin water · the blue
+   info panel (legend + emergency procedures + trucker & visitor rules) reproduced on the right, exactly
+   like the sign. Ocean Blvd & Gate 2 left/top · main gate, Pier T Ave (Hanjin Road), Power Shop & Liquid
+   Bulk top-right · berths 140-138-136-134 with cranes 1-14 along the basin · rail yard (14 tracks) curving
+   down the bottom-left to the Inspection Dock, Crane M&R and Rail Building at the tip.
+   Tap-to-select, search, legend, and the TTI guide (trucker rules + emergency procedures).
+   Hooks into openYardMap(): TTI opens this; other terminals untouched. */
+(function(){
+"use strict";
+const VBW=2260, VBH=2170;
+const TZ={
+  op:"TTI", name:"TOTAL TERMINALS INT'L", sub:"Pier T · 301 Hanjin Road · Berths 134–140",
+  vb:[0,0,VBW,VBH],
+  cats:{
+    row  :{c:"#9cc463",s:"#2c3a16",lc:"#0f1704",t:"CONTAINER ROW",d:"Grounded container row. End caps are the first & last piles — never drive between the stacks."},
+    ped  :{c:"#f4f1e6",s:"#23272b",lc:"#17191d",t:"YARD PEDESTALS",d:"Yard pedestals — reefer plug pedestals. Watch the cords and the light poles."},
+    bomb :{c:"#f2d23c",s:"#6b5a10",lc:"#241d04",t:"BOMB CART PARKING",d:"Bomb cart parking — slant-block carts staged here between moves."},
+    thp  :{c:"#d84a3a",s:"#5f150e",lc:"#ffffff",t:"T/H PARKING",d:"Top Handler parking. Heavy equipment staging — keep clear."},
+    fac  :{c:"#f4f1e6",s:"#23272b",lc:"#15181c",t:"FACILITY",d:"Terminal facility / building."},
+    bldg :{c:"#17191d",s:"#4a4f56",lc:"#f0ede2",t:"BUILDING",d:"Terminal building."},
+    gate :{c:"#c9ccd1",s:"#43474c",lc:"#17191d",t:"GATE",d:"Terminal gate — truck lanes. 15 MPH at the gate; watch for the pedestrian crossing."},
+    rail :{c:"#eae6da",s:"#4a4f55",lc:"#33373c",t:"RAIL YARD",d:"On-dock rail yard — 14 tracks. Trains built & worked here; stay off the tracks."},
+    road :{c:"#a9adb3",s:"#7c8086",lc:"#26292d",t:"ROAD",d:"Public road at the terminal boundary."},
+    berth:{c:"#767c83",s:"#33373c",lc:"#f0ede2",t:"VESSEL BERTH",d:"Ship works alongside here. Stay clear of all ship operations — never under the hook."},
+    park :{c:"#dcd8cc",s:"#5a5e64",lc:"#26292d",t:"PARKING / STAGING",d:"Parking / staging area."},
+    cust :{c:"#eef0f5",s:"#274b8f",lc:"#274b8f",t:"US CUSTOMS",d:"US Customs inspection area."}
+  },
+  legend:[["row","Container row"],["bomb","Bomb cart parking"],["thp","T/H (Top Handler) parking"],
+    ["ped","Yard pedestals"],["berth","Vessel berth · cranes 1–14"],["gate","Gate — truck lanes"],
+    ["rail","Rail yard — 14 tracks"],["bldg","Terminal building"],["fac","Facility"],
+    ["park","Parking / staging"],["cust","US Customs inspection"],["road","Ocean Blvd / Pier T Ave / Reeves"]],
+  spots:[]
+};
+
+/* ---- bay number → x on the sign (piecewise per section, cross-aisles between) ---- */
+function bx(b){
+  if(b<=258) return 132+(b-101)*2.255;
+  if(b<=373) return 500+(b-259)*2.263;
+  if(b<=478) return 772+(b-375)*2.252;
+  if(b<=607) return 1018+(b-479)*2.250;
+  return 1320+(b-608)*2.257;
+}
+/* row levels: letter → [y,h] (top of the sign downward) */
+const LV={Z:[168,24],Y:[200,21],X:[224,21],W:[262,21],T:[286,21],S:[324,20],R:[347,20],
+          P:[384,24],NN:[425,24],MM:[466,86],EE:[570,26],DD:[612,20],CC:[635,20],BB:[676,80],AA:[772,92]};
+
+/* ============================ SPOTS ============================ */
+(function(){
+  const S=TZ.spots;
+  const add=(id,label,cat,x,y,w,h,extra)=>{S.push(Object.assign({id,label:label||id,cat,x:Math.round(x),y:Math.round(y),w:Math.round(w),h:Math.round(h)},extra||{}));};
+  /* container row: id like MM259 from letter+b0 */
+  const row=(L,b0,b1,extra)=>{
+    const lv=LV[L]||[0,22]; const e=extra||{};
+    const y=e.y!==undefined?e.y:lv[0], h=e.h!==undefined?e.h:lv[1];
+    const x0=bx(b0)-3, x1=bx(b1)+5;
+    const lb=(e.lb)||(L+b0+" - "+L+b1);
+    add(L+b0,lb,"row",x0,y,x1-x0,h,Object.assign({tg:e.tg!==undefined?e.tg:L,
+      desc:"Container row "+L+" — bays "+b0+"–"+b1+". End caps are the first & last piles."},e));
+  };
+  /* ---- SECTION 1 · bays 101-258 ---- */
+  row("Z",101,258);
+  row("Y",101,258); row("X",101,258);
+  row("W",101,258); row("T",101,258);
+  row("S",101,258); row("R",101,258);
+  row("P",101,259);
+  row("NN",103,243);
+  row("MM",103,243);
+  row("EE",107,243);
+  row("DD",107,243); row("CC",107,243);
+  row("BB",101,243);
+  row("AA",101,237,{desc:"Container row AA — bays 101–237. First row off the wharf apron; Bldg L (restroom) at the east end."});
+  /* ---- SECTION 2 · bays 259-373 ---- */
+  row("Y",259,373); row("X",259,373);
+  row("W",259,373); row("T",259,373);
+  row("S",259,373); row("R",259,373);
+  row("P",259,373);
+  row("NN",259,373);
+  row("MM",259,363);
+  row("EE",259,361);
+  row("DD",259,361); row("CC",259,361);
+  row("BB",259,361);
+  row("AA",259,355);
+  /* ---- SECTION 3 · bays 375-478 (X runs long, 375-624) ---- */
+  row("X",375,624,{y:212,h:28,desc:"Container row X — bays 375–624. The long row under the Ocean Blvd fence, past Gate 2."});
+  row("W",375,478); row("T",375,478);
+  row("S",375,478); row("R",375,478);
+  row("P",375,478);
+  row("NN",375,477);
+  row("MM",375,469);
+  row("EE",375,467);
+  row("DD",375,467); row("CC",375,467);
+  row("BB",375,467);
+  row("AA",375,461,{desc:"Container row AA — bays 375–461. Bldg K (restroom · first aid) at the east end."});
+  /* ---- SECTION 4 · bays 479-607 ---- */
+  row("W",479,607); row("T",479,607);
+  row("S",479,607); row("R",479,607);
+  row("P",479,607);
+  row("NN",479,605,{lb:"NN479 - 605"});
+  row("MM",481,595);
+  row("EE",479,595);
+  row("DD",479,595); row("CC",479,595);
+  row("BB",493,639,{desc:"Container row BB — bays 493–639, running past the 600 break to the yard pedestals."});
+  row("AA",499,599,{desc:"Container row AA — bays 499–599. Gear room on the apron; Bldg J (restroom) at the east end."});
+  /* ---- SECTION 5 · bays 608-748 ---- */
+  row("T",608,748,{y:283,h:24});
+  row("S",608,748); row("R",608,748);
+  row("P",608,748);
+  row("NN",607,671,{y:419,h:22});
+  row("N",681,748,{y:447,h:22,tg:"N",desc:"Container row N — bays 681–748."});
+  row("MM",607,667);
+  row("M",678,748,{y:466,h:26,tg:null,tgR:"M",desc:"Container row M — bays 678–748."});
+  row("L",678,748,{y:500,h:26,tg:null,tgR:"L",desc:"Container row L — bays 678–748."});
+  row("EE",607,735);
+  row("DD",607,735); row("CC",607,735);
+  row("C",646,748,{y:770,h:22,tg:"C",desc:"Container row C — bays 646–748, under the yard pedestals."});
+  row("AA",609,748,{y:800,h:100,desc:"Container row AA — bays 609–748, the big block on the Berth 134 pier. Bomb cart parking both sides."});
+
+  /* ---- yard furniture blocks ---- */
+  add("PEDS","YARD PEDESTALS","ped",1330,676,306,76,{desc:"Yard pedestals — reefer plug racks with light poles. Mind the cords."});
+  add("BOMB1","BOMB CART PARKING","bomb",1103,908,260,18,{fs:10,desc:"Bomb cart parking — upper strip, off the AA 600s block."});
+  add("THPKG","T/H PKG.","thp",1370,908,62,18,{fs:8.5,desc:"Top Handler parking — red strip at the end of the bomb cart row."});
+  add("BOMB2","BOMB CART PARKING","bomb",1180,932,262,18,{fs:10,desc:"Bomb cart parking — wharf-side strip on the Berth 134 pier."});
+  add("GEAR","GEAR ROOM","bldg",1012,868,68,26,{fs:9,desc:"Gear room — lashing gear & tools for the ship gangs."});
+  add("BLDGL","Bldg. L","bldg",450,806,26,42,{nolabel:1,desc:"Building L — restroom on the apron between AA237 and AA259."});
+  add("BLDGK","Bldg. K","bldg",976,806,26,42,{nolabel:1,desc:"Building K — restroom & first aid station, between AA461 and AA499."});
+  add("BLDGJ","Bldg. J","bldg",1292,806,26,42,{nolabel:1,desc:"Building J — restroom at the end of AA599, before the Berth 134 pier."});
+  add("RFR","RFR WASH","fac",452,258,36,26,{fs:7,desc:"Reefer wash — at the W258 / T258 end caps."});
+  add("CUSTOMS","US CUSTOMS INSPECTION","cust",150,16,150,44,{fs:9,wrap:1,desc:"US Customs inspection area, off Ocean Blvd."});
+
+  /* ---- roads & gates ---- */
+  add("OCEAN","Ocean Blvd.","road",30,64,1520,56,{ghost:1,nolabel:1,desc:"Ocean Blvd — the public road along the top fence. Gate 2 and the 47 Freeway are off it."});
+  add("FWY47","47 FWY","fac",790,28,138,58,{ghost:1,nolabel:1,desc:"Route 47 — the Terminal Island Freeway, off Ocean Blvd."});
+  add("GATE2","Gate 2","gate",560,88,140,74,{ghost:1,nolabel:1,desc:"Gate 2 — in/out off Ocean Blvd, by the security bldg. 15 MPH at the gate."});
+  add("SECB2","Security Bldg.","bldg",760,116,30,32,{nolabel:1,desc:"Security building at Gate 2."});
+  add("TP1","Trouble Parking","park",1660,60,150,64,{ghost:1,nolabel:1,desc:"Trouble parking — on the entry loop by the drivers service building."});
+  add("DRVSRV","Drivers Service Bldg & Restroom","park",1800,118,230,64,{ghost:1,nolabel:1,desc:"Drivers service building & restroom, on the entry loop."});
+  add("TP2","Trouble Parking","park",1990,30,240,110,{ghost:1,nolabel:1,desc:"Trouble parking — along the entry from Pier T Ave, at the corner."});
+  add("ROADAB","Roadability","bldg",1773,241,82,24,{nolabel:1,desc:"Roadability — chassis roadability check. Telephone here."});
+  add("ADMIN","Administration Building","bldg",1923,274,82,98,{nolabel:1,desc:"Administration building — AED, restroom & first aid station."});
+  add("PEDX","Ped Xing","gate",2019,284,56,98,{ghost:1,nolabel:1,desc:"Pedestrian crossing at the gate area — rule 2: watch for pedestrians here."});
+  add("GATE1","Main Gate","gate",1950,400,96,156,{ghost:1,nolabel:1,desc:"Main gate — inbound/outbound truck lanes off Pier T Ave (Hanjin Road). 15 MPH."});
+  add("SECB1","Security Building","bldg",1969,603,55,58,{nolabel:1,desc:"Security building — telephone & first aid. Terminal security: channel 1."});
+  add("PIERT","Pier T Ave (Hanjin Road)","road",2100,190,84,540,{ghost:1,nolabel:1,desc:"Pier T Ave — Hanjin Road. The entry road down the east side to the main gate."});
+  add("LIQB","LIQUID BULK","fac",2101,767,96,206,{rot:1,fs:14,desc:"Liquid bulk terminal — tank farm dock on the east side."});
+  add("PWRSHOP","POWER SHOP","fac",1828,555,95,444,{rot:1,fs:17,desc:"Power shop — terminal equipment maintenance & repair. Restroom, telephone & first aid station."});
+  add("MAREQ","Marine Equipment Parking","park",2046,845,55,173,{rot:1,fs:8.5,desc:"Marine equipment parking — restroom, AED & assembly area alongside."});
+  add("MAROPS","MARINE OPERATIONS BUILDING","fac",1958,1030,116,100,{fs:9,wrap:1,desc:"Marine operations building — first aid station, AED & assembly area alongside."});
+  /* ---- rail / west side ---- */
+  add("RAILY","RAIL YARD","rail",40,400,100,700,{ghost:1,nolabel:1,desc:"On-dock rail yard — 14 tracks down the Reeves Ave side, curving to the point. Trains built & worked here."});
+  add("INSPD","Inspection Dock","bldg",250,1420,120,60,{inv:1,ghost:1,nolabel:1,desc:"Inspection dock — on the rail curve, basin side."});
+  add("CRANEMR","Crane M&R","bldg",350,1500,110,50,{inv:1,ghost:1,nolabel:1,desc:"Crane maintenance & repair, out on the point."});
+  add("RAILB","Rail Building","bldg",355,1600,100,44,{inv:1,ghost:1,nolabel:1,desc:"Rail building — restroom, first aid, AED & assembly area at the point."});
+  add("EXITT","Exit Terminal","gate",24,130,110,160,{ghost:1,nolabel:1,desc:"Terminal exit — out to Ocean Blvd."});
+  add("REEVES","Reeves Ave.","road",20,320,56,420,{ghost:1,nolabel:1,desc:"Reeves Ave — boundary road along the rail yard."});
+  /* ---- berths (ship hulls; labels drawn sign-style below) ---- */
+  add("B140","Berth 140 · Cranes 1–3","berth",150,1056,320,46,{hull:1,nolabel:1,desc:"Berth 140 — cranes 1–3. Ship works alongside; stay clear of ship operations."});
+  add("B138","Berth 138 · Cranes 4–6","berth",510,1056,265,46,{hull:1,nolabel:1,desc:"Berth 138 — cranes 4–6. Ship works alongside; stay clear of ship operations."});
+  add("B136","Berth 136 · Cranes 7–9","berth",785,1056,230,46,{hull:1,nolabel:1,desc:"Berth 136 — cranes 7–9. Ship works alongside; stay clear of ship operations."});
+  add("B134","Berth 134 · Cranes 10–14","berth",1062,1056,286,46,{hull:1,nolabel:1,desc:"Berth 134 — cranes 10–14, on the West Basin. Ship works alongside; stay clear of ship operations."});
+})();
+TZ.byId={}; TZ.spots.forEach(s=>TZ.byId[s.id]=s);
+
+
+/* ============================ FURNITURE (the sign itself) ============================ */
+/* icon helpers — the sign's legend symbols */
+const IC={
+  hyd:(x,y)=>`<circle cx="${x}" cy="${y}" r="5.4" fill="#d0342c" stroke="#5f0f0a" stroke-width="1"/>`,
+  lp :(x,y)=>`<rect x="${x-5.5}" y="${y-5.5}" width="11" height="11" fill="#f2d23c" stroke="#4a3d08" stroke-width="1.2"/>`,
+  Rb :(x,y)=>`<g><rect x="${x-7.5}" y="${y-7.5}" width="15" height="15" rx="2" fill="#2f6fbe" stroke="#12325c" stroke-width="1"/><text x="${x}" y="${y+4.3}" text-anchor="middle" fill="#fff" font-family="'Barlow Condensed',sans-serif" font-weight="700" font-size="12">R</text></g>`,
+  Ab :(x,y)=>`<g><rect x="${x-8.5}" y="${y-8.5}" width="17" height="17" rx="2" fill="#2e9e4f" stroke="#0d3f1c" stroke-width="1"/><text x="${x}" y="${y+4.8}" text-anchor="middle" fill="#fff" font-family="'Barlow Condensed',sans-serif" font-weight="700" font-size="13">A</text></g>`,
+  aed:(x,y)=>`<g><rect x="${x-12}" y="${y-7}" width="24" height="14" rx="7" fill="#d63384" stroke="#5c1136" stroke-width="1"/><text x="${x}" y="${y+3.8}" text-anchor="middle" fill="#fff" font-family="'Barlow Condensed',sans-serif" font-weight="700" font-size="9.5">AED</text></g>`,
+  fa :(x,y)=>`<g><rect x="${x-7.5}" y="${y-7.5}" width="15" height="15" rx="2" fill="#fff" stroke="#8a1712" stroke-width="1.3"/><path d="M${x-2},${y-5.5} h4 v3.5 h3.5 v4 h-3.5 v3.5 h-4 v-3.5 h-3.5 v-4 h3.5 z" fill="#c1201a"/></g>`,
+  ph :(x,y)=>`<text x="${x}" y="${y+5.5}" text-anchor="middle" font-size="16" fill="#c1201a">☎</text>`,
+  stok:(x,y)=>`<g stroke="#17191d" stroke-width="1.1" fill="#f4f1e6"><rect x="${x-8}" y="${y-6}" width="16" height="12"/><path d="M${x-4},${y-6} v12 M${x},${y-6} v12 M${x+4},${y-6} v12 M${x-8},${y-2} h16 M${x-8},${y+2} h16"/></g>`
+};
+const TXT=(x,y,s,size,opt)=>{const o=opt||{};return `<text x="${x}" y="${y}" fill="${o.c||'#17191d'}" font-family="${o.mono?"'IBM Plex Mono',monospace":"'Barlow Condensed',sans-serif"}" font-weight="${o.w||700}" font-size="${size}" letter-spacing="${o.ls!==undefined?o.ls:0.5}" text-anchor="${o.a||'middle'}" ${o.r?`transform="rotate(${o.r} ${x} ${y})"`:''} ${o.o?`opacity="${o.o}"`:''}>${s}</text>`;};
+const ARR=(x,y,ang,len,col,wid)=>{const L=len||18,c=col||'#17191d',w=wid||2.6;
+  return `<g transform="rotate(${ang} ${x} ${y})"><path d="M${x-L/2},${y} L${x+L/2},${y} M${x+L/2},${y} L${x+L/2-6},${y-4.4} M${x+L/2},${y} L${x+L/2-6},${y+4.4}" stroke="${c}" stroke-width="${w}" fill="none" stroke-linecap="round"/></g>`;};
+
+function tzFurniture(){
+  let g='';
+  /* ---- the sign plate ---- */
+  g+=`<rect x="6" y="6" width="${VBW-12}" height="${VBH-12}" rx="26" fill="#eeebe0" stroke="#17191d" stroke-width="5"/>`;
+  [[34,34],[VBW-34,34],[34,VBH-34],[VBW-34,VBH-34]].forEach(p=>{g+=`<circle cx="${p[0]}" cy="${p[1]}" r="8" fill="#c9c5b8" stroke="#7c7869" stroke-width="2"/><circle cx="${p[0]}" cy="${p[1]}" r="2.6" fill="#8a8678"/>`;});
+
+  /* ---- WATER: everything below the wharf, up the east side notch ---- */
+  const BLU='#2e7cc3';
+  g+=`<rect x="14" y="985" width="${VBW-28}" height="${VBH-999}" fill="${BLU}"/>`;
+  /* ---- RAIL YARD band down the west edge, curving to the point ---- */
+  g+=`<path d="M36,120 L136,120 L136,1180 Q140,1400 300,1560 L470,1690 L430,1750 L240,1610 Q40,1440 36,1180 Z" fill="#eae6da" stroke="#5b5f66" stroke-width="1.5"/>`;
+  for(let i=0;i<9;i++){const o=12+i*12.5;
+    g+=`<path d="M${36+o},128 L${36+o},1180 Q${40+o*0.95},${1385-i*4} ${188+o*0.9},${1530-i*5} L${330+o*0.8},${1648-i*5}" fill="none" stroke="#8d9096" stroke-width="1.3"/>`;}
+  g+=TXT(86,760,'-14 —— TRACKS —— 1-',10,{r:-90,mono:1,ls:1,c:'#33373c'});
+  g+=TXT(88,1035,'RAIL YARD',20,{ls:7,r:-90,c:'#33373c'});
+  g+=TXT(26,560,'REEVES AVE.',13,{ls:2,r:-90});
+  /* light poles down the outer (Reeves) edge + the curve */
+  [[22,240],[22,420],[22,600],[22,780],[22,960],[24,1140],[40,1330],[100,1480],[200,1590],[320,1680]].forEach(p=>{g+=IC.lp(p[0]+4,p[1]);});
+  /* inspection dock · crane M&R · rail building on the point */
+  [[262,1452],[298,1482],[334,1512]].forEach(p=>{g+=`<rect x="${p[0]}" y="${p[1]}" width="30" height="10" fill="#17191d" transform="rotate(40 ${p[0]} ${p[1]})"/>`;});
+  g+=TXT(408,1428,'INSPECTION',10.5,{a:'start'})+TXT(408,1441,'DOCK',10.5,{a:'start'});
+  g+=`<path d="M404,1436 L340,1470" stroke="#17191d" stroke-width="1"/>`;
+  [[376,1548],[412,1578]].forEach(p=>{g+=`<rect x="${p[0]}" y="${p[1]}" width="34" height="13" fill="#17191d" transform="rotate(40 ${p[0]} ${p[1]})"/>`;});
+  g+=TXT(492,1544,'CRANE M&R',10.5,{a:'start'});
+  g+=`<path d="M488,1548 L432,1570" stroke="#17191d" stroke-width="1"/>`;
+  g+=`<rect x="392" y="1622" width="34" height="15" fill="#17191d" transform="rotate(32 392 1622)"/>`;
+  g+=TXT(478,1636,'RAIL',10.5,{a:'start'})+TXT(478,1649,'BUILDING',10.5,{a:'start'});
+  g+=`<path d="M474,1640 L436,1644" stroke="#17191d" stroke-width="1"/>`;
+  g+=IC.Rb(354,1592)+IC.fa(376,1614)+IC.aed(420,1600)+IC.Ab(398,1664)+IC.hyd(340,1560)+IC.hyd(440,1688);
+  /* compass — N with the needle, like the sign */
+  g+=`<circle cx="250" cy="1900" r="105" fill="#f4f1e6" stroke="#17191d" stroke-width="3"/>`;
+  g+=TXT(250,1858,'N',30,{ls:0});
+  g+=`<path d="M250,1812 L250,1985 M250,1985 L238,1958 M250,1985 L262,1958 M240,1822 L250,1812 L260,1822" stroke="#17191d" stroke-width="3.5" fill="none" stroke-linecap="round"/>`;
+
+  /* ---- OCEAN BLVD across the top + 47 FWY + customs + exits ---- */
+  g+=`<rect x="14" y="64" width="1536" height="56" fill="#a9adb3"/>`;
+  g+=`<path d="M1550,64 L1700,72 L1720,124 L1550,120 Z" fill="#a9adb3"/>`;
+  g+=TXT(290,100,'OCEAN BLVD.',22,{ls:3});
+  g+=`<rect x="790" y="28" width="138" height="58" rx="5" fill="#f4f1e6" stroke="#17191d" stroke-width="1.8"/>`;
+  g+=TXT(859,66,'47 FWY',17,{ls:1});
+  g+=TXT(30,205,'EXIT TERMINAL',11,{r:-90,ls:1});
+  g+=ARR(60,150,-90,24,'#17191d',3);
+  /* Gate 2 stub + security bldg */
+  g+=`<rect x="566" y="120" width="128" height="44" fill="#b9bcc1" stroke="#7c8086" stroke-width="1"/>`;
+  g+=TXT(630,114,'GATE 2',13.5,{ls:1});
+  g+=ARR(600,142,90,16)+ARR(660,142,-90,16);
+  g+=IC.lp(556,130)+IC.lp(704,130);
+  g+=TXT(800,110,'SECURITY',9.5,{a:'start'})+TXT(800,121,'BLDG.',9.5,{a:'start'});
+  /* fence dots along the top, gate 2 → NE corner */
+  for(let i=0;i<7;i++){g+=IC.lp(850+i*110,132);} for(let i=0;i<6;i++){g+=IC.hyd(905+i*110,132);}
+
+  /* ---- WHARF · STOKES · CRANES · SHIPS · BERTH LABELS ---- */
+  g+=`<path d="M146,985 L1800,985" fill="none" stroke="#17191d" stroke-width="3"/>`;
+  [[260,997],[490,997],[750,997],[1030,997],[1390,997],[1600,997]].forEach(p=>{g+=IC.stok(p[0],p[1]);});
+  [[210,970],[470,970],[730,970],[990,970],[1250,970],[1510,970],[1710,970]].forEach(p=>{g+=IC.lp(p[0],p[1]);});
+  [[340,970],[600,970],[860,970],[1120,970],[1380,970],[1620,970]].forEach(p=>{g+=IC.hyd(p[0],p[1]);});
+  const crane=(x,y,n)=>`<g><rect x="${x-5}" y="${y}" width="10" height="54" fill="#c1201a"/><rect x="${x-14}" y="${y-9}" width="28" height="9" fill="#c1201a"/><rect x="${x-9}" y="${y+19}" width="18" height="16" rx="2" fill="#fff" stroke="#c1201a" stroke-width="1.5"/><text x="${x}" y="${y+32}" text-anchor="middle" font-family="'Barlow Condensed',sans-serif" font-weight="700" font-size="13.5" fill="#17191d">${n}</text></g>`;
+  [[195,1],[305,2],[415,3]].forEach(c=>{g+=crane(c[0],990,c[1]);});
+  [[552,4],[650,5],[748,6]].forEach(c=>{g+=crane(c[0],990,c[1]);});
+  [[812,7],[905,8],[998,9]].forEach(c=>{g+=crane(c[0],990,c[1]);});
+  [[1090,10],[1145,11],[1200,12],[1255,13],[1310,14]].forEach(c=>{g+=crane(c[0],990,c[1]);});
+  g+=TXT(310,1140,'BERTH 140',16,{ls:2})+TXT(642,1140,'BERTH 138',16,{ls:2})+TXT(900,1140,'BERTH 136',16,{ls:2})+TXT(1200,1140,'BERTH 134',16,{ls:2});
+  g+=TXT(1560,1032,'WEST BASIN',20,{ls:3,c:'#0d3a66'});
+  return g;
+}
+
+/* ---- NE complex down the right side — under the tappable spots ---- */
+function tzFurniture2(){
+  let g='';
+  const RD='#a9adb3', RD2='#b9bcc1';
+  /* the marine-ops / liquid-bulk shore: land patch over the water, east side */
+  g+=`<path d="M1800,985 L1810,970 L2246,970 L2246,1140 L2150,1160 L2050,1185 L1950,1175 L1862,1090 Z" fill="#eeebe0"/>`;
+  /* Pier T Ave — down the east edge to the gate, then on toward the shore */
+  g+=`<path d="M1720,96 C1950,110 2090,150 2130,230 C2160,300 2158,420 2140,560 C2126,680 2110,760 2098,830" fill="none" stroke="${RD}" stroke-width="38" stroke-linecap="round"/>`;
+  /* entry loop: trouble parking / drivers service */
+  g+=`<path d="M2060,140 C1960,120 1850,120 1790,142 C1740,160 1700,158 1676,146" fill="none" stroke="${RD2}" stroke-width="20" stroke-linecap="round"/>`;
+  g+=`<path d="M1676,146 C1650,128 1660,104 1700,94 C1760,80 1850,78 1930,88" fill="none" stroke="${RD2}" stroke-width="14" stroke-linecap="round"/>`;
+  g+=`<path d="M1810,160 C1830,196 1850,220 1880,244" fill="none" stroke="${RD2}" stroke-width="14"/>`;
+  g+=`<path d="M1998,556 C1998,576 1996,592 1996,603" fill="none" stroke="${RD2}" stroke-width="16"/>`;
+  /* trouble parking labels */
+  g+=TXT(1725,66,'TROUBLE PARKING',10,{r:-14,ls:1});
+  g+=TXT(2124,72,'TROUBLE PARKING',10,{r:-52,ls:1});
+  /* drivers service building — the thick angled bar */
+  g+=`<path d="M1806,150 L1988,132" stroke="#6f7379" stroke-width="26" stroke-linecap="round" fill="none"/>`;
+  g+=TXT(1900,98,'DRIVERS SERVICE',10.5,{ls:1})+TXT(1900,110,'BUILDING & RESTROOM',10.5,{ls:1});
+  g+=IC.Rb(2014,146);
+  /* circulation arrows */
+  g+=ARR(1850,130,184,16)+ARR(1740,150,196,16)+ARR(1700,100,8,16)+ARR(1830,84,2,16);
+  g+=ARR(2094,180,50,16)+ARR(2146,320,88,16)+ARR(2148,470,94,16)+ARR(2128,650,98,16);
+  g+=ARR(1900,230,60,14)+ARR(1930,254,40,14);
+  /* roadability + phone */
+  g+=TXT(1765,232,'ROADABILITY',10,{a:'end',ls:1});
+  g+=IC.ph(1808,222);
+  /* administration building label + icons (blob is the spot) */
+  g+=TXT(1964,252,'ADMINISTRATION',10.5,{ls:.5})+TXT(1964,264,'BUILDING',10.5,{ls:.5});
+  g+=IC.aed(1900,290)+IC.Rb(1908,330)+IC.fa(1908,354);
+  /* PED XING hatch */
+  g+=`<rect x="2019" y="284" width="56" height="98" fill="#eeebe0" stroke="#5b5f66" stroke-width="1"/>`;
+  for(let i=0;i<11;i++){g+=`<path d="M2019,${292+i*9} L2075,${284+i*9}" stroke="#5b5f66" stroke-width="2"/>`;}
+  g+=TXT(2088,330,'PED XING',9.5,{r:-90,ls:1});
+  /* main GATE lanes */
+  g+=`<rect x="1950" y="400" width="96" height="156" fill="#c9ccd1" stroke="#5b5f66" stroke-width="1.2"/>`;
+  for(let i=1;i<6;i++){g+=`<path d="M${1950+i*16},400 L${1950+i*16},556" stroke="#eeebe0" stroke-width="2.4"/>`;}
+  for(let i=0;i<5;i++){g+=ARR(1958+i*16+8,530,-90,14,'#17191d',2.2);}
+  g+=TXT(2062,478,'GATE',13.5,{r:-90,ls:3});
+  /* security building label + icons */
+  g+=TXT(2036,632,'SECURITY BUILDING',9.5,{r:-90,ls:.5});
+  g+=IC.ph(1952,596)+IC.fa(1996,672)+IC.Rb(1954,668);
+  /* Pier T Ave label */
+  g+=TXT(2152,660,'PIER T AVE (HANJIN ROAD)',12,{r:-90,ls:1.5});
+  /* the loop oval + assembly island below the power shop */
+  g+=`<ellipse cx="1902" cy="1075" rx="52" ry="44" fill="#eeebe0" stroke="${RD}" stroke-width="15"/>`;
+  g+=IC.Ab(1902,1075);
+  /* marine equipment parking icons */
+  g+=IC.Rb(2028,860)+IC.aed(2028,884)+IC.Ab(2028,908)+IC.hyd(2028,930);
+  /* marine ops icons */
+  g+=IC.fa(1942,1050)+IC.aed(1942,1074)+IC.Ab(1942,1098)+IC.Rb(1942,1122)+IC.hyd(2084,1044);
+  /* small piers off the shore */
+  [[2150,1150],[2190,1170]].forEach(p=>{g+=`<rect x="${p[0]}" y="${p[1]}" width="52" height="15" fill="#eeebe0" stroke="#5b5f66" stroke-width="1" transform="rotate(-18 ${p[0]} ${p[1]})"/>`;});
+  /* fence dots down the east side */
+  [[1750,300],[1755,470],[1760,640],[1930,760]].forEach(p=>{g+=IC.lp(p[0],p[1]);});
+  [[1752,380],[1758,556],[1900,700]].forEach(p=>{g+=IC.hyd(p[0],p[1]);});
+  return g;
+}
+
+/* ---- layer ABOVE the spots: row letter tags, aisle arrows, icons that ride on spots ---- */
+function tzTop(){
+  let g='';
+  TZ.spots.forEach(sp=>{
+    if(sp.tg) g+=TXT(sp.x-8,sp.y+sp.h/2+3.5,sp.tg,10,{a:'end',c:'#17191d',ls:0});
+    if(sp.tgR) g+=TXT(sp.x+sp.w+8,sp.y+sp.h/2+3.5,sp.tgR,10,{a:'start',c:'#17191d',ls:0});
+  });
+  const DARR=(x,y)=>`<path d="M${x-11},${y} L${x+11},${y} M${x-11},${y} L${x-5},${y-4} M${x-11},${y} L${x-5},${y+4} M${x+11},${y} L${x+5},${y-4} M${x+11},${y} L${x+5},${y+4}" stroke="#1f5148" stroke-width="2.2" fill="none" stroke-linecap="round"/>`;
+  const lvC={Z:180,YX:222,WT:285,SR:345,P:396,NN:437,MM:509,EE:583,DC:633,BB:716,AA:818};
+  [[493,['Z','YX','WT','SR','P','NN','MM','EE','DC','BB','AA']],
+   [765,['YX','WT','SR','P','NN','MM','EE','DC','BB','AA']],
+   [1011,['WT','SR','P','NN','MM','EE','DC','BB','AA']],
+   [1313,['WT','SR','P','NN','MM','EE','DC']]].forEach(G=>{
+    G[1].forEach(k=>{g+=DARR(G[0],lvC[k]);});
+  });
+  /* red hydrants at the S/R ends, like the posted dots */
+  [[498,336],[770,336],[1014,336],[1316,336],[128,336],[1642,336]].forEach(p=>{g+=IC.hyd(p[0],p[1]);});
+  [[498,560],[770,560],[1014,560],[1316,560]].forEach(p=>{g+=IC.hyd(p[0],p[1]);});
+  /* buildings L · K · J + gear room icons/labels */
+  g+=IC.Rb(463,796); g+=TXT(463,862,'BLDG. L',8.5,{});
+  g+=IC.Rb(989,796); g+=IC.fa(989,860); g+=TXT(989,874,'BLDG. K',8.5,{});
+  g+=IC.Rb(1305,796); g+=IC.hyd(1305,860); g+=TXT(1305,874,'BLDG. J',8.5,{});
+  /* power shop icons — riding on the tall white box */
+  g+=IC.Ab(1875,575)+IC.Rb(1875,620)+IC.ph(1875,668)+IC.fa(1875,714);
+  [[1836,566],[1916,566],[1836,988],[1916,988]].forEach(p=>{g+=IC.hyd(p[0],p[1]);});
+  g+=IC.Ab(1808,528);
+  /* yard pedestal light poles */
+  [[1360,700],[1480,694],[1600,700],[1400,740],[1560,742]].forEach(p=>{g+=IC.lp(p[0],p[1]);});
+  return g;
+}
+
+/* ---- the blue info panel, straight off the sign — sits on the water, bottom right ---- */
+function tzPanel(){
+  let g='';
+  /* title box */
+  g+=`<rect x="938" y="1192" width="1272" height="96" rx="10" fill="#f7f5ee" stroke="#17191d" stroke-width="2"/>`;
+  g+=TXT(1574,1236,'TOTAL TERMINALS INTERNATIONAL',34,{ls:.5});
+  g+=TXT(1574,1272,'PIER T • 301 HANJIN ROAD • LONG BEACH, CA 90802',18,{ls:1});
+  /* body box */
+  g+=`<rect x="938" y="1300" width="1272" height="844" rx="10" fill="#f7f5ee" stroke="#17191d" stroke-width="2"/>`;
+  g+=`<path d="M1520,1320 L1520,2124" stroke="#c9c4b4" stroke-width="1.5"/>`;
+  /* LEGEND */
+  g+=TXT(1228,1352,'LEGEND',22,{ls:2});
+  g+=`<path d="M1150,1364 L1306,1364" stroke="#17191d" stroke-width="2"/>`;
+  const li=[["Ab","ASSEMBLY AREA"],["hyd","FIRE HYDRANT"],["lp","LIGHT POLE"],["Rb","RESTROOM"],
+            ["ph","TELEPHONE"],["stok","STOKES BASKET"],["fa","FIRST AID STATION"],["aed","AED"]];
+  li.forEach((it,i)=>{const y=1400+i*42; g+=IC[it[0]](1010,y); g+=TXT(1042,y+5.5,it[1],16.5,{a:'start',ls:1});});
+  /* EMERGENCY PROCEDURES */
+  g+=TXT(1228,1782,'EMERGENCY PROCEDURES',20,{ls:1});
+  g+=`<path d="M1026,1794 L1430,1794" stroke="#17191d" stroke-width="2"/>`;
+  const ep1=["In the event of an emergency, you will be","directed to one of the designated assembly","areas by supervision."];
+  const ep2=["Remain at the designated assembly area for","an official accounting of personnel, and","issuance of further instruction."];
+  let ey=1824;
+  ep1.forEach(l=>{g+=TXT(972,ey,l,14.5,{a:'start',w:500,ls:.2}); ey+=20;});
+  g+=IC.Ab(1236,ey-26); ey+=12;
+  ep2.forEach(l=>{g+=TXT(972,ey,l,14.5,{a:'start',w:500,ls:.2}); ey+=20;});
+  ey+=18;
+  g+=TXT(972,ey,'For Fire Department / Paramedic or',15,{a:'start'}); ey+=20;
+  g+=TXT(972,ey,'Police:  Call 911',15,{a:'start'}); ey+=32;
+  g+=TXT(972,ey,'Terminal Security : Channel 1',15.5,{a:'start'});
+  /* TRUCKER & VISITOR RULES */
+  g+=TXT(1866,1352,'TRUCKER & VISITOR RULES',21,{ls:1});
+  g+=`<path d="M1704,1364 L2028,1364" stroke="#17191d" stroke-width="2"/>`;
+  const rules=[
+    ["1.",["ABSOLUTELY NO PASSENGERS ALLOWED IN TRUCK."]],
+    ["2.",["WATCH FOR PEDESTRIAN CROSSING AT GATE AREA."]],
+    ["3.",["SPEED LIMIT IN CONTAINER YARD IS 25 M.P.H. (15","M.P.H. AT THE GATE) AND WILL BE STRICTLY ENFORCED."]],
+    ["4.",["ALL DRIVERS ARE TO COME TO A COMPLETE STOP AT","ALL STOP SIGNS AND INTERSECTIONS."]],
+    ["5.",["DO NOT CUT ACROSS TRAFFIC LANES OR CONTAINER","RUNS."]],
+    ["6.",["YARDS HORN SIGNALS:","   1 BLAST:    STOP","   2 BLASTS:  PULL FORWARD","   3 BLASTS:  BACK UP"]],
+    ["7.",["DRIVERS MUST REMAIN INSIDE THEIR VEHICLES."]],
+    ["8.",["ALL YARD EQUIPMENT HAS THE RIGHT OF WAY AT ALL","TIMES!"]],
+    ["9.",["STAY CLEAR OF ALL SHIP OPERATIONS."]],
+    ["10.",["ABSOLUTELY NO PARKING OR STOPPING ON THE","CRANE TRACKS, GANTRY BACKREACH, RED CURBS, FIRE","LANES, OR OTHER NON-DESIGNATED AREAS."]],
+    ["11.",["IF YOU EXPERIENCE ANY PROBLEMS SEE A","SUPERINTENDENT OR SECURITY OFFICER."]]
+  ];
+  let ry=1398;
+  rules.forEach(r=>{
+    r[1].forEach((l,i)=>{ if(i===0)g+=TXT(1552,ry,r[0],13.5,{a:'start',w:700});
+      g+=TXT(1580,ry,l,13.5,{a:'start',w:500,ls:.2}); ry+=19; });
+    ry+=10;
+  });
+  return g;
+}
+
+/* ================= viewer engine ================= */
+const tz={x:0,y:0,scale:1,min:.2,max:6,sel:null};
+function $t(id){return document.getElementById(id);}
+
+function tzRender(){
+  const st=$t('ttStage');if(!st)return;const vb=TZ.vb;let shapes='';
+  /* a few spots ride on furniture the sign already draws — keep them as invisible tap targets */
+  ["FWY47","GATE2","SECB2","DRVSRV"].forEach(id=>{const s=TZ.byId[id];if(s){s.ghost=1;s.nolabel=1;}});
+  TZ.spots.forEach(sp=>{
+    const cat=TZ.cats[sp.cat]||TZ.cats.fac;
+    const cx=sp.x+sp.w/2, cy=sp.y+sp.h/2;
+    const rx=sp.hull?sp.h/2:4;
+    const fo=sp.inv?0:(sp.ghost?0.10:1), so=sp.inv?0:(sp.ghost?0.30:0.95);
+    let label='';
+    if(!sp.nolabel&&!sp.ghost){
+      const lc=cat.lc||'#0f1704';
+      if(sp.rot){
+        const fs=sp.fs||Math.max(9,Math.min(sp.h/(sp.label.length*0.52),sp.w*0.62,16));
+        label=`<text x="${cx}" y="${cy}" text-anchor="middle" dy="0.34em" transform="rotate(-90 ${cx} ${cy})" fill="${cat.lc||'#0f1704'}" font-family="'Barlow Condensed',sans-serif" font-weight="700" font-size="${(+fs).toFixed(1)}" letter-spacing="0.8" style="pointer-events:none">${sp.label}</text>`;
+      } else if(sp.wrap){
+        const words=sp.label.split(' ');const lines=[];let cur='';
+        const maxc=Math.max(6,Math.floor(sp.w/((sp.fs||9)*0.52)));
+        words.forEach(w=>{ if((cur+' '+w).trim().length>maxc&&cur){lines.push(cur);cur=w;}else cur=(cur+' '+w).trim(); });
+        if(cur)lines.push(cur);
+        const fs=sp.fs||9, lh=fs+2.5, y0=cy-((lines.length-1)*lh)/2;
+        lines.forEach((l,i)=>{label+=`<text x="${cx}" y="${y0+i*lh}" dy="0.32em" text-anchor="middle" fill="${lc}" font-family="'Barlow Condensed',sans-serif" font-weight="700" font-size="${fs}" style="pointer-events:none">${l}</text>`;});
+      } else {
+        const fs=sp.fs||Math.max(8.5,Math.min(sp.w/(sp.label.length*0.52),sp.h*0.62,15));
+        label=`<text x="${cx}" y="${cy}" dy="0.34em" text-anchor="middle" fill="${lc}" font-family="'Barlow Condensed',sans-serif" font-weight="700" font-size="${(+fs).toFixed(1)}" letter-spacing="0.3" style="pointer-events:none">${sp.label}</text>`;
+      }
+    }
+    shapes+=`<g class="sp" data-id="${sp.id}"><rect x="${sp.x}" y="${sp.y}" width="${sp.w}" height="${sp.h}" rx="${rx}" fill="${cat.c}" fill-opacity="${fo}" stroke="${cat.s}" stroke-width="1.4" stroke-opacity="${so}"/>${label}</g>`;
+  });
+  st.innerHTML=`<svg width="${vb[2]}" height="${vb[3]}" viewBox="${vb.join(' ')}" xmlns="http://www.w3.org/2000/svg">${tzFurniture()}${tzFurniture2()}${shapes}${tzTop()}${tzPanel()}</svg>`;
+}
+function tzApply(){const st=$t('ttStage');if(st)st.style.transform=`translate(${tz.x}px,${tz.y}px) scale(${tz.scale})`;}
+function tzFit(){
+  const vp=$t('ttVp');if(!vp||!vp.clientWidth)return;const vb=TZ.vb;
+  const s=Math.min(vp.clientWidth/vb[2],vp.clientHeight/vb[3])*0.97;
+  tz.scale=s;tz.min=s*.85;tz.max=Math.max(s*10,5);
+  tz.x=(vp.clientWidth-vb[2]*s)/2;tz.y=(vp.clientHeight-vb[3]*s)/2;tzApply();
+}
+function tzZoomAt(pt,f){const r=$t('ttVp').getBoundingClientRect();const px=pt.x-r.left,py=pt.y-r.top;
+  const ns=Math.min(tz.max,Math.max(tz.min,tz.scale*f)),k=ns/tz.scale;
+  tz.x=px-(px-tz.x)*k;tz.y=py-(py-tz.y)*k;tz.scale=ns;}
+function tzCenterOn(sp,zoom){const vp=$t('ttVp');const ns=zoom||Math.max(tz.min*2.6,Math.min(tz.max,1.2));tz.scale=ns;
+  const cx=sp.x+sp.w/2,cy=sp.y+sp.h/2;tz.x=vp.clientWidth/2-cx*ns;tz.y=vp.clientHeight/2-cy*ns;tzApply();}
+function tzSelect(id,center){
+  const sp=TZ.byId[id];if(!sp)return;tz.sel=id;
+  document.querySelectorAll('#ttStage .sp').forEach(g=>g.classList.toggle('sel',g.dataset.id===id));
+  const cat=TZ.cats[sp.cat]||TZ.cats.fac;
+  $t('ttSw').style.background=cat.s;$t('ttInfoNm').textContent=sp.label;
+  $t('ttInfoCat').textContent=cat.t;$t('ttInfoDesc').textContent=sp.desc||cat.d;
+  $t('ttInfo').classList.add('on');if(center)tzCenterOn(sp);
+}
+function tzCloseInfo(){$t('ttInfo').classList.remove('on');
+  document.querySelectorAll('#ttStage .sp').forEach(g=>g.classList.remove('sel'));tz.sel=null;}
+function tzSearch(q){
+  const sug=$t('ttSug');q=q.trim().toLowerCase();
+  if(!q){sug.classList.remove('on');sug.innerHTML='';return;}
+  const score=s=>{const id=s.id.toLowerCase(),lb=s.label.toLowerCase();
+    if(id===q||lb===q)return 0;if(id.startsWith(q)||lb.startsWith(q))return 1;
+    if(lb.includes(q))return 2;if(id.includes(q))return 3;return 9;};
+  const hits=TZ.spots.map(s=>[s,score(s)]).filter(a=>a[1]<9)
+    .sort((a,b)=>a[1]-b[1]).slice(0,8).map(a=>a[0]);
+  if(!hits.length){sug.classList.remove('on');sug.innerHTML='';return;}
+  sug.innerHTML=hits.map(s=>{const c=TZ.cats[s.cat]||TZ.cats.fac;
+    return `<button data-id="${s.id}"><span class="dot" style="background:${c.s}"></span>${s.label}<span class="t">${c.t}</span></button>`;}).join('');
+  sug.classList.add('on');
+}
+
+/* ================= TTI TERMINAL GUIDE (off the sign) ================= */
+function tzRenderGuide(){
+  const esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const rules=[
+    "Absolutely NO passengers allowed in truck.",
+    "Watch for pedestrian crossing at gate area.",
+    "Speed limit in container yard is 25 MPH (15 MPH at the gate) — strictly enforced.",
+    "All drivers are to come to a complete stop at all stop signs and intersections.",
+    "Do not cut across traffic lanes or container runs.",
+    "Yard horn signals — see below.",
+    "Drivers must remain inside their vehicles.",
+    "All yard equipment has the right of way at all times!",
+    "Stay clear of all ship operations.",
+    "Absolutely no parking or stopping on the crane tracks, gantry backreach, red curbs, fire lanes, or other non-designated areas.",
+    "If you experience any problems see a superintendent or security officer."
+  ];
+  return `
+    <div class="yg-safe">⚠ Speed limit: 25 MPH in the container yard · 15 MPH at the gate — strictly enforced.</div>
+    <h5 class="yg-h ok">🚚 TRUCKER &amp; VISITOR RULES</h5>
+    <ul class="yg-ul do">${rules.map(r=>`<li>${esc(r)}</li>`).join('')}</ul>
+    <h5 class="yg-h">📣 Yard Horn Signals</h5>
+    <div class="yg-honks"><div class="yg-honk"><b>1 Blast</b><span>STOP</span></div><div class="yg-honk"><b>2 Blasts</b><span>Pull Forward</span></div><div class="yg-honk"><b>3 Blasts</b><span>Back Up</span></div></div>
+    <h5 class="yg-h no">⚠ EMERGENCY PROCEDURES</h5>
+    <dl class="yg-terms">
+      <dt>Assembly areas — the green Ⓐ squares</dt><dd>In the event of an emergency, you will be directed to one of the designated assembly areas by supervision. Remain there for an official accounting of personnel and issuance of further instruction.</dd>
+      <dt>Fire Department / Paramedic / Police</dt><dd>Call 911.</dd>
+      <dt>Terminal Security</dt><dd>Channel 1.</dd>
+    </dl>
+    <h5 class="yg-h">🗺 On this map</h5>
+    <dl class="yg-terms">
+      <dt>Berths 134–140 · Cranes 1–14</dt><dd>Berth 140 works cranes 1–3, berth 138 cranes 4–6, berth 136 cranes 7–9, and berth 134 cranes 10–14 on the West Basin.</dd>
+      <dt>Bomb cart parking · T/H parking</dt><dd>Yellow strips on the Berth 134 pier; the red strip is Top Handler parking.</dd>
+      <dt>Rail yard — 14 tracks</dt><dd>Curves down the Reeves Ave side to the point: inspection dock, crane M&amp;R and the rail building.</dd>
+    </dl>
+    <p class="yg-src">From the posted TTI terminal map — Total Terminals International, Pier T · 301 Hanjin Road, Long Beach, CA 90802. For reference — obey posted signs and your foreman.</p>`;
+}
+
+/* ---- open / close, wired into the app's yard-map flow ---- */
+function openTtiYard(op,label){
+  $t('ttName').textContent=TZ.name;
+  $t('ttSub').textContent=label&&label!==TZ.op?label:TZ.sub;
+  tzRender();tzCloseInfo();
+  $t('ttSearch').value='';$t('ttSug').classList.remove('on');
+  $t('ttLegend').classList.remove('on');$t('ttGuide').classList.remove('on');
+  $t('ttw').classList.add('on');
+  requestAnimationFrame(()=>{tzFit();requestAnimationFrame(tzFit);});
+}
+function closeTtiYard(){$t('ttw').classList.remove('on');}
+window.openTtiYard=openTtiYard;window.closeTtiYard=closeTtiYard;
+
+try{ if(typeof YARD_MAPS!=='undefined'){ YARD_MAPS["TTI"]={interactive:true,tti:true,note:"interactive — the Pier T wall map, row by row; 📖 for the trucker rules"}; } }catch(e){}
+(function(){const orig=window.openYardMap;
+  window.openYardMap=function(op,label){
+    if(op==='TTI')return openTtiYard(op,label);
+    if(typeof orig==='function')return orig(op,label);
+  };})();
+try{ if(typeof renderPorts==='function'){ const s=document.getElementById('portSearch'); renderPorts(s?s.value:""); } }catch(e){}
+try{ if(typeof renderDockets==='function') renderDockets(); }catch(e){}
+
+/* ---- event wiring ---- */
+tzRender();
+$t('ttBack').addEventListener('click',closeTtiYard);
+$t('ttReset').addEventListener('click',tzFit);
+$t('ttLegBtn').addEventListener('click',()=>{
+  const icons=[["Ab","Assembly area"],["hyd","Fire hydrant"],["lp","Light pole"],["Rb","Restroom"],
+               ["ph","Telephone"],["stok","Stokes basket"],["fa","First aid station"],["aed","AED"]];
+  $t('ttLegList').innerHTML=TZ.legend.map(([k,name])=>{const c=TZ.cats[k];
+    return `<div class="lg"><span class="dot" style="background:${c.c};border:1.5px solid ${c.s}"></span>${name}</div>`;}).join('')
+    +icons.map(ic=>`<div class="lg"><span class="dot" style="background:none;border:0;position:relative"><svg width="24" height="18" viewBox="-3 0 24 18" style="position:absolute;left:-3px;top:0">${IC[ic[0]](9,9)}</svg></span>${ic[1]}</div>`).join('');
+  $t('ttLegend').classList.add('on');
+});
+$t('ttLegClose').addEventListener('click',()=>$t('ttLegend').classList.remove('on'));
+$t('ttGuideBtn').addEventListener('click',()=>{const gb=$t('ttGuideBody');if(!gb.dataset.built){gb.innerHTML=tzRenderGuide();gb.dataset.built="1";}$t('ttGuide').classList.add('on');});
+$t('ttGuideClose').addEventListener('click',()=>$t('ttGuide').classList.remove('on'));
+$t('ttInfoClose').addEventListener('click',tzCloseInfo);
+const ttSearchEl=$t('ttSearch');
+ttSearchEl.addEventListener('input',e=>tzSearch(e.target.value));
+$t('ttSug').addEventListener('click',e=>{const b=e.target.closest('button[data-id]');if(!b)return;
+  ttSearchEl.value='';$t('ttSug').classList.remove('on');tzSelect(b.dataset.id,true);});
+
+/* ---- pan / pinch / tap engine ---- */
+(function(){
+  const vp=$t('ttVp');if(!vp)return;
+  const pts=new Map();let lastDist=0,lastMid=null,lastTap=0,downT=null,moved=0;
+  vp.addEventListener('pointerdown',e=>{
+    if(e.target.closest&&e.target.closest('.yi-info,.yi-legend,.yi-guide,.yi-reset,.yi-legend-btn'))return;
+    vp.setPointerCapture(e.pointerId);pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(pts.size===1){downT=e.target;moved=0;const now=Date.now();
+      if(now-lastTap<300){if(tz.scale>tz.min*1.7)tzFit();else{tzZoomAt({x:e.clientX,y:e.clientY},2.3);tzApply();}lastTap=0;downT=null;}
+      else lastTap=now;}
+    if(pts.size===2){const a=[...pts.values()];lastDist=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y);
+      lastMid={x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2};downT=null;}
+  });
+  vp.addEventListener('pointermove',e=>{if(!pts.has(e.pointerId))return;const p=pts.get(e.pointerId);
+    if(pts.size===1){const dx=e.clientX-p.x,dy=e.clientY-p.y;moved+=Math.abs(dx)+Math.abs(dy);tz.x+=dx;tz.y+=dy;tzApply();}
+    p.x=e.clientX;p.y=e.clientY;
+    if(pts.size===2){const a=[...pts.values()];const d=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y);
+      const mid={x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2};
+      if(lastDist>0)tzZoomAt(mid,d/lastDist);
+      if(lastMid){tz.x+=mid.x-lastMid.x;tz.y+=mid.y-lastMid.y;}
+      lastDist=d;lastMid=mid;tzApply();}
+  });
+  const up=e=>{
+    if(pts.size===1&&downT&&moved<8){const g=downT.closest&&downT.closest('.sp');if(g)tzSelect(g.dataset.id);}
+    pts.delete(e.pointerId);lastDist=0;lastMid=null;downT=null;
+  };
+  vp.addEventListener('pointerup',up);vp.addEventListener('pointercancel',up);
+  vp.addEventListener('wheel',e=>{e.preventDefault();tzZoomAt({x:e.clientX,y:e.clientY},e.deltaY<0?1.15:.87);tzApply();},{passive:false});
+})();
+window.addEventListener('resize',()=>{if($t('ttw').classList.contains('on'))tzFit();});
+})();
+
 </script>
 <style id="daylight-v2">
 /* ══════════════════════════════════════════════════════════════════════════
