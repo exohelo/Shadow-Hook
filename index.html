@@ -4695,6 +4695,41 @@ function pendingStartCard(){
        if(last) return handoffCard(last); }catch(e){}   /* #noflop0 */
   return "";
 }
+/* ===== #anchor(aug2) — IS THIS BOARD'S OPENING CARD REAL, OR CARRIED OVER? =====
+   pendingStartCard() falls back to the last board's OWN start whenever that board was
+   never sealed (handoffCard: no end card → r.start), and publishCall falls back again
+   to a hardcoded card when there's no record at all. Those fallbacks exist so the
+   header never reads "—" — they are NOT this board's opening card. The header saying
+   "Starting on F5031" off a board that ran four days ago is a guess, and every
+   prediction hung off it is a dispatch or more behind: a hand got the "you're in the
+   firing line" alert in his pocket while he was already out on a job, because the
+   engine was still measuring him against the LAST dispatch's opening card.
+   The opening card counts as CONFIRMED only when both hold:
+     · the board before this one is SEALED — it carries an end card on the record, so
+       the handoff is a real next-card and not its own start handed forward
+     · that board is the one immediately before this one — no unrecorded dispatch in
+       between (boards run AM and PM every day, so the previous slot is the previous
+       half-day)
+   The wire still draws its call either way — guessing out loud on screen is the job.
+   The PHONE alert is different: a buzz in your pocket at work can't be taken back,
+   so it waits for the opening card. See pushOddsAlert. */
+function prevSlotKey(){
+  const amPending=String(callSlot).endsWith("AM");
+  const d=new Date(nd2.getTime());
+  if(amPending)d.setDate(d.getDate()-1);            // this morning's board follows last night's
+  const ds=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  return ds+(amPending?"_2":"_1");
+}
+function startConfirmed(){
+  try{
+    const last=(typeof lastCompletedBoard==="function"&&lastCompletedBoard())||null;
+    if(!last||!last.start||!last.end)return false;                       // never sealed → carried over
+    if(!/^[A-Z]\d{3,5}$/.test(String(handoffCard(last)).toUpperCase()))return false;
+    const k=last.date+(String(last.slot).endsWith("AM")?"_1":"_2");
+    return k===prevSlotKey();                                            // and it's the board right before
+  }catch(e){return false;}
+}
+window.startConfirmed=startConfirmed;
 renderCallStart();
 /* ===== THE ENGINE — the Keymaster's method: match the numbers, not the average =====
    v1 simulated 6-month slot averages: backtested WORSE than guessing "no move"
@@ -5561,7 +5596,10 @@ function renderMyOdds(startId, moved){
   const hi=(window._lastStageO&&window._lastStageO.hi!=null)?window._lastStageO.hi:moved;
   const inLine = d <= (hi+1.15);
   const word=pct>=25?"Suit up \u2014 you\u2019re in it.":pct>=15?"Good shot \u2014 worth showing.":pct>=8?"Coin flip \u2014 your call.":pct>=3?"Long shot, but you\u2019re on the board.":"Right at the edge of the call.";
-  window._lastOdds={pct:pct,word:word,reached:Math.round(p*100),catch:Math.round(catchRate*100),inLine:inLine,dist:Math.round(d*10)/10};
+  /* #anchor(aug2) — carry the anchor's state with the odds, so the bell and the alert
+     can't disagree about whether this call is standing on a real opening card. */
+  const anchored=(typeof startConfirmed==="function")?startConfirmed():true;
+  window._lastOdds={pct:pct,word:word,reached:Math.round(p*100),catch:Math.round(catchRate*100),inLine:inLine,anchored:anchored,dist:Math.round(d*10)/10};
   /* per the Keymaster: the % is NOT shown in the app — it travels only in the phone alert.
      Only the bell (the required permission switch) renders here. */
   el.innerHTML='<button class="btn-line gold ob" id="oddsBell" type="button" onclick="toggleOddsAlerts()"><span class="ob-ic">\uD83D\uDD14</span> <span class="ob-t">Notify me when I\u2019m in the firing line</span></button>'
@@ -5752,9 +5790,14 @@ function renderBell(){
   if(ic)ic.textContent = on ? "\uD83D\uDD14" : "\uD83D\uDD15";
   if(t)t.textContent = on ? "Alerts on \u2014 I\u2019ll ping you when you\u2019re up" : "Notify me when I\u2019m in the firing line";
   const sub=document.getElementById('oddsBellSub');
-  if(sub)sub.textContent = on
-    ? "You\u2019ll get a phone alert when the board\u2019s predicted to reach your number, and a live ping as it nears you during dispatch. Tap to turn off."
-    : "A phone alert when the board\u2019s predicted to reach your number \u2014 and a live ping as it nears you during dispatch.";
+  /* #anchor(aug2) — when the opening card hasn't landed, say so instead of going quiet.
+     A hand who knows the alert is HELD won't read the silence as "I'm not up". */
+  const anchored=(typeof startConfirmed!=="function")||startConfirmed();
+  if(sub)sub.textContent = !on
+    ? "A phone alert when the board\u2019s predicted to reach your number \u2014 and a live ping as it nears you during dispatch."
+    : (anchored
+       ? "You\u2019ll get a phone alert when the board\u2019s predicted to reach your number, and a live ping as it nears you during dispatch. Tap to turn off."
+       : "Alerts on \u2014 holding until this board\u2019s starting card lands. Until the last board is sealed the call is running off the dispatch before it, and that\u2019s not worth a buzz in your pocket. The live ping during dispatch still rides real scans.");
 }
 async function toggleOddsAlerts(){
   if(typeof Notification==="undefined"){alert("This browser can't send phone alerts. Open the app in Chrome (Android) or add it to your home screen (iPhone, iOS 16.4+).");return;}
@@ -5769,16 +5812,22 @@ function pushOddsAlert(force){
   if(!notifyPrefOn() || typeof Notification==="undefined" || Notification.permission!=="granted") return;
   const my=myBoardId(); const od=window._lastOdds;
   if(!my || !od) return;
-  /* #204 \u2014 only ping the firing line: people the board is realistically predicted to reach.
-     Not in the line? No alert \u2014 except the one-time confirmation when you flip it on. */
-  if(!force && !od.inLine) return;
+  /* #anchor(aug2) — AND the opening card has to be REAL. "In the firing line" measured
+     off a carried-over start is measured off the LAST dispatch, which is how a hand got
+     buzzed at work that his number was coming up. No confirmed opening card, no
+     firing-line alert — not even a forced one, which would otherwise put the same wrong
+     claim in the confirmation ping. It isn't lost, just held: the moment the previous
+     board is sealed, repredict → publishCall → renderMyOdds → here, and it goes out
+     then. (The dedup key below is only written once an alert actually fires.) */
+  const line = !!od.inLine && startConfirmed();
+  if(!force && !line) return;
   const key="odds_"+callSlot+"_"+todayISO();                    // one alert per board, not per reload
   try{ if(!force && localStorage.getItem(K("lastNotif"))===key) return;
        localStorage.setItem(K("lastNotif"), key); }catch(e){}
   /* #204 \u2014 phone-friendly: the TITLE front-loads the message (phones truncate hard) \u2014 no bare
      "%" that reads as "1% chance toni...", and no confusing "flops past you". */
   let title, body;
-  if(od.inLine){
+  if(line){
     title="\u2693 You\u2019re in the firing line";
     body=my+" \u00b7 the "+callSlot.replace("_"," ")+" board is predicted to reach your number. "+od.word;
   }else{
