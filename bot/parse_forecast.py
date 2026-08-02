@@ -108,6 +108,88 @@ def find_row(text_lines, name):
     return None, -1
 
 
+# ── #aug1 — FUZZY BOARD RESCUE ─────────────────────────────────────────────
+def _lev(a, b):
+    """Levenshtein distance — tiny DP, fine for board-name-length strings."""
+    if a == b:
+        return 0
+    if not a or not b:
+        return max(len(a), len(b))
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i]
+        for j, cb in enumerate(b, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)))
+        prev = cur
+    return prev[-1]
+
+def rescue_rows(lines, boards, claimed, warnings):
+    """#aug1 — calibrated on the 080126N sheet, where the UTR board's LABEL
+    OCR'd into garble, the exact-match pass dropped the whole row, and the
+    published total quietly shed ~250 UTR jobs (the boards summed to exactly
+    the headline — the fallback's fingerprint). A board row whose NUMBERS
+    survived but whose NAME didn't is recoverable: find table-shaped lines
+    (6+ value cells) that no exact pass claimed, and fuzzy-match their labels
+    against the boards still missing. UTR — the board casuals live on — gets
+    the loosest leash. Every rescue is logged in `warnings`."""
+    missing = [n for n in BOARDS if n not in boards]
+    if not missing:
+        return -1
+    last_i = -1
+    for i, ln in enumerate(lines):
+        if not missing:
+            break
+        if i in claimed:
+            continue
+        raw = ln.lstrip()
+        if re.match(r"(grand\s+)?totals?\b", raw, re.I):
+            continue                                   # the totals row is not a board
+        toks_all = raw.split()
+        label_toks = []
+        for t in toks_all:
+            if clean_num(t) is not None:               # a number cell (even a garbled one) — the label is over
+                break
+            if not re.fullmatch(r"[A-Za-z0-9 .\-/']+", t) or not re.search(r"[A-Za-z]", t):
+                break                                  # symbol junk / letterless — not a name fragment ('U7R' IS one)
+            label_toks.append(t)
+            if len(label_toks) >= 3:
+                break
+        if not label_toks:
+            continue
+        label = re.sub(r"[^A-Z]", "", "".join(label_toks).upper())
+        if len(label) < 2:
+            continue
+        rest_toks = toks_all[len(label_toks):]
+        nums = [t for t in rest_toks if re.search(r"[\d)lIQOoSB]", t)]
+        if len(nums) < 6:
+            continue
+        best = None
+        for name in missing:
+            canon = re.sub(r"[^A-Z]", "", name.upper())
+            if len(canon) < 3:
+                continue                               # 'CY' stays exact-match only
+            d = _lev(label, canon)
+            lim = 1 if len(canon) <= 5 else 2
+            if name == "UTR" and len(label) <= 5:
+                lim = 2                                # UIR / U7R / LITR / OTR / UTA …
+            if d <= lim and (best is None or d < best[0]):
+                best = (d, name)
+        if best is None:
+            continue
+        name = best[1]
+        row, ok = parse_row(nums)
+        if row.pop("_reconstructed", None):
+            warnings.append(f"{name}: total cell unreadable — rebuilt {row['total']} from the row's columns")
+        boards[name] = {k: row[k] for k in COLS}
+        claimed.add(i)
+        last_i = max(last_i, i)
+        missing = [n for n in missing if n != name]
+        warnings.append(f"{name}: board label OCR'd as {' '.join(label_toks)!r} — recovered by fuzzy rescue")
+        if not ok and "_total_mismatch" in row:
+            warnings.append(f"{name}: cols summed {row['_total_mismatch']['cols_sum']} but printed total {row['_total_mismatch']['printed_total']}")
+    return last_i
+
+
 # ── header stamp ("Jul. 19. 2026  4:17PM  No. 9120  P. 1/21") ─────────────
 def parse_header(text):
     """The fax stamp: GENERATION time (a D sheet's stamp is the evening BEFORE the
@@ -273,10 +355,12 @@ def parse_page(text):
     #  sheet letter when missing, which is always right)
 
     boards, warnings, last_row_i = {}, [], -1
+    claimed = set()
     for name in BOARDS:
         nums, li = find_row(lines, name)
         if nums is None:
             continue
+        claimed.add(li)
         row, ok = parse_row(nums)
         if row.pop("_reconstructed", None):
             warnings.append(f"{name}: total cell unreadable — rebuilt {row['total']} from the row's columns")
@@ -284,6 +368,10 @@ def parse_page(text):
         last_row_i = max(last_row_i, li)
         if not ok and "_total_mismatch" in row:
             warnings.append(f"{name}: cols summed {row['_total_mismatch']['cols_sum']} but printed total {row['_total_mismatch']['printed_total']}")
+
+    # #aug1 — second chance for boards whose LABEL the scan destroyed (numbers intact)
+    ri = rescue_rows(lines, boards, claimed, warnings)
+    last_row_i = max(last_row_i, ri)
 
     # grand total — reconcile the sheet's own totals row against the sum of the boards.
     # A correctly-read grand total corroborates the board sum; a totals row that reads
