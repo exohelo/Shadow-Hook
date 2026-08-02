@@ -4569,6 +4569,42 @@ function calledSpan(start,end){
   return countActiveSpan(start,end);
 }
 function boardCalled(r){ return r?calledSpan(r.start,r.end):null; }
+/* ===== #cardpos(aug2) — WHERE ONE CARD SAT ON ONE BOARD, READ TO THE NUMBER =====
+   Letters alone cannot answer this. The start letter is shared by hands on BOTH sides
+   of the opening card, and the end letter by hands on both sides of the closing card,
+   so a letter-only test hands the same verdict to a hand who was called and a hand who
+   was passed on an earlier board. This walks the board exactly the way countActiveSpan
+   does — forward from the start card, letters rolling, wrapping the book on a cycle —
+   and answers for a single card:
+     'called' — the board walked past it: it got called
+     'at'     — it IS the card the board died on, or one of the few actives right
+                behind the window who were next up when it closed
+     'past'   — it sits BEHIND the opening card: called on an earlier board, not this one
+     'short'  — the board died before reaching it
+   null = can't tell (card or end missing / malformed) — callers fall back. */
+function cardRunPos(card,start,end){
+  const M=s=>/^([A-Z])(\d+)$/.exec(String(s||"").toUpperCase());
+  const c=M(card), s=M(start), e=M(end);
+  if(!c||!s||!e)return null;
+  const cl=LSEQ.indexOf(c[1]), sl=LSEQ.indexOf(s[1]), el=LSEQ.indexOf(e[1]);
+  if(cl<0||sl<0||el<0)return null;
+  const cn=+c[2], sn=+s[2], en=+e[2];
+  if(cl===el&&cn===en)return 'at';                              // the board died on this card
+  let letters=(el-sl+26)%26; if(letters===0&&en<sn)letters=26;  // it lapped the book
+  const k=(cl-sl+26)%26;
+  let called;
+  if(letters===26)        called=(cl!==sl)||cn>=sn||cn<=en;     // a lap calls everything but the gap
+  else if(k>letters)      called=false;                         // never got to this letter
+  else if(letters===0)    called=(cn>=sn&&cn<=en);              // opened and died inside one letter
+  else if(k===0)          called=cn>=sn;                        // start letter: from the opening card up
+  else if(k===letters)    called=cn<=en;                        // end letter: up to the closing card
+  else                    called=true;                          // a whole letter in the middle
+  if(called)return 'called';
+  /* not called — was it just past the window, or behind the opening card? */
+  try{const gap=countActiveSpan(end,card); if(gap!=null&&gap<=6)return 'at';}catch(_){}
+  if(k===0&&cn<sn&&letters!==26)return 'past';
+  return 'short';
+}
 /* THE HANDOFF: the one card the next dispatch opens on.
      sealed + moved/cycled → the card after its end        (W4912 → W4913)
      sealed + HELD         → that same card, straight back (V5044 → V5044)
@@ -6147,8 +6183,26 @@ function myBoardStatus(r){
   /* #noflop0 — the window never advanced, so no card was reached. Nobody was "at the
      window" on a held board, not even the hand it was sitting on. */
   if(boardMoved(r)===false)return V('miss','⚑','Board Held');
-  const myL=savedAcct.id[0];
+  /* #cardpos(aug2) — read the WHOLE card, not just its letter. The old rule compared
+     letters only (dd<act ⇒ Flop), so every hand sharing the board's START letter was
+     told they flopped — including the ones whose number sat BEHIND the opening card.
+     D4928 on a D5041 → I4946 board was passed on an EARLIER board; this one opened
+     past them and never called them. The odds engine already reads the number (frac()
+     in the odds block) and scored that same hand a full book away, so the record and
+     the prediction were calling one hand two different things. Now both read the card. */
+  const myCard=savedAcct.id;
+  switch(cardRunPos(myCard,r.start,r.end)){
+    case 'called': return V('flop','😢','Flop');
+    case 'at':     return V('close','😬','At the Window');
+    case 'past':   return V('miss','😴','Not Called');   // behind the opening card
+    case 'short':  return V('miss','😴','Not Called');   // it died before your number
+  }
+  /* no sealed end card on the record — fall back to the letter ladder, minus the one
+     case letters always got wrong: your number sitting behind the start card. */
+  const myL=myCard[0];
   const dd=(AZ.indexOf(myL)-AZ.indexOf(r.start[0])+26)%26;
+  const myN=parseInt(myCard.slice(1),10), stN=parseInt(String(r.start).slice(1),10);
+  if(dd===0&&isFinite(myN)&&isFinite(stN)&&myN<stN)return V('miss','😴','Not Called');
   if(dd<r.act)return V('flop','😢','Flop');
   if(dd===r.act)return V('close','😬','At the Window');
   return V('miss','😴','Not Called');
