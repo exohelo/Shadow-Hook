@@ -12,9 +12,40 @@
    self-contained because it runs before any of the app's code exists. */
 try{var _dl=localStorage.getItem('shadowhook_daylight');
 if(_dl==='1'||((_dl===null||_dl==='auto')&&(function(){var h=new Date().getHours();return h>=5&&h<16})()))document.documentElement.classList.add('daylight')}catch(e){}
-/* #arcade — the NEON HARBOR skin is the default look; flipped off it falls back to
-   the classic copper. Applied here, pre-paint, so there is no flash of the old skin. */
-try{if((localStorage.getItem('shadowhook_skin')||'arcade')==='arcade')document.documentElement.classList.add('arcade')}catch(e){}</script>
+/* #arcade — NEON HARBOR is the house look. The ◈ classic-skin toggle retired
+   (aug 5) — one look for every hand, applied pre-paint so there is no flash. */
+try{document.documentElement.classList.add('arcade')}catch(e){}
+/* ═══ #seasons — HOLIDAY THEMES (the plan) ═══
+   Date-driven skins, and the hands get NO lever: when today falls inside a
+   window below, <html> carries season-<id> from pre-paint and the matching CSS
+   slot ("#seasons — HOLIDAY SKINS", down by the arcade skin) dresses the app.
+   The rest of the year, nothing is added. The ONLY control is the Keymaster's:
+   Command Center → The Switches → Season theme (km_flags.season — AUTO by
+   date / force a season / OFF), pushed to every phone like every other
+   switch. The last word heard is cached so it holds pre-paint and offline.
+   ADDING A THEME = one row here + one CSS slot there — the Command Center
+   switch grows its button on its own. Windows are inclusive [month,day]
+   pairs and may wrap the new year (e.g. from:[12,31], to:[1,1]). */
+window.SEASONS=[
+  {id:'halloween', tag:'🎃 HALLOWEEN', from:[10,24], to:[10,31]},   /* pumpkin copper & witch purple */
+  {id:'xmas',      tag:'🎄 XMAS',      from:[12,18], to:[12,26]}    /* pine, snow & harbor lights */
+];
+window._seasonFlag='auto';   /* the Keymaster's word — km_flags.season, cached from the last pull */
+try{window._seasonFlag=localStorage.getItem('shadowhook_season_km')||'auto'}catch(e){}
+window.seasonNow=function(){
+  try{
+    var f=window._seasonFlag||'auto';
+    if(f==='off')return null;
+    for(var j=0;j<window.SEASONS.length;j++)if(window.SEASONS[j].id===f)return f;
+    var n=new Date(), md=(n.getMonth()+1)*100+n.getDate();
+    for(var i=0;i<window.SEASONS.length;i++){
+      var s=window.SEASONS[i], a=s.from[0]*100+s.from[1], b=s.to[0]*100+s.to[1];
+      if(a<=b ? (md>=a&&md<=b) : (md>=a||md<=b)) return s.id;
+    }
+  }catch(e){}
+  return null;
+};
+try{var _sn=window.seasonNow();if(_sn)document.documentElement.classList.add('season-'+_sn)}catch(e){}</script>
 <!-- #45 — installable app: manifest + icons + iOS meta. Once added to the home
      screen it opens full-screen with no address bar, like a native app. -->
 <link rel="manifest" href="manifest.webmanifest">
@@ -2042,7 +2073,6 @@ window.DEVLOG=(function(){
         <button type="button" data-hv="hall">🏛 The Hall</button>
         <button type="button" data-hv="order" class="on">☠ The Order</button>
       </div><!-- #soc1 — Social OPENS on The Order (rank first, per the Keymaster); The Hall is one tap left -->
-      <button class="hall-share" id="hubShareBtn" type="button" aria-label="Share the Hall">⤴</button>
     </div>
     <div class="screen-sub" id="hallSub">Your rank, your rings, your marks — the long game.</div><!-- #soc1 — matches the Order-first open -->
     <style id="socialCSS">
@@ -7174,7 +7204,8 @@ function dropWindowOpen(){const m=cwMinsNow();return (m>=6*60+30&&m<10*60)||(m>=
    call saw nothing to press. The seal now rides its own longer window (day
    6:30→12:00, night 4:30→11:00 PM): past the drops window the console pieces fold
    away and the card keeps ONLY the NO FLOP section, so a late hand can still end
-   the board — and the sealed label stays visible for the crowd behind them. */
+   the board — but only while the board is UNSEALED (see #118d in renderDropLog):
+   once the seal is on the record there is nothing left to press, so the card goes. */
 function noflopWindowOpen(){const m=cwMinsNow();return (m>=6*60+30&&m<12*60)||(m>=NIGHT_OPEN&&m<23*60)}
 /* #feed — the baby asks to be fed when a LIVE input is open. (The old count-question
    card was retired from the document, so this rides the inputs that actually exist:
@@ -7206,13 +7237,19 @@ function renderDropLog(){
       if(!dropWindowOpen()&&window._hudInt)hudClose();}catch(e){}
   const card=document.getElementById('dropCard'); if(!card)return;
   const _dw=dropWindowOpen(), _nf=noflopWindowOpen();
-  card.style.display=(_dw||_nf)?'':'none';
-  try{Array.from(card.children).forEach(el=>{ if(el.id!=='noflopWrap') el.style.display=_dw?'':'none'; });}catch(e){}
-  if(!(_dw||_nf))return;
+  /* #118d — the NO FLOP card exists to end dispatch EARLY, not to stand as a trophy.
+     Once this window's board is sealed — the Hall Line record, any hand on the wire,
+     or your own press — the whole section folds away instead of parking a dead
+     SEALED button for hours. The toast + the Recent Boards row are the record. */
+  let _sr=null; try{_sr=RECENT.find(x=>x.date+"_"+x.slot===dropKey())||null;}catch(e){}
+  const _sealed=!!(_sr&&(_sr.end||_sr.over));
+  const _nfOn=_nf&&!_sealed;
+  card.style.display=(_dw||_nfOn)?'':'none';
+  try{Array.from(card.children).forEach(el=>{ el.style.display=(el.id==='noflopWrap')?(_nfOn?'':'none'):(_dw?'':'none'); });}catch(e){}
+  if(!(_dw||_nfOn))return;
   /* #118b — board already sealed (by you, a reload, or any hand on the wire):
      the button stands down and shows the call. A new window resets it. */
   try{
-    const _sr=RECENT.find(x=>x.date+"_"+x.slot===dropKey());
     const _sb=document.getElementById('noflopBtn'), _si=document.getElementById('noflopEnd');
     if(_sb&&_si){
       /* #noflop0 — a HELD board keeps the held wording through every re-render
@@ -11883,7 +11920,6 @@ try{renderHallStats();}catch(e){}
     setHallView(b.dataset.hv);
     window.scrollTo(0,0);
   }));
-  on('hubShareBtn',()=>{try{inviteWord('room','The Hall Floor')}catch(e){}});
   on('svClose',closeStoryViewer);
   on('svSound',()=>svSoundSet(!_svSound));   // #stories8
   try{svSoundIcon()}catch(e){}
@@ -16700,16 +16736,11 @@ html.arcade .nav button.on .ico{filter:drop-shadow(0 0 9px rgba(77,226,255,.75))
 html.arcade .nav button:active{transform:translateY(1px)}
 /* the crest artwork is copper — tip it into the violet range so it belongs here */
 html.arcade .hcrest,html.arcade .hdr-seal{filter:hue-rotate(212deg) saturate(1.5) brightness(1.12)}
-html.arcade .dayBtn,html.arcade .arcBtn{
+html.arcade .dayBtn{
   background:linear-gradient(184deg,rgba(42,31,77,.9),rgba(18,16,31,.9));border:1px solid var(--line);
   color:var(--neon);box-shadow:0 0 12px rgba(77,226,255,.22), inset 0 1px 0 rgba(200,180,255,.14)}
-html.arcade .arcBtn{color:var(--neon2);box-shadow:0 0 12px rgba(255,77,210,.24), inset 0 1px 0 rgba(200,180,255,.14)}
-/* the theme button sits directly under the day button (same right rail) */
-.arcBtn{position:absolute;right:10px;top:calc(100% + 41px);width:27px;height:27px;border-radius:50%;
-  border:1px solid var(--line);background:linear-gradient(184deg,var(--plate-2),var(--plate));
-  color:var(--copper-hi);font-size:13px;line-height:1;cursor:pointer;display:flex;align-items:center;
-  justify-content:center;padding:0;z-index:41;box-shadow:0 5px 14px rgba(0,0,0,.3)}
-.arcBtn:active{transform:translateY(1px)}
+/* #seasons — the ◈ skin-toggle button that rode under the day button retired aug 5;
+   NEON HARBOR is the house look and the holiday skins switch by DATE, not by hand. */
 
 /* ── the prediction: the big letter reads like a machine readout ──────────── */
 html.arcade #predStop{
@@ -16891,9 +16922,8 @@ html.arcade.daylight input,html.arcade.daylight select{background:#fff;border-co
 html.arcade.daylight .field:focus,html.arcade.daylight input:focus,html.arcade.daylight select:focus{
   border-color:#5b34d6;box-shadow:0 0 0 3px rgba(91,52,214,.14)}
 html.arcade.daylight .reel{background:linear-gradient(180deg,#fbf9ff,#efeafd);border-color:rgba(60,40,120,.18);box-shadow:none}
-html.arcade.daylight .dayBtn,html.arcade.daylight .arcBtn{
-  background:#fff;border-color:rgba(60,40,120,.2);box-shadow:0 4px 12px rgba(60,40,120,.14)}
-html.arcade.daylight .dayBtn{color:#5b34d6} html.arcade.daylight .arcBtn{color:#c0176b}
+html.arcade.daylight .dayBtn{
+  background:#fff;border-color:rgba(60,40,120,.2);box-shadow:0 4px 12px rgba(60,40,120,.14);color:#5b34d6}
 html.arcade.daylight .toast{background:#fbf9ff;border-color:rgba(91,52,214,.35);color:#1b1233;
   box-shadow:0 14px 30px rgba(60,40,120,.2)}
 html.arcade.daylight .wire-baby{background:rgba(44,122,68,.07);border-color:rgba(44,122,68,.35)}
@@ -16974,12 +17004,37 @@ html.arcade .hud-big:active{transform:translateY(5px);box-shadow:0 2px 0 rgba(60
 html.arcade.daylight #hudMode{background:#efecfb}
 html.arcade.daylight .hud-pos{color:#5b34d6;text-shadow:none}
 
+/* ═══════════ #seasons — HOLIDAY SKINS (the slots) ═══════════
+   The #seasons engine (registry in <head>, runtime block below) puts
+   season-<id> on <html> through each window declared in SEASONS. Until a slot
+   here is filled in, a season changes NOTHING — the neon look holds. Dress a
+   season the way the arcade skin does: override the theme variables and add
+   decoration, but scope EVERY rule under its season class so the rest of the
+   year is untouched. The knobs that matter:
+     --void (page) · --plate / --plate-2 (cards) · --line (borders)
+     --copper-hi / --ember (accents) · --neon / --neon2 (the glows)
+   …and give each season its daylight variant — html.season-x.daylight —
+   for the 5 AM – 4 PM look, or it will glow like midnight at noon.
+   CONTROL: the hands have none. AUTO runs by date; the Keymaster can force a
+   season or kill one from Command Center → The Switches → Season theme.
+   DESIGN PREVIEW (your device only): console → setSeasonFlag('xmas'),
+   back with setSeasonFlag('auto'). */
+
+/* 🎃 HALLOWEEN — Oct 24–31 · pumpkin copper, witch purple, fog off the water */
+html.season-halloween{}
+html.season-halloween.daylight{}
+
+/* 🎄 XMAS — Dec 18–26 · pine & snow, harbor lights strung on the cranes */
+html.season-xmas{}
+html.season-xmas.daylight{}
+
 </style>
 
 <script>
-/* #arcade — the skin's two decorative layers (drifting aurora, machine grid) and the
-   ◈ toggle that rides under the ☀ button. Pure chrome: if any of this fails the app
-   is untouched, and CLASSIC is always one tap away. */
+/* #arcade — the skin's two decorative layers (drifting aurora, machine grid).
+   Pure chrome: if any of this fails the app is untouched. The ◈ classic toggle
+   retired aug 5 — NEON HARBOR is the house look (class set pre-paint in <head>);
+   the holiday skins ride the #seasons engine below instead of a button. */
 (function(){
   try{
     if(!document.querySelector('.arc-aurora')){
@@ -16989,32 +17044,38 @@ html.arcade.daylight .hud-pos{color:#5b34d6;text-shadow:none}
       document.body.insertBefore(g,document.body.firstChild);
       document.body.insertBefore(a,document.body.firstChild);
     }
-    function skinPref(){try{return localStorage.getItem('shadowhook_skin')||'arcade'}catch(e){return 'arcade'}}
-    function applySkin(){
-      var on=skinPref()==='arcade';
-      document.documentElement.classList.toggle('arcade',on);
-      var b=document.getElementById('arcBtn');
-      if(b){ b.textContent=on?'◈':'◇';
-        b.title=on?'NEON HARBOR skin on (tap for classic)':'Classic skin on (tap for neon)'; }
-      var m=document.querySelector('meta[name="theme-color"]');
-      if(m&&!document.documentElement.classList.contains('daylight'))m.setAttribute('content',on?'#08060f':'#0b0d0f');
-    }
-    var day=document.getElementById('dayBtn');
-    if(day&&day.parentNode&&!document.getElementById('arcBtn')){
-      var t=document.createElement('button');
-      t.className='arcBtn'; t.id='arcBtn'; t.type='button';
-      t.setAttribute('aria-label','Toggle the neon skin');
-      t.addEventListener('click',function(){
-        var next=skinPref()==='arcade'?'classic':'arcade';
-        try{localStorage.setItem('shadowhook_skin',next)}catch(e){}
-        applySkin();
-        try{toast(next==='arcade'?'◈ NEON HARBOR':'◇ Classic — copper and steel')}catch(e){}
-      });
-      day.parentNode.insertBefore(t,day.nextSibling);
-    }
-    applySkin();
-    window.applySkin=applySkin;
+    var m=document.querySelector('meta[name="theme-color"]');
+    if(m&&!document.documentElement.classList.contains('daylight'))m.setAttribute('content','#08060f');
   }catch(e){ try{console.warn('[arcade]',e)}catch(_){} }
+})();
+/* #seasons — the engine's runtime half (the registry + pre-paint apply live in
+   <head>): keeps the season class honest on a phone that stays open across a
+   window's edge — re-checks hourly and the moment the app comes back to the
+   foreground, the same pattern the daylight clock rides. setSeasonFlag is the
+   Keymaster's word landing (sbLoadKmFlags feeds it km_flags.season); it is
+   cached so the NEXT open knows pre-paint, before the wire answers.
+   DESIGNING A SKIN off-season? Console: setSeasonFlag('xmas') on your own
+   device — setSeasonFlag('auto') hands it back to the calendar (any km_flags
+   pull resets it too). The hands have no lever anywhere. */
+(function(){
+  function applySeason(){
+    try{
+      var want=(typeof window.seasonNow==='function')?window.seasonNow():null;
+      var h=document.documentElement;
+      (window.SEASONS||[]).forEach(function(s){h.classList.toggle('season-'+s.id,s.id===want)});
+    }catch(e){}
+  }
+  window.applySeason=applySeason;
+  window.setSeasonFlag=function(v){
+    v=(v==null||v==='')?'auto':String(v);
+    window._seasonFlag=v;
+    try{localStorage.setItem('shadowhook_season_km',v)}catch(e){}
+    applySeason();
+  };
+  applySeason();
+  setInterval(applySeason,3600000);
+  document.addEventListener('visibilitychange',function(){if(!document.hidden)applySeason()});
+  window.addEventListener('focus',applySeason);
 })();
 </script>
 
@@ -17053,6 +17114,9 @@ html.arcade.daylight .hud-pos{color:#5b34d6;text-shadow:none}
     <div class="race-board-tabs" id="kmStop"><button data-v="auto">AUTO</button><button data-v="on">SHUTDOWN</button><button data-v="off">FORCE OPEN</button></div>
     <div class="sub" style="margin:10px 0 2px">Six-month rule</div>
     <div class="race-board-tabs" id="kmSix"><button data-v="on">ACTIVE</button><button data-v="off">SUSPENDED</button></div>
+    <div class="sub" style="margin:10px 0 2px">Season theme — every phone, no member lever</div>
+    <!-- #seasons — buttons build themselves from window.SEASONS (see <head>): add a theme there, a button grows here -->
+    <div class="race-board-tabs" id="kmSeason"><button data-v="auto">AUTO — BY DATE</button><button data-v="off">OFF</button></div>
 
     <div class="card-h" style="margin-top:14px">The Bulletin</div>
     <textarea class="field" id="kmBull" rows="2" placeholder="Word for every hand — leave empty for silence" style="width:100%;resize:vertical;margin:6px 0 8px"></textarea>
@@ -17096,6 +17160,7 @@ html.arcade.daylight .hud-pos{color:#5b34d6;text-shadow:none}
       try{if(typeof setRain==='function')setRain(r.data.rain==='on'?true:(r.data.rain==='off'?false:null));}catch(e){}
       try{if(typeof setStopWork==='function')setStopWork(r.data.stopwork==='on'?true:(r.data.stopwork==='off'?false:null));}catch(e){}
       try{if(typeof applySixRule==='function')applySixRule(r.data.six_rule!==false);}catch(e){}
+      try{if(typeof setSeasonFlag==='function')setSeasonFlag(r.data.season||'auto');}catch(e){}   /* #seasons — the Keymaster's season word */
       try{renderBulletin(r.data.bulletin||'');}catch(e){}
     }catch(e){}
   };
@@ -17109,11 +17174,17 @@ html.arcade.daylight .hud-pos{color:#5b34d6;text-shadow:none}
   });
   function seg(host,val){ if(!host)return; host.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.v===val)); }
   function segVal(host,fall){ const b=host?host.querySelector('button.on'):null; return b?b.dataset.v:fall; }
-  ['kmRain','kmStop','kmSix'].forEach(id=>{const h=$(id);if(h)h.addEventListener('click',e=>{const b=e.target.closest('button');if(b)seg(h,b.dataset.v);});});
+  /* #seasons — the season switch builds itself from the SEASONS registry: add a
+     theme in <head> and this grows its button, no second edit here */
+  try{const hs=$('kmSeason');if(hs)hs.innerHTML='<button data-v="auto">AUTO — BY DATE</button>'
+    +(window.SEASONS||[]).map(s=>'<button data-v="'+s.id+'">'+(s.tag||s.id.toUpperCase())+'</button>').join('')
+    +'<button data-v="off">OFF</button>';}catch(e){}
+  ['kmRain','kmStop','kmSix','kmSeason'].forEach(id=>{const h=$(id);if(h)h.addEventListener('click',e=>{const b=e.target.closest('button');if(b)seg(h,b.dataset.v);});});
   window.kmOpen=function(){
     const sh=$('kmSheet');sh.classList.add('on');
     const f=window.KM_FLAGS||{};
     seg($('kmRain'),f.rain||'auto');seg($('kmStop'),f.stopwork||'auto');seg($('kmSix'),(f.six_rule===false)?'off':'on');
+    seg($('kmSeason'),f.season||'auto');
     if($('kmBull'))$('kmBull').value=f.bulletin||'';
     kmPulse();
     try{kmRoster();}catch(e){}
@@ -17161,11 +17232,20 @@ html.arcade.daylight .hud-pos{color:#5b34d6;text-shadow:none}
     push.disabled=true;push.textContent='PUSHING…';
     try{
       const row={id:1,rain:segVal($('kmRain'),'auto'),stopwork:segVal($('kmStop'),'auto'),
-                 six_rule:segVal($('kmSix'),'on')!=='off',bulletin:($('kmBull').value||'').trim(),
+                 six_rule:segVal($('kmSix'),'on')!=='off',season:segVal($('kmSeason'),'auto'),
+                 bulletin:($('kmBull').value||'').trim(),
                  updated_at:new Date().toISOString()};
-      const r=await window.SB.from('km_flags').upsert(row,{onConflict:'id'});
+      let r=await window.SB.from('km_flags').upsert(row,{onConflict:'id'});
+      let seasonNote='';
+      if(r.error&&/season/i.test(String(r.error.message))&&/column|schema|find/i.test(String(r.error.message))){
+        /* #seasons — the column isn't born yet: land every other switch, then say
+           exactly what to run so the season one rides the next push */
+        delete row.season;
+        r=await window.SB.from('km_flags').upsert(row,{onConflict:'id'});
+        seasonNote=" · season switch needs the column — run once in Supabase: alter table km_flags add column if not exists season text default 'auto';";
+      }
       if(r.error)throw r.error;
-      msg.textContent='✓ pushed — every phone picks it up live';
+      msg.textContent='✓ pushed — every phone picks it up live'+seasonNote;
       try{sbLoadKmFlags();}catch(e){}
       try{toast('☠ The word is out');}catch(e){}
     }catch(e){msg.textContent='✗ '+e.message+(/policy|permission|security/i.test(e.message||'')?' — is this account crowned in profiles.is_keymaster?':'');}
