@@ -2270,7 +2270,7 @@ window.DEVLOG=(function(){
           <button type="button" data-p="year">YEAR</button>
         </div>
         <div id="lbList"></div>
-        <p class="sub" style="margin-top:8px;color:#586067">Verified members · handles only · live ranks wire in with the backend.</p>
+        <p class="sub" style="margin-top:8px;color:#586067">Verified members · handles only · ranks ride the wire, refreshed every few minutes.</p>
       </div>
     </div>
 
@@ -3295,6 +3295,7 @@ function saveDK(){try{
   if(typeof window.renderWeek==="function")try{window.renderWeek()}catch(e){} // keep The Take in sync with the log
   if(typeof window.renderYear==="function")try{window.renderYear()}catch(e){} // and the Year card / header hours / ladder — #62: each hook isolated so one failure can't starve the other
   if(typeof window.renderBoards==="function")try{window.renderBoards()}catch(e){} // #9 — the boards follow the log too
+  if(typeof window.pushMyHours==="function")try{window.pushMyHours()}catch(e){} // #boards-live — the wire copy of your hours follows the log
   if(typeof window.renderDayReport==="function")try{window.renderDayReport()}catch(e){}
   if(typeof window.renderHarborBoard==="function")try{window.renderHarborBoard()}catch(e){} // #ports — YOUR GATE follows today’s docket // #26 — day count follows the log
 }
@@ -9766,7 +9767,7 @@ function renderBoards(){
   });
   if(!youOn)html+='<div class="arc-row you"><i class="fill" style="width:'+Math.max(4,Math.round(mine/max*100))+'%"></i><div class="r">—</div><div class="h">'+handle+' · YOU</div><div class="v">'+mine.toLocaleString()+' '+unit+'</div></div>';
   if(empty)html+='<p class="sub" style="text-align:center;padding:8px 0 2px">'+(metric==='pb'
-      ?'You hold the crown — for now. All hands rank live once the backend wires in.'
+      ?'You hold the crown — for now. Every verified hand ranks the moment their stack moves.'
       :'First blood takes the crown. Log hours, hold the podium — two pedestals sit open.')+'</p>';
   el.innerHTML=html;
 }
@@ -9774,6 +9775,79 @@ window.renderBoards=renderBoards;
 document.querySelectorAll('#lbMetric button').forEach(b=>b.addEventListener('click',()=>{lbState.metric=b.dataset.m;renderBoards();}));
 document.querySelectorAll('#lbPeriod button').forEach(b=>b.addEventListener('click',()=>{lbState.period=b.dataset.p;renderBoards();}));
 renderBoards();
+/* ===== #boards-live — THE WIRE FILLS THE BOARDS =====
+   BOARDS sat declared-but-never-fed since #5: the podium could only ever show
+   the local hand and two OPEN pedestals, while the caption promised ranks that
+   never came. It feeds from `profiles` now:
+   · PORT BUCKS — handle + port_bucks, the same columns the Command Center
+     pulse already reads. Lifetime stack under every period tab (a true
+     per-period ledger still needs dated buck rows — #known(bucks) above).
+   · HOURS — each member publishes their own week/month/year rollup onto their
+     own profiles row (pushMyHours: fired from saveDK whenever the log changes,
+     and on the 5-minute heartbeat). hrs_asof stamps the push; a rollup from
+     before the period's start reads as 0, so a hand idle since last week
+     cannot squat this week's board on a stale number.
+   ONE-TIME SQL (Supabase) for the hours side — bucks ranks with no schema work:
+     alter table profiles
+       add column if not exists hrs_week  integer,
+       add column if not exists hrs_month integer,
+       add column if not exists hrs_year  integer,
+       add column if not exists hrs_asof  date;
+   RLS: members must be able to SELECT handle/port_bucks/hrs_* across profiles,
+   and UPDATE their own row. Every failure here is silent — the board simply
+   runs local, exactly as it did before. */
+function _lbPeriodStart(period){
+  const now=new Date();let from;
+  if(period==='week'){from=new Date(now);from.setDate(now.getDate()-((now.getDay()+6)%7));from.setHours(0,0,0,0);}
+  else if(period==='month')from=new Date(now.getFullYear(),now.getMonth(),1);
+  else from=new Date(now.getFullYear(),0,1);
+  return from;
+}
+async function sbLoadBoards(){
+  if(!window.SB)return;
+  let rows=null,hrsOk=true;
+  try{
+    let r=await window.SB.from('profiles').select('handle,port_bucks,hrs_week,hrs_month,hrs_year,hrs_asof,banned');
+    if(r&&r.error&&/hrs_/i.test(String(r.error.message))){   /* hours columns not born yet — bucks still rank */
+      hrsOk=false;
+      r=await window.SB.from('profiles').select('handle,port_bucks,banned');
+    }
+    if(!r||r.error||!r.data)return;
+    rows=r.data.filter(x=>x&&x.handle&&String(x.handle).trim()&&x.banned!==true);
+  }catch(e){return;}
+  const list=pick=>rows.map(x=>[String(x.handle).trim(),+pick(x)||0]).filter(a=>a[1]>0)
+    .sort((a,b)=>b[1]-a[1]).slice(0,100);
+  const pb=list(x=>x.port_bucks);
+  BOARDS.pb_week=pb;BOARDS.pb_month=pb;BOARDS.pb_year=pb;   /* lifetime under every tab — #known(bucks) */
+  if(hrsOk)['week','month','year'].forEach(p=>{
+    const from=_lbPeriodStart(p);
+    BOARDS['hrs_'+p]=list(x=>{
+      if(!x.hrs_asof)return 0;
+      try{if(new Date(String(x.hrs_asof).slice(0,10)+"T12:00")<from)return 0;}catch(e){return 0;}
+      return x['hrs_'+p];
+    });
+  });
+  try{renderBoards();}catch(e){}
+}
+window.sbLoadBoards=sbLoadBoards;
+let _pmhT=null;
+function pushMyHours(){
+  clearTimeout(_pmhT);
+  _pmhT=setTimeout(async function(){
+    if(!window.SB||!window.__shkUid)return;
+    try{
+      await window.SB.from('profiles').update({
+        hrs_week:myBoardValue('hrs','week'),hrs_month:myBoardValue('hrs','month'),
+        hrs_year:myBoardValue('hrs','year'),hrs_asof:todayISO()
+      }).eq('id',window.__shkUid);   /* no column / RLS refusal → silent, board runs local */
+    }catch(e){}
+  },1500);
+}
+window.pushMyHours=pushMyHours;
+/* boot: push first (debounce lands ~4s, after sign-in hydrates), read at 9s;
+   then the 5-minute heartbeat keeps rollups fresh across week/month edges */
+[2500,9000].forEach(ms=>setTimeout(function(){try{pushMyHours()}catch(e){} try{sbLoadBoards()}catch(e){}},ms));
+setInterval(function(){try{pushMyHours()}catch(e){} try{sbLoadBoards()}catch(e){}},300000);
 /* #83 — openBucksBoard removed with the Armory's Top Earners card */
 /* ===== #26 — THE DAY COUNT: nightly participation report =====
    Backend posts DAY_REPORT after each night board closes. Shape:
