@@ -4356,21 +4356,76 @@ function liveWindow(){ // between flex and end of the current board
   return null;
 }
 function winKey(){const w=liveWindow();return w?nowLA().toDateString()+"_"+w:null} // #107 — which board a scan belongs to · #201 LA date
+/* ===== #lof — THE LINE OF FIRE =====
+   The Aug 6 mess: the board sat on B and a hand EIGHTEEN letters out logged a
+   docket — their T card rode straight onto the reel. Every REAL call after it
+   (C, D, E…) read "behind" and was thrown away: one far hand froze the count
+   for the whole window. Root cause: applyLiveCall trusted ANY forward jump.
+   The rule now — the board only moves inside the LINE OF FIRE: at most
+   LOF_LETTERS letters past the last confirmed call (or past the card the board
+   opened on, before the first call lands). A call past the line is NOT posted
+   and NOT pushed to the wire: it is HELD, red-flagged out loud, and it posts
+   only if the confirmed board WALKS to within the line of it. Held calls die
+   with their window. The same gate runs on wire replays, so one phone's bad
+   call can't jump anybody else's reel — and a bad row already sitting on the
+   wire is quarantined on load instead of poisoning every phone that boots. */
+const LOF_LETTERS=3;                 // the line of fire: the called letter + the next 3
+let farHold=[];                      // held calls — {pos, ts, win, src:'local'|'wire'}
+function lofJump(from,to){           // letters forward from one card's letter to another's (wraps A→Z→A)
+  try{const j=((AZ.indexOf(String(to).charAt(0))-AZ.indexOf(String(from).charAt(0)))+26)%26;return isNaN(j)?99:j}catch(e){return 99}
+}
+function lofAnchor(){                // where the line of fire is measured from
+  if(lastCall&&lastCall.pos)return lastCall.pos;
+  try{return OPENP()}catch(e){return null}
+}
 function submitLiveCall(pos){ // no identity attached — a position IS a worker's number
-  const r=applyLiveCall(pos,Date.now());
+  const r=applyLiveCall(pos,Date.now(),'local');
   if(r===true){ try{lwPush(lastCall.pos);}catch(e){} }   /* #onewire — and every other phone hears it */
+  else if(r==="far"){                                    /* #lof — the red flag, said out loud */
+    try{const p=String(pos||'').toUpperCase().trim(),a=lofAnchor(),d=a?lofJump(a,p):null;
+      toast("⚠ HELD — board's at "+(a||"the gate")+(d!=null?" and "+p+" is "+d+" letters out of the line of fire":"")+". It posts only if the board works up close.");}catch(e){}
+  }
   return r;
 }
 /* #onewire — ONE SHARED BOARD. The clock was always shared (same LA wall-clock
    math on every phone); the POSITION never was — a scan only ever moved the
    scanner's own reel, and the "backend makes it truly shared" note above sat
    unpaid. Paid now: a scan lands locally AND rides live_wire; every phone
-   merges every call and the reel only ever moves FORWARD in board order. */
-function applyLiveCall(pos,ts){
+   merges every call and the reel only ever moves FORWARD in board order —
+   and (#lof) never further than the line of fire in a single hop. */
+function applyLiveCall(pos,ts,src){
   pos=String(pos||'').toUpperCase().trim();
   if(posVal(pos)<0)return false;
-  if(!lastCall||posVal(pos)>posVal(lastCall.pos)){lastCall={pos:pos,ts:ts||Date.now(),win:winKey()};return true}
-  return "behind"; // valid scan, but the board is already past it
+  if(lastCall&&posVal(pos)<=posVal(lastCall.pos))return "behind"; // valid scan, but the board is already past it
+  const a=lofAnchor();
+  if(a&&lofJump(a,pos)>LOF_LETTERS){   /* #lof — past the line: hold it, flag it, don't post it */
+    const wk=winKey();
+    farHold=farHold.filter(h=>h.win===wk&&posVal(h.pos)>(lastCall?posVal(lastCall.pos):-1)); // stale windows + passed cards drop out
+    if(!farHold.some(h=>h.pos===pos)){
+      farHold.push({pos:pos,ts:ts||Date.now(),win:wk,src:src||'wire'});
+      farHold.sort((x,y)=>posVal(x.pos)-posVal(y.pos));
+      if(farHold.length>12)farHold=farHold.slice(0,12);  // cap — a dozen held cards is already a very bad day
+      try{DEVLOG.data('live board HELD (#lof)',{pos:pos,board:a,lettersOut:lofJump(a,pos),src:src||'wire'});}catch(e){}
+    }
+    return "far";
+  }
+  lastCall={pos:pos,ts:ts||Date.now(),win:winKey()};
+  lofPromote();                        /* #lof — the board moved: a held card now inside the line posts */
+  return true;
+}
+function lofPromote(){ // a held call posts ONLY once the confirmed board walks up close to it
+  try{
+    const wk=winKey(); let guard=0;
+    while(guard++<27){
+      farHold=farHold.filter(h=>h.win===wk&&posVal(h.pos)>posVal(lastCall.pos)); // stale + passed holds die
+      const next=farHold.find(h=>lofJump(lastCall.pos,h.pos)<=LOF_LETTERS);      // nearest first — the board WALKS, it never leaps
+      if(!next)break;
+      farHold=farHold.filter(h=>h.pos!==next.pos);
+      lastCall={pos:next.pos,ts:Date.now(),win:wk};
+      try{DEVLOG.data('live board POSTED from hold (#lof)',{pos:next.pos});}catch(e){}
+      if(next.src==='local'){try{lwPush(next.pos);}catch(e){}}                   // it never rode the wire while held — it rides now
+    }
+  }catch(e){}
 }
 function lwPush(pos){
   try{ if(!window.SB||!liveWindow())return;
@@ -4394,7 +4449,7 @@ setInterval(()=>{ // render both the header ticker and the Wire-tab live board
   const reel=document.getElementById('reel'), clk=document.getElementById('dispClock');
   /* #107 — a scan left over from an earlier board doesn't carry into this one:
      new window opens on STAND BY until its own first scan lands */
-  if(lastCall&&w&&lastCall.win!==winKey()){lastCall=null;window._reelPos=null;}
+  if(lastCall&&w&&lastCall.win!==winKey()){lastCall=null;window._reelPos=null;farHold=[];}   /* #lof — held calls die with their window */
   if(!w||!lastCall){ if(el)el.style.display="none";
     if(reel)reel.style.display="none"; if(clk)clk.style.display=""; return; }
   const s=Math.max(0,(Date.now()-lastCall.ts)/1000|0);
@@ -8397,7 +8452,9 @@ document.getElementById('njAdd').onclick=()=>{
   DOCKETS.push(j);saveDK();renderDockets();
   // a sealed hand-log means the member worked — feed the live board off their own ID, silently.
   const id=myBoardId();
-  if(id&&liveWindow())submitLiveCall(id);   // out of hours: just do nothing, no notice needed
+  /* #lof — only a docket dated TODAY speaks for today's board. Backlogging an old
+     slip during a live window is exactly how a hand 18 letters out threw the count. */
+  if(id&&liveWindow()&&date===todayISO())submitLiveCall(id);   // out of hours: just do nothing, no notice needed
   njClearForm();
   checkMarks();
   drawWG();
@@ -12479,7 +12536,7 @@ function sealScan(p){
   DOCKETS.push(j);saveDK();renderDockets();drawWG();checkMarks();
   // feed the live board off the member's own dispatch number; silent when dispatch isn't running.
   const id=myBoardId()||p.pos;
-  if(w&&id)submitLiveCall(id);
+  if(w&&id&&j.date===todayISO())submitLiveCall(id);   /* #lof — an old slip scanned late says nothing about where today's board is */
   addCredits(10,"docket sealed",true);   // #46 — no OK-button alert on success
   toast("✓ Log Successful · +10 ⬡");     // #46 — quick flash, fades on its own
 }
@@ -17568,6 +17625,7 @@ html.season-xmas.daylight{}
   if(sg&&si){ const go=()=>{ const v=(si.value||'').toUpperCase().trim(); if(!v)return;
       let r=false; try{r=submitLiveCall(v)}catch(e){}
       if(r===true){ si.value=''; try{buzz(25)}catch(e){} try{toast('📡 '+v+' on the wire')}catch(e){} hudTick(); }
+      else if(r==='far'){ si.value=''; try{buzz([30,40,30])}catch(e){} hudTick(); }   /* #lof — held, not an error: submitLiveCall already raised the red flag */
       else if(r==='behind'){ si.value=''; try{toast('Board already past '+v)}catch(e){} }
       else { si.style.borderColor='var(--ember)'; setTimeout(()=>si.style.borderColor='',900); } };
     sg.addEventListener('click',go);
