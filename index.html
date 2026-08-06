@@ -3020,6 +3020,36 @@ const savedAcct=loadAcct();
 let ACCT_ID=(savedAcct&&savedAcct.id)?savedAcct.id:"anon";
 function K(s){return "shadowhook_"+s+"_"+ACCT_ID;}
 
+/* ===== FIX · stable docket identity + merge =================================
+   A docket's identity used to be its position in the array (_id = index), and
+   the cloud replaced the whole log wholesale. Both are fixed here:
+     dkUid()        — an id derived from the docket's own content, so the SAME
+                      job gets the SAME id on every device, with no coordination.
+     mergeDockets() — union two logs by that id instead of letting one win.
+   Deterministic on purpose: two devices merging the same pair produce byte-
+   identical output, so the sync settles instead of ping-ponging. */
+function dkKey(j){return [j&&j.date,((j&&j.terminal)||"").toUpperCase(),((j&&j.category)||"").toUpperCase(),((j&&j.shift)||""),((j&&j.ship)||"").toUpperCase().trim()].join("|");}
+function dkUid(j){
+  if(j&&j._uid) return j._uid;                       // already stamped — never re-derive (edits keep their id)
+  var t=dkKey(j),h=0;
+  for(var i=0;i<t.length;i++){h=(h*31+t.charCodeAt(i))>>>0;}
+  return 'd'+h.toString(36)+'-'+String((j&&j.date)||'').replace(/-/g,'');
+}
+function dkStamp(j){ return (j&&j._uid)||dkUid(j); }
+function mergeDockets(a,b){
+  var m={},order=[];
+  function score(x){ return (x.photo?4:0)+(x.hours?2:0)+(x.start?1:0); }
+  function take(j){
+    if(!j||!j.date) return;
+    var u=dkStamp(j),cur=m[u];
+    if(!cur){ m[u]=j; order.push(u); return; }
+    if(score(j)>score(cur)) m[u]=j;                   // keep the fuller copy of the same job
+  }
+  (a||[]).forEach(take); (b||[]).forEach(take);
+  return order.map(function(u){return m[u];})
+              .sort(function(x,y){ return String(x.date).localeCompare(String(y.date))||dkKey(x).localeCompare(dkKey(y)); });
+}
+
 /* ============================================================================
    WORK ID CLOUD  ·  cross-device profile sync
    ----------------------------------------------------------------------------
@@ -3211,7 +3241,15 @@ function K(s){return "shadowhook_"+s+"_"+ACCT_ID;}
     try{
       var a=card();
       if(a && key==='shadowhook_dockets_'+a && typeof DOCKETS!=='undefined'){
-        var arr=JSON.parse(localStorage.getItem(key)||'[]'); DOCKETS.length=0; arr.forEach(function(j){DOCKETS.push(j);});
+        /* FIX — was: wipe DOCKETS and adopt the server's array verbatim. Any device
+           holding a staler log therefore deleted jobs everywhere it synced. Now the
+           two are merged by dkUid, so a job can only ever be ADDED by a sync. */
+        var inc=[]; try{ inc=JSON.parse(localStorage.getItem(key)||'[]'); }catch(e){ inc=[]; }
+        var merged=mergeDockets(DOCKETS,inc);
+        DOCKETS.length=0; merged.forEach(function(j){ j._uid=dkStamp(j); j._id=j._uid; DOCKETS.push(j); });
+        /* we hold jobs the server row was missing -> send the union back up. Once it
+           lands, both sides serialize identically and this stops firing. */
+        if(merged.length!==inc.length){ try{ saveDK(); }catch(e){} }
       }
       /* #fix2(bucks) — the badge list rides this mirror (mine() excludes only the
          credits key) but the in-memory BADGES array was never refreshed from it, and
@@ -3289,8 +3327,21 @@ try{JSON.parse(localStorage.getItem(K("dockets"))||"[]").forEach(j=>DOCKETS.push
 /* official paystub sync — loaded up top so pay estimates can read experience hours from the first render */
 let STUB = (function(){ try{ return JSON.parse(localStorage.getItem(K("stub")))||null }catch(e){ return null } })();
 function saveDK(){try{
-  const out=DOCKETS.slice(-500).map((j,i,arr)=>{const c={...j};if(arr.length-i>10)delete c.photo;return c;});
-  localStorage.setItem(K("dockets"),JSON.stringify(out));
+  /* FIX — the old line capped the log at the last 500 jobs and swallowed every
+     error. A full localStorage (docket photos are base64 and quota is ~5MB) threw
+     QuotaExceededError, the bare catch ate it, and NOTHING was written: the app
+     looked fine until the next reload. Now: a higher cap, and on quota failure we
+     shed photos progressively rather than lose the log. */
+  const build=(cap,keepPhotos)=>DOCKETS.slice(-cap).map((j,i,arr)=>{const c={...j};if(arr.length-i>keepPhotos)delete c.photo;return c;});
+  let saved=false;
+  for(const [cap,ph] of [[2000,10],[2000,3],[2000,0],[600,0]]){
+    try{ localStorage.setItem(K("dockets"),JSON.stringify(build(cap,ph))); saved=true; break; }
+    catch(e){ /* quota — retry leaner */ }
+  }
+  if(!saved){
+    try{ console.error('[dockets] SAVE FAILED — storage full'); }catch(e){}
+    try{ if(typeof toast==='function') toast('\u26a0 Log NOT saved \u2014 storage full'); }catch(e){}
+  }
 }catch(e){}
   if(typeof window.renderWeek==="function")try{window.renderWeek()}catch(e){} // keep The Take in sync with the log
   if(typeof window.renderYear==="function")try{window.renderYear()}catch(e){} // and the Year card / header hours / ladder — #62: each hook isolated so one failure can't starve the other
@@ -6175,21 +6226,25 @@ function renderYear(){
   const jobs=DOCKETS.length;
   const jEl=document.getElementById('yJobs'); if(jEl)jEl.textContent=jobs.toLocaleString();
   // …but Gross/Net/Hours prefer the official paystub when one is synced.
-  let gross=0, net=0, hrs=0, fromStub=false;
-  if(STUB && (STUB.gross>0||STUB.hours>0)){
-    gross=STUB.gross||0; net=STUB.net||0; hrs=STUB.hours||0; fromStub=true;
-  }else{
-    // fall back to summing this year's sealed dockets
-    const yr=String(new Date().getFullYear());
-    DOCKETS.filter(j=>(j.date||"").startsWith(yr)).forEach(j=>{const p=estPay(j);gross+=p.gross;hrs+=p.hrs;});
-    net=gross*(1-0.218);
-  }
+  /* FIX — this was an all-or-nothing swap on `STUB.gross>0 || STUB.hours>0`.
+     A stub carrying HOURS but no gross/net passed that test, so gross and net were
+     set to 0 and the docket fallback never ran: the card showed real hours beside
+     $0 / $0. Each figure now falls back on its own. */
+  let eG=0, eH=0;
+  const yr=String(new Date().getFullYear());
+  DOCKETS.filter(j=>(j.date||"").startsWith(yr)).forEach(j=>{const p=estPay(j);eG+=p.gross;eH+=p.hrs;});
+  const S=STUB||{}, sG=+S.gross||0, sN=+S.net||0, sH=+S.hours||0;
+  const gross = sG>0 ? sG : eG;
+  const net   = sN>0 ? sN : (sG>0 ? sG*(1-0.218) : eG*(1-0.218));
+  const hrs   = sH>0 ? sH : eH;
+  const fromStub = (sG>0||sN>0||sH>0);
+  const partial  = fromStub && (sG<=0||sN<=0||sH<=0);
   const g=document.getElementById('yGross'); if(g)g.textContent=fmt$(gross);
   const n=document.getElementById('yNet');   if(n)n.textContent=fmt$(net);
   const h=document.getElementById('yHrs');    if(h)h.textContent=Math.round(hrs).toLocaleString();
   const stamp=document.getElementById('stubStamp');
   if(stamp){
-    if(fromStub){stamp.textContent="synced from "+fmtStubDate(STUB.date)+" stub"; stamp.classList.add("gold");}
+    if(fromStub){stamp.textContent="synced from "+fmtStubDate(STUB.date)+" stub"+(partial?" \u00b7 the rest estimated from your log":""); stamp.classList.add("gold");}
     else{stamp.textContent="no paystub synced — showing logged estimate"; stamp.classList.remove("gold");}
   }
   // #63 — the pay-bump ladder runs on CAREER hours: stub baseline + every docket sealed after it —
@@ -7802,7 +7857,11 @@ try{renderBabyFeed();}catch(e){}   /* #feed — re-run now that the count system
 setInterval(()=>{ if(document.getElementById('callWindow')) renderCW(); }, 60000); // windows open/close on the clock
 
 /* ================= DOCKETS ================= */
-DOCKETS.forEach((j,i)=>j._id=i);
+/* FIX — was `DOCKETS.forEach((j,i)=>j._id=i)`: a job's id was its position in the
+   array, reassigned on every render. After a sync rebuilt DOCKETS the rendered
+   rows still carried the OLD positions, so striking a job could splice out a
+   different one. Ids are now derived from the docket itself and never move. */
+DOCKETS.forEach(j=>{ if(!j._uid) j._uid=dkUid(j); j._id=j._uid; });
 function findTerminal(code){
   if(!code)return null;
   const c=String(code).trim();
