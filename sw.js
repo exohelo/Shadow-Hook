@@ -14,7 +14,7 @@
      • Bumping the number below also wipes every old cache on activate, so nothing
        stale can survive.
    ──────────────────────────────────────────────────────────────────────────── */
-const CACHE = 'shadowhook-v32';   // ← bump this each time you deploy an update (v32: all-clear notice moved into the profile sheet)
+const CACHE = 'shadowhook-v33';   // ← bump this each time you deploy an update (v33: all-clear bar up front with OK; recovery button in profile)
 
 const SHELL = [
   '.',
