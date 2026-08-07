@@ -14,7 +14,7 @@
      • Bumping the number below also wipes every old cache on activate, so nothing
        stale can survive.
    ──────────────────────────────────────────────────────────────────────────── */
-const CACHE = 'shadowhook-v29';   // ← bump this each time you deploy an update (v29: all-clear banner + friendly recovery panel)
+const CACHE = 'shadowhook-v31';   // ← bump this each time you deploy an update (v31: recovery panel = backup & restore only)
 
 const SHELL = [
   '.',
