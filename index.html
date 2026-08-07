@@ -2832,6 +2832,16 @@ window.DEVLOG=(function(){
         <span id="pfSync">Saved on this device</span>
       </div>
 
+      <!-- #aug6notice — the all-clear, shown here in the profile until it expires (see controller near </body>) -->
+      <div id="aug6notice" style="display:none;margin:12px 0 2px;padding:10px 12px;border:1px solid var(--copper,#c9803f);border-radius:12px;background:rgba(201,128,63,.08)">
+        <div style="font-weight:800;color:var(--copper-hi,#eeb46b);letter-spacing:.04em;margin-bottom:4px">⚓ AUG 6 — ALL CLEAR</div>
+        <div style="font-size:13px;line-height:1.5">That was a worldwide outage — everything is fixed and patched. Log missing jobs? Tap <b>RECOVER</b>.</div>
+        <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+          <button type="button" id="aug6rec" style="padding:6px 14px;border:1px solid var(--copper,#c9803f);border-radius:8px;background:transparent;color:var(--copper-hi,#eeb46b);font-weight:700;cursor:pointer">⟲ RECOVER</button>
+          <button type="button" id="aug6ok" style="padding:6px 14px;border:1px solid #3a3f45;border-radius:8px;background:#1a1e22;color:#e8e2d8;font-weight:700;cursor:pointer">GOT IT ✓</button>
+        </div>
+      </div>
+
       <div class="prof-actions">
         <button class="btn-line gold" id="pfRename" type="button">✎ Change Handle</button>
         <button class="btn-logout" id="pfLogout" type="button">⎋ Log Out</button>
@@ -17843,58 +17853,24 @@ window.shareCall=shareCall;
 })();
 </script>
 
-<!-- ===== #aug6notice — THE ALL-CLEAR (self-expiring) ======================
-     One short notice about Aug 6. Shows until it EXPIRES (below) or the hand
-     taps GOT IT (per-device). Self-contained + try/catch — can't hurt the app.
-     Safe to delete this whole block any time after it expires.
+<!-- ===== #aug6notice controller ==========================================
+     The all-clear card now lives INSIDE the profile sheet (see #aug6notice in
+     the profileSheet markup). This just decides whether it shows: hidden once
+     it expires or once the hand taps GOT IT. RECOVER opens the recovery panel.
+     Safe to delete this block + the card any time after it expires.
      ======================================================================= -->
 <script>
 (function(){
   try{
-    var EXPIRES = Date.parse('2026-08-08T19:00:00Z');   // Aug 8, 12:00 PM Pacific — ~24h of air time
-    var DKEY    = 'shadowhook_notice_aug6b';            // v2 key ON PURPOSE: v1 dismissed itself when a
-                                                        // hand tapped RECOVER — everyone gets one more look
-    if(Date.now() > EXPIRES) return;
-    if(localStorage.getItem(DKEY)) return;
-    if(location.hash.indexOf('recover') >= 0) return;    // never sit on top of the recovery panel
-
-    var w = document.createElement('div');
-    w.id = 'aug6notice';
-    w.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:2147483000;padding:10px 14px;'+
-      'background:linear-gradient(180deg,#14100a,#0b0d0f);border-bottom:2px solid var(--copper,#c9803f);'+
-      'color:#e8e2d8;font:13px/1.5 inherit;box-shadow:0 6px 18px rgba(0,0,0,.55)';
-    w.innerHTML =
-      '<div style="max-width:680px;margin:0 auto">'+
-        '<div><b style="color:var(--copper-hi,#eeb46b)">⚓ AUG 6 — ALL CLEAR.</b> '+
-          'That was a worldwide outage, not a hack — everything is fixed and patched. '+
-          'Log missing jobs? Tap <b>RECOVER</b>.</div>'+
-        '<div style="margin-top:8px;display:flex;gap:8px">'+
-          '<button id="aug6rec" style="padding:6px 14px;border:1px solid var(--copper,#c9803f);'+
-            'border-radius:8px;background:transparent;color:var(--copper-hi,#eeb46b);font-weight:700;cursor:pointer">⟲ RECOVER</button>'+
-          '<button id="aug6ok" style="padding:6px 14px;border:1px solid #3a3f45;'+
-            'border-radius:8px;background:#1a1e22;color:#e8e2d8;font-weight:700;cursor:pointer">GOT IT ✓</button>'+
-        '</div>'+
-      '</div>';
-
-    var iv=null;
-    function dismiss(){ try{localStorage.setItem(DKEY,'1')}catch(e){} try{if(iv)clearInterval(iv)}catch(e){} try{w.remove()}catch(e){} }
-    function wire(){ try{
-      var ok=document.getElementById('aug6ok'), rc=document.getElementById('aug6rec');
-      if(ok) ok.onclick=dismiss;   /* GOT IT is the ONLY thing that hides this for good */
-      if(rc) rc.onclick=function(){ try{if(iv)clearInterval(iv)}catch(e){} location.hash='recover'; location.reload(); };
-    }catch(e){} }
-    function mount(){ try{ document.body.appendChild(w); wire(); }catch(e){} }
-
-    /* the watchdog: if the app's boot repaints <body> and knocks the notice out,
-       put it back — checks every 1.5s for ~90s, then stands down */
-    function watch(){ var tries=0;
-      iv=setInterval(function(){ try{
-        if(localStorage.getItem(DKEY) || ++tries>60){ clearInterval(iv); return; }
-        if(!document.getElementById('aug6notice') && location.hash.indexOf('recover')<0) mount();
-      }catch(e){} },1500);
-    }
-    if(document.body){ mount(); watch(); }
-    else document.addEventListener('DOMContentLoaded', function(){ mount(); watch(); });
+    var EXPIRES = Date.parse('2026-08-08T19:00:00Z');   // Aug 8, 12:00 PM Pacific
+    var DKEY    = 'shadowhook_notice_aug6c';            // fresh key: earlier top-banner dismissals don't hide this
+    var el = document.getElementById('aug6notice');
+    if(!el) return;
+    if(Date.now() > EXPIRES || localStorage.getItem(DKEY)){ try{el.remove()}catch(e){} return; }
+    el.style.display = 'block';
+    var ok=document.getElementById('aug6ok'), rc=document.getElementById('aug6rec');
+    if(ok) ok.onclick=function(){ try{localStorage.setItem(DKEY,'1')}catch(e){} try{el.remove()}catch(e){} };
+    if(rc) rc.onclick=function(){ location.hash='recover'; location.reload(); };
   }catch(e){}
 })();
 </script>
