@@ -5937,11 +5937,14 @@ function renderBell(){
   /* #anchor(aug2) — when the opening card hasn't landed, say so instead of going quiet.
      A hand who knows the alert is HELD won't read the silence as "I'm not up". */
   const anchored=(typeof startConfirmed!=="function")||startConfirmed();
+  const countIn=(typeof alertCountIn!=="function")||alertCountIn();   /* #earlygate(aug7) */
   if(sub)sub.textContent = !on
     ? "A phone alert when the board\u2019s predicted to reach your number \u2014 and a live ping as it nears you during dispatch."
-    : (anchored
+    : (anchored&&countIn
        ? "You\u2019ll get a phone alert when the board\u2019s predicted to reach your number, and a live ping as it nears you during dispatch. Tap to turn off."
-       : "Alerts on \u2014 holding until this board\u2019s starting card lands. Until the last board is sealed the call is running off the dispatch before it, and that\u2019s not worth a buzz in your pocket. The live ping during dispatch still rides real scans.");
+       : (!anchored
+          ? "Alerts on \u2014 holding until the last board\u2019s ending is off pending. Until it\u2019s sealed the call is running off the dispatch before it, and that\u2019s not worth a buzz in your pocket. The live ping during dispatch still rides real scans."
+          : "Alerts on \u2014 holding for tonight\u2019s early count. The opening card is real, but until the sheet lands the call is a bare guess, and that\u2019s not worth a buzz in your pocket. The live ping during dispatch still rides real scans."));
 }
 async function toggleOddsAlerts(){
   if(typeof Notification==="undefined"){alert("This browser can't send phone alerts. Open the app in Chrome (Android) or add it to your home screen (iPhone, iOS 16.4+).");return;}
@@ -5952,6 +5955,11 @@ async function toggleOddsAlerts(){
   pushOddsAlert(true);   // fire tonight's immediately so they see it work
 }
 window.toggleOddsAlerts=toggleOddsAlerts;
+/* #earlygate(aug7) — gate 2 for the phone alert: tonight's count has to be IN.
+   True only when the published call is riding a real sheet (EARLY or FINAL) —
+   an EST/AM guess doesn't buzz anybody's pocket. */
+function alertCountIn(){ try{ const s=window._predSource; return s==='EARLY'||s==='FINAL'; }catch(e){ return false; } }
+window.alertCountIn=alertCountIn;
 function pushOddsAlert(force){
   if(!notifyPrefOn() || typeof Notification==="undefined" || Notification.permission!=="granted") return;
   const my=myBoardId(); const od=window._lastOdds;
@@ -5963,7 +5971,11 @@ function pushOddsAlert(force){
      claim in the confirmation ping. It isn't lost, just held: the moment the previous
      board is sealed, repredict → publishCall → renderMyOdds → here, and it goes out
      then. (The dedup key below is only written once an alert actually fires.) */
-  const line = !!od.inLine && startConfirmed();
+  /* #earlygate(aug7) — BOTH gates, or it holds: (1) the last board's ending is no
+     longer pending (startConfirmed — the opening card is real), AND (2) tonight's
+     early count is in (alertCountIn). Held, not lost: when the missing piece lands,
+     repredict → publishCall → renderMyOdds → here, and it goes out then. */
+  const line = !!od.inLine && startConfirmed() && alertCountIn();
   if(!force && !line) return;
   const key="odds_"+callSlot+"_"+todayISO();                    // one alert per board, not per reload
   try{ if(!force && localStorage.getItem(K("lastNotif"))===key) return;
@@ -7313,9 +7325,12 @@ async function dwPull(){
 setInterval(function(){try{dwPull();}catch(e){} try{if(typeof sbLoadBoardWire==='function')sbLoadBoardWire();}catch(e){}},45000);   /* #noflop2 — the seal rides this pull even if realtime drops that one table */
 try{dwPull();}catch(e){}
 /* #37 — you can only hear the speaker at YOUR dispatch. The log opens with the
-   flex call and closes shortly after the board dies — day 6:30→10:00, night
-   4:30→8:00 PM. Nobody's expected to come back and research the other shift. */
-function dropWindowOpen(){const m=cwMinsNow();return (m>=6*60+30&&m<10*60)||(m>=NIGHT_OPEN&&m<20*60)}
+   flex call and closes WITH the board — day 6:30→9:30, night 4:30→7:00 PM.
+   Nobody's expected to come back and research the other shift.
+   #dropend(aug7) — the old close (10:00 / 8:00 PM) left a dead console parked on
+   the page for half an hour after the go-home call. It leaves at board end now,
+   same clock the HUD countdown and the hall line run on (DAY_END / NIGHT_END). */
+function dropWindowOpen(){const m=cwMinsNow();return (m>=6*60+30&&m<DAY_END)||(m>=NIGHT_OPEN&&m<NIGHT_END)}
 /* #118c — the NO FLOP call OUTLIVES the drop console. Hands kept finding the button
    "not there": the whole card left with the drops window (day 10:00 / night 8:00 PM)
    and took the seal control with it — so anyone opening the app after the go-home
