@@ -17755,16 +17755,14 @@ async function shareCall(){
 }
 window.shareCall=shareCall;
 </script>
-<!-- ===== SHADOW HOOK · DATA RECOVERY PANEL (v2 — friendly) ==========
+<!-- ===== SHADOW HOOK · DATA RECOVERY PANEL (v3 — backup & restore only) ==
      Open it by adding #recover to the end of the site URL, then reload.
      It is read-only until you press a button. Nothing here deletes keys.
-     Same machinery as v1 — only the face and the words changed.
      ================================================================ -->
 <script>
 (function(){
   if(location.hash.indexOf('recover')<0) return;
 
-  var CARD=/^([A-Z]\d{3,5}|anon)$/;
   var $=function(id){return document.getElementById(id)};
 
   function allKeys(){
@@ -17773,59 +17771,6 @@ window.shareCall=shareCall;
     catch(e){}
     return out.sort();
   }
-  function bucketOf(k){
-    if(k.indexOf('shadowhook_')!==0) return null;
-    var tail=k.slice(k.lastIndexOf('_')+1);
-    return CARD.test(tail) ? tail : 'global';
-  }
-  function scan(){
-    var b={};
-    allKeys().forEach(function(k){
-      var g=bucketOf(k); if(!g) return;
-      (b[g]=b[g]||[]).push({k:k,n:(localStorage.getItem(k)||'').length});
-    });
-    return b;
-  }
-  function currentId(){
-    try{ if(typeof ACCT_ID==='string') return ACCT_ID; }catch(e){}
-    try{ var a=JSON.parse(localStorage.getItem('shadowhook_account')||'null'); if(a&&a.id) return a.id; }catch(e){}
-    return 'anon';
-  }
-  function esc(s){ return String(s).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]}) }
-
-  /* ---- plain words for what each saved entry actually is ---- */
-  var NAMES={dockets:'Job log',stub:'Paystub',credits:'Credits',badges:'Badges',
-    boardresults:'Board results',mystories:'Stories',jobcat:'Job categories',
-    chatseen:'Chat read-marks',km:'Keymaster switches',joinedrooms:'Rooms',
-    hulls:'Hulls',circle:'Circle',wordpay:'Word pay',v4learn:'Tutorial progress',
-    v4_seen:'Tutorial progress',account:'Sign-in',skin:'Theme',daylight:'Light mode',
-    tips_off:'Tips setting',notice_aug6:'Notice (seen)',active_extra:'Extras',
-    sb_key:'Backend key',dispatch:'Board cache',thumbs:'Thumbs',installbar:'Install bar',
-    comedown:'Comedown'};
-  function stemOf(k,g){
-    var body=k.slice('shadowhook_'.length);
-    if(g!=='global'){ var i=body.lastIndexOf('_'); if(i>0) body=body.slice(0,i); }
-    return body;
-  }
-  function labelOf(k,g){
-    var s=stemOf(k,g);
-    if(NAMES[s]) return NAMES[s];
-    if(s.indexOf('wire')===0) return 'Wire cache';
-    if(s.indexOf('pending')===0) return 'Pending share';
-    return s.replace(/_/g,' ').replace(/^./,function(c){return c.toUpperCase()});
-  }
-  function statusOf(raw,stem){
-    var v=raw==null?'':String(raw);
-    try{
-      var j=JSON.parse(v);
-      if(Object.prototype.toString.call(j)==='[object Array]'){
-        var u=(stem==='dockets')?' jobs':(stem==='mystories'?' stories':' saved');
-        return j.length ? {t:j.length+u, ok:true} : {t:'empty', ok:false};
-      }
-    }catch(e){}
-    return v.length ? {t:'saved', ok:true} : {t:'empty', ok:false};
-  }
-
   /* ---- backup: everything on this phone, as one file ---- */
   function backup(){
     var d={};
@@ -17850,42 +17795,6 @@ window.shareCall=shareCall;
       say('✓ Restored '+n+' entries. Reloading…'); setTimeout(function(){location.reload()},900);
     };
     r.readAsText(f);
-  }
-
-  /* ---- adopt: copy a card's entries onto the signed-in card ---- */
-  function adopt(from){
-    var to=currentId();
-    if(from===to) return say('That’s already the card you’re signed in as.');
-    if(!confirm('Bring everything saved under '+from+' over to '+to+'?\n\nNothing is deleted — '+from+'’s copy stays where it is. If '+to+' already has an entry with the same name, '+from+'’s copy takes its place.')) return;
-    var n=0;
-    scan()[from].forEach(function(e){
-      var name=e.k.slice(0,e.k.lastIndexOf('_'));
-      try{ localStorage.setItem(name+'_'+to, localStorage.getItem(e.k)); n++; }catch(err){}
-    });
-    say('✓ Brought '+n+' entries over to '+to+'. Reloading…'); setTimeout(function(){location.reload()},900);
-  }
-
-  /* ---- what does the server still hold? ---- */
-  function cloud(){
-    var out=$('rcCloud');
-    if(!window.SB) return out.textContent='The online copy can’t be checked from this page right now.';
-    out.textContent='Checking…';
-    window.SB.auth.getSession().then(function(s){
-      var uid=s&&s.data&&s.data.session&&s.data.session.user&&s.data.session.user.id;
-      if(!uid) return out.textContent='You’re not signed in right now. Sign in on the main screen first, then open this panel again and check.';
-      window.SB.from('user_kv').select('k,v').eq('owner',uid).then(function(r){
-        if(r.error) return out.textContent='Couldn’t check right now — give it a minute and try again. ('+r.error.message+')';
-        var rows=r.data||[];
-        if(!rows.length) return out.innerHTML='You’re signed in, but nothing is saved online for this login yet — <b>this phone holds the only copy</b>. All the more reason to save a backup above.';
-        out.innerHTML='<b>Good news — the server is holding '+rows.length+' saved item'+(rows.length===1?'':'s')+'</b> for this login:'+
-          '<div class="cloudlist">'+rows.map(function(x){
-            var g=bucketOf(String(x.k))||'global';
-            var st=statusOf(x.v,stemOf(String(x.k),g));
-            return '<div class="row"><span>'+esc(labelOf(String(x.k),g))+'</span><span class="st '+(st.ok?'ok':'warn')+'">'+esc(st.t)+'</span></div>';
-          }).join('')+'</div>'+
-          'Use the app while signed in and these come back down to your phone on their own.';
-      });
-    });
   }
 
   function say(m){ $('rcSay').textContent=m; }
@@ -17915,58 +17824,22 @@ window.shareCall=shareCall;
     '#rcPanel .cloudlist{margin:8px 0}'+
     '#rcPanel #rcSay{color:#7fd6a0;min-height:22px;margin:6px 0;font-weight:600}'+
     '#rcPanel .x{position:absolute;top:14px;right:14px;margin:0;padding:8px 14px;border-radius:999px}</style>'+
-    '<button class="x" onclick="document.getElementById(\'rcPanel\').remove()">Close ✕</button>'+
+    '<button class="x" onclick="try{history.replaceState(null,\'\',location.pathname+location.search)}catch(e){};document.getElementById(\'rcPanel\').remove()">Close ✕</button>'+
     '<div class="wrap">'+
     '<h2>⚓ Data Recovery</h2>'+
     '<p class="sub">Take it slow — this page only <b>looks</b> until you press a button, and nothing here can delete your data.</p>'+
     '<div id="rcSay"></div>'+
-    '<div class="card"><h3>Step 1 · Save a backup</h3>'+
-    '<div class="k">One file with a copy of everything on this phone, saved to your Downloads. Do this first — then nothing else can go wrong.</div>'+
-    '<button class="go" id="rcBk">⬇ Save backup file</button>'+
-    '<button id="rcRs">Restore from a backup…</button>'+
+    '<div class="card"><h3>Save a backup</h3>'+
+    '<div class="k">One file with a copy of everything the app keeps on this phone, saved to your Downloads.</div>'+
+    '<button class="go" id="rcBk">⬇ Download backup</button>'+
+    '<button id="rcRs">Restore from backup file…</button>'+
     '<input type="file" id="rcFile" accept="application/json" style="display:none"></div>'+
-    '<div class="card"><h3>Step 2 · What’s on this phone</h3><div id="rcList"></div></div>'+
-    '<div class="card"><h3>Step 3 · What’s saved online</h3>'+
-    '<div class="k">Your sign-in can also keep a copy on the server. See what’s up there:</div>'+
-    '<button id="rcCl">Check the online copy</button><div id="rcCloud" style="margin-top:8px"></div></div>'+
     '</div>';
   document.body.appendChild(d);
-
-  var b=scan(), me=currentId(), names=Object.keys(b);
-  var html='<div class="k" style="margin-bottom:6px">Signed in as <b>'+esc(me)+'</b> · '+allKeys().length+' entries on this phone</div>';
-  if(!names.length){
-    html+='<div class="k">Nothing is saved under this web address — but that usually just means your data lives under a slightly different one '+
-      '(with or without <b>www</b>, an older address, or the home-screen app vs the browser). '+
-      'Open the app the way you usually do, add <b>#recover</b> there, and save the backup from that screen — then restore it here.</div>';
-  } else {
-    names.sort(function(x,y){ return x===me?-1:y===me?1:(x==='global'?1:y==='global'?-1:(x<y?-1:1)); })
-    .forEach(function(g){
-      var rows=b[g];
-      if(g==='global'){
-        html+='<div style="margin-top:10px"><b>App settings</b> <span class="k">— '+rows.length+' entries shared by every card on this phone (theme, sign-in and such)</span></div>';
-        return;
-      }
-      var mine=(g===me);
-      html+='<div style="margin-top:10px"><b>'+(mine?'Your stuff — card '+esc(g):'Found more data under card '+esc(g))+'</b>'+
-        (mine?'':'<div class="k">Maybe from an older sign-in on this phone. It’s all still here.</div>');
-      html+=rows.map(function(e){
-        var stem=stemOf(e.k,g), st=statusOf(localStorage.getItem(e.k),stem);
-        return '<div class="row"><span>'+esc(labelOf(e.k,g))+'</span><span class="st '+(st.ok?'ok':'warn')+'">'+esc(st.t)+'</span></div>';
-      }).join('');
-      if(!mine) html+='<button data-adopt="'+esc(g)+'">Bring '+esc(g)+'’s data over to '+esc(me)+'</button>';
-      html+='</div>';
-    });
-  }
-  $('rcList').innerHTML=html;
 
   $('rcBk').onclick=backup;
   $('rcRs').onclick=function(){ $('rcFile').click() };
   $('rcFile').onchange=function(){ if(this.files[0]) restoreFile(this.files[0]) };
-  $('rcCl').onclick=cloud;
-  $('rcList').addEventListener('click',function(e){
-    var g=e.target&&e.target.getAttribute&&e.target.getAttribute('data-adopt');
-    if(g) adopt(g);
-  });
 })();
 </script>
 
@@ -17979,14 +17852,15 @@ window.shareCall=shareCall;
 (function(){
   try{
     var EXPIRES = Date.parse('2026-08-08T19:00:00Z');   // Aug 8, 12:00 PM Pacific — ~24h of air time
-    var DKEY    = 'shadowhook_notice_aug6';
+    var DKEY    = 'shadowhook_notice_aug6b';            // v2 key ON PURPOSE: v1 dismissed itself when a
+                                                        // hand tapped RECOVER — everyone gets one more look
     if(Date.now() > EXPIRES) return;
     if(localStorage.getItem(DKEY)) return;
     if(location.hash.indexOf('recover') >= 0) return;    // never sit on top of the recovery panel
 
     var w = document.createElement('div');
     w.id = 'aug6notice';
-    w.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99990;padding:10px 14px;'+
+    w.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:2147483000;padding:10px 14px;'+
       'background:linear-gradient(180deg,#14100a,#0b0d0f);border-bottom:2px solid var(--copper,#c9803f);'+
       'color:#e8e2d8;font:13px/1.5 inherit;box-shadow:0 6px 18px rgba(0,0,0,.55)';
     w.innerHTML =
@@ -18002,12 +17876,25 @@ window.shareCall=shareCall;
         '</div>'+
       '</div>';
 
-    function mount(){ try{ document.body.appendChild(w);
+    var iv=null;
+    function dismiss(){ try{localStorage.setItem(DKEY,'1')}catch(e){} try{if(iv)clearInterval(iv)}catch(e){} try{w.remove()}catch(e){} }
+    function wire(){ try{
       var ok=document.getElementById('aug6ok'), rc=document.getElementById('aug6rec');
-      if(ok) ok.onclick=function(){ try{localStorage.setItem(DKEY,'1')}catch(e){} try{w.remove()}catch(e){} };
-      if(rc) rc.onclick=function(){ try{localStorage.setItem(DKEY,'1')}catch(e){} location.hash='recover'; location.reload(); };
+      if(ok) ok.onclick=dismiss;   /* GOT IT is the ONLY thing that hides this for good */
+      if(rc) rc.onclick=function(){ try{if(iv)clearInterval(iv)}catch(e){} location.hash='recover'; location.reload(); };
     }catch(e){} }
-    if(document.body) mount(); else document.addEventListener('DOMContentLoaded', mount);
+    function mount(){ try{ document.body.appendChild(w); wire(); }catch(e){} }
+
+    /* the watchdog: if the app's boot repaints <body> and knocks the notice out,
+       put it back — checks every 1.5s for ~90s, then stands down */
+    function watch(){ var tries=0;
+      iv=setInterval(function(){ try{
+        if(localStorage.getItem(DKEY) || ++tries>60){ clearInterval(iv); return; }
+        if(!document.getElementById('aug6notice') && location.hash.indexOf('recover')<0) mount();
+      }catch(e){} },1500);
+    }
+    if(document.body){ mount(); watch(); }
+    else document.addEventListener('DOMContentLoaded', function(){ mount(); watch(); });
   }catch(e){}
 })();
 </script>
