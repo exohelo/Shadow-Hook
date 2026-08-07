@@ -2,19 +2,22 @@
    ────────────────────────────────────────────────────────────────────────────
    TO PUSH AN UPDATE, CHANGE ONE THING: the version number on the CACHE line just
    below (v4 → v5 → v6 …). Then re-upload the files you changed (index.html and,
-   because you bumped it, this sw.js). That's the whole workflow.
+   because you bumped it, this sw.js). That's the whole workflow — and the bump
+   is REQUIRED now (see #fastboot), it's what carries an update to the phones.
 
-   Why this makes old versions go away:
-     • The app is served NETWORK-FIRST (see the fetch handler). Every time a phone
-       opens the app online it pulls the latest index.html straight from the server,
-       bypassing the phone's cache. The cache is only a fallback for no-signal.
-     • index.html actively checks for a new sw.js on every open and every time the
-       app is reopened from the home screen. When it finds this bumped version it
-       activates it and refreshes once, so the member lands on the new build now.
-     • Bumping the number below also wipes every old cache on activate, so nothing
-       stale can survive.
+   #fastboot(aug7) — the app opens INSTANTLY from cache now.
+     • The old fetch was NETWORK-FIRST: every open re-downloaded the whole app
+       (~640 KB on the wire) before anything painted — 3-5 s on hall LTE.
+     • Now the app paints straight from the phone's cache and the fresh copy
+       downloads quietly BEHIND it (cache-first + background refresh).
+   Why updates still go away like before:
+     • index.html checks for a new sw.js on every open (reg.update()). Your bump
+       lands the new worker, its install step re-downloads the shell fresh, and
+       the page refreshes once — the member is on the new build seconds later.
+     • Bumping the number below also wipes every old cache on activate, so
+       nothing stale can survive a deploy.
    ──────────────────────────────────────────────────────────────────────────── */
-const CACHE = 'shadowhook-v34';   // ← bump this each time you deploy an update (v34: drop log closes with the board; firing-line alert waits for sealed ending + early count)
+const CACHE = 'shadowhook-v35';   // ← bump this each time you deploy an update (v35: #fastboot — instant open from cache, fresh copy loads behind)
 
 const SHELL = [
   '.',
@@ -65,18 +68,27 @@ self.addEventListener('fetch', (e) => {
   const isDoc = req.mode === 'navigate' ||
                 (req.headers.get('accept') || '').includes('text/html');
 
-  // The app document: NETWORK-FIRST. Always try the server (cache:'reload' bypasses
-  // the browser's HTTP cache) so the newest deploy wins; fall back to cache offline.
+  // The app document: CACHE-FIRST + background refresh (#fastboot aug7).
+  // The cached build paints NOW; the fresh copy downloads behind it and lands in
+  // the cache for the next open. A deploy still reaches every phone the same day
+  // because the sw.js version bump (reg.update() runs on every open) installs the
+  // new worker, re-caches the shell fresh, and refreshes the page once.
   if (isDoc) {
-    e.respondWith(
-      fetch(url.href, { cache: 'reload', credentials: 'same-origin' })
-        .then((res) => {
+    const fresh = fetch(url.href, { cache: 'reload', credentials: 'same-origin' })
+      .then((res) => {
+        if (res && res.ok) {
           const copy = res.clone();
           caches.open(CACHE).then((c) => c.put('index.html', copy)).catch(() => {});
-          return res;
-        })
-        .catch(() => caches.match('index.html').then((r) => r || caches.match('.')))
+        }
+        return res;
+      })
+      .catch(() => null);
+    e.respondWith(
+      caches.match('index.html')
+        .then((r) => r || caches.match('.'))
+        .then((cached) => cached || fresh.then((res) => res || caches.match('index.html')))
     );
+    e.waitUntil(fresh);
     return;
   }
 
