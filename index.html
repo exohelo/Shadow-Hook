@@ -2832,14 +2832,10 @@ window.DEVLOG=(function(){
         <span id="pfSync">Saved on this device</span>
       </div>
 
-      <!-- #aug6notice — the all-clear, shown here in the profile until it expires (see controller near </body>) -->
-      <div id="aug6notice" style="display:none;margin:12px 0 2px;padding:10px 12px;border:1px solid var(--copper,#c9803f);border-radius:12px;background:rgba(201,128,63,.08)">
-        <div style="font-weight:800;color:var(--copper-hi,#eeb46b);letter-spacing:.04em;margin-bottom:4px">⚓ AUG 6 — ALL CLEAR</div>
-        <div style="font-size:13px;line-height:1.5">That was a worldwide outage — everything is fixed and patched. Log missing jobs? Tap <b>RECOVER</b>.</div>
-        <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
-          <button type="button" id="aug6rec" style="padding:6px 14px;border:1px solid var(--copper,#c9803f);border-radius:8px;background:transparent;color:var(--copper-hi,#eeb46b);font-weight:700;cursor:pointer">⟲ RECOVER</button>
-          <button type="button" id="aug6ok" style="padding:6px 14px;border:1px solid #3a3f45;border-radius:8px;background:#1a1e22;color:#e8e2d8;font-weight:700;cursor:pointer">GOT IT ✓</button>
-        </div>
+      <!-- #recoverbtn — backup & restore lives here in the profile -->
+      <div style="margin:12px 0 2px;padding:10px 12px;border:1px solid rgba(128,128,128,.35);border-radius:12px">
+        <div style="font-size:13px;line-height:1.5;opacity:.8;margin-bottom:8px">Missing something? Save a backup of everything on this phone, or restore one you saved before.</div>
+        <button class="btn-line" id="pfRecover" type="button" onclick="location.hash='recover';location.reload()">⟲ RECOVERY</button>
       </div>
 
       <div class="prof-actions">
@@ -17853,24 +17849,40 @@ window.shareCall=shareCall;
 })();
 </script>
 
-<!-- ===== #aug6notice controller ==========================================
-     The all-clear card now lives INSIDE the profile sheet (see #aug6notice in
-     the profileSheet markup). This just decides whether it shows: hidden once
-     it expires or once the hand taps GOT IT. RECOVER opens the recovery panel.
-     Safe to delete this block + the card any time after it expires.
+<!-- ===== #aug6notice — front-of-app all-clear (self-expiring) ============
+     The short notice at the top of the app. Shows until it EXPIRES (below)
+     or the hand taps OK. The recovery tools live in the profile sheet now
+     (see #recoverbtn). Safe to delete this block any time after it expires.
      ======================================================================= -->
 <script>
 (function(){
   try{
     var EXPIRES = Date.parse('2026-08-08T19:00:00Z');   // Aug 8, 12:00 PM Pacific
-    var DKEY    = 'shadowhook_notice_aug6c';            // fresh key: earlier top-banner dismissals don't hide this
-    var el = document.getElementById('aug6notice');
-    if(!el) return;
-    if(Date.now() > EXPIRES || localStorage.getItem(DKEY)){ try{el.remove()}catch(e){} return; }
-    el.style.display = 'block';
-    var ok=document.getElementById('aug6ok'), rc=document.getElementById('aug6rec');
-    if(ok) ok.onclick=function(){ try{localStorage.setItem(DKEY,'1')}catch(e){} try{el.remove()}catch(e){} };
-    if(rc) rc.onclick=function(){ location.hash='recover'; location.reload(); };
+    var DKEY    = 'shadowhook_notice_aug6d';            // fresh key: earlier dismissals don't hide this one
+    if(Date.now() > EXPIRES) return;
+    if(localStorage.getItem(DKEY)) return;
+    if(location.hash.indexOf('recover') >= 0) return;    // never sit on top of the recovery panel
+
+    var w = document.createElement('div');
+    w.id = 'aug6notice';
+    w.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:2147483000;padding:10px 14px;'+
+      'background:linear-gradient(180deg,#14100a,#0b0d0f);border-bottom:2px solid var(--copper,#c9803f);'+
+      'color:#e8e2d8;box-shadow:0 6px 18px rgba(0,0,0,.55)';
+    w.innerHTML =
+      '<div style="max-width:680px;margin:0 auto;display:flex;align-items:center;gap:12px">'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="font-weight:800;letter-spacing:.05em;color:var(--copper-hi,#eeb46b)">⚓ AUG 6 — ALL CLEAR</div>'+
+          '<div style="font-size:13px;line-height:1.45">That was a worldwide outage — everything is fixed and patched.</div>'+
+        '</div>'+
+        '<button id="aug6ok" style="flex:0 0 auto;padding:8px 18px;border:1px solid var(--copper,#c9803f);'+
+          'border-radius:8px;background:transparent;color:var(--copper-hi,#eeb46b);font-weight:700;cursor:pointer">OK</button>'+
+      '</div>';
+
+    function mount(){ try{ document.body.appendChild(w);
+      var ok=document.getElementById('aug6ok');
+      if(ok) ok.onclick=function(){ try{localStorage.setItem(DKEY,'1')}catch(e){} try{w.remove()}catch(e){} };
+    }catch(e){} }
+    if(document.body) mount(); else document.addEventListener('DOMContentLoaded', mount);
   }catch(e){}
 })();
 </script>
