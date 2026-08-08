@@ -210,7 +210,7 @@ select.field{appearance:none;-webkit-appearance:none}
     <div class="crest">⚓</div>
     <div class="wordmark">THE ORDER OF THE SHADOW HOOK</div>
     <div class="gate-title">THE DOCK OFFICE</div>
-    <div class="gate-sub">Vendor gate · orders, shipping &amp; the ledger · v6 — walk the floor</div>
+    <div class="gate-sub">Vendor gate · orders, shipping &amp; the ledger · v7 — the gate switch</div>
     <div class="card" style="margin-top:26px;text-align:left"><div class="card-b">
       <div class="lbl" style="margin-top:2px">EMAIL</div>
       <input class="field" id="gEmail" type="email" autocomplete="username" placeholder="you@yourshop.com">
@@ -1463,6 +1463,27 @@ async function rejectDraft(id){
    Renders the store exactly the way index.html does (same art generator,
    same card and page anatomy) straight from the products table. The till
    stays in the app — nothing here can be bought. */
+let GATE={known:false,on:false};
+async function loadGate(){
+  try{
+    const r=await SB.from('km_flags').select('armory_prices').eq('id',1).maybeSingle();
+    if(!r.error){ GATE={known:!!r.data, on:!!(r.data&&r.data.armory_prices)}; }
+    else GATE={known:false,on:false,err:r.error.message};
+  }catch(e){ GATE={known:false,on:false,err:String(e&&e.message||e)}; }
+}
+async function toggleGate(){
+  const opening=!GATE.on;
+  if(opening&&!confirm('OPEN THE GATES?\n\nEvery phone shows prices and LIVE gear goes on sale the moment you confirm. (While Stripe is in test mode, real cards politely decline — only the 4242 test card buys.)'))return;
+  const b=$('gateBtn'); if(b)b.disabled=true;
+  const r=await SB.from('km_flags').upsert({id:1, armory_prices:opening, updated_at:new Date().toISOString()},{onConflict:'id'});
+  if(r.error){
+    const m=$('gateMsg');
+    if(m)m.textContent='> '+r.error.message+(/column|schema|armory_prices/i.test(r.error.message)?' — run OPENING-DAY.sql once, then try again':'');
+    if(b)b.disabled=false; return;
+  }
+  toast(opening?'⚑ GATES OPEN — prices are live on every phone':'⚑ Gates closed — the floor reads Coming soon again');
+  await loadGate(); renderFloor();
+}
 const FLOOR_CATS=[['all','Everything'],['ppe','PPE & Safety'],['apparel','Apparel'],['acc','Accessories'],['gear','Patches & Pins']];
 let FLOORCAT='all', floorProd=null, floorCi=0, floorSize=null;
 function floorNorm(p){
@@ -1477,7 +1498,16 @@ function renderFloor(){
   const host=$('panel');
   if(floorProd){ renderFloorPDP(host); return; }
   const list=STORE.filter(p=>FLOORCAT==='all'||p.cat===FLOORCAT);
-  host.innerHTML='<p class="sub" style="margin:0 2px 10px">The Armory as the hands will see it — <b style="color:var(--bone)">browse only</b>; the till lives in the app. Prices show once the Keymaster posts them.</p>'
+  const gate = ME.km ? ('<div class="card" style="border-color:rgba(238,180,107,.4)"><div class="card-h">⚑ OPENING DAY'
+    +'<span class="tag">one switch · every phone · live</span></div><div class="card-b">'
+    +'<p class="sub" style="margin-bottom:10px">'+(GATE.on
+      ?'The gates are <b style="color:var(--ok)">OPEN</b> — prices show in the app and LIVE gear is for sale.'
+      :'The gates are <b style="color:var(--warn)">CLOSED</b> — the app reads “Coming soon” everywhere and nothing can be bought.')+'</p>'
+    +'<button class="btn'+(GATE.on?'-line red" style="width:100%':'"')+'" id="gateBtn">'+(GATE.on?'⚑ CLOSE THE GATES':'⚑ OPEN THE GATES')+'</button>'
+    +'<div class="msgline" id="gateMsg">'+(GATE.err?'&gt; '+esc(GATE.err):'')+'</div>'
+    +'</div></div>') : '';
+  host.innerHTML=gate
+    +'<p class="sub" style="margin:0 2px 10px">The Armory as the hands will see it — <b style="color:var(--bone)">browse only</b>; the till lives in the app. Prices show once the Keymaster posts them.</p>'
     +'<div class="chips">'+FLOOR_CATS.map(([k,l])=>'<button data-fc="'+k+'"'+(k===FLOORCAT?' class="on"':'')+'>'+esc(l)+'</button>').join('')+'</div>'
     +(list.length?'<div class="floor-grid">'+list.map(p=>{
         const d=floorNorm(p);
@@ -1495,6 +1525,8 @@ function renderFloor(){
           +'</div>';
       }).join('')+'</div>'
       :'<p class="sub" style="text-align:center;padding:16px">Nothing on this shelf yet.</p>');
+  const gb=$('gateBtn'); if(gb)gb.addEventListener('click',toggleGate);
+  if(ME.km&&!GATE.known&&!GATE.err){ loadGate().then(()=>{ if(TAB==='floor'&&!floorProd)renderFloor(); }); }
   host.querySelectorAll('[data-fc]').forEach(b=>b.addEventListener('click',()=>{FLOORCAT=b.dataset.fc;renderFloor();}));
   host.querySelectorAll('[data-fp]').forEach(c=>c.addEventListener('click',()=>{
     floorProd=STORE.find(p=>String(p.id)===c.dataset.fp)||null; floorCi=0; floorSize=null;

@@ -8952,7 +8952,9 @@ function tonightBoardHTML(bs, op){
    bucks fields stay in the catalog and in the products table, so the command centre
    can price stock up ahead of opening day — flip this one flag to true and every
    price appears at once. */
-const GEAR_SHOW_PRICES=false;
+let GEAR_SHOW_PRICES=false;   /* #vendor — now only the FALLBACK: the live word is
+   km_flags.armory_prices, thrown from the Dock Office (THE FLOOR tab) and applied
+   by the cart module at the end of this file. OFF = "Coming soon" everywhere. */
 const GEAR_CATS=[["all","Everything"],["ppe","PPE & Safety"],["apparel","Apparel"],
   ["acc","Accessories"],["gear","Patches & Pins"]];
 const GEAR_SEED=[
@@ -18118,6 +18120,36 @@ window.shareCall=shareCall;
   var pb=document.getElementById('tillPay'); if(pb)pb.addEventListener('click',pay);
   ['cartSheet','tillSheet'].forEach(function(id){ var sh=document.getElementById(id);
     if(sh)sh.addEventListener('click',function(e){ if(e.target===sh)sh.classList.remove('on'); }); });
+  /* ---- #vendor — THE GATE SWITCH ----
+     km_flags.armory_prices is the Keymaster's opening-day lever. Cached copy
+     applies instantly on boot; the live row is polled on open, on wake, and
+     every few minutes; a Command Center push lands via the sbLoadKmFlags ride. */
+  function setPrices(on){
+    on=!!on;
+    if(on===GEAR_SHOW_PRICES)return;
+    GEAR_SHOW_PRICES=on;
+    try{ localStorage.setItem('shadowhook_prices', on?'1':'0'); }catch(e){}
+    try{ if(typeof renderShop==='function')renderShop(); }catch(e){}
+    try{ if(typeof gearProd!=='undefined'&&gearProd&&typeof paintGear==='function')paintGear(); }catch(e){}
+    try{ renderFab(); }catch(e){}
+  }
+  window.__armorySetPrices=setPrices;
+  async function pollPriceFlag(){
+    if(!window.SB)return;
+    try{
+      const r=await window.SB.from('km_flags').select('armory_prices').eq('id',1).maybeSingle();
+      if(r&&!r.error&&r.data&&r.data.armory_prices!=null) setPrices(!!r.data.armory_prices);
+    }catch(e){}
+  }
+  try{ if(localStorage.getItem('shadowhook_prices')==='1')setPrices(true); }catch(e){}
+  pollPriceFlag();
+  setInterval(function(){ if(document.visibilityState==='visible')pollPriceFlag(); }, 240000);
+  document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='visible')pollPriceFlag(); });
+  try{ var _kf=window.sbLoadKmFlags;
+    if(typeof _kf==='function')window.sbLoadKmFlags=async function(){ var r=await _kf.apply(this,arguments);
+      try{ if(window.KM_FLAGS&&window.KM_FLAGS.armory_prices!=null)setPrices(!!window.KM_FLAGS.armory_prices); }catch(e){} return r; };
+  }catch(e){}
+
   /* the catalog can be re-priced under our feet by sbLoadProducts → renderShop;
      ride that call so the FAB total never lies */
   try{ var _rs=window.renderShop;
