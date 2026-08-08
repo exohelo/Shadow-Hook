@@ -308,7 +308,7 @@ select.field{appearance:none;-webkit-appearance:none}
     <div class="crest">⚓</div>
     <div class="wordmark">THE ORDER OF THE SHADOW HOOK</div>
     <div class="gate-title">THE DOCK OFFICE</div>
-    <div class="gate-sub">Vendor gate · orders, shipping &amp; the ledger · v10 — wide berth</div>
+    <div class="gate-sub">Vendor gate · orders, shipping &amp; the ledger · v11 — tidy bench</div>
     <div class="card" style="margin-top:26px;text-align:left"><div class="card-b">
       <div class="lbl" style="margin-top:2px">EMAIL</div>
       <input class="field" id="gEmail" type="email" autocomplete="username" placeholder="you@yourshop.com">
@@ -953,8 +953,8 @@ function renderGear(){
       +'<span class="n"><b>'+esc(d.name)+'</b><i>'+(DRAFT_PILL[d.status]||'')
       +(d.status==='rejected'&&d.km_note?' · '+esc(d.km_note):'')
       +(d.cost_asked!=null?' · asked '+money(d.cost_asked)+'/unit':'')+'</i></span>'
-      +(d.status==='pending'?'<button class="btn-line" data-dedit="'+esc(d.id)+'">✎</button>'
-        +'<button class="btn-ghost" style="padding:4px 8px" data-dkill="'+esc(d.id)+'" title="withdraw">✕</button>':'')
+      +(d.status==='pending'?'<button class="btn-line" data-dedit="'+esc(d.id)+'">✎</button>':'')
+      +'<button class="btn-ghost" style="padding:4px 8px" data-dkill="'+esc(d.id)+'" data-dst="'+esc(d.status)+'" title="'+(d.status==='pending'?'withdraw the pitch':'clear from your list')+'">✕</button>'
       +'</div>').join('');
   host.innerHTML='<button class="btn" id="gSubmit" style="margin:2px 0 14px">🛠 SUBMIT NEW GEAR</button>'
     +'<div class="card"><div class="card-h">🛠 ON THE WORKBENCH<span class="tag">your pitches &amp; where they stand</span></div><div class="card-b">'
@@ -966,10 +966,14 @@ function renderGear(){
   $('gSubmit').addEventListener('click',()=>openDraftSheet('submit'));
   host.querySelectorAll('[data-dedit]').forEach(b=>b.addEventListener('click',()=>openDraftSheet('editmine',b.dataset.dedit)));
   host.querySelectorAll('[data-dkill]').forEach(b=>b.addEventListener('click',async()=>{
-    if(!confirm('Withdraw this pitch?'))return;
+    const st=b.dataset.dst;
+    const word = st==='pending' ? 'Withdraw this pitch? The Keymaster won’t see it.'
+      : st==='approved' ? 'Clear this from your list? The shelved product STAYS in the store — if you want it pulled off the floor, say so on the wire.'
+      : 'Clear this from your list?';
+    if(!confirm(word))return;
     const r=await SB.from('product_drafts').delete().eq('id',b.dataset.dkill);
-    if(r.error){toast('⚠ '+r.error.message);return;}
-    toast('Withdrawn'); await loadDrafts(); renderGear(); }));
+    if(r.error){toast('⚠ '+r.error.message+(/policy|permission/i.test(r.error.message)?' — run the updated OPENING-DAY.sql':'') );return;}
+    toast(st==='pending'?'Withdrawn':'Cleared'); await loadDrafts(); renderGear(); }));
 }
 
 /* ════════ VENDORS (Keymaster) ════════ */
