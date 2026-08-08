@@ -2373,6 +2373,55 @@ window.DEVLOG=(function(){
     </div>
   </div>
 
+  <!-- ═══ #vendor — THE CART & THE TILL ═══
+       Dormant while GEAR_SHOW_PRICES is false: the FAB only shows when a live,
+       priced product is actually in the cart, and the ADD button only renders
+       on live+priced product pages. Flip the flag and the shop starts selling.
+       The logic lives in the "#vendor — cart module" script at the end of the
+       file; checkout runs through the armory-checkout edge function → Stripe. -->
+  <style>
+  #cartFab{position:fixed;right:14px;bottom:calc(86px + env(safe-area-inset-bottom));z-index:40;display:none;align-items:center;gap:8px;padding:12px 17px;border:1px solid rgba(238,180,107,.55);border-radius:999px;background:linear-gradient(135deg,var(--copper),var(--ember));color:#1a1208;font-weight:700;font-size:14px;letter-spacing:.06em;box-shadow:0 10px 28px rgba(0,0,0,.5);cursor:pointer}
+  #cartFab b{font-family:'IBM Plex Mono',monospace;font-weight:700}
+  #cartFab.bump{animation:cartBump .3s}
+  @keyframes cartBump{40%{transform:scale(1.12)}}
+  .cart-line{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--line-soft)}
+  .cart-line .nm{flex:1;min-width:0}
+  .cart-line .nm b{display:block;font-size:14.5px;color:var(--bone);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cart-line .nm span{font-size:12px;color:var(--steel)}
+  .cart-line .px{font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--bone);flex:none}
+  .cart-qty{display:flex;align-items:center;gap:2px;background:var(--well);border:1px solid var(--line-soft);border-radius:9px;flex:none}
+  .cart-qty button{width:28px;height:28px;border:0;background:none;color:var(--copper-hi);font-size:16px;cursor:pointer}
+  .cart-qty b{min-width:20px;text-align:center;font-size:13px;font-family:'IBM Plex Mono',monospace;color:var(--bone)}
+  .cart-x{width:26px;height:26px;border:0;background:none;color:var(--steel);font-size:13px;cursor:pointer;flex:none}
+  .cart-sum{display:flex;justify-content:space-between;align-items:center;margin-top:12px;font-size:13px;color:var(--steel)}
+  .cart-sum b{font-family:'IBM Plex Mono',monospace;font-size:19px;color:var(--copper-hi)}
+  </style>
+  <button id="cartFab" type="button" aria-label="Open the cart">🛡 <b id="cartFabN">0</b> · <b id="cartFabT">$0</b></button>
+
+  <div class="sheet" id="cartSheet">
+    <div class="sheet-card" style="text-align:left">
+      <div class="big" style="font-size:20px;letter-spacing:.06em;text-align:center">🛡 THE CART</div>
+      <div id="cartLines" style="margin-top:8px"></div>
+      <div class="cart-sum"><span>Subtotal — shipping shows at the till</span><b id="cartSub">$0</b></div>
+      <button class="btn" id="cartGo" type="button" style="width:100%;margin-top:14px">⚓ TO THE TILL</button>
+      <button class="btn-ghost" style="width:100%;margin-top:10px" onclick="document.getElementById('cartSheet').classList.remove('on')">Keep browsing</button>
+    </div>
+  </div>
+
+  <div class="sheet" id="tillSheet">
+    <div class="sheet-card" style="text-align:left">
+      <div class="big" style="font-size:20px;letter-spacing:.06em;text-align:center">⚓ THE TILL</div>
+      <p class="sub" style="margin:8px 0 4px;text-align:center">Card checkout runs on <b style="color:var(--bone)">Stripe</b> — the Order never touches your number. Shipping address is taken on the pay page.</p>
+      <div style="font-size:11px;letter-spacing:.2em;color:var(--steel);font-weight:600;margin:12px 0 6px">NAME</div>
+      <input class="field" id="tillName" autocomplete="name" placeholder="Who's it for">
+      <div style="font-size:11px;letter-spacing:.2em;color:var(--steel);font-weight:600;margin:12px 0 6px">EMAIL — THE RECEIPT LANDS HERE</div>
+      <input class="field" id="tillEmail" type="email" autocomplete="email" placeholder="you@dock.com">
+      <div class="field-msg" id="tillMsg"></div>
+      <button class="btn" id="tillPay" type="button" style="width:100%;margin-top:12px">PAY <span id="tillTotal" class="mono"></span></button>
+      <button class="btn-ghost" style="width:100%;margin-top:10px" onclick="document.getElementById('tillSheet').classList.remove('on')">Not yet</button>
+    </div>
+  </div>
+
   <style>
   .jackpot{position:fixed;inset:0;z-index:100000;display:none;align-items:center;justify-content:center;
     background:radial-gradient(circle at 50% 42%,rgba(64,38,13,.94),rgba(6,7,9,.97))}
@@ -9176,8 +9225,13 @@ function paintGear(){
        +cols.map((cc,i)=>'<button type="button" data-ci="'+i+'" title="'+shEsc(cc&&cc.n)+'" style="background:'+gearHex(cc&&cc.hex)+'"'+(i===gearColor?' class="on"':'')+'></button>').join('')+'</div>':'')
     +(sizes.length?'<div class="pdp-lbl">Size: <b>'+shEsc(gearSize||'Please select')+'</b></div><div class="pdp-sizes">'
        +sizes.map((sz,i)=>'<button type="button" data-i="'+i+'"'+(sz===gearSize?' class="on"':'')+'>'+shEsc(sz)+'</button>').join('')+'</div>':'')
-    +'<button class="btn" id="gearNotify" type="button" style="margin-top:18px">🔔 TELL ME WHEN IT DROPS</button>'
-    +'<p class="sub" style="text-align:center;margin-top:8px;font-size:12px">Prices post on opening day. No charge today.</p>'
+    +(function(){ /* #vendor — the CTA: a live, priced product SELLS; anything else takes names */
+        var buyable=GEAR_SHOW_PRICES && p.status==='live' && (gearNum(p.usd)||0)>0;
+        if(buyable) return '<button class="btn" id="gearAdd" type="button" style="margin-top:18px">🛡 ADD TO THE CART</button>'
+          +'<p class="sub" style="text-align:center;margin-top:8px;font-size:12px">Secure card checkout · ships from the Order&#39;s suppliers</p>';
+        return '<button class="btn" id="gearNotify" type="button" style="margin-top:18px">🔔 TELL ME WHEN IT DROPS</button>'
+          +'<p class="sub" style="text-align:center;margin-top:8px;font-size:12px">Prices post on opening day. No charge today.</p>';
+      })()
     +(specs.length?'<div class="pdp-spec"><div class="pdp-lbl" style="margin:0 0 4px">The Details</div>'
        +specs.map(s=>{ const a=gearArr(s); return '<div><span>'+shEsc(a[0])+'</span><span>'+shEsc(a[1])+'</span></div>'; }).join('')+'</div>':'');
 
@@ -9189,6 +9243,8 @@ function paintGear(){
   host.querySelectorAll('.pdp-sizes button').forEach(b=>b.addEventListener('click',()=>{gearSize=sizes[+b.dataset.i]||null;paintGear();}));
   const n=document.getElementById('gearNotify');
   if(n)n.addEventListener('click',()=>gearNotify(p,c));
+  const ad=document.getElementById('gearAdd');   /* #vendor — the cart module takes it from here */
+  if(ad)ad.addEventListener('click',()=>{ if(window.armoryAdd)window.armoryAdd(); });
 }
 /* interest goes on the wire so the command centre can see what to order first */
 function gearNotify(p,c){
@@ -17903,6 +17959,171 @@ window.shareCall=shareCall;
     }catch(e){} }
     if(document.body) mount(); else document.addEventListener('DOMContentLoaded', mount);
   }catch(e){}
+})();
+</script>
+
+<script>
+/* ═══════════════ #vendor — THE CART MODULE ═══════════════
+   The storefront's buying half: the cart, the till, and the walk back from
+   Stripe. DORMANT while GEAR_SHOW_PRICES is false — no FAB, no CTA, nothing
+   visible changes until the flag flips.
+
+   THE MONEY PATH. This file never talks to Stripe directly: the cart posts
+   ids+quantities to the armory-checkout edge function, which prices every
+   line FROM THE products TABLE (a tampered client can't discount itself),
+   writes the order, and returns a Stripe Checkout URL. Stripe collects card,
+   shipping address and phone; the stripe-webhook function flips the order to
+   PAID — and that's the moment it lands in the vendors' Dock Office queue.
+   Cash lands in the house account; each line carries the vendor's cut
+   (products.cost, snapshotted) so the ledger knows who's owed what. */
+(function(){
+  var CART_KEY='shadowhook_cart', BUYER_KEY='shadowhook_buyer';
+  function G(){ return (typeof GEAR!=='undefined'&&Array.isArray(GEAR))?GEAR:[]; }
+  function pricesOn(){ return typeof GEAR_SHOW_PRICES!=='undefined'&&!!GEAR_SHOW_PRICES; }
+  function num(n){ return (typeof gearNum==='function')?gearNum(n):(isFinite(+n)?+n:null); }
+  function arr(v){ return (typeof gearArr==='function')?gearArr(v):(Array.isArray(v)?v:[]); }
+  function hEsc(s){ return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+  function say(m){ try{ toast(m); }catch(e){} }
+  function fmt(c){ return '$'+(c/100).toFixed(2).replace(/\.00$/,''); }
+
+  function cload(){ try{ var a=JSON.parse(localStorage.getItem(CART_KEY)||'[]');
+    return Array.isArray(a)?a.filter(function(l){return l&&l.id&&(l.qty=Math.max(1,Math.min(20,Math.floor(+l.qty)||1)),true)}).slice(0,40):[]; }catch(e){ return []; } }
+  var cart=cload();
+  function csave(){ try{ localStorage.setItem(CART_KEY,JSON.stringify(cart)); }catch(e){} }
+  function prod(id){ var g=G(); for(var i=0;i<g.length;i++)if(String(g[i].id)===String(id))return g[i]; return null; }
+  /* a line only counts while its product is live and priced — so with prices
+     off, or a product pulled from the floor, the cart quietly holds its tongue */
+  function alive(l){ var p=prod(l.id); return !!(p&&pricesOn()&&p.status==='live'&&(num(p.usd)||0)>0)?p:null; }
+  function centsOf(l){ var p=alive(l); return p?Math.round((num(p.usd)||0)*100)*l.qty:0; }
+  function liveLines(){ return cart.filter(function(l){return !!alive(l)}); }
+  function totalCents(){ return cart.reduce(function(s,l){return s+centsOf(l)},0); }
+
+  /* ---- the FAB ---- */
+  function renderFab(){
+    var f=document.getElementById('cartFab'); if(!f)return;
+    var ls=liveLines(), n=ls.reduce(function(s,l){return s+l.qty},0);
+    if(!n){ f.style.display='none'; return; }
+    f.style.display='flex';
+    var el; (el=document.getElementById('cartFabN'))&&(el.textContent=n);
+    (el=document.getElementById('cartFabT'))&&(el.textContent=fmt(totalCents()));
+  }
+  function bump(){ var f=document.getElementById('cartFab'); if(!f)return;
+    f.classList.remove('bump'); void f.offsetWidth; f.classList.add('bump'); }
+
+  /* ---- add from the product page (paintGear wires #gearAdd to this) ---- */
+  window.armoryAdd=function(){
+    try{
+      var p=(typeof gearProd!=='undefined')?gearProd:null; if(!p)return;
+      var sizes=arr(p.sizes);
+      var size=(typeof gearSize!=='undefined')?gearSize:null;
+      if(sizes.length&&!size){ say('Pick a size first'); return; }
+      var cols=arr(p.colors), ci=(typeof gearColor!=='undefined')?gearColor:0;
+      var color=(cols[ci]&&cols[ci].n)?String(cols[ci].n):null;
+      if(!alive({id:p.id})){ say('That one isn’t on sale yet'); return; }
+      for(var i=0;i<cart.length;i++){
+        var l=cart[i];
+        if(l.id===String(p.id)&&(l.color||null)===(color||null)&&(l.size||null)===(size||null)){
+          l.qty=Math.min(20,l.qty+1); csave(); renderFab(); bump(); say('🛡 '+(p.name||'Gear')+' ×'+l.qty+' in the cart'); return;
+        }
+      }
+      if(cart.length>=40){ say('The cart’s full — check out first'); return; }
+      cart.push({id:String(p.id),color:color,size:size,qty:1}); csave(); renderFab(); bump();
+      say('🛡 In the cart — '+(p.name||'gear'));
+    }catch(e){ console.warn('[cart] add',e); }
+  };
+
+  /* ---- the cart sheet ---- */
+  function renderCart(){
+    var host=document.getElementById('cartLines'); if(!host)return;
+    if(!cart.length){ host.innerHTML='<p class="sub" style="padding:14px 0">Nothing aboard yet. The Armory’s a tap away.</p>'; }
+    else host.innerHTML=cart.map(function(l,i){
+      var p=alive(l), full=prod(l.id);
+      var nm=full?(full.name||l.id):l.id;
+      var variant=[l.color,l.size].filter(Boolean).join(' · ');
+      if(!p) return '<div class="cart-line" style="opacity:.55"><div class="nm"><b>'+hEsc(nm)+'</b><span>'
+        +(variant?hEsc(variant)+' · ':'')+'left the floor — not charged</span></div>'
+        +'<button class="cart-x" data-x="'+i+'" aria-label="remove">✕</button></div>';
+      return '<div class="cart-line"><div class="nm"><b>'+hEsc(nm)+'</b><span>'+hEsc(variant||'—')+'</span></div>'
+        +'<div class="cart-qty"><button data-dn="'+i+'" aria-label="less">−</button><b>'+l.qty+'</b><button data-up="'+i+'" aria-label="more">+</button></div>'
+        +'<div class="px">'+fmt(centsOf(l))+'</div>'
+        +'<button class="cart-x" data-x="'+i+'" aria-label="remove">✕</button></div>';
+    }).join('');
+    var el; (el=document.getElementById('cartSub'))&&(el.textContent=fmt(totalCents()));
+    host.querySelectorAll('[data-up]').forEach(function(b){b.addEventListener('click',function(){var l=cart[+b.dataset.up];if(l){l.qty=Math.min(20,l.qty+1);csave();renderCart();renderFab();}});});
+    host.querySelectorAll('[data-dn]').forEach(function(b){b.addEventListener('click',function(){var l=cart[+b.dataset.dn];if(l&&l.qty>1){l.qty--;csave();renderCart();renderFab();}});});
+    host.querySelectorAll('[data-x]').forEach(function(b){b.addEventListener('click',function(){cart.splice(+b.dataset.x,1);csave();renderCart();renderFab();});});
+  }
+  function openCart(){ renderCart(); var s=document.getElementById('cartSheet'); if(s)s.classList.add('on'); }
+
+  /* ---- the till ---- */
+  function openTill(){
+    if(!liveLines().length){ say('Nothing priced in the cart'); return; }
+    var cs=document.getElementById('cartSheet'); if(cs)cs.classList.remove('on');
+    var t=document.getElementById('tillSheet'); if(!t)return;
+    var el; (el=document.getElementById('tillTotal'))&&(el.textContent=fmt(totalCents())+' + shipping');
+    (el=document.getElementById('tillMsg'))&&(el.textContent='');
+    var saved={}; try{ saved=JSON.parse(localStorage.getItem(BUYER_KEY)||'{}')||{}; }catch(e){}
+    var nameI=document.getElementById('tillName'), mailI=document.getElementById('tillEmail');
+    if(nameI&&!nameI.value)nameI.value=saved.n||'';
+    if(mailI&&!mailI.value)mailI.value=saved.e||'';
+    if(mailI&&!mailI.value&&window.SB){ window.SB.auth.getUser().then(function(u){
+      try{ if(!mailI.value&&u&&u.data&&u.data.user&&u.data.user.email)mailI.value=u.data.user.email; }catch(e){} }).catch(function(){}); }
+    t.classList.add('on');
+  }
+  async function pay(){
+    var btn=document.getElementById('tillPay'), msg=document.getElementById('tillMsg');
+    var name=(document.getElementById('tillName')||{}).value||'', email=((document.getElementById('tillEmail')||{}).value||'').trim();
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ if(msg)msg.textContent='> a real email is needed — the receipt lands there'; return; }
+    if(!window.SUPABASE_URL){ if(msg)msg.textContent='> the till isn’t wired — backend not configured'; return; }
+    var lines=liveLines().map(function(l){return {id:l.id,color:l.color,size:l.size,qty:l.qty}});
+    if(!lines.length){ if(msg)msg.textContent='> nothing priced in the cart'; return; }
+    try{ localStorage.setItem(BUYER_KEY,JSON.stringify({n:name,e:email})); }catch(e){}
+    var was=btn?btn.innerHTML:''; if(btn){ btn.disabled=true; btn.textContent='OPENING THE TILL…'; }
+    try{
+      var token=window.SUPABASE_ANON_KEY||'';
+      try{ if(window.SB){ var s=await window.SB.auth.getSession();
+        if(s&&s.data&&s.data.session&&s.data.session.access_token)token=s.data.session.access_token; } }catch(e){}
+      var r=await fetch(String(window.SUPABASE_URL).replace(/\/+$/,'')+'/functions/v1/armory-checkout',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','apikey':window.SUPABASE_ANON_KEY||'','Authorization':'Bearer '+token},
+        body:JSON.stringify({items:lines,buyer:{name:name,email:email},
+          return_url:location.origin+location.pathname})
+      });
+      var j=null; try{ j=await r.json(); }catch(e){}
+      if(r.ok&&j&&j.url){ location.href=j.url; return; }
+      if(msg)msg.textContent='> '+((j&&j.error)||('the till jammed ('+r.status+') — try again'));
+    }catch(e){ if(msg)msg.textContent='> no wire to the till — check your signal and try again'; }
+    if(btn){ btn.disabled=false; btn.innerHTML=was; }
+  }
+
+  /* ---- the walk back from Stripe ---- */
+  function handleReturn(){
+    var q; try{ q=new URLSearchParams(location.search); }catch(e){ return; }
+    if(q.get('armory_paid')){
+      var code=(q.get('code')||'').replace(/[^A-Z0-9-]/gi,'');
+      cart=[]; csave(); renderFab();
+      try{ history.replaceState(null,'',location.pathname); }catch(e){}
+      setTimeout(function(){ try{ if(typeof gotoTab==='function')gotoTab('armory'); }catch(e){}
+        say('⚓ PAID — order '+(code||'received')+' is in. The Keymaster and the supplier have it; the receipt’s in your email.'); },600);
+    } else if(q.get('armory_cancel')){
+      try{ history.replaceState(null,'',location.pathname); }catch(e){}
+      setTimeout(function(){ say('No charge — the cart kept your gear.'); },600);
+    }
+  }
+
+  /* ---- wiring ---- */
+  var f=document.getElementById('cartFab'); if(f)f.addEventListener('click',openCart);
+  var go=document.getElementById('cartGo'); if(go)go.addEventListener('click',openTill);
+  var pb=document.getElementById('tillPay'); if(pb)pb.addEventListener('click',pay);
+  ['cartSheet','tillSheet'].forEach(function(id){ var sh=document.getElementById(id);
+    if(sh)sh.addEventListener('click',function(e){ if(e.target===sh)sh.classList.remove('on'); }); });
+  /* the catalog can be re-priced under our feet by sbLoadProducts → renderShop;
+     ride that call so the FAB total never lies */
+  try{ var _rs=window.renderShop;
+    if(typeof _rs==='function')window.renderShop=function(){ var r=_rs.apply(this,arguments); try{renderFab()}catch(e){} return r; };
+  }catch(e){}
+  renderFab();
+  handleReturn();
 })();
 </script>
 

@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0b0d0f">
+<meta name="robots" content="noindex,nofollow">
+<title>The Dock Office — The Order of The Shadow Hook</title>
+<!-- ═══════════════════════════════════════════════════════════════════════
+     THE DOCK OFFICE — vendor.html
+     The side gate. Vendors log in here to work the Armory's order queue:
+     see what's paid, ship it, log tracking, watch what they're owed, and
+     talk to the Keymaster on the wire. The Keymaster logs in at the SAME
+     gate and gets the command side: every order, every vendor, gear
+     assignment, the payout ledger and every wire.
+
+     Ships next to index.html on the same host. Same Supabase project, but
+     its OWN auth storage key — signing in here never touches a hand's
+     session in the main app, and vice versa.
+
+     Needs: VENDOR-SETUP.sql run once, and the vendor-invite edge function
+     deployed (only for minting vendor logins). The README walks it.
+     ═══════════════════════════════════════════════════════════════════════ -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow+Condensed:wght@400;500;600;700&family=Cinzel:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --void:#0b0d0f; --plate:#14171a; --plate-2:#1b1f23; --plate-3:#22272c;
+  --steel:#8f979e; --bone:#dcd6c9; --copper:#c9803f; --copper-hi:#eeb46b;
+  --ember:#b3552a; --ok:#7fae6a; --warn:#d8a544;
+  --line:rgba(220,214,201,.14); --line-soft:rgba(220,214,201,.07);
+  --well:#0e1113;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--void);color:var(--bone);font-family:'Barlow Condensed',system-ui,sans-serif;min-height:100vh;overflow-x:hidden}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:radial-gradient(ellipse 120% 60% at 50% -8%, rgba(201,128,63,.07), transparent 55%)}
+button{font-family:inherit;-webkit-tap-highlight-color:transparent;user-select:none;cursor:pointer}
+.mono{font-family:'IBM Plex Mono',monospace}
+.stage{position:relative;z-index:1;max-width:560px;margin:0 auto;padding:0 16px 60px}
+@media(min-width:980px){ .stage.wide{max-width:920px} }
+
+.card{background:linear-gradient(184deg,var(--plate-2),var(--plate) 62%);border:1px solid var(--line);border-radius:18px;box-shadow:0 16px 40px rgba(0,0,0,.4), inset 0 1px 0 rgba(220,214,201,.05);margin-bottom:14px;overflow:hidden}
+.card-h{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line-soft);font-weight:700;font-size:13px;letter-spacing:.2em;text-transform:uppercase}
+.card-h .tag{margin-left:auto;font-size:10.5px;letter-spacing:.12em;color:var(--steel);font-weight:500;text-align:right;text-transform:none}
+.card-b{padding:13px 16px 15px}
+.sub{color:var(--steel);font-size:13px;line-height:1.5}
+.big{font-family:'Anton',sans-serif;letter-spacing:.04em}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:14px 18px;border:1px solid rgba(238,180,107,.5);border-radius:13px;background:linear-gradient(135deg,var(--copper),var(--ember));color:#1a1208;font-weight:700;font-size:14.5px;letter-spacing:.08em;text-transform:uppercase}
+.btn:disabled{opacity:.55}
+.btn-line{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:10px 14px;border:1px solid var(--line);border-radius:11px;background:var(--plate-3);color:var(--bone);font-weight:600;font-size:12.5px;letter-spacing:.08em;text-transform:uppercase}
+.btn-line.gold{border-color:rgba(238,180,107,.45);color:var(--copper-hi)}
+.btn-line.red{border-color:rgba(179,85,42,.5);color:#e8967a}
+.btn-ghost{background:none;border:0;color:var(--steel);font-size:13px;letter-spacing:.06em;padding:10px}
+.field{width:100%;padding:13px 14px;background:var(--well);border:1px solid var(--line);border-radius:11px;color:var(--bone);font-family:'Barlow Condensed',sans-serif;font-size:16px;outline:none}
+.field:focus{border-color:rgba(238,180,107,.5)}
+textarea.field{resize:vertical;min-height:64px}
+select.field{appearance:none;-webkit-appearance:none}
+.lbl{font-size:11px;letter-spacing:.2em;color:var(--steel);font-weight:600;margin:12px 0 6px;text-transform:uppercase}
+.msgline{color:#e8967a;font-size:13px;margin-top:8px;min-height:16px;font-family:'IBM Plex Mono',monospace;font-size:11.5px}
+
+.pill{display:inline-block;padding:3px 9px;border-radius:999px;font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;border:1px solid var(--line);color:var(--steel)}
+.pill.grn{border-color:rgba(127,174,106,.5);color:var(--ok)}
+.pill.amb{border-color:rgba(216,165,68,.55);color:var(--warn)}
+.pill.red{border-color:rgba(179,85,42,.55);color:#e8967a}
+.pill.cop{border-color:rgba(238,180,107,.5);color:var(--copper-hi)}
+
+/* ---- the gate ---- */
+#gate{padding-top:9vh;text-align:center}
+.crest{width:92px;height:92px;margin:0 auto;border:1px solid rgba(238,180,107,.4);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:40px;background:radial-gradient(circle at 50% 35%, #22160c, #120d08);box-shadow:0 0 44px rgba(201,128,63,.18)}
+.wordmark{font-family:'Cinzel',serif;font-weight:600;letter-spacing:.3em;font-size:13px;color:var(--copper-hi);margin-top:14px}
+.gate-title{font-family:'Anton',sans-serif;font-size:38px;letter-spacing:.06em;margin-top:6px}
+.gate-sub{color:var(--steel);font-size:13.5px;letter-spacing:.04em;margin-top:4px}
+
+/* ---- the office ---- */
+#topbar{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:10px;padding:14px 2px 10px;background:linear-gradient(var(--void) 78%,transparent);backdrop-filter:blur(6px)}
+#topbar .t{font-family:'Anton',sans-serif;font-size:19px;letter-spacing:.06em}
+#topbar .w{font-size:11.5px;color:var(--steel);letter-spacing:.06em;margin-top:1px}
+#topbar .sp{flex:1}
+.icobtn{width:38px;height:38px;border:1px solid var(--line);border-radius:11px;background:var(--plate-2);color:var(--steel);font-size:15px}
+#tabs{display:flex;gap:8px;overflow-x:auto;padding:4px 2px 12px;scrollbar-width:none}
+#tabs::-webkit-scrollbar{display:none}
+#tabs button{flex:none;padding:9px 15px;border:1px solid var(--line);border-radius:999px;background:var(--plate-2);color:var(--steel);font-weight:600;font-size:12.5px;letter-spacing:.1em;text-transform:uppercase;position:relative}
+#tabs button.on{background:linear-gradient(135deg,#2a1d10,#1c1409);border-color:rgba(238,180,107,.5);color:var(--copper-hi)}
+#tabs button .dot{position:absolute;top:4px;right:6px;width:7px;height:7px;border-radius:50%;background:var(--ember);box-shadow:0 0 8px var(--ember)}
+.chips{display:flex;gap:7px;overflow-x:auto;margin:2px 0 12px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chips button{flex:none;padding:7px 13px;border:1px solid var(--line);border-radius:999px;background:none;color:var(--steel);font-weight:600;font-size:11.5px;letter-spacing:.08em}
+.chips button.on{border-color:rgba(238,180,107,.5);color:var(--copper-hi);background:#1c1409}
+
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+.tile{background:linear-gradient(184deg,var(--plate-2),var(--plate));border:1px solid var(--line);border-radius:14px;padding:12px 12px 10px;text-align:center}
+.tile .v{font-family:'IBM Plex Mono',monospace;font-size:19px;font-weight:600;color:var(--copper-hi)}
+.tile .k{font-size:10px;letter-spacing:.14em;color:var(--steel);margin-top:3px;text-transform:uppercase}
+.tile.grn .v{color:var(--ok)} .tile.dim .v{color:var(--steel)}
+
+.oline{display:flex;align-items:baseline;gap:8px;padding:8px 0;border-bottom:1px solid var(--line-soft);font-size:14px}
+.oline:last-child{border-bottom:0}
+.oline .q{font-family:'IBM Plex Mono',monospace;color:var(--copper-hi);flex:none}
+.oline .n{flex:1;min-width:0}
+.oline .n i{display:block;font-style:normal;font-size:11.5px;color:var(--steel)}
+.oline .m{font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--steel);flex:none}
+.shipbox{background:var(--well);border:1px solid var(--line-soft);border-radius:11px;padding:10px 12px;font-size:13.5px;line-height:1.5;margin:10px 0;position:relative}
+.shipbox .cp{position:absolute;top:8px;right:8px}
+.stat-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px}
+.msgs{display:flex;flex-direction:column;gap:10px;padding:4px 0 8px;max-height:52vh;overflow-y:auto}
+.mb{max-width:82%;padding:9px 13px;border-radius:14px;font-size:14.5px;line-height:1.45}
+.mb.them{align-self:flex-start;background:var(--plate-3);border:1px solid var(--line-soft);border-bottom-left-radius:5px}
+.mb.km{border-color:rgba(179,85,42,.5);background:linear-gradient(135deg,#221510,#140e0b);color:#e6cdb2}
+.mb.km::before{content:"☠ THE KEYMASTER";display:block;letter-spacing:.2em;font-size:9.5px;color:var(--ember);margin-bottom:4px}
+.mb.self{align-self:flex-end;background:#1c2733;border:1px solid rgba(143,151,158,.25);border-bottom-right-radius:5px}
+.mb .ts{display:block;font-size:10px;color:var(--steel);margin-top:4px;font-family:'IBM Plex Mono',monospace}
+.sendrow{display:flex;gap:8px;margin-top:6px}
+.sendrow .field{flex:1}
+.sendrow .btn-line{padding:10px 18px}
+
+.vrow{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line-soft);font-size:14px}
+.vrow:last-child{border-bottom:0}
+.vrow .n{flex:1;min-width:0}
+.vrow .n i{display:block;font-style:normal;font-size:11.5px;color:var(--steel)}
+.vrow .m{font-family:'IBM Plex Mono',monospace;font-size:13px}
+
+/* ---- sheets ---- */
+.sheet{position:fixed;inset:0;z-index:60;background:rgba(5,6,7,.72);backdrop-filter:blur(4px);display:flex;align-items:flex-end;justify-content:center;opacity:0;visibility:hidden;transition:.22s}
+.sheet.on{opacity:1;visibility:visible}
+.sheet-card{width:100%;max-width:560px;max-height:88vh;overflow-y:auto;background:linear-gradient(184deg,var(--plate-3),var(--plate));border:1px solid var(--line);border-radius:22px 22px 0 0;padding:20px 18px calc(22px + env(safe-area-inset-bottom));transform:translateY(24px);transition:.22s}
+.sheet.on .sheet-card{transform:none}
+.sheet-t{font-family:'Anton',sans-serif;font-size:20px;letter-spacing:.06em;text-align:center;margin-bottom:4px}
+
+#toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);z-index:90;background:#20242a;border:1px solid var(--line);color:var(--bone);padding:11px 18px;border-radius:12px;font-size:14px;max-width:88vw;opacity:0;visibility:hidden;transition:.25s;text-align:center}
+#toast.on{opacity:1;visibility:visible;transform:translateX(-50%)}
+
+/* ---- the packing slip (print) ---- */
+#slip{display:none}
+@media print{
+  body{background:#fff}
+  body::before{display:none}
+  .stage,.sheet,#toast{display:none!important}
+  #slip{display:block;color:#000;font-family:Georgia,serif;padding:24px}
+  #slip h1{font-size:20px;letter-spacing:.18em;margin-bottom:2px}
+  #slip .h2{font-size:12px;letter-spacing:.1em;color:#444;margin-bottom:18px}
+  #slip table{width:100%;border-collapse:collapse;margin-top:14px}
+  #slip th,#slip td{border-bottom:1px solid #999;text-align:left;padding:7px 4px;font-size:13px}
+  #slip .shipblock{border:1px solid #000;padding:10px 14px;display:inline-block;margin-top:10px;font-size:14px;line-height:1.5}
+  #slip .foot{margin-top:26px;font-size:11px;color:#555;letter-spacing:.06em}
+}
+</style>
+</head>
+<body>
+
+<div class="stage" id="stage">
+
+  <!-- ═══ THE GATE ═══ -->
+  <div id="gate">
+    <div class="crest">⚓</div>
+    <div class="wordmark">THE ORDER OF THE SHADOW HOOK</div>
+    <div class="gate-title">THE DOCK OFFICE</div>
+    <div class="gate-sub">Vendor gate · orders, shipping &amp; the ledger</div>
+    <div class="card" style="margin-top:26px;text-align:left"><div class="card-b">
+      <div class="lbl" style="margin-top:2px">EMAIL</div>
+      <input class="field" id="gEmail" type="email" autocomplete="username" placeholder="you@yourshop.com">
+      <div class="lbl">PASSWORD</div>
+      <input class="field" id="gPass" type="password" autocomplete="current-password" placeholder="••••••••">
+      <div class="msgline" id="gMsg"></div>
+      <button class="btn" id="gGo" style="margin-top:10px">🗝 THROUGH THE GATE</button>
+      <p class="sub" style="text-align:center;margin-top:12px">Passes are minted by the Keymaster. Lost yours? Send word — <b style="color:var(--bone)">keymaster@theshadowhook.com</b></p>
+    </div></div>
+  </div>
+
+  <!-- ═══ NO PASS ═══ -->
+  <div id="nopass" hidden style="text-align:center;padding-top:12vh">
+    <div class="crest">☠</div>
+    <div class="gate-title" style="font-size:28px;margin-top:16px">NO DOCK PASS</div>
+    <p class="sub" style="margin-top:10px">This account isn't on the vendor rolls and doesn't carry the Keymaster's key.<br>If that's wrong, send word to the Keymaster.</p>
+    <button class="btn-line" id="npOut" style="margin-top:22px">SIGN OUT</button>
+  </div>
+
+  <!-- ═══ THE OFFICE ═══ -->
+  <div id="app" hidden>
+    <div id="topbar">
+      <div><div class="t" id="tbTitle">THE DOCK OFFICE</div><div class="w" id="tbWho">—</div></div>
+      <div class="sp"></div>
+      <button class="icobtn" id="tbPw" title="Change password">🔑</button>
+      <button class="icobtn" id="tbOut" title="Sign out">⏻</button>
+    </div>
+    <div id="tabs"></div>
+    <div id="panel"></div>
+  </div>
+
+</div>
+
+<!-- ═══ SHEETS ═══ -->
+<div class="sheet" id="shipSheet"><div class="sheet-card">
+  <div class="sheet-t">📦 MARK IT SHIPPED</div>
+  <p class="sub" style="text-align:center" id="shipSub"></p>
+  <div class="lbl">CARRIER</div>
+  <select class="field" id="shipCarrier"><option>USPS</option><option>UPS</option><option>FedEx</option><option>DHL</option><option>Hand delivery</option><option>Other</option></select>
+  <div class="lbl">TRACKING # <span style="text-transform:none;letter-spacing:0">(or a note if hand-delivered)</span></div>
+  <input class="field" id="shipTrack" placeholder="9400 1000 0000 ...">
+  <div class="msgline" id="shipMsg"></div>
+  <button class="btn" id="shipGo" style="margin-top:10px">SHIP IT</button>
+  <button class="btn-ghost" style="width:100%;margin-top:8px" data-close="shipSheet">Not yet</button>
+</div></div>
+
+<div class="sheet" id="pwSheet"><div class="sheet-card">
+  <div class="sheet-t">🔑 NEW PASSWORD</div>
+  <div class="lbl">NEW PASSWORD — 8+ CHARACTERS</div>
+  <input class="field" id="pw1" type="password" autocomplete="new-password">
+  <div class="lbl">SAY IT AGAIN</div>
+  <input class="field" id="pw2" type="password" autocomplete="new-password">
+  <div class="msgline" id="pwMsg"></div>
+  <button class="btn" id="pwGo" style="margin-top:10px">SET IT</button>
+  <button class="btn-ghost" style="width:100%;margin-top:8px" data-close="pwSheet">Never mind</button>
+</div></div>
+
+<div class="sheet" id="vendorSheet"><div class="sheet-card">
+  <div class="sheet-t" id="vsTitle">🤝 NEW VENDOR</div>
+  <div class="lbl">SHOP / BUSINESS NAME</div><input class="field" id="vsName" placeholder="Harbor Print Co.">
+  <div class="lbl">CONTACT NAME</div><input class="field" id="vsContact">
+  <div class="lbl">EMAIL</div><input class="field" id="vsEmail" type="email">
+  <div class="lbl">PHONE</div><input class="field" id="vsPhone">
+  <div class="lbl">NOTES — TERMS, LEAD TIMES, ANYTHING</div><textarea class="field" id="vsNotes"></textarea>
+  <div class="msgline" id="vsMsg"></div>
+  <button class="btn" id="vsGo" style="margin-top:10px">SAVE THE VENDOR</button>
+  <button class="btn-ghost" style="width:100%;margin-top:8px" data-close="vendorSheet">Never mind</button>
+</div></div>
+
+<div class="sheet" id="inviteSheet"><div class="sheet-card">
+  <div class="sheet-t">🗝 MINT A DOCK PASS</div>
+  <p class="sub" style="text-align:center" id="invSub"></p>
+  <div class="lbl">THEIR EMAIL</div><input class="field" id="invEmail" type="email">
+  <div class="lbl">TEMP PASSWORD — HAND IT TO THEM YOURSELF</div>
+  <div style="display:flex;gap:8px"><input class="field" id="invPass" style="flex:1"><button class="btn-line gold" id="invDice" style="flex:none">🎲</button></div>
+  <p class="sub" style="margin-top:8px">If the email already has an Order account, it's <b style="color:var(--bone)">linked as-is</b> — their password is never touched.</p>
+  <div class="msgline" id="invMsg"></div>
+  <button class="btn" id="invGo" style="margin-top:10px">MINT THE PASS</button>
+  <button class="btn-ghost" style="width:100%;margin-top:8px" data-close="inviteSheet">Never mind</button>
+</div></div>
+
+<div class="sheet" id="assignSheet"><div class="sheet-card">
+  <div class="sheet-t">🛡 THE GEAR &amp; THE CUT</div>
+  <p class="sub" style="text-align:center" id="asSub"></p>
+  <div id="asList" style="margin-top:8px"></div>
+  <div class="msgline" id="asMsg"></div>
+  <button class="btn" id="asGo" style="margin-top:10px">SAVE ASSIGNMENTS</button>
+  <button class="btn-ghost" style="width:100%;margin-top:8px" data-close="assignSheet">Never mind</button>
+</div></div>
+
+<div class="sheet" id="payoutSheet"><div class="sheet-card">
+  <div class="sheet-t">💰 SETTLE UP</div>
+  <p class="sub" style="text-align:center" id="poSub"></p>
+  <div class="lbl">AMOUNT — USD</div><input class="field mono" id="poAmt" inputmode="decimal">
+  <div class="lbl">HOW IT WENT OUT</div>
+  <select class="field" id="poMethod"><option>Zelle</option><option>ACH</option><option>Check</option><option>Cash</option><option>Venmo</option><option>Other</option></select>
+  <div class="lbl">REFERENCE — CONFIRMATION / CHECK #</div><input class="field" id="poRef">
+  <div class="lbl">NOTE</div><input class="field" id="poNote">
+  <div class="msgline" id="poMsg"></div>
+  <button class="btn" id="poGo" style="margin-top:10px">RECORD THE PAYOUT</button>
+  <button class="btn-ghost" style="width:100%;margin-top:8px" data-close="payoutSheet">Never mind</button>
+</div></div>
+
+<!-- the packing slip — filled per order, shown only by @media print -->
+<div id="slip"></div>
+<div id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+/* ═══ CONFIG — same two PUBLIC values as index.html ═══ */
+window.SUPABASE_URL      = "https://ehykqebzkbelwtkgjbml.supabase.co";
+window.SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVoeWtxZWJ6a2JlbHd0a2dqYm1sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzMDMwNTMsImV4cCI6MjA5OTg3OTA1M30.RgdTFy1HNE36lN3bM6ovjkmAJsTEps0GmgRuI6h6IpI";
+
+/* ═══ THE APP ═══ */
+/* (script continues below — see "DOCK OFFICE ENGINE") */
+</script>
+<script>
+/* ═══════════════════ DOCK OFFICE ENGINE ═══════════════════ */
+"use strict";
+const SB = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY, {
+  auth:{ persistSession:true, autoRefreshToken:true,
+         storageKey:'shadowhook_dock_auth' }   /* its own drawer — never collides with the main app's session */
+});
+const FN = window.SUPABASE_URL.replace(/\/+$/,'') + '/functions/v1';
+
+/* ---- little tools ---- */
+const $ = id => document.getElementById(id);
+const esc = s => (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+const money = n => { const v=Number(n||0); return (v<0?'-$':'$')+Math.abs(v).toFixed(2); };
+const dt = ts => { try{ const d=new Date(ts); return d.toLocaleDateString([], {month:'short',day:'numeric'})+' · '+d.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}); }catch(e){ return ''; } };
+const day = ts => { try{ return new Date(ts).toLocaleDateString([], {month:'short',day:'numeric',year:'numeric'}); }catch(e){ return ''; } };
+let toastTimer=null;
+function toast(m){ const t=$('toast'); if(!t)return; t.textContent=m; t.classList.add('on');
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('on'), 3400); }
+function sheet(id,on){ const s=$(id); if(s)s.classList.toggle('on', on!==false); }
+document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>sheet(b.dataset.close,false)));
+document.querySelectorAll('.sheet').forEach(s=>s.addEventListener('click',e=>{ if(e.target===s)s.classList.remove('on'); }));
+function shipToText(st){ if(!st)return ''; return [st.name, st.line1, st.line2, [st.city, st.state, st.postal_code].filter(Boolean).join(', '), st.country].filter(Boolean).join('\n'); }
+const STATUS_PILL = { new:'<span class="pill amb">NEW</span>', working:'<span class="pill cop">WORKING</span>',
+  shipped:'<span class="pill grn">SHIPPED</span>', delivered:'<span class="pill grn">DELIVERED</span>',
+  cancelled:'<span class="pill red">CANCELLED</span>' };
+const PAY_PILL = { paid:'<span class="pill grn">PAID</span>', pending:'<span class="pill amb">AWAITING PAY</span>',
+  expired:'<span class="pill">EXPIRED</span>', refunded:'<span class="pill red">REFUNDED</span>',
+  cancelled:'<span class="pill red">CANCELLED</span>' };
+
+/* ---- state ---- */
+const ME = { uid:null, email:'', km:false, vendor:null };
+let TAB='orders', FILTER='todo';
+let ORDERS=[], VENDORS=[], BALANCES=[], PAYOUTS=[], PRODUCTS=[], MEMBERS=[], MSGS=[], LASTMSG={};
+let WIRE_VENDOR=null;           /* which vendor's wire the Keymaster has open */
+let editVendorId=null, assignVendorId=null, payoutVendorId=null, shipTarget=null;
+
+/* ════════ THE GATE ════════ */
+async function route(){
+  const { data:{ session } } = await SB.auth.getSession();
+  if(!session){ show('gate'); return; }
+  ME.uid = session.user.id; ME.email = session.user.email || '';
+  /* the Keymaster's key? */
+  let km=false;
+  try{ const r = await SB.from('profiles').select('is_keymaster').eq('id', ME.uid).maybeSingle();
+       km = !!(r.data && r.data.is_keymaster); }catch(e){}
+  ME.km = km;
+  if(!km){
+    try{
+      const m = await SB.from('vendor_members').select('vendor_id').eq('user_id', ME.uid).maybeSingle();
+      if(m.data && m.data.vendor_id){
+        const v = await SB.from('vendors').select('*').eq('id', m.data.vendor_id).maybeSingle();
+        ME.vendor = v.data || null;
+      }
+    }catch(e){}
+    if(!ME.vendor){ show('nopass'); return; }
+  }
+  show('app');
+  $('tbWho').textContent = ME.km ? ('☠ the Keymaster · '+ME.email) : (ME.vendor.name+' · '+ME.email);
+  if(ME.km) $('stage').classList.add('wide');
+  buildTabs();
+  await refreshAll();
+  openTab('orders');
+  subscribe();
+}
+function show(which){ ['gate','nopass','app'].forEach(id=>{ $(id).hidden = (id!==which); if(id===which)$(id).removeAttribute('hidden'); }); }
+
+$('gGo').addEventListener('click', gateGo);
+$('gPass').addEventListener('keydown', e=>{ if(e.key==='Enter')gateGo(); });
+async function gateGo(){
+  const email=($('gEmail').value||'').trim(), pass=$('gPass').value||'';
+  const m=$('gMsg'); m.textContent='';
+  if(!email||!pass){ m.textContent='> email and password, both'; return; }
+  $('gGo').disabled=true; $('gGo').textContent='CHECKING THE ROLLS…';
+  const r = await SB.auth.signInWithPassword({ email, password:pass });
+  $('gGo').disabled=false; $('gGo').textContent='🗝 THROUGH THE GATE';
+  if(r.error){ m.textContent='> '+r.error.message; return; }
+  route();
+}
+$('npOut').addEventListener('click', async()=>{ await SB.auth.signOut(); location.reload(); });
+$('tbOut').addEventListener('click', async()=>{ await SB.auth.signOut(); location.reload(); });
+$('tbPw').addEventListener('click', ()=>{ $('pw1').value=''; $('pw2').value=''; $('pwMsg').textContent=''; sheet('pwSheet'); });
+$('pwGo').addEventListener('click', async()=>{
+  const a=$('pw1').value, b=$('pw2').value, m=$('pwMsg');
+  if(a.length<8){ m.textContent='> 8 characters minimum'; return; }
+  if(a!==b){ m.textContent='> they don’t match'; return; }
+  const r = await SB.auth.updateUser({ password:a });
+  if(r.error){ m.textContent='> '+r.error.message; return; }
+  sheet('pwSheet',false); toast('🔑 New password set');
+});
+
+/* ════════ TABS ════════ */
+function buildTabs(){
+  const t=$('tabs');
+  const tabs = ME.km
+    ? [['orders','⚓ ORDERS'],['vendors','🤝 VENDORS'],['ledger','💰 LEDGER'],['wire','📻 THE WIRE']]
+    : [['orders','⚓ ORDERS'],['ledger','💰 MY LEDGER'],['wire','📻 THE WIRE'],['gear','🛡 MY GEAR']];
+  t.innerHTML = tabs.map(([k,l])=>'<button data-tab="'+k+'" id="tab-'+k+'">'+l+'</button>').join('');
+  t.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>openTab(b.dataset.tab)));
+}
+function openTab(k){
+  TAB=k;
+  document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on', b.dataset.tab===k));
+  if(k==='orders') renderOrders();
+  else if(k==='vendors') renderVendors();
+  else if(k==='ledger') renderLedger();
+  else if(k==='wire') renderWire();
+  else if(k==='gear') renderGear();
+}
+
+/* ════════ DATA ════════ */
+async function refreshAll(){
+  await Promise.all([loadOrders(), loadLedger(), loadProducts(), ME.km?loadVendors():Promise.resolve(), loadLastMsgs()]);
+}
+async function loadOrders(){
+  try{
+    if(ME.km){
+      const r = await SB.from('orders').select('*, order_items(*)').order('created_at',{ascending:false}).limit(250);
+      if(!r.error) ORDERS = r.data||[];
+    }else{
+      const r = await SB.from('order_items')
+        .select('*, orders!inner(id,code,created_at,paid_at,payment_status,buyer_name,buyer_email,buyer_phone,ship_to,note)')
+        .limit(600);
+      if(!r.error){
+        const by={};
+        (r.data||[]).forEach(it=>{
+          const o=it.orders; if(!o)return;
+          (by[o.id]=by[o.id]||Object.assign({order_items:[]},o)).order_items.push(it);
+        });
+        ORDERS = Object.values(by).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+      }
+    }
+  }catch(e){ console.warn('orders',e); }
+}
+async function loadVendors(){
+  try{
+    const [v,m] = await Promise.all([
+      SB.from('vendors').select('*').order('created_at'),
+      SB.from('vendor_members').select('*')
+    ]);
+    if(!v.error) VENDORS=v.data||[];
+    if(!m.error) MEMBERS=m.data||[];
+  }catch(e){}
+}
+async function loadLedger(){
+  try{
+    const [b,p] = await Promise.all([
+      SB.from('vendor_balances').select('*'),
+      SB.from('vendor_payouts').select('*').order('created_at',{ascending:false}).limit(200)
+    ]);
+    if(!b.error) BALANCES=b.data||[];
+    if(!p.error) PAYOUTS=p.data||[];
+  }catch(e){}
+}
+async function loadProducts(){
+  try{
+    let q = SB.from('products').select('id,name,brand,cat,usd,cost,status,vendor_id,sort');
+    if(!ME.km && ME.vendor) q = q.eq('vendor_id', ME.vendor.id);
+    const r = await q.order('sort');
+    if(!r.error) PRODUCTS=r.data||[];
+  }catch(e){}
+}
+async function loadLastMsgs(){
+  try{
+    const r = await SB.from('vendor_msgs').select('vendor_id,from_km,created_at').order('created_at',{ascending:false}).limit(250);
+    LASTMSG={};
+    (r.data||[]).forEach(m=>{ const k=m.vendor_id;
+      if(!LASTMSG[k]) LASTMSG[k]={};
+      const side = m.from_km?'km':'vendor';
+      if(!LASTMSG[k][side]) LASTMSG[k][side]=m.created_at;
+    });
+    paintUnreadDot();
+  }catch(e){}
+}
+function seenKey(vid){ return 'dock_seen_'+(ME.km?'km_':'v_')+vid; }
+function hasUnread(vid){
+  const lm=LASTMSG[vid]; if(!lm)return false;
+  const other = ME.km ? lm.vendor : lm.km; if(!other)return false;
+  let seen=null; try{ seen=localStorage.getItem(seenKey(vid)); }catch(e){}
+  return !seen || new Date(other) > new Date(seen);
+}
+function markSeen(vid){ try{ localStorage.setItem(seenKey(vid), new Date().toISOString()); }catch(e){} paintUnreadDot(); }
+function paintUnreadDot(){
+  const t=$('tab-wire'); if(!t)return;
+  const vids = ME.km ? Object.keys(LASTMSG) : (ME.vendor?[ME.vendor.id]:[]);
+  const un = vids.some(hasUnread);
+  let d=t.querySelector('.dot');
+  if(un&&!d){ d=document.createElement('span'); d.className='dot'; t.appendChild(d); }
+  if(!un&&d) d.remove();
+}
+
+/* ════════ ORDERS ════════ */
+function vName(id){ const v=VENDORS.find(x=>x.id===id); return v?v.name:(id?'unknown vendor':'THE HOUSE'); }
+function itemsOf(o){ return (o.order_items||[]).slice().sort((a,b)=>String(a.name).localeCompare(String(b.name))); }
+function orderTake(o){ return itemsOf(o).filter(i=>i.status!=='cancelled').reduce((s,i)=>s+Number(i.unit_cost||0)*i.qty,0); }
+function orderProfit(o){ return itemsOf(o).filter(i=>i.status!=='cancelled').reduce((s,i)=>s+(Number(i.unit_usd||0)-Number(i.unit_cost||0))*i.qty,0); }
+function needsWork(o){ return itemsOf(o).some(i=>i.status==='new'||i.status==='working'); }
+
+function orderMatches(o,f){
+  if(ME.km){
+    if(f==='todo')     return o.payment_status==='paid' && needsWork(o);
+    if(f==='shipped')  return o.payment_status==='paid' && !needsWork(o) && itemsOf(o).some(i=>i.status==='shipped'||i.status==='delivered');
+    if(f==='pending')  return o.payment_status==='pending';
+    if(f==='refunded') return o.payment_status==='refunded';
+    return true;
+  }
+  if(f==='todo')    return o.payment_status==='paid' && needsWork(o);   /* refunded work is DEAD work — never in the queue */
+  if(f==='shipped') return o.payment_status==='paid' && !needsWork(o);
+  return true;
+}
+function renderOrders(){
+  const host=$('panel');
+  const chips = ME.km
+    ? [['todo','TO FULFILL'],['shipped','SHIPPED'],['pending','AWAITING PAY'],['refunded','REFUNDED'],['all','ALL']]
+    : [['todo','TO FULFILL'],['shipped','SHIPPED'],['all','ALL']];
+  if(!chips.some(c=>c[0]===FILTER)) FILTER = 'todo';
+  const list = ORDERS.filter(o=>orderMatches(o,FILTER));
+
+  let tiles='';
+  if(ME.km){
+    const paid=ORDERS.filter(o=>o.payment_status==='paid');
+    const gross=paid.reduce((s,o)=>s+Number(o.total_usd||0),0);
+    const cut=paid.reduce((s,o)=>s+orderTake(o),0);
+    tiles='<div class="tiles">'
+      +'<div class="tile"><div class="v">'+money(gross)+'</div><div class="k">Taken (paid)</div></div>'
+      +'<div class="tile dim"><div class="v">'+money(cut)+'</div><div class="k">Vendor cut</div></div>'
+      +'<div class="tile grn"><div class="v">'+money(gross-cut)+'</div><div class="k">The house</div></div>'
+      +'</div>';
+  }
+  host.innerHTML = tiles
+    +'<div class="chips">'+chips.map(([k,l])=>{
+        const n=ORDERS.filter(o=>orderMatches(o,k)).length;
+        return '<button data-f="'+k+'"'+(k===FILTER?' class="on"':'')+'>'+l+' · '+n+'</button>';
+      }).join('')+'</div>'
+    +(list.length?list.map(orderCard).join(''):'<p class="sub" style="padding:20px 4px;text-align:center">Nothing on this hook.</p>');
+  host.querySelectorAll('[data-f]').forEach(b=>b.addEventListener('click',()=>{FILTER=b.dataset.f;renderOrders();}));
+  wireOrderActions(host);
+}
+function orderCard(o){
+  const its=itemsOf(o);
+  const st=o.ship_to;
+  const take=orderTake(o);
+  const lines=its.map(it=>{
+    const variant=[it.color,it.size].filter(Boolean).join(' · ');
+    const track=(it.tracking)?'<i class="mono">'+esc(it.carrier||'')+' '+esc(it.tracking)+'</i>':'';
+    return '<div class="oline"><span class="q">×'+it.qty+'</span>'
+      +'<span class="n">'+esc(it.name)+(variant?'<i>'+esc(variant)+'</i>':'')
+      +(ME.km?'<i>'+esc(vName(it.vendor_id))+' · cut '+money(it.unit_cost*it.qty)+' · retail '+money(it.unit_usd*it.qty)+'</i>':'')
+      +track+'</span>'
+      +'<span class="m">'+(ME.km?'':money(it.unit_cost*it.qty)+' ')+ (STATUS_PILL[it.status]||esc(it.status))+'</span>'
+      +(ME.km&&o.payment_status==='paid'&&(it.status==='new'||it.status==='working')
+        ?'<button class="btn-ghost" style="padding:2px 6px" data-cancel="'+esc(it.id)+'" title="cancel this line">✕</button>':'')
+      +'</div>';
+  }).join('');
+  const openIds=its.filter(i=>i.status==='new'||i.status==='working').map(i=>i.id);
+  const shippedIds=its.filter(i=>i.status==='shipped').map(i=>i.id);
+  const contact = ME.km
+    ? '<div class="sub" style="margin-top:2px">'+esc(o.buyer_name||'—')+' · '+esc(o.buyer_email||'')+(o.buyer_phone?' · '+esc(o.buyer_phone):'')+'</div>' : '';
+  const shipbox = st
+    ? '<div class="shipbox"><b style="letter-spacing:.08em;font-size:11px;color:var(--steel)">SHIP TO</b><br>'
+      +esc(shipToText(st)).replace(/\n/g,'<br>')
+      +'<button class="btn-line cp" data-copy="'+esc(o.id)+'">COPY</button></div>'
+    : (o.payment_status==='paid'?'<div class="shipbox sub">No address on file — raise it on the wire.</div>':'');
+  const actions=[];
+  if(o.payment_status==='paid'){
+    if(!ME.km&&its.some(i=>i.status==='new'))
+      actions.push('<button class="btn-line gold" data-work="'+esc(o.id)+'">▶ START WORK</button>');
+    if(openIds.length)
+      actions.push('<button class="btn-line gold" data-ship="'+esc(o.id)+'">📦 '+(ME.km?'MARK':'')+' SHIPPED</button>');
+    if(!ME.km&&shippedIds.length)
+      actions.push('<button class="btn-line" data-delivered="'+esc(o.id)+'">✓ DELIVERED</button>');
+    actions.push('<button class="btn-line" data-slip="'+esc(o.id)+'">🖨 SLIP</button>');
+    if(ME.km)
+      actions.push('<button class="btn-line red" data-refund="'+esc(o.id)+'">↩ MARK REFUNDED</button>');
+  }
+  return '<div class="card"><div class="card-h"><span class="mono" style="color:var(--copper-hi)">'+esc(o.code)+'</span>'
+    +(PAY_PILL[o.payment_status]||'')
+    +'<span class="tag">'+day(o.created_at)+(ME.km?'<br>'+money(o.total_usd)+' · house '+money(orderProfit(o)+Number(o.shipping_usd||0)):'')+'</span></div>'
+    +'<div class="card-b">'+contact+shipbox+lines
+    +(!ME.km?'<div class="sub" style="margin-top:9px">Your take on this order: <b class="mono" style="color:var(--copper-hi)">'+money(take)+'</b> — owed once it ships.</div>':'')
+    +(o.payment_status==='refunded'?'<div class="sub" style="color:#e8967a;margin-top:8px">⚠ Refunded — do not ship.</div>':'')
+    +(actions.length?'<div class="stat-row">'+actions.join('')+'</div>':'')
+    +'</div></div>';
+}
+function wireOrderActions(host){
+  host.querySelectorAll('[data-copy]').forEach(b=>b.addEventListener('click',async()=>{
+    const o=ORDERS.find(x=>x.id===b.dataset.copy);           /* looked up fresh — attribute values eat line breaks */
+    if(!o||!o.ship_to)return;
+    try{ await navigator.clipboard.writeText(shipToText(o.ship_to)); toast('Address copied'); }
+    catch(e){ toast('Couldn’t copy — long-press it instead'); } }));
+  host.querySelectorAll('[data-work]').forEach(b=>b.addEventListener('click',async()=>{
+    const o=ORDERS.find(x=>x.id===b.dataset.work); if(!o)return;
+    const ids=itemsOf(o).filter(i=>i.status==='new').map(i=>i.id);
+    await setItems(ids,{status:'working'},'▶ On it — marked WORKING'); }));
+  host.querySelectorAll('[data-ship]').forEach(b=>b.addEventListener('click',()=>{
+    const o=ORDERS.find(x=>x.id===b.dataset.ship); if(!o)return;
+    const ids=itemsOf(o).filter(i=>i.status==='new'||i.status==='working').map(i=>i.id);
+    shipTarget={ids:ids, code:o.code};
+    $('shipSub').textContent='Order '+o.code+' · '+ids.length+' line'+(ids.length>1?'s':'');
+    $('shipTrack').value=''; $('shipMsg').textContent='';
+    sheet('shipSheet'); }));
+  host.querySelectorAll('[data-delivered]').forEach(b=>b.addEventListener('click',async()=>{
+    const o=ORDERS.find(x=>x.id===b.dataset.delivered); if(!o)return;
+    const ids=itemsOf(o).filter(i=>i.status==='shipped').map(i=>i.id);
+    await setItems(ids,{status:'delivered'},'✓ Marked delivered'); }));
+  host.querySelectorAll('[data-slip]').forEach(b=>b.addEventListener('click',()=>printSlip(b.dataset.slip)));
+  host.querySelectorAll('[data-cancel]').forEach(b=>b.addEventListener('click',async()=>{
+    if(!confirm('Cancel this line? The vendor stops work; refund the buyer in Stripe if they already paid for it.'))return;
+    await setItems([b.dataset.cancel],{status:'cancelled'},'Line cancelled'); }));
+  host.querySelectorAll('[data-refund]').forEach(b=>b.addEventListener('click',async()=>{
+    const o=ORDERS.find(x=>x.id===b.dataset.refund); if(!o)return;
+    if(!confirm('Mark '+o.code+' REFUNDED on the books? The money itself moves in the Stripe dashboard — this won’t move it.'))return;
+    const r=await SB.from('orders').update({payment_status:'refunded'}).eq('id',o.id);
+    if(r.error){ toast('⚠ '+r.error.message); return; }
+    toast('Marked refunded — now make it true in Stripe');
+    await loadOrders(); renderOrders(); }));
+}
+async function setItems(ids, patch, okMsg){
+  if(!ids||!ids.length)return;
+  const r=await SB.from('order_items').update(patch).in('id',ids);
+  if(r.error){ toast('⚠ '+r.error.message); return; }
+  toast(okMsg||'Done');
+  await Promise.all([loadOrders(), loadLedger()]);
+  if(TAB==='orders')renderOrders(); if(TAB==='ledger')renderLedger();
+}
+$('shipGo').addEventListener('click', async()=>{
+  if(!shipTarget)return;
+  const tr=($('shipTrack').value||'').trim();
+  if(!tr){ $('shipMsg').textContent='> tracking (or a hand-delivery note) keeps everyone honest'; return; }
+  sheet('shipSheet',false);
+  await setItems(shipTarget.ids,{status:'shipped',carrier:$('shipCarrier').value,tracking:tr},'📦 '+shipTarget.code+' marked shipped — the ledger heard it');
+  shipTarget=null;
+});
+
+/* ---- the packing slip ---- */
+function printSlip(orderId){
+  const o=ORDERS.find(x=>x.id===orderId); if(!o)return;
+  const its=itemsOf(o).filter(i=>i.status!=='cancelled');
+  const st=o.ship_to;
+  $('slip').innerHTML =
+     '<h1>THE ORDER OF THE SHADOW HOOK</h1><div class="h2">THE ARMORY · PACKING SLIP</div>'
+    +'<div><b>Order '+esc(o.code)+'</b> · '+day(o.created_at)+'</div>'
+    +(st?'<div class="shipblock">'+esc(shipToText(st)).replace(/\n/g,'<br>')+'</div>':'')
+    +'<table><tr><th style="width:50px">Qty</th><th>Item</th><th>Colorway / Size</th></tr>'
+    +its.map(it=>'<tr><td>'+it.qty+'</td><td>'+esc(it.name)+'</td><td>'+esc([it.color,it.size].filter(Boolean).join(' · ')||'—')+'</td></tr>').join('')
+    +'</table>'
+    +'<div class="foot">Packed for the Order'+(ME.vendor?' by '+esc(ME.vendor.name):'')+' · no prices ride in the box · an injury to one is an injury to all</div>';
+  window.print();
+}
+
+/* ════════ LEDGER ════════ */
+function renderLedger(){
+  const host=$('panel');
+  if(ME.km){
+    const rows=BALANCES.slice().sort((a,b)=>Number(b.owed||0)-Number(a.owed||0));
+    host.innerHTML =
+      '<div class="card"><div class="card-h">💰 WHO’S OWED WHAT<span class="tag">shipped work − payouts</span></div><div class="card-b">'
+      +(rows.length?rows.map(b=>'<div class="vrow"><span class="n"><b>'+esc(b.vendor_name)+'</b>'
+        +'<i>in the pipe '+money(b.pending)+' · paid to date '+money(b.paid)+'</i></span>'
+        +'<span class="m" style="color:'+(Number(b.owed)>0?'var(--copper-hi)':'var(--steel)')+'">'+money(b.owed)+'</span>'
+        +'<button class="btn-line gold" data-settle="'+esc(b.vendor_id)+'">SETTLE</button></div>').join('')
+        :'<p class="sub">No vendors on the rolls yet.</p>')
+      +'</div></div>'
+      +payoutHistory();
+    host.querySelectorAll('[data-settle]').forEach(b=>b.addEventListener('click',()=>openPayout(b.dataset.settle)));
+  }else{
+    const b=BALANCES[0]||{owed:0,pending:0,paid:0};
+    host.innerHTML =
+      '<div class="tiles">'
+      +'<div class="tile"><div class="v">'+money(b.owed)+'</div><div class="k">Owed now</div></div>'
+      +'<div class="tile dim"><div class="v">'+money(b.pending)+'</div><div class="k">In the pipe</div></div>'
+      +'<div class="tile grn"><div class="v">'+money(b.paid)+'</div><div class="k">Paid to date</div></div>'
+      +'</div>'
+      +'<p class="sub" style="margin:0 2px 14px">Paid work becomes <b style="color:var(--bone)">owed</b> the moment you mark it shipped. The Keymaster settles owed balances on the regular run — chase it on the wire if one’s late.</p>'
+      +payoutHistory();
+  }
+}
+function payoutHistory(){
+  if(!PAYOUTS.length) return '<div class="card"><div class="card-h">📜 PAYOUT HISTORY</div><div class="card-b"><p class="sub">Nothing settled yet.</p></div></div>';
+  return '<div class="card"><div class="card-h">📜 PAYOUT HISTORY</div><div class="card-b">'
+    +PAYOUTS.map(p=>'<div class="vrow"><span class="n"><b>'+(ME.km?esc(vName(p.vendor_id))+' · ':'')+money(p.amount_usd)+'</b>'
+      +'<i>'+esc(p.method||'')+(p.ref?' · '+esc(p.ref):'')+(p.note?' · '+esc(p.note):'')+'</i></span>'
+      +'<span class="m" style="color:var(--steel)">'+day(p.created_at)+'</span></div>').join('')
+    +'</div></div>';
+}
+function openPayout(vid){
+  payoutVendorId=vid;
+  const b=BALANCES.find(x=>x.vendor_id===vid);
+  $('poSub').textContent=vName(vid)+' — owed '+money(b?b.owed:0);
+  $('poAmt').value=b&&Number(b.owed)>0?Number(b.owed).toFixed(2):'';
+  $('poRef').value=''; $('poNote').value=''; $('poMsg').textContent='';
+  sheet('payoutSheet');
+}
+$('poGo').addEventListener('click', async()=>{
+  const amt=parseFloat($('poAmt').value);
+  if(!(amt>0)){ $('poMsg').textContent='> a real amount'; return; }
+  const r=await SB.from('vendor_payouts').insert({vendor_id:payoutVendorId, amount_usd:Math.round(amt*100)/100,
+    method:$('poMethod').value, ref:($('poRef').value||'').trim()||null, note:($('poNote').value||'').trim()||null, created_by:ME.uid});
+  if(r.error){ $('poMsg').textContent='> '+r.error.message; return; }
+  sheet('payoutSheet',false); toast('💰 Recorded — the ledger squares');
+  await loadLedger(); if(TAB==='ledger')renderLedger();
+});
+
+/* ════════ MY GEAR (vendor) ════════ */
+function renderGear(){
+  const host=$('panel');
+  host.innerHTML='<div class="card"><div class="card-h">🛡 GEAR ON YOUR BENCH<span class="tag">retail is the Keymaster’s; your cut is yours</span></div><div class="card-b">'
+    +(PRODUCTS.length?PRODUCTS.map(p=>'<div class="vrow"><span class="n"><b>'+esc(p.name)+'</b>'
+      +'<i>retail '+(p.usd!=null?money(p.usd):'unpriced')+' · your cut <b style="color:var(--copper-hi)">'+(p.cost!=null?money(p.cost):'—')+'</b></i></span>'
+      +'<span class="m">'+(p.status==='live'?'<span class="pill grn">LIVE</span>':'<span class="pill amb">SOON</span>')+'</span></div>').join('')
+      :'<p class="sub">Nothing assigned yet — the Keymaster hands gear to your bench from the command side.</p>')
+    +'<p class="sub" style="margin-top:10px">Want a price moved or gear added? Take it to the wire.</p></div></div>';
+}
+
+/* ════════ VENDORS (Keymaster) ════════ */
+let inviteVendorId=null;
+function renderVendors(){
+  const host=$('panel');
+  host.innerHTML = '<button class="btn" id="vAdd" style="margin:2px 0 14px">🤝 ADD A VENDOR</button>'
+    +(VENDORS.length?VENDORS.map(vendorCard).join('')
+      :'<p class="sub" style="text-align:center;padding:14px">No vendors on the rolls yet. Add the first, hand gear to their bench, mint their pass.</p>');
+  $('vAdd').addEventListener('click',()=>openVendorSheet(null));
+  host.querySelectorAll('[data-vedit]').forEach(b=>b.addEventListener('click',()=>openVendorSheet(b.dataset.vedit)));
+  host.querySelectorAll('[data-vgear]').forEach(b=>b.addEventListener('click',()=>openAssign(b.dataset.vgear)));
+  host.querySelectorAll('[data-vpass]').forEach(b=>b.addEventListener('click',()=>openInvite(b.dataset.vpass)));
+  host.querySelectorAll('[data-vwire]').forEach(b=>b.addEventListener('click',()=>{WIRE_VENDOR=b.dataset.vwire;openTab('wire');}));
+  host.querySelectorAll('[data-vactive]').forEach(b=>b.addEventListener('click',async()=>{
+    const v=VENDORS.find(x=>x.id===b.dataset.vactive); if(!v)return;
+    const r=await SB.from('vendors').update({active:!v.active}).eq('id',v.id);
+    if(r.error){toast('⚠ '+r.error.message);return;}
+    await loadVendors(); renderVendors(); }));
+  host.querySelectorAll('[data-mrevoke]').forEach(b=>b.addEventListener('click',async()=>{
+    if(!confirm('Pull this pass? They lose the Dock Office immediately.'))return;
+    const r=await SB.from('vendor_members').delete().eq('user_id',b.dataset.mrevoke);
+    if(r.error){toast('⚠ '+r.error.message);return;}
+    toast('Pass pulled'); await loadVendors(); renderVendors(); }));
+}
+function vendorCard(v){
+  const b=BALANCES.find(x=>x.vendor_id===v.id)||{owed:0,pending:0,paid:0};
+  const mem=MEMBERS.filter(m=>m.vendor_id===v.id);
+  const gearN=PRODUCTS.filter(p=>p.vendor_id===v.id).length;
+  return '<div class="card"'+(v.active?'':' style="opacity:.6"')+'><div class="card-h">'+esc(v.name)
+    +(v.active?'':'<span class="pill red">RETIRED</span>')
+    +'<span class="tag">owed <b class="mono" style="color:var(--copper-hi)">'+money(b.owed)+'</b> · pipe '+money(b.pending)+'</span></div>'
+    +'<div class="card-b">'
+    +'<div class="sub">'+esc(v.contact_name||'—')+(v.email?' · '+esc(v.email):'')+(v.phone?' · '+esc(v.phone):'')+'</div>'
+    +(v.notes?'<div class="sub" style="margin-top:4px;color:#6e767d">'+esc(v.notes)+'</div>':'')
+    +'<div class="sub" style="margin-top:8px">🛡 '+gearN+' on their bench · passes: '
+    +(mem.length?mem.map(m=>'<span class="mono" style="font-size:11.5px;color:var(--bone)">'+esc(m.email||m.user_id.slice(0,8))
+        +'</span> <button class="btn-ghost" style="padding:0 6px" data-mrevoke="'+esc(m.user_id)+'" title="pull the pass">✕</button>').join(' ')
+      :'<i>none minted yet</i>')+'</div>'
+    +'<div class="stat-row">'
+    +'<button class="btn-line gold" data-vgear="'+esc(v.id)+'">🛡 GEAR</button>'
+    +'<button class="btn-line gold" data-vpass="'+esc(v.id)+'">🗝 PASS</button>'
+    +'<button class="btn-line" data-vwire="'+esc(v.id)+'">📻 WIRE</button>'
+    +'<button class="btn-line" data-vedit="'+esc(v.id)+'">✎ EDIT</button>'
+    +'<button class="btn-line'+(v.active?' red':'')+'" data-vactive="'+esc(v.id)+'">'+(v.active?'RETIRE':'REVIVE')+'</button>'
+    +'</div></div></div>';
+}
+function openVendorSheet(vid){
+  editVendorId=vid;
+  const v=vid?VENDORS.find(x=>x.id===vid):null;
+  $('vsTitle').textContent=v?'✎ '+v.name.toUpperCase():'🤝 NEW VENDOR';
+  $('vsName').value=v?v.name:''; $('vsContact').value=v?(v.contact_name||''):'';
+  $('vsEmail').value=v?(v.email||''):''; $('vsPhone').value=v?(v.phone||''):'';
+  $('vsNotes').value=v?(v.notes||''):''; $('vsMsg').textContent='';
+  sheet('vendorSheet');
+}
+$('vsGo').addEventListener('click', async()=>{
+  const row={ name:($('vsName').value||'').trim(), contact_name:($('vsContact').value||'').trim()||null,
+    email:($('vsEmail').value||'').trim()||null, phone:($('vsPhone').value||'').trim()||null,
+    notes:($('vsNotes').value||'').trim()||null };
+  if(!row.name){ $('vsMsg').textContent='> the shop needs a name'; return; }
+  const r = editVendorId
+    ? await SB.from('vendors').update(row).eq('id',editVendorId)
+    : await SB.from('vendors').insert(row);
+  if(r.error){ $('vsMsg').textContent='> '+r.error.message; return; }
+  sheet('vendorSheet',false); toast(editVendorId?'Saved':'🤝 On the rolls — now hand them gear and mint a pass');
+  await loadVendors(); renderVendors();
+});
+
+/* ---- the pass (login) ---- */
+function genPass(){ const a='23456789abcdefghjkmnpqrstvwxyzABCDEFGHJKMNPQRSTVWXYZ'; let s='';
+  for(let i=0;i<12;i++)s+=a[Math.floor(Math.random()*a.length)]; return s; }
+function openInvite(vid){
+  inviteVendorId=vid;
+  const v=VENDORS.find(x=>x.id===vid);
+  $('invSub').textContent='A pass for '+(v?v.name:'?')+' — they sign in at this same gate.';
+  $('invEmail').value=v&&v.email?v.email:''; $('invPass').value=genPass(); $('invMsg').textContent='';
+  sheet('inviteSheet');
+}
+$('invDice').addEventListener('click',()=>{ $('invPass').value=genPass(); });
+$('invGo').addEventListener('click', async()=>{
+  const email=($('invEmail').value||'').trim(), pass=$('invPass').value||'', m=$('invMsg');
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ m.textContent='> a real email'; return; }
+  if(pass.length<8){ m.textContent='> temp password needs 8+ characters'; return; }
+  $('invGo').disabled=true; m.textContent='';
+  try{
+    const { data:{ session } } = await SB.auth.getSession();
+    const r=await fetch(FN+'/vendor-invite',{ method:'POST',
+      headers:{ 'Content-Type':'application/json', 'apikey':window.SUPABASE_ANON_KEY,
+                'Authorization':'Bearer '+(session?session.access_token:'') },
+      body:JSON.stringify({ email:email, vendor_id:inviteVendorId, temp_password:pass }) });
+    const j=await r.json().catch(()=>null);
+    if(r.ok&&j&&j.ok){
+      sheet('inviteSheet',false);
+      toast(j.linked_existing ? '🗝 Linked — they already had an account; their old password stands'
+                              : '🗝 Pass minted — hand them the email and temp password yourself');
+      await loadVendors(); renderVendors();
+    } else m.textContent='> '+((j&&j.error)||('the mint jammed ('+r.status+')'));
+  }catch(e){ m.textContent='> no wire to the mint — check the function is deployed'; }
+  $('invGo').disabled=false;
+});
+
+/* ---- gear assignment + the cut ---- */
+let ASSIGN_ROWS=[];
+function openAssign(vid){
+  assignVendorId=vid;
+  $('asSub').textContent='Check gear onto '+vName(vid)+'’s bench and set the cut you pay per unit. Retail stays yours.';
+  ASSIGN_ROWS=PRODUCTS.slice().sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+  $('asList').innerHTML=ASSIGN_ROWS.map((p,i)=>{
+    const mine=p.vendor_id===vid, other=p.vendor_id&&!mine;
+    return '<div class="vrow"><input type="checkbox" id="asck'+i+'"'+(mine?' checked':'')+' style="width:18px;height:18px;accent-color:#c9803f">'
+      +'<span class="n"><b>'+esc(p.name)+'</b><i>retail '+(p.usd!=null?money(p.usd):'unpriced')
+      +(other?' · <b style="color:var(--warn)">with '+esc(vName(p.vendor_id))+'</b> — checking it moves it':'')+'</i></span>'
+      +'<input class="field mono" id="ascost'+i+'" inputmode="decimal" placeholder="cut $" value="'+(mine&&p.cost!=null?Number(p.cost):'')+'" style="width:86px;padding:9px 10px;font-size:13px;flex:none">'
+      +'</div>';
+  }).join('');
+  $('asMsg').textContent='';
+  sheet('assignSheet');
+}
+$('asGo').addEventListener('click', async()=>{
+  $('asGo').disabled=true; $('asMsg').textContent='';
+  let fails=0, changes=0;
+  for(let i=0;i<ASSIGN_ROWS.length;i++){
+    const p=ASSIGN_ROWS[i], ck=$('asck'+i), ci=$('ascost'+i);
+    if(!ck)continue;
+    const mine=p.vendor_id===assignVendorId;
+    const patch={};
+    if(ck.checked&&!mine)patch.vendor_id=assignVendorId;
+    if(!ck.checked&&mine)patch.vendor_id=null;
+    if(ck.checked){
+      const cv=parseFloat(ci.value);
+      const c=isFinite(cv)&&cv>=0?Math.round(cv*100)/100:null;
+      const oldC=(mine&&p.cost!=null)?Math.round(Number(p.cost)*100)/100:null;
+      if(c!==oldC)patch.cost=c;
+    }
+    if(Object.keys(patch).length){
+      changes++;
+      const r=await SB.from('products').update(patch).eq('id',p.id);
+      if(r.error){ fails++; console.warn('assign',p.id,r.error.message); }
+    }
+  }
+  $('asGo').disabled=false;
+  if(fails){ $('asMsg').textContent='> '+fails+' of '+changes+' updates failed — check the console'; return; }
+  sheet('assignSheet',false); toast(changes?'🛡 Bench updated ('+changes+' change'+(changes>1?'s':'')+')':'Nothing changed');
+  await loadProducts(); if(TAB==='vendors')renderVendors();
+});
+
+/* ════════ THE WIRE ════════ */
+function currentWireVendor(){ return ME.km ? WIRE_VENDOR : (ME.vendor?ME.vendor.id:null); }
+function renderWire(){
+  const host=$('panel');
+  let head='';
+  if(ME.km){
+    if(!WIRE_VENDOR&&VENDORS.length)WIRE_VENDOR=VENDORS[0].id;
+    head='<div class="chips">'+VENDORS.map(v=>'<button data-wv="'+esc(v.id)+'"'+(v.id===WIRE_VENDOR?' class="on"':'')+'>'
+      +(hasUnread(v.id)?'<span style="color:var(--ember)">●</span> ':'')+esc(v.name)+'</button>').join('')+'</div>';
+    if(!VENDORS.length)head='<p class="sub" style="padding:12px 2px">No vendors yet — the wire hums once one’s on the rolls.</p>';
+  }
+  host.innerHTML=head
+    +'<div class="card"><div class="card-h">📻 THE WIRE'
+    +'<span class="tag">'+(ME.km?esc(vName(WIRE_VENDOR)||'—'):'straight line to the Keymaster')+'</span></div>'
+    +'<div class="card-b"><div class="msgs" id="wireMsgs"><p class="sub">Raising the mast…</p></div>'
+    +'<div class="sendrow"><input class="field" id="wireIn" placeholder="Say the word…" maxlength="2000">'
+    +'<button class="btn-line gold" id="wireGo">SEND</button></div></div></div>';
+  host.querySelectorAll('[data-wv]').forEach(b=>b.addEventListener('click',()=>{WIRE_VENDOR=b.dataset.wv;renderWire();}));
+  const send=async()=>{
+    const inp=$('wireIn'), body=(inp.value||'').trim(), vid=currentWireVendor();
+    if(!body||!vid)return;
+    inp.value='';
+    const r=await SB.from('vendor_msgs').insert({vendor_id:vid,user_id:ME.uid,from_km:ME.km,body:body}).select().single();
+    if(r.error){ toast('⚠ '+r.error.message); inp.value=body; return; }
+    if(r.data&&!MSGS.some(m=>m.id===r.data.id)){ MSGS.push(r.data); paintMsgs(); }
+  };
+  $('wireGo').addEventListener('click',send);
+  $('wireIn').addEventListener('keydown',e=>{ if(e.key==='Enter')send(); });
+  loadMsgs();
+}
+async function loadMsgs(){
+  const vid=currentWireVendor(); if(!vid){ MSGS=[]; paintMsgs(); return; }
+  try{
+    const r=await SB.from('vendor_msgs').select('*').eq('vendor_id',vid).order('created_at',{ascending:true}).limit(300);
+    if(!r.error){ MSGS=r.data||[]; paintMsgs(); markSeen(vid); }
+  }catch(e){}
+}
+function paintMsgs(){
+  const box=$('wireMsgs'); if(!box)return;
+  if(!MSGS.length){ box.innerHTML='<p class="sub">Nothing on the wire yet. First word starts it.</p>'; return; }
+  box.innerHTML=MSGS.map(m=>{
+    const mine = ME.km ? m.from_km : !m.from_km;
+    const cls = mine?'self':(m.from_km?'them km':'them');
+    return '<div class="mb '+cls+'">'+esc(m.body)+'<span class="ts">'+dt(m.created_at)+'</span></div>';
+  }).join('');
+  box.scrollTop=box.scrollHeight;
+}
+
+/* ════════ REALTIME + THE SLOW TIDE ════════ */
+let subscribed=false, pokeTimer=null, refreshing=false;
+function poke(){ clearTimeout(pokeTimer); pokeTimer=setTimeout(async()=>{
+  const before=ORDERS.filter(o=>orderMatches(o,'todo')).length;
+  await Promise.all([loadOrders(), loadLedger()]);
+  const after=ORDERS.filter(o=>orderMatches(o,'todo')).length;
+  if(after>before)toast('⚓ New work on the hook');
+  if(TAB==='orders')renderOrders(); if(TAB==='ledger')renderLedger();
+}, 900); }
+function onMsg(payload){
+  const m=payload&&payload.new; if(!m)return;
+  const side=m.from_km?'km':'vendor';
+  (LASTMSG[m.vendor_id]=LASTMSG[m.vendor_id]||{})[side]=m.created_at;
+  const vid=currentWireVendor();
+  if(TAB==='wire'&&m.vendor_id===vid){
+    if(!MSGS.some(x=>x.id===m.id)){ MSGS.push(m); paintMsgs(); }
+    markSeen(vid);
+  }else{
+    paintUnreadDot();
+    const fromMe = ME.km ? m.from_km : !m.from_km;
+    if(!fromMe)toast('📻 Word on the wire');
+  }
+}
+function subscribe(){
+  if(subscribed)return; subscribed=true;
+  try{
+    const ch=SB.channel('dock-live');
+    ch.on('postgres_changes',{event:'*',schema:'public',table:'orders'},poke)
+      .on('postgres_changes',{event:'*',schema:'public',table:'order_items'},poke)
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'vendor_msgs'},onMsg)
+      .subscribe();
+  }catch(e){ console.warn('realtime',e); }
+  /* the slow tide — realtime or not, the office never goes stale */
+  setInterval(async()=>{ if(document.visibilityState!=='visible'||refreshing)return;
+    refreshing=true; try{ await refreshAll(); openTab(TAB); }catch(e){} refreshing=false; }, 75000);
+  document.addEventListener('visibilitychange',async()=>{ if(document.visibilityState!=='visible'||refreshing)return;
+    refreshing=true; try{ await refreshAll(); openTab(TAB); }catch(e){} refreshing=false; });
+}
+
+/* ════════ BOOT ════════ */
+SB.auth.onAuthStateChange((ev)=>{ if(ev==='SIGNED_OUT')location.reload(); });
+route();
+</script>
+
+</body>
+</html>
