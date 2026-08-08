@@ -14,7 +14,7 @@
      • Bumping the number below also wipes every old cache on activate, so nothing
        stale can survive.
    ──────────────────────────────────────────────────────────────────────────── */
-const CACHE = 'shadowhook-v14';  // ← bump this each time you deploy an update  (v14: clean dockoffice address, no .html)
+const CACHE = 'shadowhook-v15';  // ← bump this each time you deploy an update  (v15: 🎖 own tab in the Dock Office + THE ALARMS error desk)
 
 const SHELL = [
   '.',
