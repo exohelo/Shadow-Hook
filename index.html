@@ -9151,7 +9151,8 @@ function renderShop(){
      right edge with nothing looking selected. Pull it back into view. */
   try{ const on=rail.querySelector('button.on');
        if(on&&on.scrollIntoView)on.scrollIntoView({block:'nearest',inline:'center'}); }catch(e){}
-  const list=GEAR.filter(p=>gearCat==="all"||p.cat===gearCat)
+  const list=GEAR.filter(p=>p.status!=='retired')   /* #vendor — RETIRED gear leaves the floor (set from the Dock Office workbench) */
+                 .filter(p=>gearCat==="all"||p.cat===gearCat)
                  .slice().sort((a,b)=>((a.sort==null?500:+a.sort||0)-(b.sort==null?500:+b.sort||0)));
   if(!list.length){ grid.innerHTML='<p class="sub" style="grid-column:1/-1">Nothing in this row yet.</p>'; return; }
   grid.innerHTML=list.map(p=>{
@@ -9221,9 +9222,9 @@ function paintGear(){
                     :'<div class="pdp-price" style="color:var(--steel);font-size:18px">Price posts on opening day</div>')
     +((GEAR_SHOW_PRICES&&bk!=null)?'<div class="pdp-or">⬡ <span>or <b>'+bk.toLocaleString()+' Port Bucks</b></span></div>':'')
     +(p.blurb?'<p class="sub" style="margin-top:10px">'+shEsc(p.blurb)+'</p>':'')
-    +(cols.length?'<div class="pdp-lbl">Color: <b>'+shEsc(c.n)+'</b></div><div class="pdp-cols">'
+    +(cols.length?'<div class="pdp-lbl">'+shEsc(p.color_label||'Color')+': <b>'+shEsc(c.n)+'</b></div><div class="pdp-cols">'   /* #vendor — the axis is nameable: Color / Finish / Material */
        +cols.map((cc,i)=>'<button type="button" data-ci="'+i+'" title="'+shEsc(cc&&cc.n)+'" style="background:'+gearHex(cc&&cc.hex)+'"'+(i===gearColor?' class="on"':'')+'></button>').join('')+'</div>':'')
-    +(sizes.length?'<div class="pdp-lbl">Size: <b>'+shEsc(gearSize||'Please select')+'</b></div><div class="pdp-sizes">'
+    +(sizes.length?'<div class="pdp-lbl">'+shEsc(p.size_label||'Size')+': <b>'+shEsc(gearSize||'Please select')+'</b></div><div class="pdp-sizes">'   /* #vendor — Size / Capacity / Style */
        +sizes.map((sz,i)=>'<button type="button" data-i="'+i+'"'+(sz===gearSize?' class="on"':'')+'>'+shEsc(sz)+'</button>').join('')+'</div>':'')
     +(function(){ /* #vendor — the CTA: a live, priced product SELLS; anything else takes names */
         var buyable=GEAR_SHOW_PRICES && p.status==='live' && (gearNum(p.usd)||0)>0;
@@ -18016,7 +18017,7 @@ window.shareCall=shareCall;
       var p=(typeof gearProd!=='undefined')?gearProd:null; if(!p)return;
       var sizes=arr(p.sizes);
       var size=(typeof gearSize!=='undefined')?gearSize:null;
-      if(sizes.length&&!size){ say('Pick a size first'); return; }
+      if(sizes.length&&!size){ say('Pick a '+String(p.size_label||'size').toLowerCase()+' first'); return; }
       var cols=arr(p.colors), ci=(typeof gearColor!=='undefined')?gearColor:0;
       var color=(cols[ci]&&cols[ci].n)?String(cols[ci].n):null;
       if(!alive({id:p.id})){ say('That one isn’t on sale yet'); return; }
