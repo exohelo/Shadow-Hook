@@ -2304,6 +2304,20 @@ window.DEVLOG=(function(){
     <div class="screen-title">THE ARMORY</div>
     <div class="screen-sub">PPE, colors and dock gear. The gates open soon.</div>
 
+    <!-- #amb — the recruiting poster: every hand that opens the shop sees the door in -->
+    <div class="card" style="border-color:rgba(255,213,61,.5)">
+      <div class="card-b" style="cursor:pointer;background:linear-gradient(135deg,rgba(255,213,61,.09),rgba(224,73,46,.07))" onclick="ambApplyOpen()">
+        <div style="display:flex;align-items:center;gap:14px">
+          <div class="seal" style="margin:0;width:58px;height:58px;font-size:24px">🎖</div>
+          <div style="flex:1">
+            <div class="big" style="font-size:19px;letter-spacing:.05em;color:#ffd53d">BECOME AN AMBASSADOR</div>
+            <div class="sub">Recruit makers to the Armory — get paid on every sale they ever make</div>
+          </div>
+          <div class="sub" style="flex:none">apply ›</div>
+        </div>
+      </div>
+    </div>
+
     <!-- #83 — Top Earners card removed by request; the bucks leaderboard still lives on Social -->
 
     <div class="card" style="border-color:rgba(238,180,107,.45)">
@@ -17391,6 +17405,9 @@ html.season-xmas.daylight{}
     <div class="card-h" style="margin-top:4px">The Pulse</div>
     <div id="kmPulse" class="sub" style="line-height:1.8;margin-bottom:14px">reading the wire…</div>
 
+    <div class="card-h">Crown requests <span class="pill gold" id="kmAppN" style="display:none">0</span></div>
+    <div id="kmApps" class="sub" style="line-height:1.7;margin-bottom:14px">—</div>
+
     <div class="card-h">The Roster</div>
     <input class="field" id="kmFind" placeholder="filter — handle, card, name" style="margin:6px 0 6px">
     <input class="field" id="kmNotice" placeholder="notice text — used by ⚠ warn, 🔨 ban and ✕ 🎖" style="margin-bottom:6px">
@@ -17436,6 +17453,26 @@ html.season-xmas.daylight{}
      These two sheets let the Keymaster work it WITHOUT leaving this app:
      crown a casual straight off the roster, and raise the SPYGLASS — a faithful,
      read-only replica of the dashboard that member sees behind the vendor gate. -->
+<!-- #amb — BECOME AN AMBASSADOR: the pitch, the rules, and the application.
+     Opens from the recruiting poster at the top of the Armory. Applications land
+     in amb_applications (run AMBASSADOR-APPLICATIONS.sql once) and surface in the
+     Command Center as CROWN REQUESTS, one tap from the crowning sheet. -->
+<div class="sheet" id="ambApplySheet" role="dialog" aria-modal="true" aria-label="Become an ambassador">
+  <div class="sheet-card" style="text-align:left;max-height:86vh;overflow-y:auto">
+    <div class="big" style="font-size:20px;letter-spacing:.07em;text-align:center;color:#ffd53d">🎖 BECOME AN AMBASSADOR</div>
+    <p class="sub" style="margin:8px 0 12px;text-align:center;line-height:1.7">The Order pays the hands who bring makers to the Armory.</p>
+    <div class="card-h">What it is</div>
+    <p class="sub" style="margin:6px 0 12px;line-height:1.75">An ambassador is a recruiter. You know a print shop, a leather worker, a sticker maker, somebody with gear the docks would actually wear — you bring them to the Order. The Keymaster checks their goods, shelves what's worthy, and their gear sells right here in the Armory.</p>
+    <div class="card-h">How it works</div>
+    <p class="sub" style="margin:6px 0 5px;line-height:1.75"><b style="color:var(--bone)">1 ·</b> Apply below. The Keymaster reads every application and sends word to your phone either way.</p>
+    <p class="sub" style="margin:0 0 5px;line-height:1.75"><b style="color:var(--bone)">2 ·</b> Crowned? The <b style="color:var(--bone)">Dock Office</b> opens to you — your own gate for signing up vendors and watching your money.</p>
+    <p class="sub" style="margin:0 0 5px;line-height:1.75"><b style="color:var(--bone)">3 ·</b> Every sale off your recruits' benches pays you a <b style="color:#ffd53d">cut of the house margin</b> — booked automatically at the till, on every sale, for as long as they sell. You don't touch inventory, shipping, or money handling.</p>
+    <p class="sub" style="margin:0 0 12px;line-height:1.75"><b style="color:var(--bone)">4 ·</b> The Keymaster settles what you're owed on the regular run — Zelle, Venmo, check, however you set it below. Nothing comes out of your pocket. Ever.</p>
+    <div id="ambApplyBody"><p class="sub">—</p></div>
+    <button class="btn-ghost" style="width:100%;margin-top:10px" onclick="document.getElementById('ambApplySheet').classList.remove('on')">Close</button>
+  </div>
+</div>
+
 <div class="sheet" id="kmAmbSheet" role="dialog" aria-modal="true" aria-label="Crown an ambassador">
   <div class="sheet-card" style="text-align:left">
     <div class="big" style="font-size:19px;letter-spacing:.07em;text-align:center;color:#ffd53d">🎖 CROWN AN AMBASSADOR</div>
@@ -17526,6 +17563,7 @@ html.season-xmas.daylight{}
     if($('kmBull'))$('kmBull').value=f.bulletin||'';
     kmPulse();
     try{kmRoster();}catch(e){}
+    try{kmApps();}catch(e){}   /* #amb — pending crown requests ride along */
   };
   async function kmPulse(){
     const out=$('kmPulse');if(!out)return;out.textContent='reading the wire…';
@@ -17722,12 +17760,13 @@ html.season-xmas.daylight{}
 
   /* ---- the crowning ---- */
   let _ambTarget=null;
-  window.kmAmbOpen=function(handle){
-    _ambTarget={handle:handle,uid:_ambUids[String(handle||'').toLowerCase()]||null};
+  window.kmAmbOpen=function(handle,opts){ /* opts — a crown request can hand over {uid,email,appId} */
+    opts=opts||{};
+    _ambTarget={handle:handle,uid:opts.uid||_ambUids[String(handle||'').toLowerCase()]||null,appId:opts.appId||null};
     const sh2=$('kmAmbSheet');if(!sh2)return;
     $('kmAmbWho').innerHTML='For <b style="color:var(--bone)">'+esc(handle)+'</b> — they recruit vendors to the Armory and book a cut of the house margin on everything their recruits sell.'
       +(_ambTarget.uid?'':'<br><span style="color:var(--ember)">No app account found for this handle — fill in their email so the gate can mint their pass.</span>');
-    $('kmAmbName').value=handle;$('kmAmbRate').value='10';$('kmAmbEmail').value='';$('kmAmbMsg').textContent='';
+    $('kmAmbName').value=handle;$('kmAmbRate').value='10';$('kmAmbEmail').value=opts.email||'';$('kmAmbMsg').textContent='';
     sh2.classList.add('on');
   };
   async function kmAmbGo(){
@@ -17768,6 +17807,10 @@ html.season-xmas.daylight{}
       }
       /* word to the newly crowned — rides the same notice wire as ⚠ warn */
       if(linked){try{await window.SB.rpc('km_warn',{p_handle:_ambTarget.handle,p_msg:'🎖 The Keymaster has crowned you an AMBASSADOR of the Order. The Dock Office is open to you — theshadowhook.com/dockoffice.html, your usual email and password. Recruit vendors to the Armory and '+(Number(rate)||0)+'% of the house margin on their sales is yours.'});}catch(e3){}}
+      if(_ambTarget&&_ambTarget.appId){ /* #amb — this crown answers an application: mark it ruled */
+        try{await window.SB.from('amb_applications').update({status:'crowned'}).eq('user_id',_ambTarget.appId);}catch(e6){}
+        try{kmApps();}catch(e6){}
+      }
       await kmAmbLoad(); kmRosterDraw();
       if(minted&&tempPass){ /* fresh pass — leave the sheet up so the credentials can be copied */
         msgEl.innerHTML='🗝 Crown set and a fresh Dock Office pass minted. Hand these over yourself — they won’t be shown again:<br>'
@@ -17894,6 +17937,149 @@ html.season-xmas.daylight{}
   const _avc=$('avClose');if(_avc)_avc.addEventListener('click',()=>$('ambViewSheet').classList.remove('on'));
   const _avr=$('avRefresh');if(_avr)_avr.addEventListener('click',()=>{if(AV)ambViewOpen(AV.amb.id,AV.handle);});
   const _avt=$('avTabs');if(_avt)_avt.addEventListener('click',e=>{const b2=e.target.closest('button');if(b2&&AV){AV.tab=b2.dataset.v;avDraw();}});
+
+  /* ═══════════ #amb — CROWN REQUESTS (Keymaster side) ═══════════
+     Applications from the BECOME AN AMBASSADOR poster land in amb_applications
+     (run AMBASSADOR-APPLICATIONS.sql once). Pending ones surface here, one tap
+     from the crowning sheet — crown answers it, pass shelves it. */
+  let _apps=[];
+  window.kmApps=async function(){
+    const out=$('kmApps'); if(!out)return;
+    if(!window.SB){out.textContent='backend off';return;}
+    try{
+      const r=await window.SB.from('amb_applications').select('*').eq('status','pending').order('created_at');
+      if(r.error)throw r.error;
+      _apps=r.data||[];
+      const n=$('kmAppN');if(n){n.textContent=_apps.length;n.style.display=_apps.length?'':'none';}
+      if(!_apps.length){out.innerHTML='<span style="color:var(--steel)">quiet — the poster hangs in the Armory; applications land here</span>';return;}
+      out.innerHTML=_apps.map(x=>'<div style="border:1px solid rgba(255,213,61,.3);border-radius:10px;padding:8px 10px;margin-bottom:6px">'
+        +'<div style="display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center"><b style="color:var(--bone)">🎖 '+esc(x.name||'?')+'</b>'
+        +(x.handle?'<span class="mono" style="color:var(--copper-hi)">'+esc(x.handle)+'</span>':'')
+        +'<span style="margin-left:auto;color:var(--steel);font-size:11px">'+_dt(x.created_at)+'</span></div>'
+        +'<div style="margin-top:2px">'+esc(x.phone||'—')+(x.email?' · '+esc(x.email):'')+'</div>'
+        +(x.payout_method?'<div style="margin-top:2px">pay them by <b style="color:var(--bone)">'+esc(x.payout_method)+'</b>'+(x.payout_detail?' · <span class="mono">'+esc(x.payout_detail)+'</span>':'')+'</div>':'')
+        +(x.pitch?'<div style="margin-top:2px;color:var(--steel)"><i>“'+esc(x.pitch)+'”</i></div>':'')
+        +'<div style="display:flex;gap:6px;margin-top:6px">'
+        +'<button class="btn-ghost km-app" data-do="crown" data-app="'+esc(x.user_id)+'" style="flex:1;padding:4px 0;font-size:11px;color:#ffd53d">🎖 crown</button>'
+        +'<button class="btn-ghost km-app" data-do="pass" data-app="'+esc(x.user_id)+'" style="flex:1;padding:4px 0;font-size:11px;color:var(--steel)">✕ pass</button>'
+        +'</div></div>').join('');
+    }catch(e){
+      out.innerHTML=/does not exist|relation|schema/i.test(e.message||'')
+        ?'<span style="color:var(--ember)">the application book isn’t on the shelf yet — run AMBASSADOR-APPLICATIONS.sql in Supabase</span>'
+        :('requests failed: '+esc(e.message));
+    }
+  };
+  const ka=$('kmApps');
+  if(ka)ka.addEventListener('click',async function(e){
+    const b=e.target.closest('button.km-app'); if(!b)return;
+    const app=_apps.find(x=>x.user_id===b.dataset.app); if(!app)return;
+    if(b.dataset.do==='crown'){ kmAmbOpen(app.handle||app.name,{uid:app.user_id,email:app.email||'',appId:app.user_id}); return; }
+    if(b.dataset.do==='pass'){
+      if(!confirm('Pass on '+(app.name||app.handle||'this hand')+'? They can apply again down the line.'))return;
+      b.disabled=true;
+      try{
+        const r=await window.SB.from('amb_applications').update({status:'passed'}).eq('user_id',app.user_id);
+        if(r.error)throw r.error;
+        try{toast('✕ passed — the book remembers');}catch(e2){}
+        kmApps();
+      }catch(err){try{toast('✗ '+err.message);}catch(e2){} b.disabled=false;}
+    }
+  });
+
+  /* ═══════════ #amb — BECOME AN AMBASSADOR (member side) ═══════════
+     The poster at the top of the Armory opens this. States, in order:
+     already crowned → point them at the Dock Office · application pending →
+     hold steady · otherwise → the form (a passed application prefills it for
+     another run). Payouts by Zelle/Venmo/Cash App/check — bank numbers are
+     NEVER collected here; direct deposit gets set up with the Keymaster. */
+  window.ambApplyOpen=async function(){
+    const sh4=$('ambApplySheet');if(!sh4)return;
+    sh4.classList.add('on');
+    const body=$('ambApplyBody');if(!body)return;
+    if(!window.SB){body.innerHTML='<div class="card-h">The application</div><p class="sub" style="margin:6px 0">The wire to the Order is down — try again when you’re back online.</p>';return;}
+    const uid=window.__shkUid;
+    if(!uid){body.innerHTML='<div class="card-h">The application</div><p class="sub" style="margin:6px 0;line-height:1.7">Claim your card first — the Keymaster has to know which hand is asking. Open your profile, claim your card, then come back to this poster.</p>';return;}
+    body.innerHTML='<p class="sub">checking the rolls…</p>';
+    let ex=null;
+    try{
+      const am=await window.SB.from('ambassador_members').select('ambassador_id').eq('user_id',uid).maybeSingle();
+      if(am&&am.data&&am.data.ambassador_id){
+        body.innerHTML='<div class="card-h">You’re already crowned</div><p class="sub" style="margin:6px 0;line-height:1.75">🎖 The Dock Office is yours — sign in at <b style="color:var(--bone)">theshadowhook.com/dockoffice.html</b> with the same email and password you use here.</p>';
+        return;
+      }
+      const r=await window.SB.from('amb_applications').select('*').eq('user_id',uid).maybeSingle();
+      if(r&&r.data)ex=r.data;
+    }catch(e){}
+    if(ex&&ex.status==='pending'){
+      body.innerHTML='<div class="card-h">Application’s in</div><p class="sub" style="margin:6px 0;line-height:1.75">⚓ The Keymaster has it. Word lands on your phone the moment it’s ruled on — crowns aren’t handed out in a hurry, and that’s exactly why they’re worth wearing.</p>';
+      return;
+    }
+    ambApplyForm(ex);
+  };
+  function ambApplyForm(prev){
+    const body=$('ambApplyBody');if(!body)return;
+    const acct=(typeof loadAcct==='function'?(loadAcct()||{}):{});
+    const vName=prev?(prev.name||''):(acct.name||acct.handle||'');
+    const vPhone=prev?(prev.phone||''):'';
+    const vEmail=prev?(prev.email||''):'';
+    const vPitch=prev?(prev.pitch||''):'';
+    const vMethod=prev?(prev.payout_method||'Zelle'):'Zelle';
+    const vDetail=prev?(prev.payout_detail||''):'';
+    body.innerHTML=
+      '<div class="card-h">The application</div>'
+      +(prev&&prev.status==='passed'?'<p class="sub" style="margin:6px 0;color:var(--steel)">The Keymaster passed last time — doors reopen, ships come back. Sharpen the pitch and send it again.</p>':'')
+      +'<div class="sub" style="margin:8px 0 2px">Your name</div>'
+      +'<input class="field" id="ambApName" style="margin-bottom:4px">'
+      +'<div class="sub" style="margin:8px 0 2px">Phone</div>'
+      +'<input class="field" id="ambApPhone" inputmode="tel" placeholder="(310) 555-0199" style="margin-bottom:4px">'
+      +'<div class="sub" style="margin:8px 0 2px">Email</div>'
+      +'<input class="field" id="ambApEmail" type="email" style="margin-bottom:4px">'
+      +'<div class="sub" style="margin:8px 0 2px">How you’d like to get paid</div>'
+      +'<select class="field" id="ambApMethod" style="margin-bottom:4px">'
+        +['Zelle','Venmo','Cash App','Check','Direct deposit','Sort it out later'].map(m=>'<option value="'+m+'"'+(m===vMethod?' selected':'')+'>'+(m==='Direct deposit'?'Direct deposit — set up with the Keymaster':m)+'</option>').join('')
+      +'</select>'
+      +'<div class="sub" id="ambApDetailLbl" style="margin:8px 0 2px">Zelle — the phone or email tied to it</div>'
+      +'<input class="field" id="ambApDetail" style="margin-bottom:4px">'
+      +'<p class="sub" id="ambApSafe" style="margin:6px 0;color:var(--steel)">No bank or card numbers in this form — ever. Direct deposit gets set up with the Keymaster personally.</p>'
+      +'<div class="sub" style="margin:8px 0 2px">Who would you recruit first? — optional, but it helps your case</div>'
+      +'<textarea class="field" id="ambApPitch" rows="2" style="width:100%;resize:vertical;margin-bottom:6px" placeholder="My cousin runs a print shop in San Pedro…"></textarea>'
+      +'<div class="sub" id="ambApMsg" style="margin:6px 0"></div>'
+      +'<button class="btn" id="ambApGo" type="button" style="width:100%">⚓ SEND IT TO THE KEYMASTER</button>';
+    $('ambApName').value=vName;$('ambApPhone').value=vPhone;$('ambApEmail').value=vEmail;
+    $('ambApDetail').value=vDetail;$('ambApPitch').value=vPitch;
+    if(!vEmail){try{window.SB.auth.getUser().then(u=>{const e2=u&&u.data&&u.data.user&&u.data.user.email;const f=$('ambApEmail');if(f&&!f.value&&e2)f.value=e2;});}catch(e){}}
+    const LBL={'Zelle':'Zelle — the phone or email tied to it','Venmo':'Venmo — your @handle','Cash App':'Cash App — your $cashtag','Check':'Check — who it should be made out to','Direct deposit':'','Sort it out later':''};
+    function detailSync(){
+      const v=$('ambApMethod').value, l=LBL[v]||'';
+      $('ambApDetailLbl').style.display=l?'':'none';
+      $('ambApDetail').style.display=l?'':'none';
+      if(l)$('ambApDetailLbl').textContent=l;
+    }
+    $('ambApMethod').addEventListener('change',detailSync); detailSync();
+    $('ambApGo').addEventListener('click',async function(){
+      const m=$('ambApMsg');
+      const name=($('ambApName').value||'').trim(), phone=($('ambApPhone').value||'').trim(), email=($('ambApEmail').value||'').trim();
+      const method=$('ambApMethod').value, detail=($('ambApDetail').value||'').trim(), pitch=($('ambApPitch').value||'').trim();
+      if(!name){m.textContent='✗ your name — the books need it';return;}
+      if(!phone&&!email){m.textContent='✗ a phone or an email — the Keymaster needs a way to reach you';return;}
+      const go=$('ambApGo');go.disabled=true;m.textContent='sending word…';
+      try{
+        const row={user_id:window.__shkUid,handle:(acct.handle||'').toUpperCase()||null,name:name,phone:phone||null,email:email||null,
+          payout_method:method,payout_detail:(LBL[method]?detail:null)||null,pitch:pitch||null,status:'pending'};
+        const r=await window.SB.from('amb_applications').upsert(row,{onConflict:'user_id'});
+        if(r.error)throw r.error;
+        body.innerHTML='<div class="card-h">Application’s in</div><p class="sub" style="margin:6px 0;line-height:1.75">⚓ It’s in the Keymaster’s hands. Every application gets read — word lands on your phone the moment it’s ruled on.</p>';
+        try{toast('⚓ Sent to the Keymaster');}catch(e2){}
+      }catch(err){
+        m.textContent=/does not exist|relation|schema/i.test(err.message||'')
+          ?'✗ the application book isn’t on the shelf yet — send word to the Keymaster'
+          :('✗ '+err.message);
+        go.disabled=false;
+      }
+    });
+  }
+  /* backdrop close for the apply sheet */
+  (function(){const s5=$('ambApplySheet');if(s5)s5.addEventListener('click',e=>{if(e.target===s5)s5.classList.remove('on');});})();
 
   /* ═══ #km2 — member side: notices land, bans lock ═══ */
   window.showBanLock=function(msg){
