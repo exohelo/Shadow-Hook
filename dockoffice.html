@@ -177,6 +177,13 @@ select.field{appearance:none;-webkit-appearance:none}
 .pv-spec>div{display:flex;justify-content:space-between;gap:14px;padding:6px 0;border-bottom:1px solid var(--line-soft);font-size:12.5px}
 .pv-spec span:first-child{color:var(--steel)}
 .pv-cta{margin-top:13px;pointer-events:none;opacity:.9}
+/* ---- the floor (browse-only storefront) ---- */
+.floor-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+@media(min-width:700px){ .floor-grid{grid-template-columns:repeat(3,1fr)} }
+.floor-grid .pv-card{width:auto;cursor:pointer;transition:transform .12s}
+.floor-grid .pv-card:active{transform:scale(.98)}
+.pv-mine{position:absolute;top:8px;right:8px;padding:3px 8px;border-radius:6px;font-size:9px;letter-spacing:.12em;background:rgba(201,128,63,.92);color:#1a1208;font-weight:700}
+.floor-pdp-wrap{max-width:340px;margin:0 auto}
 
 /* ---- the packing slip (print) ---- */
 #slip{display:none}
@@ -203,7 +210,7 @@ select.field{appearance:none;-webkit-appearance:none}
     <div class="crest">⚓</div>
     <div class="wordmark">THE ORDER OF THE SHADOW HOOK</div>
     <div class="gate-title">THE DOCK OFFICE</div>
-    <div class="gate-sub">Vendor gate · orders, shipping &amp; the ledger · v5 — the floor preview</div>
+    <div class="gate-sub">Vendor gate · orders, shipping &amp; the ledger · v6 — walk the floor</div>
     <div class="card" style="margin-top:26px;text-align:left"><div class="card-b">
       <div class="lbl" style="margin-top:2px">EMAIL</div>
       <input class="field" id="gEmail" type="email" autocomplete="username" placeholder="you@yourshop.com">
@@ -497,8 +504,8 @@ $('pwGo').addEventListener('click', async()=>{
 function buildTabs(){
   const t=$('tabs');
   const tabs = ME.km
-    ? [['orders','⚓ ORDERS'],['vendors','🤝 VENDORS'],['work','🛠 WORKBENCH'],['ledger','💰 LEDGER'],['wire','📻 THE WIRE']]
-    : [['orders','⚓ ORDERS'],['ledger','💰 MY LEDGER'],['wire','📻 THE WIRE'],['gear','🛡 MY GEAR']];
+    ? [['orders','⚓ ORDERS'],['vendors','🤝 VENDORS'],['work','🛠 WORKBENCH'],['ledger','💰 LEDGER'],['wire','📻 THE WIRE'],['floor','🏬 THE FLOOR']]
+    : [['orders','⚓ ORDERS'],['ledger','💰 MY LEDGER'],['wire','📻 THE WIRE'],['gear','🛡 MY GEAR'],['floor','🏬 THE FLOOR']];
   t.innerHTML = tabs.map(([k,l])=>'<button data-tab="'+k+'" id="tab-'+k+'">'+l+'</button>').join('');
   t.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>openTab(b.dataset.tab)));
 }
@@ -511,11 +518,21 @@ function openTab(k){
   else if(k==='ledger') renderLedger();
   else if(k==='wire') renderWire();
   else if(k==='gear') renderGear();
+  else if(k==='floor') renderFloor();
 }
 
 /* ════════ DATA ════════ */
 async function refreshAll(){
-  await Promise.all([loadOrders(), loadLedger(), loadProducts(), ME.km?loadVendors():Promise.resolve(), loadLastMsgs(), loadDrafts()]);
+  await Promise.all([loadOrders(), loadLedger(), loadProducts(), loadStore(), ME.km?loadVendors():Promise.resolve(), loadLastMsgs(), loadDrafts()]);
+}
+let STORE=[];
+async function loadStore(){
+  try{
+    const r=await SB.from('products')
+      .select('id,name,brand,cat,blurb,usd,cost,status,vendor_id,sort,image,colors,sizes,specs,size_label,color_label,deal')
+      .order('sort');
+    if(!r.error) STORE=(r.data||[]).filter(p=>p.status!=='retired');
+  }catch(e){}
 }
 async function loadDrafts(){
   try{
@@ -1440,6 +1457,77 @@ async function rejectDraft(id){
   wireSend(d.vendor_id, '✕ '+d.name+' turned back'+(note?' — '+note:'')+'', true);
   toast('Turned back');
   await loadDrafts(); renderWork();
+}
+
+/* ════════ THE FLOOR — the Armory, browse-only, no app login needed ════════
+   Renders the store exactly the way index.html does (same art generator,
+   same card and page anatomy) straight from the products table. The till
+   stays in the app — nothing here can be bought. */
+const FLOOR_CATS=[['all','Everything'],['ppe','PPE & Safety'],['apparel','Apparel'],['acc','Accessories'],['gear','Patches & Pins']];
+let FLOORCAT='all', floorProd=null, floorCi=0, floorSize=null;
+function floorNorm(p){
+  return { name:p.name||p.id, blurb:p.blurb||'', cat:p.cat||'gear',
+    colors:Array.isArray(p.colors)?p.colors:[], sizes:Array.isArray(p.sizes)?p.sizes.map(String):[],
+    specs:Array.isArray(p.specs)?p.specs:[],
+    color_label:p.color_label||'Color', size_label:p.size_label||'Size',
+    retail:(p.usd!=null&&isFinite(+p.usd)&&+p.usd>0)?+p.usd:null,
+    image:p.image||null, status:p.status||'soon', deal:p.deal||null };
+}
+function renderFloor(){
+  const host=$('panel');
+  if(floorProd){ renderFloorPDP(host); return; }
+  const list=STORE.filter(p=>FLOORCAT==='all'||p.cat===FLOORCAT);
+  host.innerHTML='<p class="sub" style="margin:0 2px 10px">The Armory as the hands will see it — <b style="color:var(--bone)">browse only</b>; the till lives in the app. Prices show once the Keymaster posts them.</p>'
+    +'<div class="chips">'+FLOOR_CATS.map(([k,l])=>'<button data-fc="'+k+'"'+(k===FLOORCAT?' class="on"':'')+'>'+esc(l)+'</button>').join('')+'</div>'
+    +(list.length?'<div class="floor-grid">'+list.map(p=>{
+        const d=floorNorm(p);
+        const shot=d.image||pvArt(d,0);
+        const mine=(!ME.km&&ME.vendor&&p.vendor_id===ME.vendor.id);
+        const dots=d.colors.slice(0,4).map(c=>'<i style="background:'+pvHex(c&&c.hex)+'"></i>').join('')
+          +(d.colors.length>4?'<span>+'+(d.colors.length-4)+'</span>':'');
+        return '<div class="pv-card" data-fp="'+esc(p.id)+'"><div class="pv-shot"><img loading="lazy" alt="" src="'+esc(shot)+'">'
+          +(d.status==='soon'?'<span class="pv-badge">SOON</span>':'')
+          +(mine?'<span class="pv-mine">YOUR BENCH</span>':'')+'</div>'
+          +'<div class="pv-brand">'+esc((p.brand||'The Order').toUpperCase())+'</div>'
+          +'<div class="pv-name">'+esc(d.name)+'</div>'
+          +(d.retail!=null?'<div class="pv-price">'+pvMoney(d.retail)+'</div>':'<div class="pv-price soon">Coming soon</div>')
+          +(d.colors.length&&d.colors[0]&&d.colors[0].n?'<div class="pv-sw">'+dots+'</div>':'<div style="height:12px"></div>')
+          +'</div>';
+      }).join('')+'</div>'
+      :'<p class="sub" style="text-align:center;padding:16px">Nothing on this shelf yet.</p>');
+  host.querySelectorAll('[data-fc]').forEach(b=>b.addEventListener('click',()=>{FLOORCAT=b.dataset.fc;renderFloor();}));
+  host.querySelectorAll('[data-fp]').forEach(c=>c.addEventListener('click',()=>{
+    floorProd=STORE.find(p=>String(p.id)===c.dataset.fp)||null; floorCi=0; floorSize=null;
+    renderFloor(); window.scrollTo(0,0); }));
+}
+function renderFloorPDP(host){
+  const p=floorProd, d=floorNorm(p);
+  if(floorCi>=d.colors.length)floorCi=0;
+  if(floorSize&&d.sizes.indexOf(floorSize)<0)floorSize=null;
+  const c=d.colors[floorCi]||{n:'',hex:'#14171a'};
+  const shot=d.image||pvArt(d,floorCi);
+  const buyable=d.status==='live'&&d.retail!=null;
+  host.innerHTML='<button class="btn-ghost" id="floorBack" style="padding:6px 2px 12px">‹ Back to the floor</button>'
+    +'<div class="floor-pdp-wrap"><div class="pv-pdp" style="max-width:none">'
+    +'<div class="pv-hero"><img alt="" src="'+esc(shot)+'"></div>'
+    +'<div class="pv-pbrand">'+esc((p.brand||'The Order').toUpperCase())+'</div>'
+    +'<div class="pv-pname">'+esc(d.name)+'</div>'
+    +(d.deal?'<div style="margin-top:6px"><span class="pill cop">'+esc(d.deal)+'</span></div>'
+      :d.status==='soon'?'<div style="margin-top:6px"><span class="pill amb">COMING SOON</span></div>':'')
+    +(d.retail!=null?'<div class="pv-pprice">'+pvMoney(d.retail)+'</div>':'<div class="pv-pprice soon">Coming soon — price posts on opening day</div>')
+    +(d.blurb?'<p class="sub" style="margin-top:8px">'+esc(d.blurb)+'</p>':'')
+    +(d.colors.length&&d.colors[0]&&d.colors[0].n?'<div class="pv-lbl">'+esc(d.color_label)+': <b style="color:var(--bone)">'+esc(c.n)+'</b></div>'
+      +'<div class="pv-cols">'+d.colors.map((cc,i)=>'<button type="button" data-fci="'+i+'" title="'+esc(cc&&cc.n)+'" style="background:'+pvHex(cc&&cc.hex)+'"'+(i===floorCi?' class="on"':'')+'></button>').join('')+'</div>':'')
+    +(d.sizes.length?'<div class="pv-lbl">'+esc(d.size_label)+': <b style="color:var(--bone)">'+esc(floorSize||'Please select')+'</b></div>'
+      +'<div class="pv-sizes">'+d.sizes.map(sz=>'<button type="button" data-fsz="'+esc(sz)+'"'+(sz===floorSize?' class="on"':'')+'>'+esc(sz)+'</button>').join('')+'</div>':'')
+    +(d.specs.length?'<div class="pv-lbl" style="margin-bottom:0">The Details</div><div class="pv-spec">'
+      +d.specs.map(sp=>'<div><span>'+esc(sp[0])+'</span><span>'+esc(sp[1])+'</span></div>').join('')+'</div>':'')
+    +'<button class="btn pv-cta" type="button" tabindex="-1">'+(buyable?'🛡 ADD TO THE CART':'🔔 TELL ME WHEN IT DROPS')+'</button>'
+    +'<p class="sub" style="text-align:center;margin-top:8px;font-size:11.5px">Browse-only in the Dock Office — buying happens in the app.</p>'
+    +'</div></div>';
+  $('floorBack').addEventListener('click',()=>{ floorProd=null; renderFloor(); });
+  host.querySelectorAll('[data-fci]').forEach(b=>b.addEventListener('click',()=>{floorCi=+b.dataset.fci;renderFloor();}));
+  host.querySelectorAll('[data-fsz]').forEach(b=>b.addEventListener('click',()=>{floorSize=b.dataset.fsz;renderFloor();}));
 }
 
 /* ════════ REALTIME + THE SLOW TIDE ════════ */
