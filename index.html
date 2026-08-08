@@ -17430,6 +17430,9 @@ html.season-xmas.daylight{}
     <div class="big" style="font-size:20px;letter-spacing:.08em;text-align:center;color:var(--ember)">☠ COMMAND CENTER</div>
     <p class="sub" style="margin:6px 0 14px;text-align:center">The Keymaster sees all. Every switch here rides to every phone.</p>
 
+    <div class="card-h" style="margin-top:4px">The Alarms <span class="pill red" id="kmAlarmN" style="display:none">0</span></div>
+    <div id="kmAlarms" class="sub" style="line-height:1.7;margin-bottom:14px">—</div>
+
     <div class="card-h" style="margin-top:4px">The Pulse</div>
     <div id="kmPulse" class="sub" style="line-height:1.8;margin-bottom:14px">reading the wire…</div>
 
@@ -17646,6 +17649,7 @@ html.season-xmas.daylight{}
     seg($('kmSeason'),f.season||'auto');
     if($('kmBull'))$('kmBull').value=f.bulletin||'';
     kmPulse();
+    try{kmAlarms();}catch(e){}   /* #alarms — what jammed, first thing you see */
     try{kmRoster();}catch(e){}
     try{kmApps();}catch(e){}     /* #amb — pending crown requests ride along */
     try{kmTrades();}catch(e){}   /* #trades — pending board posts too */
@@ -18026,7 +18030,8 @@ html.season-xmas.daylight{}
             body:JSON.stringify({email:email,ambassador_id:amb.id,temp_password:tempPass})});
           const j=await rr.json().catch(()=>null);
           if(rr.ok&&j&&j.ok){minted=true;if(j.linked_existing){linked=true;tempPass='';}}
-        }catch(e2){}
+          else shkAlert('crowning · pass mint',(j&&j.error)||('mint jammed '+rr.status));   /* #alarms */
+        }catch(e2){shkAlert('crowning · pass mint',e2);}
       }
       /* word to the newly crowned — rides the same notice wire as ⚠ warn */
       if(linked){try{await window.SB.rpc('km_warn',{p_handle:_ambTarget.handle,p_msg:'🎖 You’ve been crowned an AMBASSADOR of the Order. The Dock Office is open to you — theshadowhook.com/dockoffice, your usual email and password. Recruit vendors to the Armory and '+(Number(rate)||0)+'% of the house margin on their sales is yours.'});}catch(e3){}}
@@ -18045,7 +18050,7 @@ html.season-xmas.daylight{}
         try{toast('🎖 '+name+' is crowned'+(linked?' — their usual sign-in now opens the Dock Office':' — crown set, but no login linked yet (add their email, or mint from the Dock Office)'));}catch(e4){}
         ambViewOpen(amb.id,_ambTarget?_ambTarget.handle:name); /* straight into the spyglass — see what they now see */
       }
-    }catch(err){msgEl.textContent='✗ '+err.message+(/policy|permission|security/i.test(err.message||'')?' — is this account crowned in profiles.is_keymaster?':'');}
+    }catch(err){msgEl.textContent='✗ '+err.message+(/policy|permission|security/i.test(err.message||'')?' — is this account crowned in profiles.is_keymaster?':'');shkAlert('crowning',err);}
     go.disabled=false;
   }
   async function kmAmbPull(ambId,handle,msg){
@@ -18161,6 +18166,60 @@ html.season-xmas.daylight{}
   const _avc=$('avClose');if(_avc)_avc.addEventListener('click',()=>$('ambViewSheet').classList.remove('on'));
   const _avr=$('avRefresh');if(_avr)_avr.addEventListener('click',()=>{if(AV)ambViewOpen(AV.amb.id,AV.handle);});
   const _avt=$('avTabs');if(_avt)_avt.addEventListener('click',e=>{const b2=e.target.closest('button');if(b2&&AV){AV.tab=b2.dataset.v;avDraw();}});
+
+  /* ═══════════ #alarms — when something jams, it lands here ═══════════
+     Any caught failure in the money paths (and any uncaught error at all)
+     drops a row in error_log — run ERROR-LOG.sql once. THE ALARMS sits at
+     the top of the Command Center: what broke, for whom, where, when, with
+     a ✓ seen toggle. Capped per session so a broken loop can't flood it. */
+  window.shkAlert=function(where,err){
+    try{
+      if(!window.SB||!window.__shkUid)return;
+      window.__errN=(window.__errN||0)+1; if(window.__errN>6)return;
+      const msg=String((err&&err.message)||err||'?').slice(0,300);
+      const acct=(typeof loadAcct==='function'?(loadAcct()||{}):{});
+      window.SB.from('error_log').insert({where_at:where,message:msg,handle:((acct.handle||'').toUpperCase())||null,page:location.pathname}).then(()=>{},()=>{});
+    }catch(e){}
+  };
+  window.addEventListener('error',function(e){ try{shkAlert('uncaught',(e&&(e.message||e.error))||'?');}catch(_){}});
+  window.addEventListener('unhandledrejection',function(e){ try{shkAlert('promise',(e&&e.reason)||'?');}catch(_){}});
+  let _alarms=[];
+  window.kmAlarms=async function(){
+    const out=$('kmAlarms');if(!out)return;
+    if(!window.SB){out.textContent='backend off';return;}
+    try{
+      const r=await window.SB.from('error_log').select('*').eq('seen',false).order('created_at',{ascending:false}).limit(50);
+      if(r.error)throw r.error;
+      _alarms=r.data||[];
+      const n=$('kmAlarmN');if(n){n.textContent=_alarms.length;n.style.display=_alarms.length?'':'none';}
+      if(!_alarms.length){out.innerHTML='<span style="color:var(--steel)">quiet — nothing’s tripped. Jams anywhere in the app or the Dock Office land here on their own.</span>';return;}
+      out.innerHTML=_alarms.map(a=>'<div style="border:1px solid rgba(224,73,46,.4);border-radius:10px;padding:8px 10px;margin-bottom:6px">'
+        +'<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="pill red">'+esc(a.where_at||'?')+'</span>'
+        +(a.handle?'<span class="mono" style="color:var(--copper-hi)">'+esc(a.handle)+'</span>':'')
+        +'<span style="margin-left:auto;color:var(--steel);font-size:10.5px">'+_dt(a.created_at)+'</span></div>'
+        +'<div class="sub" style="margin-top:4px;line-height:1.55;color:var(--bone)">'+esc(a.message||'')+'</div>'
+        +'<button class="btn-ghost km-alarm" data-aid="'+esc(a.id)+'" style="margin-top:6px;padding:3px 10px;font-size:10.5px;color:var(--ok)">✓ seen</button>'
+        +'</div>').join('')
+        +(_alarms.length>2?'<button class="btn-ghost" id="kmAlarmAll" style="width:100%;padding:5px 0;font-size:11px;color:var(--steel)">✓ mark all seen</button>':'');
+      const all=$('kmAlarmAll');
+      if(all)all.addEventListener('click',async()=>{
+        all.disabled=true;
+        try{const r2=await window.SB.from('error_log').update({seen:true}).eq('seen',false);if(r2.error)throw r2.error;kmAlarms();}
+        catch(err){try{toast('✗ '+err.message);}catch(e2){} all.disabled=false;}
+      });
+    }catch(e){
+      out.innerHTML=/does not exist|relation|schema/i.test(e.message||'')
+        ?'<span style="color:var(--ember)">the alarm book isn’t built yet — run ERROR-LOG.sql in Supabase</span>'
+        :('alarms failed: '+esc(e.message));
+    }
+  };
+  const kal=$('kmAlarms');
+  if(kal)kal.addEventListener('click',async function(e){
+    const b=e.target.closest('button.km-alarm');if(!b)return;
+    b.disabled=true;
+    try{const r=await window.SB.from('error_log').update({seen:true}).eq('id',b.dataset.aid);if(r.error)throw r.error;kmAlarms();}
+    catch(err){try{toast('✗ '+err.message);}catch(e2){} b.disabled=false;}
+  });
 
   /* ═══════════ #amb — CROWN REQUESTS (Keymaster side) ═══════════
      Applications from the BECOME AN AMBASSADOR poster land in amb_applications
@@ -18300,6 +18359,7 @@ html.season-xmas.daylight{}
         m.textContent=/does not exist|relation|schema/i.test(err.message||'')
           ?'✗ the application book isn’t on the shelf yet — try again soon'
           :('✗ '+err.message);
+        shkAlert('amb application',err);   /* #alarms */
         go.disabled=false;
       }
     });
@@ -18446,6 +18506,7 @@ html.season-xmas.daylight{}
       m.textContent=/does not exist|relation|schema/i.test(err.message||'')
         ?'✗ the board isn’t built yet — check back soon'
         :('✗ '+err.message);
+      shkAlert('trade post',err);   /* #alarms */
     }
     _tpGo.disabled=false;
   });
@@ -18967,7 +19028,8 @@ window.shareCall=shareCall;
       var j=null; try{ j=await r.json(); }catch(e){}
       if(r.ok&&j&&j.url){ location.href=j.url; return; }
       if(msg)msg.textContent='> '+((j&&j.error)||('the till jammed ('+r.status+') — try again'));
-    }catch(e){ if(msg)msg.textContent='> no wire to the till — check your signal and try again'; }
+      try{ if(window.shkAlert)shkAlert('checkout',(j&&j.error)||('till jammed '+r.status)); }catch(e){}   /* #alarms */
+    }catch(e){ if(msg)msg.textContent='> no wire to the till — check your signal and try again'; try{ if(window.shkAlert)shkAlert('checkout',e); }catch(e2){} }
     if(btn){ btn.disabled=false; btn.innerHTML=was; }
   }
 

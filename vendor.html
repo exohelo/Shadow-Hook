@@ -551,6 +551,23 @@ function toast(m){ const t=$('toast'); if(!t)return; t.textContent=m; t.classLis
 function sheet(id,on){ const s=$(id); if(s)s.classList.toggle('on', on!==false); }
 document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>sheet(b.dataset.close,false)));
 document.querySelectorAll('.sheet').forEach(s=>s.addEventListener('click',e=>{ if(e.target===s)s.classList.remove('on'); }));
+
+/* ═══ #alarms — when something jams, the desk hears about it ═══
+   Every caught failure (and any uncaught one) drops a row in error_log —
+   run ERROR-LOG.sql once. They surface as THE ALARMS at the top of the
+   Command Center in the main app. Capped per session so a broken loop
+   can't flood the book. */
+function shkAlert(where,err){
+  try{
+    if(!window.SB||!ME.uid)return;
+    window.__errN=(window.__errN||0)+1; if(window.__errN>6)return;
+    const msg=String((err&&err.message)||err||'?').slice(0,300);
+    const who=ME.km?'KEYMASTER':((ME.amb&&ME.amb.name)||(ME.vendor&&ME.vendor.name)||ME.email||'?');
+    SB.from('error_log').insert({where_at:'dockoffice · '+where,message:msg,handle:String(who).slice(0,60),page:location.pathname}).then(()=>{},()=>{});
+  }catch(e){}
+}
+window.addEventListener('error',e=>{ try{shkAlert('uncaught',(e&&(e.message||e.error))||'?');}catch(_){}} );
+window.addEventListener('unhandledrejection',e=>{ try{shkAlert('promise',(e&&e.reason)||'?');}catch(_){}} );
 function shipToText(st){ if(!st)return ''; return [st.name, st.line1, st.line2, [st.city, st.state, st.postal_code].filter(Boolean).join(', '), st.country].filter(Boolean).join('\n'); }
 const STATUS_PILL = { new:'<span class="pill amb">NEW</span>', working:'<span class="pill cop">WORKING</span>',
   shipped:'<span class="pill grn">SHIPPED</span>', delivered:'<span class="pill grn">DELIVERED</span>',
@@ -637,7 +654,7 @@ $('pwGo').addEventListener('click', async()=>{
 function buildTabs(){
   const t=$('tabs');
   const tabs = ME.km
-    ? [['orders','⚓ ORDERS'],['vendors','🤝 VENDORS'],['work','🛠 WORKBENCH'],['ledger','💰 LEDGER'],['wire','📻 THE WIRE'],['floor','🏬 THE FLOOR']]
+    ? [['orders','⚓ ORDERS'],['vendors','🤝 VENDORS'],['ambs','🎖 AMBASSADORS'],['work','🛠 WORKBENCH'],['ledger','💰 LEDGER'],['wire','📻 THE WIRE'],['floor','🏬 THE FLOOR']]
     : ME.amb
     ? [['myvend','🤝 MY VENDORS'],['ledger','💰 MY LEDGER'],['wire','📻 THE WIRE'],['floor','🏬 THE FLOOR']]
     : [['orders','⚓ ORDERS'],['ledger','💰 MY LEDGER'],['wire','📻 THE WIRE'],['gear','🛡 MY GEAR'],['floor','🏬 THE FLOOR']];
@@ -651,6 +668,7 @@ function openTab(k){
   if(k==='orders') renderOrders();
   else if(k==='myvend') renderMyVend();
   else if(k==='vendors') renderVendors();
+  else if(k==='ambs') renderAmbs();   /* #ambtab */
   else if(k==='work') renderWork();
   else if(k==='ledger') renderLedger();
   else if(k==='wire') renderWire();
@@ -1043,10 +1061,10 @@ $('poGo').addEventListener('click', async()=>{
         method:$('poMethod').value, ref:($('poRef').value||'').trim()||null, note:($('poNote').value||'').trim()||null, created_by:ME.uid})
     : await SB.from('vendor_payouts').insert({vendor_id:payoutVendorId, amount_usd:Math.round(amt*100)/100,
         method:$('poMethod').value, ref:($('poRef').value||'').trim()||null, note:($('poNote').value||'').trim()||null, created_by:ME.uid});
-  if(r.error){ $('poMsg').textContent='> '+r.error.message; return; }
+  if(r.error){ $('poMsg').textContent='> '+r.error.message; shkAlert('payout record',r.error); return; }
   sheet('payoutSheet',false); toast('💰 Recorded — the ledger squares');
   await Promise.all([loadLedger(), loadAmbStuff()]);
-  if(TAB==='ledger')renderLedger(); if(TAB==='vendors')renderVendors();
+  if(TAB==='ledger')renderLedger(); if(TAB==='vendors')renderVendors(); if(TAB==='ambs')renderAmbs();
 });
 
 /* ════════ MY GEAR (vendor) ════════ */
@@ -1088,13 +1106,18 @@ function renderGear(){
 
 /* ════════ VENDORS (Keymaster) ════════ */
 let inviteVendorId=null;
-function renderVendors(){
+function renderVendors(){ /* #ambtab — vendors only now; the crowns moved to their own room */
   const host=$('panel');
   host.innerHTML = '<button class="btn" id="vAdd" style="margin:2px 0 14px">🤝 ADD A VENDOR</button>'
     +(VENDORS.length?'<div class="cardgrid">'+VENDORS.map(vendorCard).join('')+'</div>'
       :'<p class="sub" style="text-align:center;padding:14px">No vendors on the rolls yet. Add the first, hand gear to their bench, mint their pass.</p>');
-  host.insertAdjacentHTML('beforeend', kmAmbSection());
   $('vAdd').addEventListener('click',()=>openVendorSheet(null));
+  wireVendorRows(host);
+}
+/* ════════ #ambtab — 🎖 AMBASSADORS (Keymaster) — their own tab ════════ */
+function renderAmbs(){
+  const host=$('panel');
+  host.innerHTML = kmAmbSection();
   const aAdd=$('ambAdd'); if(aAdd)aAdd.addEventListener('click',()=>openAmbSheet(null));
   host.querySelectorAll('[data-aedit]').forEach(b=>b.addEventListener('click',()=>openAmbSheet(b.dataset.aedit)));
   host.querySelectorAll('[data-apass]').forEach(b=>b.addEventListener('click',()=>openInvite(b.dataset.apass,'amb')));
@@ -1104,22 +1127,24 @@ function renderVendors(){
     if(v===null)return; const n=parseFloat(v);
     if(!(n>=0&&n<=100)){ toast('⚠ 0–100'); return; }
     const r=await SB.from('ambassadors').update({rate:Math.round(n*100)/100}).eq('id',a.id);
-    if(r.error){toast('⚠ '+r.error.message);return;}
+    if(r.error){toast('⚠ '+r.error.message);shkAlert('amb rate',r.error);return;}
     toast('🎖 Rate set — new sales book at '+n+'%');
-    await loadAmbStuff(); renderVendors(); }));
+    await loadAmbStuff(); renderAmbs(); }));
   host.querySelectorAll('[data-awire]').forEach(b=>b.addEventListener('click',()=>{WIRE_KIND='a';WIRE_VENDOR=b.dataset.awire;openTab('wire');}));
   host.querySelectorAll('[data-aactive]').forEach(b=>b.addEventListener('click',async()=>{
     const a=AMBS.find(x=>x.id===b.dataset.aactive); if(!a)return;
     if(a.active&&!confirm('Retire '+a.name+'? Their recruits stay on the rolls, but NEW sales stop booking them commission.'))return;
     const r=await SB.from('ambassadors').update({active:!a.active}).eq('id',a.id);
-    if(r.error){toast('⚠ '+r.error.message);return;}
-    await loadAmbStuff(); renderVendors(); }));
+    if(r.error){toast('⚠ '+r.error.message);shkAlert('amb retire',r.error);return;}
+    await loadAmbStuff(); renderAmbs(); }));
   host.querySelectorAll('[data-asettle]').forEach(b=>b.addEventListener('click',()=>openAmbPayout(b.dataset.asettle)));
   host.querySelectorAll('[data-amrevoke]').forEach(b=>b.addEventListener('click',async()=>{
     if(!confirm('Pull this crown’s login?'))return;
     const r=await SB.from('ambassador_members').delete().eq('user_id',b.dataset.amrevoke);
-    if(r.error){toast('⚠ '+r.error.message);return;}
-    toast('Login pulled'); await loadAmbStuff(); renderVendors(); }));
+    if(r.error){toast('⚠ '+r.error.message);shkAlert('amb revoke',r.error);return;}
+    toast('Login pulled'); await loadAmbStuff(); renderAmbs(); }));
+}
+function wireVendorRows(host){ /* #ambtab — vendor levers, wired for the vendors tab */
   host.querySelectorAll('[data-vedit]').forEach(b=>b.addEventListener('click',()=>openVendorSheet(b.dataset.vedit)));
   host.querySelectorAll('[data-vgear]').forEach(b=>b.addEventListener('click',()=>openAssign(b.dataset.vgear)));
   host.querySelectorAll('[data-vpass]').forEach(b=>b.addEventListener('click',()=>openInvite(b.dataset.vpass)));
@@ -1206,11 +1231,11 @@ async function saveAmb(){
   const r=editAmbId
     ? await SB.from('ambassadors').update(row).eq('id',editAmbId)
     : await SB.from('ambassadors').insert(row).select().single();
-  if(r.error){ $('abMsg').textContent='> '+r.error.message; return; }
+  if(r.error){ $('abMsg').textContent='> '+r.error.message; shkAlert('crown save',r.error); return; }
   sheet('ambSheet',false);
   await loadAmbStuff();
-  if(!editAmbId&&r.data){ toast('🎖 Crowned — now mint their login'); renderVendors(); openInvite(r.data.id,'amb'); }
-  else { toast('Saved'); renderVendors(); }
+  if(!editAmbId&&r.data){ toast('🎖 Crowned — now mint their login'); renderAmbs(); openInvite(r.data.id,'amb'); }
+  else { toast('Saved'); renderAmbs(); }
 }
 function openAmbPayout(aid){
   payoutKind='amb'; payoutVendorId=aid;
@@ -1325,9 +1350,9 @@ $('invGo').addEventListener('click', async()=>{
       toast(j.linked_existing ? '🗝 Linked — they already had an account; their old password stands'
                               : '🗝 Pass minted — hand them the email and temp password yourself');
       await Promise.all([loadVendors(), loadAmbStuff()]);
-      if(TAB==='vendors')renderVendors(); if(TAB==='myvend')renderMyVend();
-    } else m.textContent='> '+((j&&j.error)||('the mint jammed ('+r.status+')'));
-  }catch(e){ m.textContent='> no wire to the mint — check the function is deployed'; }
+      if(TAB==='vendors')renderVendors(); if(TAB==='ambs')renderAmbs(); if(TAB==='myvend')renderMyVend();
+    } else { m.textContent='> '+((j&&j.error)||('the mint jammed ('+r.status+')')); shkAlert('pass mint',(j&&j.error)||('mint jammed '+r.status)); }
+  }catch(e){ m.textContent='> no wire to the mint — check the function is deployed'; shkAlert('pass mint',e); }
   $('invGo').disabled=false;
 });
 
