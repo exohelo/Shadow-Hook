@@ -263,6 +263,29 @@ select.field{appearance:none;-webkit-appearance:none}
 .sheet-card{background:linear-gradient(184deg,rgba(36,31,66,.94),rgba(18,16,31,.97));
   backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-color:rgba(160,140,255,.28)}
 @media print{ .arc-aurora,.arc-grid,.arc-crest,.arc-scan{display:none!important} }
+/* ═══ #wide — THE DESKTOP BERTH ═══
+   Phones keep the single column; a monitor gets the whole pier: two-lane
+   card grids, the workbench split beside the shelf, the gear form with its
+   live preview docked at its side, sheets as centered consoles. */
+@media(min-width:980px){
+  .stage,.stage.wide{max-width:1160px}
+  .cardgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
+  .cardgrid>.card{margin-bottom:0}
+  .split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
+  #panel[data-tab=wire]>.card{max-width:780px;margin-left:auto;margin-right:auto}
+  #panel[data-tab=wire]>.chips{max-width:780px;margin-left:auto;margin-right:auto}
+  #panel[data-tab=ledger]{display:block;max-width:920px;margin:0 auto}
+  .floor-grid{grid-template-columns:repeat(4,1fr)}
+  .msgs{max-height:58vh}
+  .sheet{align-items:center;padding:26px}
+  .sheet-card{border-radius:22px;max-height:90vh}
+  #draftSheet .sheet-card{max-width:1020px}
+  .df-grid{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:0 28px}
+  .df-main1{grid-column:1;grid-row:1}
+  .df-main2{grid-column:1;grid-row:2}
+  .df-side{grid-column:2;grid-row:1/span 2;position:sticky;top:4px;align-self:start}
+}
+@media(min-width:1400px){ .floor-grid{grid-template-columns:repeat(5,1fr)} }
 </style>
 </head>
 <body>
@@ -285,7 +308,7 @@ select.field{appearance:none;-webkit-appearance:none}
     <div class="crest">⚓</div>
     <div class="wordmark">THE ORDER OF THE SHADOW HOOK</div>
     <div class="gate-title">THE DOCK OFFICE</div>
-    <div class="gate-sub">Vendor gate · orders, shipping &amp; the ledger · v9 — neon harbor</div>
+    <div class="gate-sub">Vendor gate · orders, shipping &amp; the ledger · v10 — wide berth</div>
     <div class="card" style="margin-top:26px;text-align:left"><div class="card-b">
       <div class="lbl" style="margin-top:2px">EMAIL</div>
       <input class="field" id="gEmail" type="email" autocomplete="username" placeholder="you@yourshop.com">
@@ -392,6 +415,7 @@ select.field{appearance:none;-webkit-appearance:none}
 <div class="sheet" id="draftSheet"><div class="sheet-card">
   <div class="sheet-t" id="dfTitle">🛠 NEW GEAR</div>
   <p class="sub" style="text-align:center" id="dfSub"></p>
+  <div class="df-grid"><div class="df-main1">
   <div class="lbl">NAME OF THE GEAR</div><input class="field" id="dfName" maxlength="120" placeholder="Lashing Gloves, Bottle Opener, Crest Flag…">
   <div class="lbl">WHAT KIND OF THING — SETS UP THE FORM, EVERYTHING STAYS EDITABLE</div>
   <div class="chips" id="dfKind" style="margin:0 0 4px"></div>
@@ -420,6 +444,7 @@ select.field{appearance:none;-webkit-appearance:none}
     <input type="file" id="dfPhoto" accept="image/*" style="color:var(--steel);font-size:13px">
     <p class="sub" style="margin-top:6px;font-size:11.5px">One good shot on a clean background. It becomes the store picture.</p>
   </div></div>
+  </div><div class="df-side">
   <div class="lbl">ON THE FLOOR — LIVE PREVIEW</div>
   <div class="chips" style="margin:0 0 10px">
     <button type="button" id="pvTabCard" class="on">THE GRID</button>
@@ -427,6 +452,7 @@ select.field{appearance:none;-webkit-appearance:none}
   </div>
   <div id="pvBox"></div>
   <p class="sub" style="margin:8px 0 0;font-size:11.5px">Drawn exactly the way the Armory draws it. No photo yet? The Order’s placeholder art builds itself from your colorway — tap swatches to flip it. Final price and standing are the Keymaster’s.</p>
+  </div><div class="df-main2">
   <div class="lbl" id="dfCostLbl">YOUR CUT PER UNIT — WHAT THE HOUSE PAYS YOU</div>
   <input class="field mono" id="dfCost" inputmode="decimal" placeholder="12.50">
   <div class="lbl" id="dfRetailLbl">SUGGESTED RETAIL — THE KEYMASTER SETS THE FINAL</div>
@@ -440,6 +466,7 @@ select.field{appearance:none;-webkit-appearance:none}
     <button class="btn-line red" id="dfDelete" type="button">🗑 DELETE FROM THE SHELF</button>
   </div>
   <button class="btn-ghost" style="width:100%;margin-top:8px" data-close="draftSheet">Never mind</button>
+  </div></div>
 </div></div>
 
 <!-- the packing slip — filled per order, shown only by @media print -->
@@ -586,6 +613,7 @@ function buildTabs(){
 }
 function openTab(k){
   TAB=k;
+  try{ $('panel').dataset.tab=k; }catch(e){}
   document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on', b.dataset.tab===k));
   if(k==='orders') renderOrders();
   else if(k==='vendors') renderVendors();
@@ -742,7 +770,7 @@ function renderOrders(){
         const n=ORDERS.filter(o=>orderMatches(o,k)).length;
         return '<button data-f="'+k+'"'+(k===FILTER?' class="on"':'')+'>'+l+' · '+n+'</button>';
       }).join('')+'</div>'
-    +(list.length?list.map(orderCard).join(''):'<p class="sub" style="padding:20px 4px;text-align:center">Nothing on this hook.</p>');
+    +(list.length?'<div class="cardgrid">'+list.map(orderCard).join('')+'</div>':'<p class="sub" style="padding:20px 4px;text-align:center">Nothing on this hook.</p>');
   host.querySelectorAll('[data-f]').forEach(b=>b.addEventListener('click',()=>{FILTER=b.dataset.f;renderOrders();}));
   wireOrderActions(host);
 }
@@ -949,7 +977,7 @@ let inviteVendorId=null;
 function renderVendors(){
   const host=$('panel');
   host.innerHTML = '<button class="btn" id="vAdd" style="margin:2px 0 14px">🤝 ADD A VENDOR</button>'
-    +(VENDORS.length?VENDORS.map(vendorCard).join('')
+    +(VENDORS.length?'<div class="cardgrid">'+VENDORS.map(vendorCard).join('')+'</div>'
       :'<p class="sub" style="text-align:center;padding:14px">No vendors on the rolls yet. Add the first, hand gear to their bench, mint their pass.</p>');
   $('vAdd').addEventListener('click',()=>openVendorSheet(null));
   host.querySelectorAll('[data-vedit]').forEach(b=>b.addEventListener('click',()=>openVendorSheet(b.dataset.vedit)));
@@ -1536,8 +1564,10 @@ function renderWork(){
       ||'<p class="sub">Nothing matches.</p>')
     +'</div></div>';
   host.innerHTML='<button class="btn" id="wkAdd" style="margin:2px 0 14px">🛠 ADD GEAR MYSELF</button>'
+    +'<div class="split"><div>'
     +'<div class="card"><div class="card-h">🛠 WAITING ON YOUR WORD<span class="tag">'+pend.length+' pending</span></div><div class="card-b" style="padding:0 0 2px"></div></div>'
-    +pendHtml+doneHtml+shelfHtml;
+    +pendHtml+doneHtml
+    +'</div><div>'+shelfHtml+'</div></div>';
   $('wkAdd').addEventListener('click',()=>openDraftSheet('kmadd'));
   const sq=$('shelfQ'); if(sq)sq.addEventListener('input',()=>{ SHELFQ=sq.value; const at=sq.selectionStart; renderWork(); const nq=$('shelfQ'); if(nq){nq.focus(); try{nq.setSelectionRange(at,at);}catch(e){}} });
   host.querySelectorAll('[data-pedit]').forEach(b=>b.addEventListener('click',()=>openDraftSheet('kmedit',b.dataset.pedit)));
