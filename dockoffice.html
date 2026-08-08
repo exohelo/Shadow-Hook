@@ -308,7 +308,7 @@ select.field{appearance:none;-webkit-appearance:none}
     <div class="crest">⚓</div>
     <div class="wordmark">THE ORDER OF THE SHADOW HOOK</div>
     <div class="gate-title">THE DOCK OFFICE</div>
-    <div class="gate-sub">Vendor gate · orders, shipping &amp; the ledger · v12 — the marque</div>
+    <div class="gate-sub">Vendor gate · orders, shipping &amp; the ledger · v14 — freight</div>
     <div class="card" style="margin-top:26px;text-align:left"><div class="card-b">
       <div class="lbl" style="margin-top:2px">EMAIL</div>
       <input class="field" id="gEmail" type="email" autocomplete="username" placeholder="you@yourshop.com">
@@ -316,7 +316,7 @@ select.field{appearance:none;-webkit-appearance:none}
       <input class="field" id="gPass" type="password" autocomplete="current-password" placeholder="••••••••">
       <div class="msgline" id="gMsg"></div>
       <button class="btn" id="gGo" style="margin-top:10px">🗝 THROUGH THE GATE</button>
-      <p class="sub" style="text-align:center;margin-top:12px">Passes are minted by the Keymaster. Lost yours? Send word — <b style="color:var(--bone)">keymaster@theshadowhook.com</b></p>
+      <p class="sub" style="text-align:center;margin-top:12px">Passes are minted by the Keymaster. Lost yours? Send word — <b style="color:var(--bone)">support@theshadowhook.com</b></p>
     </div></div>
   </div>
 
@@ -457,6 +457,9 @@ select.field{appearance:none;-webkit-appearance:none}
   <input class="field mono" id="dfCost" inputmode="decimal" placeholder="12.50">
   <div class="lbl" id="dfRetailLbl">SUGGESTED RETAIL — THE KEYMASTER SETS THE FINAL</div>
   <input class="field mono" id="dfRetail" inputmode="decimal" placeholder="28">
+  <div class="lbl" id="dfShipLbl">SHIPPING &amp; HANDLING PER PACKAGE</div>
+  <input class="field mono" id="dfShip" inputmode="decimal" placeholder="6.50">
+  <p class="sub" style="margin-top:6px;font-size:11.5px">The buyer pays it at the till; it comes back to whoever ships. One package per vendor per order — the highest S&amp;H in the box is charged once.</p>
   <div id="dfStatusWrap" hidden><div class="lbl">STANDING</div>
     <select class="field" id="dfStatus"><option value="soon">SOON — on the floor, not for sale yet</option><option value="live">LIVE — for sale (needs a retail price)</option><option value="retired">RETIRED — off the floor entirely</option></select></div>
   <div id="dfNoteWrap"><div class="lbl">WORD TO THE KEYMASTER</div><input class="field" id="dfNote" maxlength="300" placeholder="Can run 50 units in 10 days…"></div>
@@ -632,7 +635,7 @@ let STORE=[];
 async function loadStore(){
   try{
     const r=await SB.from('products')
-      .select('id,name,brand,cat,blurb,usd,cost,status,vendor_id,sort,image,images,colors,sizes,specs,size_label,color_label,deal')
+      .select('id,name,brand,cat,blurb,usd,cost,status,vendor_id,sort,image,images,colors,sizes,specs,size_label,color_label,deal,ship_usd')
       .order('sort');
     if(!r.error) STORE=(r.data||[]).filter(p=>p.status!=='retired');
   }catch(e){}
@@ -692,7 +695,7 @@ async function loadLedger(){
 }
 async function loadProducts(){
   try{
-    let q = SB.from('products').select('id,name,brand,cat,blurb,usd,cost,status,vendor_id,sort,image,images,colors,sizes,specs,size_label,color_label');
+    let q = SB.from('products').select('id,name,brand,cat,blurb,usd,cost,status,vendor_id,sort,image,images,colors,sizes,specs,size_label,color_label,ship_usd');
     if(!ME.km && ME.vendor) q = q.eq('vendor_id', ME.vendor.id);
     const r = await q.order('sort');
     if(!r.error) PRODUCTS=r.data||[];
@@ -730,7 +733,7 @@ function paintUnreadDot(){
 /* ════════ ORDERS ════════ */
 function vName(id){ const v=VENDORS.find(x=>x.id===id); return v?v.name:(id?'unknown vendor':'THE HOUSE'); }
 function itemsOf(o){ return (o.order_items||[]).slice().sort((a,b)=>String(a.name).localeCompare(String(b.name))); }
-function orderTake(o){ return itemsOf(o).filter(i=>i.status!=='cancelled').reduce((s,i)=>s+Number(i.unit_cost||0)*i.qty,0); }
+function orderTake(o){ return itemsOf(o).filter(i=>i.status!=='cancelled').reduce((s,i)=>s+Number(i.unit_cost||0)*i.qty+Number(i.ship_usd||0),0); }
 function orderProfit(o){ return itemsOf(o).filter(i=>i.status!=='cancelled').reduce((s,i)=>s+(Number(i.unit_usd||0)-Number(i.unit_cost||0))*i.qty,0); }
 function needsWork(o){ return itemsOf(o).some(i=>i.status==='new'||i.status==='working'); }
 
@@ -761,7 +764,7 @@ function renderOrders(){
     const cut=paid.reduce((s,o)=>s+orderTake(o),0);
     tiles='<div class="tiles">'
       +'<div class="tile"><div class="v">'+money(gross)+'</div><div class="k">Taken (paid)</div></div>'
-      +'<div class="tile dim"><div class="v">'+money(cut)+'</div><div class="k">Vendor cut</div></div>'
+      +'<div class="tile dim"><div class="v">'+money(cut)+'</div><div class="k">Vendor cut + S&amp;H</div></div>'
       +'<div class="tile grn"><div class="v">'+money(gross-cut)+'</div><div class="k">The house</div></div>'
       +'</div>';
   }
@@ -783,7 +786,7 @@ function orderCard(o){
     const track=(it.tracking)?'<i class="mono">'+esc(it.carrier||'')+' '+esc(it.tracking)+'</i>':'';
     return '<div class="oline"><span class="q">×'+it.qty+'</span>'
       +'<span class="n">'+esc(it.name)+(variant?'<i>'+esc(variant)+'</i>':'')
-      +(ME.km?'<i>'+esc(vName(it.vendor_id))+' · cut '+money(it.unit_cost*it.qty)+' · retail '+money(it.unit_usd*it.qty)+'</i>':'')
+      +(ME.km?'<i>'+esc(vName(it.vendor_id))+' · cut '+money(it.unit_cost*it.qty)+' · retail '+money(it.unit_usd*it.qty)+(Number(it.ship_usd||0)>0?' · S&amp;H '+money(it.ship_usd):'')+'</i>':'')
       +track+'</span>'
       +'<span class="m">'+(ME.km?'':money(it.unit_cost*it.qty)+' ')+ (STATUS_PILL[it.status]||esc(it.status))+'</span>'
       +(ME.km&&o.payment_status==='paid'&&(it.status==='new'||it.status==='working')
@@ -813,9 +816,9 @@ function orderCard(o){
   }
   return '<div class="card"><div class="card-h"><span class="mono" style="color:var(--copper-hi)">'+esc(o.code)+'</span>'
     +(PAY_PILL[o.payment_status]||'')
-    +'<span class="tag">'+day(o.created_at)+(ME.km?'<br>'+money(o.total_usd)+' · house '+money(orderProfit(o)+Number(o.shipping_usd||0)):'')+'</span></div>'
+    +'<span class="tag">'+day(o.created_at)+(ME.km?'<br>'+money(o.total_usd)+' · house '+money(Number(o.total_usd||0)-orderTake(o)):'')+'</span></div>'
     +'<div class="card-b">'+contact+shipbox+lines
-    +(!ME.km?'<div class="sub" style="margin-top:9px">Your take on this order: <b class="mono" style="color:var(--copper-hi)">'+money(take)+'</b> — owed once it ships.</div>':'')
+    +(!ME.km?'<div class="sub" style="margin-top:9px">Your take (cut + S&amp;H): <b class="mono" style="color:var(--copper-hi)">'+money(take)+'</b> — owed once it ships.</div>':'')
     +(o.payment_status==='refunded'?'<div class="sub" style="color:#e8967a;margin-top:8px">⚠ Refunded — do not ship.</div>':'')
     +(actions.length?'<div class="stat-row">'+actions.join('')+'</div>':'')
     +'</div></div>';
@@ -1264,6 +1267,7 @@ function openDraftSheet(mode, ref){
                            : 'The Keymaster prices it, then it hits the floor.';
   $('dfGo').textContent    = mode==='kmedit'?'SAVE THE POSTING' : mode==='kmadd'?'PUT IT ON THE SHELF' : 'SEND IT UP';
   $('dfCostLbl').textContent   = km?'THE VENDOR’S CUT PER UNIT — WHAT THE HOUSE PAYS':'YOUR CUT PER UNIT — WHAT THE HOUSE PAYS YOU';
+  $('dfShipLbl').textContent   = km?'SHIPPING & HANDLING PER PACKAGE — BUYER PAYS, SHIPPER KEEPS':'SHIPPING & HANDLING PER PACKAGE — WHAT SHIPPING ONE ORDER COSTS YOU';
   $('dfRetailLbl').textContent = km?'RETAIL — WHAT BUYERS PAY':'SUGGESTED RETAIL — THE KEYMASTER SETS THE FINAL';
   $('dfVendorWrap').hidden=!km; $('dfStatusWrap').hidden=!km; $('dfNoteWrap').hidden=km;
   $('dfDanger').hidden = mode!=='kmedit';
@@ -1289,6 +1293,7 @@ function openDraftSheet(mode, ref){
   (cols.length?cols:[{n:'',hex:'#14171a'}]).forEach((c,i)=>$('dfColors').appendChild(dfColorRow(c&&c.n,c&&c.hex,cimgs[i]||null)));
   $('dfCost').value   = src&&(mode==='kmedit'?src.cost:src.cost_asked)!=null?(mode==='kmedit'?src.cost:src.cost_asked):'';
   $('dfRetail').value = src&&(mode==='kmedit'?src.usd:src.usd_suggested)!=null?(mode==='kmedit'?src.usd:src.usd_suggested):'';
+  $('dfShip').value   = src&&src.ship_usd!=null?src.ship_usd:'';
   if(km){ $('dfStatus').value = (src&&src.status)||'soon';
           $('dfVendor').value = (src&&src.vendor_id)||''; }
   $('dfNote').value = src&&src.note?src.note:'';
@@ -1349,7 +1354,8 @@ function pvData(){
   const specs=($('dfSpecs').value||'').split('\n').map(l=>{ const i=l.indexOf(':');
     if(i<1)return null; const a=l.slice(0,i).trim(),b=l.slice(i+1).trim(); return (a&&b)?[a,b]:null; }).filter(Boolean);
   const retail=parseFloat($('dfRetail').value);
-  return { name:($('dfName').value||'').trim()||'Your Gear Here',
+  const shipv=parseFloat($('dfShip').value);
+  return { name:($('dfName').value||'').trim()||'Your Gear Here', ship:isFinite(shipv)&&shipv>0?shipv:null,
     blurb:($('dfBlurb').value||'').trim(), cat:$('dfCat').value||'gear',
     colors:colors, sizes:sizes, specs:specs,
     color_label:($('dfColorLabel').value||'').trim()||'Color',
@@ -1385,6 +1391,7 @@ function renderPreview(){
     box.innerHTML='<div class="pv-pdp"><div class="pv-hero"><img alt="" src="'+esc(shot)+'"></div>'
       +'<div class="pv-pbrand">THE SHADOW HOOK</div><div class="pv-pname">'+esc(d.name)+'</div>'
       +(d.retail!=null?'<div class="pv-pprice">'+pvMoney(d.retail)+'</div>':'<div class="pv-pprice soon">Coming soon — price posts on opening day</div>')
+      +(d.ship?'<div class="sub" style="margin-top:2px;font-size:12px">+ '+pvMoney(d.ship)+' shipping &amp; handling</div>':'')
       +(d.blurb?'<p class="sub" style="margin-top:8px">'+esc(d.blurb)+'</p>':'')
       +(d.colors.length&&d.colors[0].n?'<div class="pv-lbl">'+esc(d.color_label)+': <b style="color:var(--bone)">'+esc(c.n)+'</b></div>'
         +'<div class="pv-cols">'+d.colors.map((cc,i)=>'<button type="button" data-pvc="'+i+'" title="'+esc(cc.n)+'" style="background:'+pvHex(cc.hex)+'"'+(i===pvState.ci?' class="on"':'')+'></button>').join('')+'</div>':'')
@@ -1441,7 +1448,7 @@ function dfCollect(){
            sizes:sizes, colors:colors, specs:specs,
            slots:slots,
            size_label:lbl('dfSizeLabel','size'), color_label:lbl('dfColorLabel','color'),
-           cost:num($('dfCost').value), retail:num($('dfRetail').value),
+           cost:num($('dfCost').value), retail:num($('dfRetail').value), ship:num($('dfShip').value),
            note:($('dfNote').value||'').trim()||null };
 }
 async function dfUploadSlots(slots){
@@ -1475,7 +1482,7 @@ $('dfGo').addEventListener('click', async()=>{
     if(draftMode==='submit'||draftMode==='editmine'){
       const row={ vendor_id:ME.vendor.id, submitted_by:ME.uid, name:f.name, cat:f.cat, blurb:f.blurb,
         specs:f.specs, sizes:f.sizes, colors:f.colors, image:image, images:images,
-        size_label:f.size_label, color_label:f.color_label,
+        size_label:f.size_label, color_label:f.color_label, ship_usd:f.ship,
         cost_asked:f.cost, usd_suggested:f.retail, note:f.note, status:'pending' };
       const r = draftMode==='editmine'
         ? await SB.from('product_drafts').update(row).eq('id',draftEditId)
@@ -1487,7 +1494,7 @@ $('dfGo').addEventListener('click', async()=>{
     } else if(draftMode==='kmadd'){
       if($('dfStatus').value==='live'&&!(f.retail>0)){ $('dfMsg').textContent='> a LIVE piece needs a retail price'; btn.disabled=false; return; }
       const row={ id:slugify(f.name), name:f.name, brand:'The Shadow Hook', cat:f.cat, blurb:f.blurb,
-        usd:f.retail, cost:f.cost, colors:f.colors, sizes:f.sizes, specs:f.specs, image:image, images:images,
+        usd:f.retail, cost:f.cost, ship_usd:f.ship, colors:f.colors, sizes:f.sizes, specs:f.specs, image:image, images:images,
         size_label:f.size_label, color_label:f.color_label,
         status:$('dfStatus').value, sort:900, vendor_id:$('dfVendor').value||null };
       const r=await SB.from('products').insert(row);
@@ -1498,7 +1505,7 @@ $('dfGo').addEventListener('click', async()=>{
     } else if(draftMode==='kmedit'){
       if($('dfStatus').value==='live'&&!(f.retail>0)){ $('dfMsg').textContent='> a LIVE piece needs a retail price'; btn.disabled=false; return; }
       const row={ name:f.name, cat:f.cat, blurb:f.blurb, usd:f.retail, cost:f.cost,
-        colors:f.colors, sizes:f.sizes, specs:f.specs, image:image, images:images,
+        ship_usd:f.ship, colors:f.colors, sizes:f.sizes, specs:f.specs, image:image, images:images,
         size_label:f.size_label, color_label:f.color_label,
         status:$('dfStatus').value, vendor_id:$('dfVendor').value||null };
       const r=await SB.from('products').update(row).eq('id',draftEditId);
@@ -1541,10 +1548,12 @@ function renderWork(){
       +(d.note?'<div class="sub" style="margin-top:6px;color:var(--warn)">“'+esc(d.note)+'”</div>':'')
       +'</div></div>'
       +'<div class="sub" style="margin-top:10px">They ask <b style="color:var(--copper-hi)">'+(d.cost_asked!=null?money(d.cost_asked):'—')+'</b> a unit'
-      +(d.usd_suggested!=null?' · suggest retail <b style="color:var(--bone)">'+money(d.usd_suggested)+'</b>':'')+'</div>'
+      +(d.usd_suggested!=null?' · suggest retail <b style="color:var(--bone)">'+money(d.usd_suggested)+'</b>':'')
+      +(d.ship_usd!=null?' · ship <b style="color:var(--bone)">'+money(d.ship_usd)+'</b>':'')+'</div>'
       +'<div class="wk-price">'
       +'<input class="field mono" id="wkR-'+esc(d.id)+'" style="width:96px" inputmode="decimal" placeholder="retail $" value="'+(d.usd_suggested!=null?d.usd_suggested:'')+'">'
       +'<input class="field mono" id="wkC-'+esc(d.id)+'" style="width:96px" inputmode="decimal" placeholder="cut $" value="'+(d.cost_asked!=null?d.cost_asked:'')+'">'
+      +'<input class="field mono" id="wkH-'+esc(d.id)+'" style="width:88px" inputmode="decimal" placeholder="S&H $" value="'+(d.ship_usd!=null?d.ship_usd:'')+'">'
       +'<select class="field" id="wkS-'+esc(d.id)+'" style="width:auto;flex:1"><option value="soon">SOON</option><option value="live">LIVE</option></select>'
       +'</div>'
       +'<div class="stat-row"><button class="btn-line gold" data-ap="'+esc(d.id)+'">✓ APPROVE &amp; SHELVE</button>'
@@ -1562,7 +1571,7 @@ function renderWork(){
     +(shelf.map(p=>'<div class="vrow">'
       +(p.image?'<img class="wk-thumb" src="'+esc(p.image)+'" alt="">':'<div class="wk-thumb ph">🛡</div>')
       +'<span class="n"><b>'+esc(p.name)+'</b><i>'+esc(vName(p.vendor_id))
-      +' · retail '+(p.usd!=null?money(p.usd):'—')+' · cut '+(p.cost!=null?money(p.cost):'—')+'</i></span>'
+      +' · retail '+(p.usd!=null?money(p.usd):'—')+' · cut '+(p.cost!=null?money(p.cost):'—')+(p.ship_usd>0?' · S&amp;H '+money(p.ship_usd):'')+'</i></span>'
       +'<span class="m">'+(p.status==='live'?'<span class="pill grn">LIVE</span>':p.status==='retired'?'<span class="pill red">RETIRED</span>':'<span class="pill amb">SOON</span>')+'</span>'
       +'<button class="btn-line" data-pedit="'+esc(p.id)+'">✎</button></div>').join('')
       ||'<p class="sub">Nothing matches.</p>')
@@ -1580,12 +1589,13 @@ function renderWork(){
 }
 async function approveDraft(id){
   const d=DRAFTS.find(x=>x.id===id); if(!d)return;
-  const retail=parseFloat(($('wkR-'+id)||{}).value), cut=parseFloat(($('wkC-'+id)||{}).value);
+  const retail=parseFloat(($('wkR-'+id)||{}).value), cut=parseFloat(($('wkC-'+id)||{}).value), shp=parseFloat(($('wkH-'+id)||{}).value);
   const status=($('wkS-'+id)||{}).value||'soon';
   if(status==='live'&&!(retail>0)){ toast('⚠ a LIVE piece needs a retail price'); return; }
   const row={ id:slugify(d.name), name:d.name, brand:'The Shadow Hook', cat:d.cat||'gear', blurb:d.blurb,
     usd:isFinite(retail)&&retail>0?Math.round(retail*100)/100:null,
     cost:isFinite(cut)&&cut>=0?Math.round(cut*100)/100:null,
+    ship_usd:isFinite(shp)&&shp>=0?Math.round(shp*100)/100:null,
     colors:Array.isArray(d.colors)?d.colors:[], sizes:Array.isArray(d.sizes)?d.sizes:[],
     specs:Array.isArray(d.specs)?d.specs:[], image:d.image||null, images:Array.isArray(d.images)?d.images:null,
     size_label:d.size_label||null, color_label:d.color_label||null,
@@ -1642,6 +1652,7 @@ function floorNorm(p){
     color_label:p.color_label||'Color', size_label:p.size_label||'Size',
     retail:(p.usd!=null&&isFinite(+p.usd)&&+p.usd>0)?+p.usd:null,
     image:p.image||null, images:Array.isArray(p.images)?p.images:null,
+    ship:(p.ship_usd!=null&&isFinite(+p.ship_usd)&&+p.ship_usd>0)?+p.ship_usd:null,
     status:p.status||'soon', deal:p.deal||null };
 }
 function renderFloor(){
@@ -1697,6 +1708,7 @@ function renderFloorPDP(host){
     +(d.deal?'<div style="margin-top:6px"><span class="pill cop">'+esc(d.deal)+'</span></div>'
       :d.status==='soon'?'<div style="margin-top:6px"><span class="pill amb">COMING SOON</span></div>':'')
     +(d.retail!=null?'<div class="pv-pprice">'+pvMoney(d.retail)+'</div>':'<div class="pv-pprice soon">Coming soon — price posts on opening day</div>')
+    +(d.ship?'<div class="sub" style="margin-top:2px;font-size:12px">+ '+pvMoney(d.ship)+' shipping &amp; handling — ships direct from the maker</div>':'')
     +(d.blurb?'<p class="sub" style="margin-top:8px">'+esc(d.blurb)+'</p>':'')
     +(d.colors.length&&d.colors[0]&&d.colors[0].n?'<div class="pv-lbl">'+esc(d.color_label)+': <b style="color:var(--bone)">'+esc(c.n)+'</b></div>'
       +'<div class="pv-cols">'+d.colors.map((cc,i)=>'<button type="button" data-fci="'+i+'" title="'+esc(cc&&cc.n)+'" style="background:'+pvHex(cc&&cc.hex)+'"'+(i===floorCi?' class="on"':'')+'></button>').join('')+'</div>':'')
