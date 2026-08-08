@@ -1,18 +1,20 @@
-/* Shadow Hook - service worker  (auto-updating)
-   - Offline: caches the app shell so it opens with no signal (out at the ports).
-   - Notifications: showNotification() while open/backgrounded, and real Web Push
-     when the profile server sends them (the app already calls this).
-   - AUTO-UPDATE: the app now refreshes itself. Every time a phone opens the app
-     online, it pulls the latest index.html straight from the server (bypassing the
-     phone's cache), so a new deploy reaches everyone on their next open - no more
-     bumping a version by hand. The cache is only a fallback for when there's no signal.
-   (You can still bump this number if you ever want to force a hard refresh.)
-   #vendor (aug 8) - the Dock Office (vendor.html) lives on this origin now. The old
-   doc handler cached WHATEVER html doc was fetched under the 'index.html' key, so one
-   visit to vendor.html poisoned the offline app shell - a hand opening the app with
-   no signal would have gotten the vendor gate. Docs now only overwrite the shell
-   cache when they ARE the shell. v3->v4 flushes any already-poisoned caches. */
-const CACHE = 'shadowhook-v4';
+/* Shadow Hook — service worker  (auto-updating)
+   ────────────────────────────────────────────────────────────────────────────
+   TO PUSH AN UPDATE, CHANGE ONE THING: the version number on the CACHE line just
+   below (v4 → v5 → v6 …). Then re-upload the files you changed (index.html and,
+   because you bumped it, this sw.js). That's the whole workflow.
+
+   Why this makes old versions go away:
+     • The app is served NETWORK-FIRST (see the fetch handler). Every time a phone
+       opens the app online it pulls the latest index.html straight from the server,
+       bypassing the phone's cache. The cache is only a fallback for no-signal.
+     • index.html actively checks for a new sw.js on every open and every time the
+       app is reopened from the home screen. When it finds this bumped version it
+       activates it and refreshes once, so the member lands on the new build now.
+     • Bumping the number below also wipes every old cache on activate, so nothing
+       stale can survive.
+   ──────────────────────────────────────────────────────────────────────────── */
+const CACHE = 'shadowhook-v8';   // ← bump this each time you deploy an update  (v8: 🎖 ambassadors in the Command Center + the spyglass)
 
 const SHELL = [
   '.',
@@ -24,8 +26,6 @@ const SHELL = [
   'apple-touch-icon.png'
 ];
 
-/* Install: pull FRESH copies of the shell (cache:'reload' skips the phone's old cache),
-   then take over immediately. Missing files are skipped, never fatal. */
 self.addEventListener('install', (e) => {
   e.waitUntil(
     caches.open(CACHE).then((c) =>
@@ -38,7 +38,6 @@ self.addEventListener('install', (e) => {
   );
 });
 
-/* Activate: drop every old cache and take control of open pages right away. */
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys()
@@ -47,10 +46,13 @@ self.addEventListener('activate', (e) => {
   );
 });
 
-/* Lets the page ask the worker to activate instantly (used by the optional
-   auto-refresh snippet). Harmless if the page never sends it. */
 self.addEventListener('message', (e) => {
   if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting();
+  // The app asks "which build are you?" so it can show the version in the account
+  // panel. Answer with our cache name — the single source of truth for the build.
+  if (e.data && e.data.type === 'VERSION' && e.ports && e.ports[0]) {
+    e.ports[0].postMessage({ version: CACHE });
+  }
 });
 
 self.addEventListener('fetch', (e) => {
@@ -58,39 +60,27 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET') return;
 
   const url = new URL(req.url);
-  if (url.origin !== self.location.origin) return;   // leave CDN scripts (Supabase, etc.) alone
+  if (url.origin !== self.location.origin) return;
 
   const isDoc = req.mode === 'navigate' ||
                 (req.headers.get('accept') || '').includes('text/html');
 
-  /* HTML DOCUMENTS - always fetch the newest copy from the server, bypassing the
-     phone's HTTP cache. This is the line that makes updates actually reach people.
-     #vendor - only the APP SHELL may overwrite the 'index.html' cache slot; the
-     Dock Office (or any other page) rides through untouched. Offline: the app
-     falls back to its cached shell; other pages fall back to their own cached
-     copy if one exists (the Dock Office needs signal anyway - it's a live tool). */
+  // The app document: NETWORK-FIRST. Always try the server (cache:'reload' bypasses
+  // the browser's HTTP cache) so the newest deploy wins; fall back to cache offline.
   if (isDoc) {
-    const isShell = url.pathname === '/' || url.pathname.endsWith('/index.html');
     e.respondWith(
       fetch(url.href, { cache: 'reload', credentials: 'same-origin' })
         .then((res) => {
-          if (isShell) {
-            const copy = res.clone();
-            caches.open(CACHE).then((c) => c.put('index.html', copy)).catch(() => {});
-          }
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put('index.html', copy)).catch(() => {});
           return res;
         })
-        .catch(() =>
-          isShell
-            ? caches.match('index.html').then((r) => r || caches.match('.'))
-            : caches.match(req)
-        )
+        .catch(() => caches.match('index.html').then((r) => r || caches.match('.')))
     );
     return;
   }
 
-  /* ICONS / MANIFEST - serve instantly from cache, but quietly refresh the cached
-     copy in the background so they stay current over time (stale-while-revalidate). */
+  // Everything else (icons, manifest): serve fast from cache, refresh in background.
   e.respondWith(
     caches.match(req).then((cached) => {
       const net = fetch(req).then((res) => {
@@ -105,7 +95,6 @@ self.addEventListener('fetch', (e) => {
   );
 });
 
-/* ---- notifications (unchanged) ---- */
 self.addEventListener('push', (e) => {
   let data = {};
   try { data = e.data ? e.data.json() : {}; } catch (_) {
