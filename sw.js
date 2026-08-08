@@ -14,7 +14,7 @@
      • Bumping the number below also wipes every old cache on activate, so nothing
        stale can survive.
    ──────────────────────────────────────────────────────────────────────────── */
-const CACHE = 'shadowhook-v9';   // ← bump this each time you deploy an update  (v9: 🎖 ambassadors in the Command Center, the spyglass, and the BECOME AN AMBASSADOR poster + applications)
+const CACHE = 'shadowhook-v11';  // ← bump this each time you deploy an update  (v11: THE TRADES + ambassadors, with lowkey member-facing copy — approval flows stay nameless)
 
 const SHELL = [
   '.',
