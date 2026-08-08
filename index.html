@@ -17393,7 +17393,7 @@ html.season-xmas.daylight{}
 
     <div class="card-h">The Roster</div>
     <input class="field" id="kmFind" placeholder="filter — handle, card, name" style="margin:6px 0 6px">
-    <input class="field" id="kmNotice" placeholder="notice text — used by ⚠ warn and 🔨 ban" style="margin-bottom:6px">
+    <input class="field" id="kmNotice" placeholder="notice text — used by ⚠ warn, 🔨 ban and ✕ 🎖" style="margin-bottom:6px">
     <div id="kmRoster" class="sub" style="max-height:260px;overflow-y:auto;line-height:1.7;margin-bottom:14px">—</div>
 
     <div class="card-h">The Mint</div>
@@ -17426,6 +17426,46 @@ html.season-xmas.daylight{}
       <button class="btn-ghost" id="kmRefresh" type="button" style="flex:1">↻ Re-pull all wires</button>
       <button class="btn-ghost" id="kmDevLog" type="button" style="flex:1">⚙ Dev Log</button>
       <button class="btn-ghost" id="kmClose" type="button" style="flex:1">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ #amb — THE AMBASSADORS, FROM THE COMMAND CENTER ═══════════
+     The 🎖 system belongs to the Dock Office (dockoffice.html · v17): ambassadors
+     recruit vendors and book a % of the house margin on their recruits' sales.
+     These two sheets let the Keymaster work it WITHOUT leaving this app:
+     crown a casual straight off the roster, and raise the SPYGLASS — a faithful,
+     read-only replica of the dashboard that member sees behind the vendor gate. -->
+<div class="sheet" id="kmAmbSheet" role="dialog" aria-modal="true" aria-label="Crown an ambassador">
+  <div class="sheet-card" style="text-align:left">
+    <div class="big" style="font-size:19px;letter-spacing:.07em;text-align:center;color:#ffd53d">🎖 CROWN AN AMBASSADOR</div>
+    <p class="sub" id="kmAmbWho" style="margin:6px 0 10px;text-align:center;line-height:1.6">—</p>
+    <div class="sub" style="margin:8px 0 2px">Name — how the books know them</div>
+    <input class="field" id="kmAmbName" style="margin-bottom:4px">
+    <div class="sub" style="margin:8px 0 2px">Commission — % of the house margin on their recruits’ sales</div>
+    <input class="field mono" id="kmAmbRate" inputmode="decimal" value="10" style="margin-bottom:4px">
+    <div class="sub" style="margin:8px 0 2px">Their email — only needed if their app login can’t be linked automatically</div>
+    <input class="field" id="kmAmbEmail" type="email" placeholder="optional" style="margin-bottom:6px">
+    <div class="sub" id="kmAmbMsg" style="margin:6px 0;line-height:1.6"></div>
+    <button class="btn" id="kmAmbGo" type="button" style="width:100%">🎖 SET THE CROWN</button>
+    <button class="btn-ghost" id="kmAmbCancel" type="button" style="width:100%;margin-top:8px">Never mind</button>
+  </div>
+</div>
+
+<!-- #amb — the spyglass: their dashboard through their eyes, read-only -->
+<div class="sheet" id="ambViewSheet" role="dialog" aria-modal="true" aria-label="Ambassador dashboard preview">
+  <div class="sheet-card" style="text-align:left;max-height:86vh;overflow-y:auto">
+    <div class="sub" style="text-align:center;letter-spacing:.16em;color:#ffd53d;margin-bottom:6px">👁 SPYGLASS — SEEING IT AS THEY DO</div>
+    <div class="big" style="font-size:18px;letter-spacing:.08em;text-align:center">THE DOCK OFFICE</div>
+    <p class="sub" id="avWho" style="margin:4px 0 10px;text-align:center;line-height:1.6">—</p>
+    <div class="race-board-tabs" id="avTabs" style="margin-bottom:10px">
+      <button data-v="myvend">🤝 MY VENDORS</button><button data-v="ledger">💰 MY LEDGER</button><button data-v="wire">📻 THE WIRE</button><button data-v="floor">🏬 THE FLOOR</button>
+    </div>
+    <div id="avPanel" class="sub" style="line-height:1.65">—</div>
+    <p class="sub" style="margin-top:10px;color:var(--steel)">Preview only — nothing in here fires. They work these levers for real behind the vendor gate at <b style="color:var(--bone)">theshadowhook.com/dockoffice.html</b>.</p>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn-ghost" id="avRefresh" type="button" style="flex:1">↻ Refresh</button>
+      <button class="btn-ghost" id="avClose" type="button" style="flex:1">Close</button>
     </div>
   </div>
 </div>
@@ -17571,6 +17611,7 @@ html.season-xmas.daylight{}
       const r=await window.SB.rpc('km_roster');
       if(r.error)throw r.error;
       _roster=r.data||[];
+      try{await kmAmbLoad();}catch(e2){} /* #amb — the crowns ride the same pull; the roster still paints if this leg fails */
       kmRosterDraw();
     }catch(e){out.textContent='roster failed: '+e.message;}
   };
@@ -17587,6 +17628,7 @@ html.season-xmas.daylight{}
         +'<span style="color:var(--steel)">'+esc(x.full_name||'')+'</span>'
         +(x.banned?'<span class="pill red">BANNED</span>':'')
         +(x.is_keymaster?'<span class="pill gold">☠</span>':'')
+        +(function(){const a=kmAmbOf(x.handle);return a?'<span class="pill gold">🎖 '+(Number(a.rate)||0)+'%</span>':'';})() /* #amb */
         +'<span style="margin-left:auto" class="mono">'+(+x.port_bucks||0).toLocaleString()+' ⬡</span>'
         +'<span style="flex-basis:100%;display:flex;gap:6px;margin-top:2px">'
         +'<button class="btn-ghost km-act" data-a="mint" data-h="'+h+'" style="flex:1;padding:4px 0;font-size:11px">⬡ mint</button>'
@@ -17594,7 +17636,19 @@ html.season-xmas.daylight{}
         +(isF?'':'<button class="btn-ghost km-act" data-a="ban" data-h="'+h+'" data-b="'+(x.banned?1:0)+'" style="flex:1;padding:4px 0;font-size:11px;color:'+(x.banned?'var(--ok)':'var(--ember)')+'">'+(x.banned?'✓ unban':'🔨 ban')+'</button>')
         +(isF?'<span class="sub" style="flex:1;text-align:center;padding:4px 0;font-size:11px;color:var(--copper-hi)">⚓ founder</span>'
              :'<button class="btn-ghost km-act" data-a="crown" data-h="'+h+'" data-k="'+(x.is_keymaster?1:0)+'" style="flex:1;padding:4px 0;font-size:11px;color:'+(x.is_keymaster?'var(--steel)':'var(--copper-hi)')+'">'+(x.is_keymaster?'✕ uncrown':'☠ crown')+'</button>')
-        +'</span></div>';
+        +'</span>'
+        +(function(){ /* #amb — the third crown: promote off the roster, or raise the spyglass */
+            if(isF)return'';
+            const a=kmAmbOf(x.handle);
+            if(a)return '<span style="flex-basis:100%;display:flex;gap:6px;margin-top:2px">'
+              +'<button class="btn-ghost km-act" data-a="ambview" data-amb="'+esc(a.id)+'" data-h="'+h+'" style="flex:1;padding:4px 0;font-size:11px;color:#ffd53d">👁 their view</button>'
+              +'<button class="btn-ghost km-act" data-a="ambpull" data-amb="'+esc(a.id)+'" data-h="'+h+'" style="flex:1;padding:4px 0;font-size:11px;color:var(--steel)">✕ pull 🎖</button>'
+              +'</span>';
+            return x.banned?'':'<span style="flex-basis:100%;display:flex;gap:6px;margin-top:2px">'
+              +'<button class="btn-ghost km-act" data-a="amb" data-h="'+h+'" style="flex:1;padding:4px 0;font-size:11px;color:#ffd53d">🎖 make ambassador</button>'
+              +'</span>';
+          })()
+        +'</div>';
     }).join('');
   }
   const kf=$('kmFind'); if(kf)kf.addEventListener('input',kmRosterDraw);
@@ -17603,6 +17657,8 @@ html.season-xmas.daylight{}
     const b=e.target.closest('button.km-act'); if(!b)return;
     const h=b.dataset.h, a=b.dataset.a, msg=(($('kmNotice')||{}).value||'').trim();
     if(a==='mint'){ if($('kmHandle'))$('kmHandle').value=h; if($('kmDelta'))$('kmDelta').focus(); try{toast('⬡ mint pre-filled for '+h);}catch(e2){} return; }
+    if(a==='amb'){ kmAmbOpen(h); return; }                        /* #amb — the crowning sheet */
+    if(a==='ambview'){ ambViewOpen(b.dataset.amb,h); return; }    /* #amb — the spyglass */
     if(!window.SB){try{toast('backend off');}catch(e2){} return;}
     b.disabled=true;
     try{
@@ -17623,10 +17679,221 @@ html.season-xmas.daylight{}
         if(r.error)throw r.error;
         try{toast(on?('☠ '+h+' now holds a key to the Command Center'):('✕ crown lifted from '+h));}catch(e2){}
         kmRoster();
+      }else if(a==='ambpull'){ /* #amb — take the 🎖 back; the books keep their history */
+        if(!confirm('Pull the ambassador crown from '+h+'? Their recruits and commission history stay on the books — new sales just stop booking them.')){b.disabled=false;return;}
+        await kmAmbPull(b.dataset.amb,h,msg);
+        kmRoster();
       }
     }catch(err){try{toast('✗ '+err.message);}catch(e2){}}
     b.disabled=false;
   });
+
+  /* ═══════════ #amb — AMBASSADORS FROM THE COMMAND CENTER ═══════════
+     Same Supabase tables the Dock Office (dockoffice.html v17) runs on —
+     ambassadors / ambassador_members / amb_payouts / amb_msgs + the amb_ledger
+     RPC. Nothing forked: a crown set here appears in the vendor gate instantly,
+     and vice versa. Linking prefers the member's EXISTING app login
+     (profiles.id → ambassador_members.user_id), so a promoted casual walks
+     through the vendor gate with the same email + password they already use
+     here. If the direct link is refused (RLS), we fall back to the gate's own
+     mint — the vendor-invite edge function — which needs their email. */
+  let _ambs=[],_ambMems=[],_ambUids={};   /* crowns · logins · handle(lower)→uid */
+  async function kmAmbLoad(){
+    if(!window.SB)return;
+    const [a,m,p]=await Promise.all([
+      window.SB.from('ambassadors').select('*'),
+      window.SB.from('ambassador_members').select('*'),
+      window.SB.from('profiles').select('id,handle')
+    ]);
+    if(!a.error)_ambs=a.data||[];
+    if(!m.error)_ambMems=m.data||[];
+    if(!p.error){_ambUids={};(p.data||[]).forEach(x=>{if(x&&x.handle)_ambUids[String(x.handle).toLowerCase()]=x.id;});}
+  }
+  function kmAmbOf(handle){ /* the ACTIVE crown a handle carries, if any */
+    const lo=String(handle||'').toLowerCase(), uid=_ambUids[lo];
+    const m=uid?_ambMems.find(x=>x.user_id===uid):null;
+    let a=m?_ambs.find(x=>x.id===m.ambassador_id):null;
+    if(!a)a=_ambs.find(x=>String(x.name||'').toLowerCase()===lo)||null; /* crowns minted gate-side link by name */
+    return (a&&a.active!==false)?a:null;
+  }
+  const _money=n=>{const v=Number(n||0);return (v<0?'-$':'$')+Math.abs(v).toFixed(2);};
+  const _dt=ts=>{try{const d=new Date(ts);return d.toLocaleDateString([],{month:'short',day:'numeric'})+' · '+d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});}catch(e){return'';}};
+  function _genPass(){const a='23456789abcdefghjkmnpqrstvwxyzABCDEFGHJKMNPQRSTVWXYZ';let s='';for(let i=0;i<12;i++)s+=a[Math.floor(Math.random()*a.length)];return s;}
+
+  /* ---- the crowning ---- */
+  let _ambTarget=null;
+  window.kmAmbOpen=function(handle){
+    _ambTarget={handle:handle,uid:_ambUids[String(handle||'').toLowerCase()]||null};
+    const sh2=$('kmAmbSheet');if(!sh2)return;
+    $('kmAmbWho').innerHTML='For <b style="color:var(--bone)">'+esc(handle)+'</b> — they recruit vendors to the Armory and book a cut of the house margin on everything their recruits sell.'
+      +(_ambTarget.uid?'':'<br><span style="color:var(--ember)">No app account found for this handle — fill in their email so the gate can mint their pass.</span>');
+    $('kmAmbName').value=handle;$('kmAmbRate').value='10';$('kmAmbEmail').value='';$('kmAmbMsg').textContent='';
+    sh2.classList.add('on');
+  };
+  async function kmAmbGo(){
+    const msgEl=$('kmAmbMsg'),name=($('kmAmbName').value||'').trim(),rate=parseFloat($('kmAmbRate').value),email=($('kmAmbEmail').value||'').trim();
+    if(!name){msgEl.textContent='✗ a name for the crown';return;}
+    if(!(rate>=0&&rate<=100)){msgEl.textContent='✗ rate is 0–100 (% of house margin)';return;}
+    if(!window.SB){msgEl.textContent='✗ backend off';return;}
+    const go=$('kmAmbGo');go.disabled=true;msgEl.textContent='setting the crown…';
+    try{
+      /* a retired crown with this name gets revived, not duplicated — the books stay clean */
+      let amb=null;
+      const oldA=_ambs.find(x=>String(x.name||'').toLowerCase()===name.toLowerCase());
+      if(oldA){
+        const up=await window.SB.from('ambassadors').update({active:true,rate:Math.round(rate*100)/100,email:email||oldA.email||null}).eq('id',oldA.id).select().single();
+        if(up.error)throw up.error; amb=up.data;
+      }else{
+        const ins=await window.SB.from('ambassadors').insert({name:name,email:email||null,rate:Math.round(rate*100)/100}).select().single();
+        if(ins.error)throw ins.error; amb=ins.data;
+      }
+      let linked=false,minted=false,tempPass='';
+      if(_ambTarget&&_ambTarget.uid){ /* the good path: their existing login carries the crown */
+        const lk=await window.SB.from('ambassador_members').insert({user_id:_ambTarget.uid,ambassador_id:amb.id});
+        if(!lk.error)linked=true;
+        else{ const lk2=await window.SB.from('ambassador_members').update({ambassador_id:amb.id}).eq('user_id',_ambTarget.uid).select();
+              if(!lk2.error&&lk2.data&&lk2.data.length)linked=true; }
+      }
+      if(!linked&&email){ /* the gate's own mint — creates the account, or links the email as-is */
+        tempPass=_genPass();
+        try{
+          const s=await window.SB.auth.getSession();
+          const tok=s&&s.data&&s.data.session?s.data.session.access_token:'';
+          const rr=await fetch(String(window.SUPABASE_URL).replace(/\/+$/,'')+'/functions/v1/vendor-invite',{method:'POST',
+            headers:{'Content-Type':'application/json','apikey':window.SUPABASE_ANON_KEY||'','Authorization':'Bearer '+tok},
+            body:JSON.stringify({email:email,ambassador_id:amb.id,temp_password:tempPass})});
+          const j=await rr.json().catch(()=>null);
+          if(rr.ok&&j&&j.ok){minted=true;if(j.linked_existing){linked=true;tempPass='';}}
+        }catch(e2){}
+      }
+      /* word to the newly crowned — rides the same notice wire as ⚠ warn */
+      if(linked){try{await window.SB.rpc('km_warn',{p_handle:_ambTarget.handle,p_msg:'🎖 The Keymaster has crowned you an AMBASSADOR of the Order. The Dock Office is open to you — theshadowhook.com/dockoffice.html, your usual email and password. Recruit vendors to the Armory and '+(Number(rate)||0)+'% of the house margin on their sales is yours.'});}catch(e3){}}
+      await kmAmbLoad(); kmRosterDraw();
+      if(minted&&tempPass){ /* fresh pass — leave the sheet up so the credentials can be copied */
+        msgEl.innerHTML='🗝 Crown set and a fresh Dock Office pass minted. Hand these over yourself — they won’t be shown again:<br>'
+          +'<b class="mono" style="color:var(--bone)">'+esc(email)+'</b> · temp password <b class="mono" style="color:var(--bone)">'+esc(tempPass)+'</b>';
+        try{toast('🎖 '+name+' is crowned');}catch(e4){}
+      }else{
+        $('kmAmbSheet').classList.remove('on');
+        try{toast('🎖 '+name+' is crowned'+(linked?' — their usual sign-in now opens the Dock Office':' — crown set, but no login linked yet (add their email, or mint from the Dock Office)'));}catch(e4){}
+        ambViewOpen(amb.id,_ambTarget?_ambTarget.handle:name); /* straight into the spyglass — see what they now see */
+      }
+    }catch(err){msgEl.textContent='✗ '+err.message+(/policy|permission|security/i.test(err.message||'')?' — is this account crowned in profiles.is_keymaster?':'');}
+    go.disabled=false;
+  }
+  async function kmAmbPull(ambId,handle,msg){
+    const dl=await window.SB.from('ambassador_members').delete().eq('ambassador_id',ambId);
+    if(dl.error)throw dl.error;
+    const up=await window.SB.from('ambassadors').update({active:false}).eq('id',ambId);
+    if(up.error)throw up.error;
+    try{await window.SB.rpc('km_warn',{p_handle:handle,p_msg:msg||'The Keymaster has taken back your ambassador crown. Your commission history stays on the books.'});}catch(e){}
+    try{toast('✕ 🎖 crown pulled from '+handle);}catch(e){}
+    await kmAmbLoad();
+  }
+
+  /* ---- the spyglass: their dashboard, their eyes, read-only ---- */
+  let AV=null;
+  window.ambViewOpen=async function(ambId,handle){
+    const sh3=$('ambViewSheet');if(!sh3)return;
+    if(!window.SB){try{toast('backend off');}catch(e){}return;}
+    sh3.classList.add('on');
+    $('avWho').textContent='raising the spyglass…';$('avPanel').textContent='…';
+    try{
+      let amb=_ambs.find(x=>x.id===ambId);
+      if(!amb){const r0=await window.SB.from('ambassadors').select('*').eq('id',ambId).maybeSingle();amb=r0&&r0.data;}
+      const [v,vm,led,pay,msgs]=await Promise.all([
+        window.SB.from('vendors').select('*').eq('ambassador_id',ambId).order('created_at'),
+        window.SB.from('vendor_members').select('*'),
+        window.SB.rpc('amb_ledger'),
+        window.SB.from('amb_payouts').select('*').eq('ambassador_id',ambId).order('created_at',{ascending:false}).limit(100),
+        window.SB.from('amb_msgs').select('*').eq('ambassador_id',ambId).order('created_at',{ascending:true}).limit(200)
+      ]);
+      AV={amb:amb||{id:ambId,name:handle,rate:0},handle:handle||(amb&&amb.name)||'',
+          vendors:(v&&v.data)||[],mems:(vm&&vm.data)||[],
+          lines:((led&&led.data)||[]).filter(l=>l.amb===ambId),
+          payouts:(pay&&pay.data)||[],msgs:(msgs&&msgs.data)||[],tab:'myvend'};
+      const memRow=_ambMems.find(m=>m.ambassador_id===ambId);
+      $('avWho').innerHTML='🎖 <b style="color:var(--bone)">'+esc(AV.amb.name||handle||'?')+'</b>'
+        +((memRow&&memRow.email)?' · '+esc(memRow.email):(AV.amb.email?' · '+esc(AV.amb.email):''))
+        +' — exactly what they see behind the gate';
+      avDraw();
+    }catch(err){$('avPanel').textContent='spyglass failed: '+err.message;}
+  };
+  function avBook(){
+    const L=AV?AV.lines:[];
+    const earned=L.filter(l=>l.order_status==='paid'&&(l.line_status==='shipped'||l.line_status==='delivered')).reduce((s,l)=>s+Number(l.commission||0),0);
+    const pending=L.filter(l=>l.order_status==='paid'&&(l.line_status==='new'||l.line_status==='working')).reduce((s,l)=>s+Number(l.commission||0),0);
+    const paid=(AV?AV.payouts:[]).reduce((s,p)=>s+Number(p.amount_usd||0),0);
+    return {earned:earned,pending:pending,paid:paid,owed:earned-paid};
+  }
+  function avDraw(){
+    if(!AV)return;
+    try{seg($('avTabs'),AV.tab);}catch(e){}
+    const P=$('avPanel');if(!P)return;
+    const dead='pointer-events:none;opacity:.62;';
+    const rate=Number(AV.amb.rate)||0;
+    const pillFor=s=>{const cls=(s==='shipped'||s==='delivered')?' gold':(s==='cancelled'?' red':'');return '<span class="pill'+cls+'">'+esc(String(s||'').toUpperCase())+'</span>';};
+    if(AV.tab==='myvend'){
+      const cards=AV.vendors.map(v=>{
+        const mem=AV.mems.filter(m=>m.vendor_id===v.id);
+        const fromThis=AV.lines.filter(l=>l.vendor_id===v.id).reduce((s,l)=>s+Number(l.commission||0),0);
+        return '<div style="border:1px solid var(--line-soft);border-radius:10px;padding:10px;margin-bottom:8px'+(v.active?'':';opacity:.6')+'">'
+          +'<div style="display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center"><b style="color:var(--bone)">'+esc(v.name)+'</b>'
+          +(v.active?'':'<span class="pill red">RETIRED</span>')
+          +'<span class="mono" style="margin-left:auto;color:var(--copper-hi)" title="their commission from this vendor">'+_money(fromThis)+'</span></div>'
+          +'<div class="sub" style="margin-top:3px">'+esc(v.contact_name||'—')+(v.email?' · '+esc(v.email):'')+(v.phone?' · '+esc(v.phone):'')+'</div>'
+          +(v.notes?'<div class="sub" style="margin-top:3px;color:var(--steel)">'+esc(v.notes)+'</div>':'')
+          +'<div class="sub" style="margin-top:6px">passes: '+(mem.length?mem.map(m=>'<span class="mono" style="font-size:11px;color:var(--bone)">'+esc(m.email||String(m.user_id||'').slice(0,8))+'</span>').join(' · '):'<i>none minted yet — mint one so they can work their bench</i>')+'</div>'
+          +'<div style="display:flex;gap:6px;margin-top:8px">'
+          +'<span class="btn-ghost" style="flex:1;text-align:center;padding:4px 0;font-size:11px;'+dead+'">🗝 PASS</span>'
+          +'<span class="btn-ghost" style="flex:1;text-align:center;padding:4px 0;font-size:11px;'+dead+'">✎ EDIT</span>'
+          +'<span class="btn-ghost" style="flex:1;text-align:center;padding:4px 0;font-size:11px;'+dead+'">'+(v.active?'RETIRE':'REVIVE')+'</span>'
+          +'</div></div>';
+      }).join('');
+      P.innerHTML='<span class="btn" style="display:block;text-align:center;width:100%;margin:2px 0 10px;'+dead+'">🤝 RECRUIT A VENDOR</span>'
+        +'<p class="sub" style="margin:0 0 10px">Bring a maker to the Armory, mint their pass, and every sale off their bench pays you <b style="color:var(--copper-hi)">'+rate+'%</b> of the house margin — booked automatically at the till. The Keymaster still approves all gear.</p>'
+        +(cards||'<p class="sub" style="text-align:center;padding:10px 0">Nobody recruited yet. First one’s the hardest.</p>');
+    }else if(AV.tab==='ledger'){
+      const b=avBook();
+      const tile=(val,k,c)=>'<div style="flex:1;border:1px solid var(--line-soft);border-radius:10px;padding:10px;text-align:center"><div class="mono" style="font-size:16px;color:'+c+'">'+val+'</div><div class="sub" style="margin-top:2px">'+k+'</div></div>';
+      P.innerHTML='<div style="display:flex;gap:8px;margin-bottom:10px">'
+        +tile(_money(b.owed),'Owed now','var(--copper-hi)')+tile(_money(b.pending),'In the pipe','var(--steel)')+tile(_money(b.paid),'Paid to date','var(--ok)')+'</div>'
+        +'<p class="sub" style="margin:0 0 10px">You book <b style="color:var(--copper-hi)">'+rate+'%</b> of the house margin on your recruits’ sales — locked in per sale at the till. A line lands in <b style="color:var(--bone)">owed</b> when the vendor ships it.</p>'
+        +'<div class="card-h">📜 The Book — every commissioned line</div>'
+        +(AV.lines.length?AV.lines.map(l=>'<div style="display:flex;gap:8px;align-items:center;border-bottom:1px solid var(--line-soft);padding:5px 0">'
+            +'<span style="flex:1"><b class="mono" style="color:var(--copper-hi)">'+esc(l.order_code||'')+'</b> <span class="sub">'+esc(l.vendor_name||'')+' · '+esc(l.item_name||'')+' ×'+(l.qty||1)+' · margin '+_money(l.margin)
+            +(l.order_status==='refunded'?' · <b style="color:var(--ember)">REFUNDED</b>':'')+'</span></span>'
+            +'<span class="mono" style="color:var(--copper-hi)">'+_money(l.commission)+'</span>'+pillFor(l.line_status)+'</div>').join('')
+          :'<p class="sub">Nothing booked yet — it starts the first time one of your recruits sells.</p>')
+        +'<div class="card-h" style="margin-top:12px">📜 Payout history</div>'
+        +(AV.payouts.length?AV.payouts.map(p=>'<div style="display:flex;gap:8px;align-items:center;border-bottom:1px solid var(--line-soft);padding:5px 0">'
+            +'<span style="flex:1"><b>'+_money(p.amount_usd)+'</b> <span class="sub">'+esc(p.method||'')+(p.ref?' · '+esc(p.ref):'')+(p.note?' · '+esc(p.note):'')+'</span></span>'
+            +'<span class="sub">'+_dt(p.created_at)+'</span></div>').join('')
+          :'<p class="sub">Nothing settled yet.</p>');
+    }else if(AV.tab==='wire'){
+      P.innerHTML='<div style="display:flex;flex-direction:column;gap:6px;max-height:300px;overflow-y:auto;padding:2px 0">'
+        +(AV.msgs.length?AV.msgs.map(m=>{
+            const mine=!m.from_km; /* their eyes: their own words sit right */
+            return '<div style="max-width:82%;padding:7px 10px;border-radius:11px;font-size:12.5px;line-height:1.5;'
+              +(mine?'align-self:flex-end;background:rgba(201,128,63,.16);border:1px solid rgba(201,128,63,.35)'
+                    :'align-self:flex-start;background:rgba(255,255,255,.05);border:1px solid var(--line-soft)')+'">'
+              +(mine?'':'<b style="color:var(--ember)">☠ the Keymaster</b><br>')+esc(m.body||'')
+              +'<div class="sub" style="margin-top:3px;font-size:10.5px">'+_dt(m.created_at)+'</div></div>';
+          }).join(''):'<p class="sub">Nothing on the wire yet. First word starts it.</p>')
+        +'</div>'
+        +'<div style="display:flex;gap:6px;margin-top:8px;'+dead+'"><span class="field" style="flex:1;color:var(--steel)">Say the word…</span><span class="btn-ghost" style="padding:8px 12px">SEND</span></div>'
+        +'<p class="sub" style="margin-top:6px;color:var(--steel)">To actually answer them, open the wire in the Dock Office — the spyglass only watches.</p>';
+    }else{
+      P.innerHTML='<p class="sub" style="padding:8px 0;line-height:1.7">🏬 The Floor is the Armory shelf — the same gear every hand sees in this app’s shop. Nothing ambassador-specific lives there; it rides along in their tab bar so the gate feels whole.</p>';
+    }
+  }
+  /* wiring for the two #amb sheets */
+  ['kmAmbSheet','ambViewSheet'].forEach(id=>{const s2=$(id);if(s2)s2.addEventListener('click',e=>{if(e.target===s2)s2.classList.remove('on');});});
+  const _ac=$('kmAmbCancel');if(_ac)_ac.addEventListener('click',()=>$('kmAmbSheet').classList.remove('on'));
+  const _ag=$('kmAmbGo');if(_ag)_ag.addEventListener('click',kmAmbGo);
+  const _avc=$('avClose');if(_avc)_avc.addEventListener('click',()=>$('ambViewSheet').classList.remove('on'));
+  const _avr=$('avRefresh');if(_avr)_avr.addEventListener('click',()=>{if(AV)ambViewOpen(AV.amb.id,AV.handle);});
+  const _avt=$('avTabs');if(_avt)_avt.addEventListener('click',e=>{const b2=e.target.closest('button');if(b2&&AV){AV.tab=b2.dataset.v;avDraw();}});
 
   /* ═══ #km2 — member side: notices land, bans lock ═══ */
   window.showBanLock=function(msg){
