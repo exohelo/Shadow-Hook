@@ -1686,6 +1686,27 @@ window.DEVLOG=(function(){
         <button class="hdr-seal" id="hcrest" type="button" title="Your account — profile, 6-month rule &amp; log out" aria-label="Account, profile and log out">⚓</button>
       </div>
     </div>
+    <!-- #bank — THE STRIP: neon rail riding UNDER the dispatch console. The wallet
+         today (tap → THE BANK); promotions take the rail tomorrow (km_flags.promo). -->
+    <style>
+      #bankStrip{position:relative;display:flex;width:100%;align-items:center;gap:8px;padding:8px 12px;margin:7px 0 2px;border:1px solid rgba(77,226,255,.55);border-radius:12px;background:linear-gradient(92deg,rgba(123,92,255,.22),rgba(77,226,255,.10) 55%,rgba(255,61,139,.16));color:var(--bone);cursor:pointer;font:inherit;text-align:left;box-shadow:0 0 14px rgba(77,226,255,.16),inset 0 0 18px rgba(123,92,255,.14);overflow:hidden}
+      #bankStrip:active{transform:translateY(1px)}
+      #bankStrip::after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(105deg,transparent 40%,rgba(255,255,255,.12) 50%,transparent 60%);transform:translateX(-100%);animation:bankSheen 5.5s ease-in-out infinite}
+      @keyframes bankSheen{0%,55%{transform:translateX(-100%)}80%,100%{transform:translateX(100%)}}
+      #bankStrip .bs-coin{flex:none;font-size:16px;line-height:1;color:#4de2ff;text-shadow:0 0 10px rgba(77,226,255,.9);animation:crownBob 2.2s ease-in-out infinite}
+      #bankStrip .bs-v{font-family:'IBM Plex Mono',monospace;font-weight:700;font-size:14.5px;color:#4de2ff;text-shadow:0 0 9px rgba(77,226,255,.65)}
+      #bankStrip .bs-msg{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11.5px;color:#b9a6ff;letter-spacing:.04em}
+      #bankStrip .bs-cta{flex:none;font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.16em;color:#ff3d8b;text-shadow:0 0 9px rgba(255,61,139,.6);animation:bankBlink 1.5s steps(2,end) infinite}
+      @keyframes bankBlink{50%{opacity:.4}}
+      html.daylight #bankStrip{box-shadow:none;background:linear-gradient(92deg,rgba(123,92,255,.14),rgba(77,226,255,.08));border-color:rgba(122,69,23,.45)}
+      html.daylight #bankStrip .bs-msg{color:#6b5bd6}
+      html.daylight #bankStrip .bs-v,html.daylight #bankStrip .bs-coin{color:#1f7a94;text-shadow:none}
+    </style>
+    <button id="bankStrip" type="button">
+      <span class="bs-coin">⬡</span>
+      <b class="bs-v" id="bankStripV">0</b>
+      <span class="bs-msg" id="bankStripMsg">PORT BUCKS</span>
+    </button>
     <button class="dayBtn" id="dayBtn" type="button" title="Daylight mode — easier to read in direct sun" aria-label="Toggle daylight mode">☀</button>
   </div>
 
@@ -2335,18 +2356,10 @@ window.DEVLOG=(function(){
 
     <!-- #83 — Top Earners card removed by request; the bucks leaderboard still lives on Social -->
 
-    <div class="card" style="border-color:rgba(238,180,107,.45)">
-      <div class="card-b" style="cursor:pointer" onclick="document.getElementById('rulesSheet').classList.add('on')">
-        <div style="display:flex;align-items:center;gap:14px">
-          <div class="seal" style="margin:0;width:58px;height:58px;font-size:24px">⬡</div>
-          <div style="flex:1">
-            <div class="big copper-txt" style="font-size:32px" id="creditBal">0</div>
-            <div class="sub">Port Bucks · earned on the docks, spent in the Armory</div>
-          </div>
-          <div class="sub" style="flex:none">rules ›</div>
-        </div>
-      </div>
-    </div>
+    <!-- #bank — the big Port Bucks card retired: the wallet rides THE STRIP under the
+         head now (tap → THE BANK: statement, packs, rules). #creditBal stays as a
+         hidden node so renderCredits keeps every reader honest. -->
+    <span id="creditBal" style="display:none">0</span>
     </div><!-- /#armoryHead -->
 
     <!-- ==== THE SHOP ==== -->
@@ -2401,6 +2414,131 @@ window.DEVLOG=(function(){
       <button class="btn-ghost" style="width:100%;margin-top:14px" onclick="document.getElementById('rulesSheet').classList.remove('on')">Understood</button>
     </div>
   </div>
+
+  <!-- ═══════════ #bank — THE BANK: the wallet, the book, the mint ═══════════
+       Opens from THE STRIP under the head. Balance up top, packs to BUY ⬡ with
+       real money (the bucks-till edge function + Stripe — deploy bucks-till once),
+       and the member's statement (bucks_book — run BUCKS-BANK.sql once). Earned
+       bucks still flow exactly as before; this adds the paid road in. -->
+  <div class="sheet" id="bankSheet">
+    <div class="sheet-card" style="text-align:left;max-height:86vh;overflow-y:auto">
+      <div class="big" style="font-size:20px;letter-spacing:.07em;text-align:center">⬡ THE BANK</div>
+      <div style="text-align:center;margin:10px 0 2px"><span class="big copper-txt mono" id="bankBal" style="font-size:38px">0</span></div>
+      <p class="sub" style="text-align:center;margin:0 0 12px">Port Bucks — the Order’s coin. Chat rooms, raffles, special gear, discounts at the till.</p>
+      <div class="card-h">Get more ⬡</div>
+      <div id="bankPacks" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px"></div>
+      <div class="sub" id="bankBuyMsg" style="margin:8px 0 2px;line-height:1.6"></div>
+      <div class="card-h" style="margin-top:14px">The book</div>
+      <div id="bankBook" class="sub" style="line-height:1.6;margin-top:6px">—</div>
+      <button class="btn-ghost" style="width:100%;margin-top:12px" onclick="document.getElementById('rulesSheet').classList.add('on')">⚓ How they’re earned — the rules</button>
+      <button class="btn-ghost" style="width:100%;margin-top:8px" onclick="document.getElementById('bankSheet').classList.remove('on')">Close</button>
+    </div>
+  </div>
+  <script>
+  /* ═══ #bank — module ═══ */
+  (function(){
+    const $=id=>document.getElementById(id);
+    /* the packs — PRICED SERVER-SIDE in the bucks-till function; these mirror it for display */
+    const PACKS=[
+      {id:'deckhand', usd:5,  bucks:500,  tag:''},
+      {id:'bosun',    usd:10, bucks:1100, tag:'+10% bonus'},
+      {id:'stevedore',usd:25, bucks:3000, tag:'+20% bonus'},
+      {id:'harbormaster',usd:50,bucks:6500,tag:'+30% · best deal'}
+    ];
+    function packsDraw(){
+      const host=$('bankPacks');if(!host)return;
+      host.innerHTML=PACKS.map(p=>'<button class="btn-ghost bank-pack" data-pack="'+p.id+'" style="display:block;padding:10px 6px;text-align:center">'
+        +'<div class="mono" style="font-size:16px;color:var(--copper-hi)">'+p.bucks.toLocaleString()+' ⬡</div>'
+        +'<div class="sub" style="margin-top:2px">$'+p.usd+(p.tag?' · <span style="color:#ffd53d">'+p.tag+'</span>':'')+'</div>'
+        +'</button>').join('');
+    }
+    window.bankOpen=function(){
+      const sh=$('bankSheet');if(!sh)return;
+      sh.classList.add('on');
+      try{$('bankBal').textContent=(typeof CREDITS==='number'?CREDITS:0).toLocaleString();}catch(e){}
+      $('bankBuyMsg').textContent='';
+      packsDraw(); bankBook();
+    };
+    async function bankBook(){
+      const host=$('bankBook');if(!host)return;
+      if(!window.SB||!window.__shkUid){host.innerHTML='<span style="color:var(--steel)">Sign in to read your book — the balance still counts either way.</span>';return;}
+      host.textContent='opening the book…';
+      try{
+        const r=await window.SB.from('bucks_book').select('*').eq('user_id',window.__shkUid).order('created_at',{ascending:false}).limit(60);
+        if(r.error)throw r.error;
+        const rows=r.data||[];
+        if(!rows.length){host.innerHTML='<span style="color:var(--steel)">Nothing in the book yet — the first ⬡ writes the first line.</span>';return;}
+        host.innerHTML=rows.map(x=>{
+          const d=+x.delta||0;
+          const dt=(function(){try{const t=new Date(x.created_at);return t.toLocaleDateString([],{month:'short',day:'numeric'})+' · '+t.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});}catch(e){return'';}})();
+          return '<div style="display:flex;gap:8px;align-items:center;border-bottom:1px solid var(--line-soft);padding:5px 0">'
+            +'<b class="mono" style="flex:none;color:'+(d>=0?'var(--ok)':'var(--ember)')+'">'+(d>=0?'+':'')+d.toLocaleString()+' ⬡</b>'
+            +'<span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+String(x.reason||'—').replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</span>'
+            +'<span style="flex:none;color:var(--steel);font-size:10.5px">'+dt+'</span></div>';
+        }).join('');
+      }catch(e){
+        host.innerHTML=/does not exist|relation|schema/i.test(e.message||'')
+          ?'<span style="color:var(--steel)">The book isn’t open yet — your balance still counts every ⬡.</span>'
+          :('book failed: '+String(e.message||'').replace(/</g,'&lt;'));
+      }
+    }
+    async function bankBuy(id){
+      const m=$('bankBuyMsg');
+      if(!window.SB||!window.__shkUid){m.textContent='✗ claim your card and sign in first — the mint has to know whose stack to fill';return;}
+      m.textContent='opening the mint…';
+      try{
+        let tok=window.SUPABASE_ANON_KEY||'';
+        try{const s=await window.SB.auth.getSession();if(s&&s.data&&s.data.session&&s.data.session.access_token)tok=s.data.session.access_token;}catch(e){}
+        const r=await fetch(String(window.SUPABASE_URL).replace(/\/+$/,'')+'/functions/v1/bucks-till',{method:'POST',
+          headers:{'Content-Type':'application/json','apikey':window.SUPABASE_ANON_KEY||'','Authorization':'Bearer '+tok},
+          body:JSON.stringify({action:'create',pack:id,return_url:location.origin+location.pathname})});
+        const j=await r.json().catch(()=>null);
+        if(r.ok&&j&&j.url){location.href=j.url;return;}
+        m.textContent='✗ '+((j&&j.error)||'the mint isn’t wired yet — soon');
+        try{if(window.shkAlert)shkAlert('bucks mint',(j&&j.error)||('bucks-till '+r.status));}catch(e){}
+      }catch(e){
+        m.textContent='✗ no wire to the mint — check your signal and try again';
+        try{if(window.shkAlert)shkAlert('bucks mint',e);}catch(e2){}
+      }
+    }
+    const bp=$('bankPacks');
+    if(bp)bp.addEventListener('click',e=>{const b=e.target.closest('button.bank-pack');if(b)bankBuy(b.dataset.pack);});
+    const strip=$('bankStrip');
+    if(strip)strip.addEventListener('click',()=>bankOpen());
+    const bs=$('bankSheet');
+    if(bs)bs.addEventListener('click',e=>{if(e.target===bs)bs.classList.remove('on');});
+    /* the walk back from the mint — verify with the till, credit, celebrate */
+    (function(){
+      let q;try{q=new URLSearchParams(location.search);}catch(e){return;}
+      const sid=q.get('bucks_paid');
+      if(sid){
+        (async function(){
+          try{
+            let tok=window.SUPABASE_ANON_KEY||'';
+            for(let i=0;i<20&&!(window.SB&&window.__shkUid);i++)await new Promise(r=>setTimeout(r,500)); /* wait out the session boot */
+            try{const s=await window.SB.auth.getSession();if(s&&s.data&&s.data.session&&s.data.session.access_token)tok=s.data.session.access_token;}catch(e){}
+            const r=await fetch(String(window.SUPABASE_URL).replace(/\/+$/,'')+'/functions/v1/bucks-till',{method:'POST',
+              headers:{'Content-Type':'application/json','apikey':window.SUPABASE_ANON_KEY||'','Authorization':'Bearer '+tok},
+              body:JSON.stringify({action:'confirm',session:sid})});
+            const j=await r.json().catch(()=>null);
+            if(r.ok&&j&&j.ok){
+              if(typeof j.balance==='number'){try{CREDITS=j.balance;localStorage.setItem(K('credits'),CREDITS);}catch(e){}}
+              try{renderCredits();}catch(e){}
+              try{jackpot(+j.credited||0,'the mint — ⬡ pack');}catch(e){try{toast('⬡ +'+(+j.credited||0)+' — minted');}catch(e2){}}
+            }else{
+              try{toast('⚠ the mint needs a minute — your ⬡ land as soon as it clears');}catch(e){}
+              try{if(window.shkAlert)shkAlert('bucks confirm',(j&&j.error)||('bucks-till '+r.status));}catch(e){}
+            }
+          }catch(e){try{if(window.shkAlert)shkAlert('bucks confirm',e);}catch(e2){}}
+          try{history.replaceState(null,'',location.pathname);}catch(e){}
+        })();
+      }else if(q.get('bucks_cancel')){
+        try{toast('Mint closed — nothing charged');}catch(e){}
+        try{history.replaceState(null,'',location.pathname);}catch(e){}
+      }
+    })();
+  })();
+  </script>
 
   <!-- ═══ #vendor — THE CART & THE TILL ═══
        Dormant while GEAR_SHOW_PRICES is false: the FAB only shows when a live,
@@ -3942,6 +4080,12 @@ function sbRefreshBucks(){
         const v=r.data && r.data.port_bucks;
         if(typeof v==='number'){ try{CREDITS=v;localStorage.setItem(K('credits'),CREDITS);}catch(e){} try{renderCredits();}catch(e){} }
       }).catch(function(e){ console.warn('bucks refresh', e); });
+  }catch(e){}
+}
+function sbBookWrite(delta,reason){ /* #bank — mirror every earn/spend into bucks_book so THE BANK reads like a statement (silent no-op if signed out or the book isn't built) */
+  try{
+    if(!window.SB||!window.__shkUid||!delta)return;
+    window.SB.from('bucks_book').insert({user_id:window.__shkUid,delta:Math.round(delta),reason:String(reason||'').slice(0,140)}).then(()=>{},()=>{});
   }catch(e){}
 }
 function sbApplyBucks(delta, reason){   // push an earn/spend to the server; server balance wins
@@ -9757,6 +9901,8 @@ let CREDITS=0;try{CREDITS=+localStorage.getItem(K('credits'))||0}catch(e){}
 function renderCredits(){
   const el=document.getElementById('creditBal');if(el)el.textContent=CREDITS.toLocaleString();
   const hv=document.getElementById('meBucksV');if(hv)hv.textContent=CREDITS.toLocaleString();
+  const sv=document.getElementById('bankStripV');if(sv)sv.textContent=CREDITS.toLocaleString();   /* #bank — the strip under the head */
+  const bb=document.getElementById('bankBal');if(bb)bb.textContent=CREDITS.toLocaleString();      /* #bank — the sheet, if it's open */
   if(typeof window.renderBoards==="function")try{window.renderBoards()}catch(e){} // #5 — bucks board tracks the balance live
 }
 /* #fix3(bucks) — two tabs on one account never saw each other's balance. The credits key
@@ -9824,6 +9970,7 @@ function addCredits(n,reason,quiet){
   if(CREDITS>=5000)unlockBadge(bixLate("Buck Baron"));      // #8
   if(CREDITS>=10000)unlockBadge(bixLate("Port Tycoon"));    // #8
   try{sbApplyBucks(n,reason);}catch(e){}                    // persist to the server (no-op if backend off)
+  try{sbBookWrite(n,reason);}catch(e){}                     // #bank — a line in their statement
 }
 function spendCredits(n,reason){
   if(!n)return;
@@ -9840,6 +9987,7 @@ function spendCredits(n,reason){
   renderCredits();buckPop(-n);toast("−"+n+" ⬡ · "+reason);
   const chip=document.getElementById('meBucks');if(chip){chip.classList.remove('bump');void chip.offsetWidth;chip.classList.add('bump');}
   try{sbApplyBucks(-n,reason);}catch(e){}                    // persist to the server (no-op if backend off)
+  try{sbBookWrite(-n,reason);}catch(e){}                     // #bank — a line in their statement
 }
 /* ── CASINO JACKPOT — the dramatic win when Port Bucks land ──────────────────
    awardJackpot() credits the bucks (quietly, so the small float doesn't fight the
@@ -17624,6 +17772,7 @@ html.season-xmas.daylight{}
       try{if(typeof applySixRule==='function')applySixRule(r.data.six_rule!==false);}catch(e){}
       try{if(typeof setSeasonFlag==='function')setSeasonFlag(r.data.season||'auto');}catch(e){}   /* #seasons — the Keymaster's season word */
       try{renderBulletin(r.data.bulletin||'');}catch(e){}
+      try{const ps=document.getElementById('bankStripMsg');if(ps&&r.data.promo)ps.innerHTML='🏴 <b style="color:#ffd53d">'+esc(String(r.data.promo))+'</b>';}catch(e){} /* #bank — promos take the strip when km_flags.promo is set */
     }catch(e){}
   };
   try{sbLoadKmFlags();}catch(e){}
@@ -17685,6 +17834,7 @@ html.season-xmas.daylight{}
       const r=await window.SB.rpc('km_bucks',{p_handle:h,p_delta:d,p_reason:why||'the Keymaster willed it'});
       if(r.error)throw r.error;
       msg.innerHTML='✓ '+esc(h)+' now holds <b class="mono" style="color:var(--copper-hi)">'+(+r.data).toLocaleString()+' ⬡</b> — lands on their next open';
+      try{const u=_ambUids[String(h||'').toLowerCase()];if(u)window.SB.from('bucks_book').insert({user_id:u,delta:d,reason:(why||'minted by the desk')}).then(()=>{},()=>{});}catch(e){} /* #bank */
       try{toast('⬡ '+(d>0?'+':'')+d+' → '+h);}catch(e){}
       kmPulse();
     }catch(e){msg.textContent='✗ '+e.message;}
@@ -17901,6 +18051,7 @@ html.season-xmas.daylight{}
       btn.disabled=true;
       try{const r=await window.SB.rpc('km_bucks',{p_handle:h,p_delta:d,p_reason:(($('mmReason')||{}).value||'').trim()||'the house moved it'});
         if(r.error)throw r.error;
+        try{if(_mem.uid)window.SB.from('bucks_book').insert({user_id:_mem.uid,delta:d,reason:((($('mmReason')||{}).value||'').trim()||'minted by the desk')}).then(()=>{},()=>{});}catch(e2){} /* #bank */
         try{toast('⬡ '+(d>0?'+':'')+d+' to '+h);}catch(e2){}
         await kmRoster(); kmMemberOpen(h);}
       catch(err){try{toast('✗ '+err.message);}catch(e2){}}
