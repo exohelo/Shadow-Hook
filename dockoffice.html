@@ -271,6 +271,8 @@ select.field{appearance:none;-webkit-appearance:none}
   .stage,.stage.wide{max-width:1160px}
   .cardgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
   .cardgrid>.card{margin-bottom:0}
+  /* the vendor roll reads as one long column — full-width cards, stacked */
+  #panel[data-tab=vendors] .cardgrid{grid-template-columns:1fr}
   .split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
   #panel[data-tab=wire]>.card{max-width:780px;margin-left:auto;margin-right:auto}
   #panel[data-tab=wire]>.chips{max-width:780px;margin-left:auto;margin-right:auto}
@@ -308,7 +310,7 @@ select.field{appearance:none;-webkit-appearance:none}
     <div class="crest">⚓</div>
     <div class="wordmark">THE ORDER OF THE SHADOW HOOK</div>
     <div class="gate-title">THE DOCK OFFICE</div>
-    <div class="gate-sub">Vendor gate · orders, shipping &amp; the ledger · v14 — freight</div>
+    <div class="gate-sub">Vendor gate · orders, shipping &amp; the ledger · v16 — the red phone</div>
     <div class="card" style="margin-top:26px;text-align:left"><div class="card-b">
       <div class="lbl" style="margin-top:2px">EMAIL</div>
       <input class="field" id="gEmail" type="email" autocomplete="username" placeholder="you@yourshop.com">
@@ -629,7 +631,7 @@ function openTab(k){
 
 /* ════════ DATA ════════ */
 async function refreshAll(){
-  await Promise.all([loadOrders(), loadLedger(), loadProducts(), loadStore(), ME.km?loadVendors():Promise.resolve(), loadLastMsgs(), loadDrafts()]);
+  await Promise.all([loadOrders(), loadLedger(), loadProducts(), loadStore(), loadGate(), ME.km?loadVendors():Promise.resolve(), loadLastMsgs(), loadDrafts()]);
 }
 let STORE=[];
 async function loadStore(){
@@ -1010,7 +1012,8 @@ function vendorCard(v){
     +(v.active?'':'<span class="pill red">RETIRED</span>')
     +'<span class="tag">owed <b class="mono" style="color:var(--copper-hi)">'+money(b.owed)+'</b> · pipe '+money(b.pending)+'</span></div>'
     +'<div class="card-b">'
-    +'<div class="sub">'+esc(v.contact_name||'—')+(v.email?' · '+esc(v.email):'')+(v.phone?' · '+esc(v.phone):'')+'</div>'
+    +'<div class="sub">'+esc(v.contact_name||'—')+(v.email?' · '+esc(v.email):'')
+    +(v.phone&&telHref(v.phone)?' · <a style="color:var(--copper-hi);text-decoration:none" href="'+esc(telHref(v.phone))+'">'+esc(v.phone)+'</a>':(v.phone?' · '+esc(v.phone):''))+'</div>'
     +(v.notes?'<div class="sub" style="margin-top:4px;color:#6e767d">'+esc(v.notes)+'</div>':'')
     +'<div class="sub" style="margin-top:8px">🛡 '+gearN+' on their bench · passes: '
     +(mem.length?mem.map(m=>'<span class="mono" style="font-size:11.5px;color:var(--bone)">'+esc(m.email||m.user_id.slice(0,8))
@@ -1020,6 +1023,7 @@ function vendorCard(v){
     +'<button class="btn-line gold" data-vgear="'+esc(v.id)+'">🛡 GEAR</button>'
     +'<button class="btn-line gold" data-vpass="'+esc(v.id)+'">🗝 PASS</button>'
     +'<button class="btn-line" data-vwire="'+esc(v.id)+'">📻 WIRE</button>'
+    +(v.phone&&telHref(v.phone)?'<a class="btn-line red" style="text-decoration:none" href="'+esc(telHref(v.phone))+'">☎ CALL</a>':'')
     +'<button class="btn-line" data-vedit="'+esc(v.id)+'">✎ EDIT</button>'
     +'<button class="btn-line'+(v.active?' red':'')+'" data-vactive="'+esc(v.id)+'">'+(v.active?'RETIRE':'REVIVE')+'</button>'
     +'</div></div></div>';
@@ -1125,6 +1129,7 @@ $('asGo').addEventListener('click', async()=>{
 });
 
 /* ════════ THE WIRE ════════ */
+function telHref(p){ const d=String(p||'').replace(/[^+\d]/g,''); return d?('tel:'+d):null; }
 function currentWireVendor(){ return ME.km ? WIRE_VENDOR : (ME.vendor?ME.vendor.id:null); }
 function renderWire(){
   const host=$('panel');
@@ -1135,7 +1140,23 @@ function renderWire(){
       +(hasUnread(v.id)?'<span style="color:var(--ember)">●</span> ':'')+esc(v.name)+'</button>').join('')+'</div>';
     if(!VENDORS.length)head='<p class="sub" style="padding:12px 2px">No vendors yet — the wire hums once one’s on the rolls.</p>';
   }
+  let redphone='';
+  if(ME.km){
+    redphone='<div class="card" style="border-color:rgba(255,61,139,.35)"><div class="card-h">🚨 THE EMERGENCY LINE'
+      +'<span class="tag">shown to vendors · calls only when it burns</span></div><div class="card-b">'
+      +'<div style="display:flex;gap:8px"><input class="field" id="kmPhone" inputmode="tel" placeholder="(310) 555-0199" value="'+esc(GATE.kmPhone||'')+'" style="flex:1">'
+      +'<button class="btn-line red" id="kmPhoneSave" style="flex:none">SAVE</button></div>'
+      +'<p class="sub" style="margin-top:8px">Your number, on every vendor’s wire tab as a break-glass button. Leave it empty to hang the phone up.</p>'
+      +'<div class="msgline" id="kmPhoneMsg"></div></div></div>';
+  } else if(GATE.kmPhone&&telHref(GATE.kmPhone)){
+    redphone='<div class="card" style="border-color:rgba(255,61,139,.35)"><div class="card-b" style="display:flex;gap:12px;align-items:center">'
+      +'<div style="flex:1"><b style="letter-spacing:.08em;font-size:13px">🚨 A TRUE EMERGENCY?</b>'
+      +'<div class="sub" style="margin-top:3px">Order’s wrong and it ships in an hour, address is burning — call. Everything else rides the wire below.</div></div>'
+      +'<a class="btn-line red" style="flex:none;text-decoration:none" href="'+esc(telHref(GATE.kmPhone))+'">☎ CALL THE KEYMASTER</a>'
+      +'</div></div>';
+  }
   host.innerHTML=head
+    +redphone
     +'<div class="card"><div class="card-h">📻 THE WIRE'
     +'<span class="tag">'+(ME.km?esc(vName(WIRE_VENDOR)||'—'):'straight line to the Keymaster')+'</span></div>'
     +'<div class="card-b"><div class="msgs" id="wireMsgs"><p class="sub">Raising the mast…</p></div>'
@@ -1150,6 +1171,14 @@ function renderWire(){
     if(r.error){ toast('⚠ '+r.error.message); inp.value=body; return; }
     if(r.data&&!MSGS.some(m=>m.id===r.data.id)){ MSGS.push(r.data); paintMsgs(); }
   };
+  const kps=$('kmPhoneSave');
+  if(kps)kps.addEventListener('click',async()=>{
+    const v=($('kmPhone').value||'').trim();
+    const r=await SB.from('km_flags').upsert({id:1, km_phone:v||null, updated_at:new Date().toISOString()},{onConflict:'id'});
+    const m=$('kmPhoneMsg');
+    if(r.error){ if(m)m.textContent='> '+r.error.message+(/column|km_phone/i.test(r.error.message)?' — run the updated OPENING-DAY.sql':''); return; }
+    GATE.kmPhone=v||null; toast(v?'🚨 Emergency line posted to every vendor':'☎ Line unlisted');
+  });
   $('wireGo').addEventListener('click',send);
   $('wireIn').addEventListener('keydown',e=>{ if(e.key==='Enter')send(); });
   loadMsgs();
@@ -1625,8 +1654,8 @@ async function rejectDraft(id){
 let GATE={known:false,on:false};
 async function loadGate(){
   try{
-    const r=await SB.from('km_flags').select('armory_prices').eq('id',1).maybeSingle();
-    if(!r.error){ GATE={known:!!r.data, on:!!(r.data&&r.data.armory_prices)}; }
+    const r=await SB.from('km_flags').select('armory_prices,km_phone').eq('id',1).maybeSingle();
+    if(!r.error){ GATE={known:!!r.data, on:!!(r.data&&r.data.armory_prices), kmPhone:(r.data&&r.data.km_phone)||null}; }
     else GATE={known:false,on:false,err:r.error.message};
   }catch(e){ GATE={known:false,on:false,err:String(e&&e.message||e)}; }
 }
