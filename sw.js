@@ -14,7 +14,7 @@
      • Bumping the number below also wipes every old cache on activate, so nothing
        stale can survive.
    ──────────────────────────────────────────────────────────────────────────── */
-const CACHE = 'shadowhook-v13';  // ← bump this each time you deploy an update  (v13: v12 + no synthetic-email prefill on the ambassador application)
+const CACHE = 'shadowhook-v14';  // ← bump this each time you deploy an update  (v14: clean dockoffice address, no .html)
 
 const SHELL = [
   '.',
