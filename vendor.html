@@ -142,6 +142,8 @@ select.field{appearance:none;-webkit-appearance:none}
 .colorrow{display:flex;gap:8px;align-items:center;margin-bottom:8px}
 .colorrow .field{flex:1;padding:9px 11px}
 .colorrow input[type=color]{width:44px;height:38px;border:1px solid var(--line);border-radius:9px;background:var(--well);padding:2px;flex:none;cursor:pointer}
+.colorrow .cph{width:40px;height:38px;flex:none;border:1px dashed var(--line);border-radius:9px;background:var(--well) center/cover no-repeat;color:var(--steel);font-size:15px;cursor:pointer}
+.colorrow .cph.set{border-style:solid;border-color:rgba(238,180,107,.5)}
 .df-photo{display:flex;gap:12px;align-items:center}
 .df-photo img{width:76px;height:76px;border-radius:11px;object-fit:cover;border:1px solid var(--line);background:var(--well)}
 .wk-price{display:flex;gap:8px;align-items:center;margin-top:9px}
@@ -210,7 +212,7 @@ select.field{appearance:none;-webkit-appearance:none}
     <div class="crest">⚓</div>
     <div class="wordmark">THE ORDER OF THE SHADOW HOOK</div>
     <div class="gate-title">THE DOCK OFFICE</div>
-    <div class="gate-sub">Vendor gate · orders, shipping &amp; the ledger · v7 — the gate switch</div>
+    <div class="gate-sub">Vendor gate · orders, shipping &amp; the ledger · v8 — colorway shots</div>
     <div class="card" style="margin-top:26px;text-align:left"><div class="card-b">
       <div class="lbl" style="margin-top:2px">EMAIL</div>
       <input class="field" id="gEmail" type="email" autocomplete="username" placeholder="you@yourshop.com">
@@ -529,7 +531,7 @@ let STORE=[];
 async function loadStore(){
   try{
     const r=await SB.from('products')
-      .select('id,name,brand,cat,blurb,usd,cost,status,vendor_id,sort,image,colors,sizes,specs,size_label,color_label,deal')
+      .select('id,name,brand,cat,blurb,usd,cost,status,vendor_id,sort,image,images,colors,sizes,specs,size_label,color_label,deal')
       .order('sort');
     if(!r.error) STORE=(r.data||[]).filter(p=>p.status!=='retired');
   }catch(e){}
@@ -589,7 +591,7 @@ async function loadLedger(){
 }
 async function loadProducts(){
   try{
-    let q = SB.from('products').select('id,name,brand,cat,blurb,usd,cost,status,vendor_id,sort,image,colors,sizes,specs,size_label,color_label');
+    let q = SB.from('products').select('id,name,brand,cat,blurb,usd,cost,status,vendor_id,sort,image,images,colors,sizes,specs,size_label,color_label');
     if(!ME.km && ME.vendor) q = q.eq('vendor_id', ME.vendor.id);
     const r = await q.order('sort');
     if(!r.error) PRODUCTS=r.data||[];
@@ -1121,12 +1123,28 @@ function shrinkPhoto(file){ return new Promise(res=>{
 }); }
 
 /* ---- the shared gear form (vendor pitch · km add · km edit) ---- */
-function dfColorRow(n,hex){
+function dfColorRow(n,hex,imgUrl){
   const d=document.createElement('div'); d.className='colorrow';
   d.innerHTML='<input class="field" maxlength="40" placeholder="Void Black" value="'+esc(n||'')+'">'
     +'<input type="color" value="'+esc(hex||'#14171a')+'">'
+    +'<button class="cph" type="button" title="Photo for THIS colorway — tap to set or replace">📷</button>'
     +'<button class="btn-ghost" type="button" style="padding:4px 8px" aria-label="remove">✕</button>';
-  d.querySelector('button').addEventListener('click',()=>{ d.remove(); if(typeof schedulePv==='function')schedulePv(); });
+  const fi=document.createElement('input'); fi.type='file'; fi.accept='image/*'; fi.hidden=true; d.appendChild(fi);
+  const ph=d.querySelector('.cph');
+  d._photo=null; d._existing=imgUrl||null;
+  function paintPh(){ const u=(d._photo&&d._photo.url)||d._existing;
+    if(u){ ph.style.backgroundImage='url("'+u.replace(/"/g,'')+'")'; ph.textContent=''; ph.classList.add('set'); }
+    else { ph.style.backgroundImage=''; ph.textContent='📷'; ph.classList.remove('set'); } }
+  paintPh();
+  ph.addEventListener('click',()=>fi.click());
+  fi.addEventListener('change',async(e)=>{
+    const f=e.target.files&&e.target.files[0]; if(!f)return;
+    const b=await shrinkPhoto(f); if(!b){ toast('⚠ couldn’t read that image'); return; }
+    try{ if(d._photo&&d._photo.url)URL.revokeObjectURL(d._photo.url); }catch(x){}
+    d._photo={blob:b,url:URL.createObjectURL(b)};
+    paintPh(); if(typeof schedulePv==='function')schedulePv();
+  });
+  d.querySelector('[aria-label=remove]').addEventListener('click',()=>{ d.remove(); if(typeof schedulePv==='function')schedulePv(); });
   return d;
 }
 function openDraftSheet(mode, ref){
@@ -1162,7 +1180,8 @@ function openDraftSheet(mode, ref){
   $('dfColorLabel').value = src&&src.color_label?src.color_label:'Color';
   $('dfColors').innerHTML='';
   const cols = src&&Array.isArray(src.colors)?src.colors:[];
-  (cols.length?cols:[{n:'',hex:'#14171a'}]).forEach(c=>$('dfColors').appendChild(dfColorRow(c&&c.n,c&&c.hex)));
+  const cimgs = src&&Array.isArray(src.images)?src.images:[];
+  (cols.length?cols:[{n:'',hex:'#14171a'}]).forEach((c,i)=>$('dfColors').appendChild(dfColorRow(c&&c.n,c&&c.hex,cimgs[i]||null)));
   $('dfCost').value   = src&&(mode==='kmedit'?src.cost:src.cost_asked)!=null?(mode==='kmedit'?src.cost:src.cost_asked):'';
   $('dfRetail').value = src&&(mode==='kmedit'?src.usd:src.usd_suggested)!=null?(mode==='kmedit'?src.usd:src.usd_suggested):'';
   if(km){ $('dfStatus').value = (src&&src.status)||'soon';
@@ -1231,7 +1250,12 @@ function pvData(){
     color_label:($('dfColorLabel').value||'').trim()||'Color',
     size_label:($('dfSizeLabel').value||'').trim()||'Size',
     retail:isFinite(retail)&&retail>0?retail:null,
-    image: pvPhotoURL||dfExistingImage||null };
+    image: pvPhotoURL||dfExistingImage||null,
+    images: (function(){ const a=[]; let any=false;
+      $('dfColors').querySelectorAll('.colorrow').forEach(r=>{
+        if(!(r.querySelector('input.field').value||'').trim())return;
+        const u=(r._photo&&r._photo.url)||r._existing||null; a.push(u); if(u)any=true; });
+      return any?a:null; })() };
 }
 function pvMoney(v){ return '$'+(Math.round(v*100)/100).toFixed(2).replace(/\.00$/,''); }
 function renderPreview(){
@@ -1239,13 +1263,14 @@ function renderPreview(){
   const d=pvData();
   if(pvState.ci>=d.colors.length)pvState.ci=0;
   if(pvState.size&&d.sizes.indexOf(pvState.size)<0)pvState.size=null;
-  const shot=d.image||pvArt(d,pvState.ci);
+  const shot=(d.images&&d.images[pvState.ci])||d.image||pvArt(d,pvState.ci);
   const priceHtml=d.retail!=null?'<div class="pv-price">'+pvMoney(d.retail)+'</div>'
                                :'<div class="pv-price soon">Coming soon</div>';
   if(pvState.mode==='card'){
+    const shot0=(d.images&&d.images[0])||d.image||pvArt(d,0);
     const dots=d.colors.slice(0,4).map(c=>'<i style="background:'+pvHex(c.hex)+'"></i>').join('')
       +(d.colors.length>4?'<span>+'+(d.colors.length-4)+'</span>':'');
-    box.innerHTML='<div class="pv-card"><div class="pv-shot"><img alt="" src="'+esc(shot)+'"><span class="pv-badge">SOON</span></div>'
+    box.innerHTML='<div class="pv-card"><div class="pv-shot"><img alt="" src="'+esc(shot0)+'"><span class="pv-badge">SOON</span></div>'
       +'<div class="pv-brand">THE ORDER</div><div class="pv-name">'+esc(d.name)+'</div>'
       +priceHtml
       +(d.colors.length&&d.colors[0].n?'<div class="pv-sw">'+dots+'</div>':'<div style="height:12px"></div>')
@@ -1294,10 +1319,11 @@ function dfCollect(){
   if(name.length<2){ m.textContent='> give the gear a name'; return null; }
   const sizes=[]; $('dfSizes').querySelectorAll('input[data-sz]').forEach(i=>{ if(i.checked)sizes.push(i.dataset.sz); });
   ($('dfSizeX').value||'').split(',').map(s=>s.trim()).filter(Boolean).forEach(s=>{ if(sizes.indexOf(s)<0)sizes.push(s); });
-  const colors=[]; $('dfColors').querySelectorAll('.colorrow').forEach(r=>{
+  const colors=[], slots=[];
+  $('dfColors').querySelectorAll('.colorrow').forEach(r=>{
     const n=(r.querySelector('input.field').value||'').trim();
     const hex=r.querySelector('input[type=color]').value||'#14171a';
-    if(n)colors.push({n:n,hex:hex});
+    if(n){ colors.push({n:n,hex:hex}); slots.push({blob:r._photo&&r._photo.blob, existing:r._existing||null}); }
   });
   const specs=($('dfSpecs').value||'').split('\n').map(l=>{
     const i=l.indexOf(':'); if(i<1)return null;
@@ -1308,9 +1334,24 @@ function dfCollect(){
   const lbl=(id,dflt)=>{ const v=($(id).value||'').trim(); return (v&&v.toLowerCase()!==dflt)?v:null; };
   return { name:name, cat:$('dfCat').value||'gear', blurb:($('dfBlurb').value||'').trim()||null,
            sizes:sizes, colors:colors, specs:specs,
+           slots:slots,
            size_label:lbl('dfSizeLabel','size'), color_label:lbl('dfColorLabel','color'),
            cost:num($('dfCost').value), retail:num($('dfRetail').value),
            note:($('dfNote').value||'').trim()||null };
+}
+async function dfUploadSlots(slots){
+  if(!slots||!slots.length)return null;
+  const out=[]; let any=false;
+  for(const sl of slots){
+    if(sl.blob){
+      const path='c-'+Date.now()+'-'+Math.random().toString(36).slice(2,8)+'.jpg';
+      const up=await SB.storage.from('gear').upload(path, sl.blob, {contentType:'image/jpeg'});
+      if(up.error){ $('dfMsg').textContent='> colorway photo failed: '+up.error.message; throw new Error('upload'); }
+      const pu=SB.storage.from('gear').getPublicUrl(path);
+      out.push((pu&&pu.data&&pu.data.publicUrl)||null); any=true;
+    } else { out.push(sl.existing||null); if(sl.existing)any=true; }
+  }
+  return any?out:null;
 }
 async function dfUploadPhoto(){
   if(!dfPhotoBlob) return dfExistingImage;   // no new shot → keep what's there (or null)
@@ -1325,9 +1366,10 @@ $('dfGo').addEventListener('click', async()=>{
   const btn=$('dfGo'); btn.disabled=true;
   try{
     const image=await dfUploadPhoto();
+    const images=await dfUploadSlots(f.slots);
     if(draftMode==='submit'||draftMode==='editmine'){
       const row={ vendor_id:ME.vendor.id, submitted_by:ME.uid, name:f.name, cat:f.cat, blurb:f.blurb,
-        specs:f.specs, sizes:f.sizes, colors:f.colors, image:image,
+        specs:f.specs, sizes:f.sizes, colors:f.colors, image:image, images:images,
         size_label:f.size_label, color_label:f.color_label,
         cost_asked:f.cost, usd_suggested:f.retail, note:f.note, status:'pending' };
       const r = draftMode==='editmine'
@@ -1340,7 +1382,7 @@ $('dfGo').addEventListener('click', async()=>{
     } else if(draftMode==='kmadd'){
       if($('dfStatus').value==='live'&&!(f.retail>0)){ $('dfMsg').textContent='> a LIVE piece needs a retail price'; btn.disabled=false; return; }
       const row={ id:slugify(f.name), name:f.name, brand:'The Order', cat:f.cat, blurb:f.blurb,
-        usd:f.retail, cost:f.cost, colors:f.colors, sizes:f.sizes, specs:f.specs, image:image,
+        usd:f.retail, cost:f.cost, colors:f.colors, sizes:f.sizes, specs:f.specs, image:image, images:images,
         size_label:f.size_label, color_label:f.color_label,
         status:$('dfStatus').value, sort:900, vendor_id:$('dfVendor').value||null };
       const r=await SB.from('products').insert(row);
@@ -1351,7 +1393,7 @@ $('dfGo').addEventListener('click', async()=>{
     } else if(draftMode==='kmedit'){
       if($('dfStatus').value==='live'&&!(f.retail>0)){ $('dfMsg').textContent='> a LIVE piece needs a retail price'; btn.disabled=false; return; }
       const row={ name:f.name, cat:f.cat, blurb:f.blurb, usd:f.retail, cost:f.cost,
-        colors:f.colors, sizes:f.sizes, specs:f.specs, image:image,
+        colors:f.colors, sizes:f.sizes, specs:f.specs, image:image, images:images,
         size_label:f.size_label, color_label:f.color_label,
         status:$('dfStatus').value, vendor_id:$('dfVendor').value||null };
       const r=await SB.from('products').update(row).eq('id',draftEditId);
@@ -1438,7 +1480,7 @@ async function approveDraft(id){
     usd:isFinite(retail)&&retail>0?Math.round(retail*100)/100:null,
     cost:isFinite(cut)&&cut>=0?Math.round(cut*100)/100:null,
     colors:Array.isArray(d.colors)?d.colors:[], sizes:Array.isArray(d.sizes)?d.sizes:[],
-    specs:Array.isArray(d.specs)?d.specs:[], image:d.image||null,
+    specs:Array.isArray(d.specs)?d.specs:[], image:d.image||null, images:Array.isArray(d.images)?d.images:null,
     size_label:d.size_label||null, color_label:d.color_label||null,
     status:status, sort:900, vendor_id:d.vendor_id };
   const r=await SB.from('products').insert(row);
@@ -1492,7 +1534,8 @@ function floorNorm(p){
     specs:Array.isArray(p.specs)?p.specs:[],
     color_label:p.color_label||'Color', size_label:p.size_label||'Size',
     retail:(p.usd!=null&&isFinite(+p.usd)&&+p.usd>0)?+p.usd:null,
-    image:p.image||null, status:p.status||'soon', deal:p.deal||null };
+    image:p.image||null, images:Array.isArray(p.images)?p.images:null,
+    status:p.status||'soon', deal:p.deal||null };
 }
 function renderFloor(){
   const host=$('panel');
@@ -1511,7 +1554,7 @@ function renderFloor(){
     +'<div class="chips">'+FLOOR_CATS.map(([k,l])=>'<button data-fc="'+k+'"'+(k===FLOORCAT?' class="on"':'')+'>'+esc(l)+'</button>').join('')+'</div>'
     +(list.length?'<div class="floor-grid">'+list.map(p=>{
         const d=floorNorm(p);
-        const shot=d.image||pvArt(d,0);
+        const shot=(d.images&&d.images[0])||d.image||pvArt(d,0);
         const mine=(!ME.km&&ME.vendor&&p.vendor_id===ME.vendor.id);
         const dots=d.colors.slice(0,4).map(c=>'<i style="background:'+pvHex(c&&c.hex)+'"></i>').join('')
           +(d.colors.length>4?'<span>+'+(d.colors.length-4)+'</span>':'');
@@ -1537,7 +1580,7 @@ function renderFloorPDP(host){
   if(floorCi>=d.colors.length)floorCi=0;
   if(floorSize&&d.sizes.indexOf(floorSize)<0)floorSize=null;
   const c=d.colors[floorCi]||{n:'',hex:'#14171a'};
-  const shot=d.image||pvArt(d,floorCi);
+  const shot=(d.images&&d.images[floorCi])||d.image||pvArt(d,floorCi);
   const buyable=d.status==='live'&&d.retail!=null;
   host.innerHTML='<button class="btn-ghost" id="floorBack" style="padding:6px 2px 12px">‹ Back to the floor</button>'
     +'<div class="floor-pdp-wrap"><div class="pv-pdp" style="max-width:none">'
