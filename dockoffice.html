@@ -310,7 +310,7 @@ select.field{appearance:none;-webkit-appearance:none}
     <div class="crest">⚓</div>
     <div class="wordmark">THE ORDER OF THE SHADOW HOOK</div>
     <div class="gate-title">THE DOCK OFFICE</div>
-    <div class="gate-sub">Vendor gate · orders, shipping &amp; the ledger · v16 — the red phone</div>
+    <div class="gate-sub">Vendor gate · orders, shipping &amp; the ledger · v17 — the ambassadors</div>
     <div class="card" style="margin-top:26px;text-align:left"><div class="card-b">
       <div class="lbl" style="margin-top:2px">EMAIL</div>
       <input class="field" id="gEmail" type="email" autocomplete="username" placeholder="you@yourshop.com">
@@ -378,6 +378,19 @@ select.field{appearance:none;-webkit-appearance:none}
   <div class="msgline" id="vsMsg"></div>
   <button class="btn" id="vsGo" style="margin-top:10px">SAVE THE VENDOR</button>
   <button class="btn-ghost" style="width:100%;margin-top:8px" data-close="vendorSheet">Never mind</button>
+</div></div>
+
+<div class="sheet" id="ambSheet"><div class="sheet-card">
+  <div class="sheet-t" id="abTitle">🎖 CROWN AN AMBASSADOR</div>
+  <div class="lbl">NAME — HOW THE BOOKS KNOW THEM</div><input class="field" id="abName" placeholder="CASUAL KING">
+  <div class="lbl">EMAIL</div><input class="field" id="abEmail" type="email">
+  <div class="lbl">PHONE</div><input class="field" id="abPhone" inputmode="tel">
+  <div class="lbl">COMMISSION — % OF THE HOUSE MARGIN ON THEIR RECRUITS’ SALES</div>
+  <input class="field mono" id="abRate" inputmode="decimal" value="10">
+  <p class="sub" style="margin-top:6px">Snapshotted onto every sale at the till — changing it later only touches new sales. Commission never exceeds what the house made.</p>
+  <div class="msgline" id="abMsg"></div>
+  <button class="btn" id="abGo" style="margin-top:10px">SET THE CROWN</button>
+  <button class="btn-ghost" style="width:100%;margin-top:8px" data-close="ambSheet">Never mind</button>
 </div></div>
 
 <div class="sheet" id="inviteSheet"><div class="sheet-card">
@@ -547,9 +560,11 @@ const PAY_PILL = { paid:'<span class="pill grn">PAID</span>', pending:'<span cla
   cancelled:'<span class="pill red">CANCELLED</span>' };
 
 /* ---- state ---- */
-const ME = { uid:null, email:'', km:false, vendor:null };
+const ME = { uid:null, email:'', km:false, vendor:null, amb:null };
 let TAB='orders', FILTER='todo';
 let ORDERS=[], VENDORS=[], BALANCES=[], PAYOUTS=[], PRODUCTS=[], MEMBERS=[], MSGS=[], LASTMSG={}, DRAFTS=[];
+let AMBS=[], AMB_MEMBERS=[], AMB_PAYOUTS=[], AMB_LINES=[];
+let WIRE_KIND='v', inviteKind='vendor', payoutKind='v';
 let WIRE_VENDOR=null;           /* which vendor's wire the Keymaster has open */
 let editVendorId=null, assignVendorId=null, payoutVendorId=null, shipTarget=null;
 
@@ -571,14 +586,25 @@ async function route(){
         ME.vendor = v.data || null;
       }
     }catch(e){}
-    if(!ME.vendor){ show('nopass'); return; }
+    if(!ME.vendor){
+      try{
+        const am = await SB.from('ambassador_members').select('ambassador_id').eq('user_id', ME.uid).maybeSingle();
+        if(am.data && am.data.ambassador_id){
+          const a = await SB.from('ambassadors').select('*').eq('id', am.data.ambassador_id).maybeSingle();
+          ME.amb = a.data || null;
+        }
+      }catch(e){}
+    }
+    if(!ME.vendor && !ME.amb){ show('nopass'); return; }
   }
   show('app');
-  $('tbWho').textContent = ME.km ? ('☠ the Keymaster · '+ME.email) : (ME.vendor.name+' · '+ME.email);
-  if(ME.km) $('stage').classList.add('wide');
+  $('tbWho').textContent = ME.km ? ('☠ the Keymaster · '+ME.email)
+    : ME.amb ? ('🎖 '+ME.amb.name+' · '+ME.email)
+    : (ME.vendor.name+' · '+ME.email);
+  if(ME.km||ME.amb) $('stage').classList.add('wide');
   buildTabs();
   await refreshAll();
-  openTab('orders');
+  openTab(ME.amb&&!ME.km ? 'myvend' : 'orders');
   subscribe();
 }
 function show(which){ ['gate','nopass','app'].forEach(id=>{ $(id).hidden = (id!==which); if(id===which)$(id).removeAttribute('hidden'); }); }
@@ -612,6 +638,8 @@ function buildTabs(){
   const t=$('tabs');
   const tabs = ME.km
     ? [['orders','⚓ ORDERS'],['vendors','🤝 VENDORS'],['work','🛠 WORKBENCH'],['ledger','💰 LEDGER'],['wire','📻 THE WIRE'],['floor','🏬 THE FLOOR']]
+    : ME.amb
+    ? [['myvend','🤝 MY VENDORS'],['ledger','💰 MY LEDGER'],['wire','📻 THE WIRE'],['floor','🏬 THE FLOOR']]
     : [['orders','⚓ ORDERS'],['ledger','💰 MY LEDGER'],['wire','📻 THE WIRE'],['gear','🛡 MY GEAR'],['floor','🏬 THE FLOOR']];
   t.innerHTML = tabs.map(([k,l])=>'<button data-tab="'+k+'" id="tab-'+k+'">'+l+'</button>').join('');
   t.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>openTab(b.dataset.tab)));
@@ -621,6 +649,7 @@ function openTab(k){
   try{ $('panel').dataset.tab=k; }catch(e){}
   document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on', b.dataset.tab===k));
   if(k==='orders') renderOrders();
+  else if(k==='myvend') renderMyVend();
   else if(k==='vendors') renderVendors();
   else if(k==='work') renderWork();
   else if(k==='ledger') renderLedger();
@@ -631,7 +660,7 @@ function openTab(k){
 
 /* ════════ DATA ════════ */
 async function refreshAll(){
-  await Promise.all([loadOrders(), loadLedger(), loadProducts(), loadStore(), loadGate(), ME.km?loadVendors():Promise.resolve(), loadLastMsgs(), loadDrafts()]);
+  await Promise.all([loadOrders(), loadLedger(), loadProducts(), loadStore(), loadGate(), (ME.km||ME.amb)?loadVendors():Promise.resolve(), loadLastMsgs(), loadDrafts(), loadAmbStuff()]);
 }
 let STORE=[];
 async function loadStore(){
@@ -655,7 +684,36 @@ function paintWorkDot(){
   if(un&&!d){ d=document.createElement('span'); d.className='dot'; t.appendChild(d); }
   if(!un&&d) d.remove();
 }
+async function loadAmbStuff(){
+  try{
+    if(ME.km){
+      const [a,m,p,r]=await Promise.all([
+        SB.from('ambassadors').select('*').order('created_at'),
+        SB.from('ambassador_members').select('*'),
+        SB.from('amb_payouts').select('*').order('created_at',{ascending:false}).limit(200),
+        SB.rpc('amb_ledger')]);
+      if(!a.error)AMBS=a.data||[]; if(!m.error)AMB_MEMBERS=m.data||[];
+      if(!p.error)AMB_PAYOUTS=p.data||[]; if(!r.error)AMB_LINES=r.data||[];
+    } else if(ME.amb){
+      const [p,r]=await Promise.all([
+        SB.from('amb_payouts').select('*').order('created_at',{ascending:false}).limit(200),
+        SB.rpc('amb_ledger')]);
+      if(!p.error)AMB_PAYOUTS=p.data||[]; if(!r.error)AMB_LINES=r.data||[];
+    }
+  }catch(e){}
+}
+function ambName(id){ const a=AMBS.find(x=>x.id===id); return a?a.name:(ME.amb&&ME.amb.id===id?ME.amb.name:'—'); }
+function ambBook(aid){
+  const mine=AMB_LINES.filter(l=>l.amb===aid);
+  const earned=mine.filter(l=>l.order_status==='paid'&&(l.line_status==='shipped'||l.line_status==='delivered'))
+                   .reduce((s,l)=>s+Number(l.commission||0),0);
+  const pending=mine.filter(l=>l.order_status==='paid'&&(l.line_status==='new'||l.line_status==='working'))
+                    .reduce((s,l)=>s+Number(l.commission||0),0);
+  const paid=AMB_PAYOUTS.filter(p=>p.ambassador_id===aid).reduce((s,p)=>s+Number(p.amount_usd||0),0);
+  return {earned:earned, pending:pending, paid:paid, owed:earned-paid, lines:mine};
+}
 async function loadOrders(){
+  if(ME.amb&&!ME.km){ ORDERS=[]; return; }
   try{
     if(ME.km){
       const r = await SB.from('orders').select('*, order_items(*)').order('created_at',{ascending:false}).limit(250);
@@ -705,28 +763,34 @@ async function loadProducts(){
 }
 async function loadLastMsgs(){
   try{
-    const r = await SB.from('vendor_msgs').select('vendor_id,from_km,created_at').order('created_at',{ascending:false}).limit(250);
     LASTMSG={};
-    (r.data||[]).forEach(m=>{ const k=m.vendor_id;
+    const note=(kind,id,fromKm,at)=>{ const k=kind+':'+id;
       if(!LASTMSG[k]) LASTMSG[k]={};
-      const side = m.from_km?'km':'vendor';
-      if(!LASTMSG[k][side]) LASTMSG[k][side]=m.created_at;
-    });
+      const side=fromKm?'km':'them';
+      if(!LASTMSG[k][side]) LASTMSG[k][side]=at; };
+    const r = await SB.from('vendor_msgs').select('vendor_id,from_km,created_at').order('created_at',{ascending:false}).limit(250);
+    (r.data||[]).forEach(m=>note('v',m.vendor_id,m.from_km,m.created_at));
+    try{
+      const r2 = await SB.from('amb_msgs').select('ambassador_id,from_km,created_at').order('created_at',{ascending:false}).limit(250);
+      (r2.data||[]).forEach(m=>note('a',m.ambassador_id,m.from_km,m.created_at));
+    }catch(e){}
     paintUnreadDot();
   }catch(e){}
 }
-function seenKey(vid){ return 'dock_seen_'+(ME.km?'km_':'v_')+vid; }
-function hasUnread(vid){
-  const lm=LASTMSG[vid]; if(!lm)return false;
-  const other = ME.km ? lm.vendor : lm.km; if(!other)return false;
-  let seen=null; try{ seen=localStorage.getItem(seenKey(vid)); }catch(e){}
+function seenKey(kind,id){ return 'dock_seen_'+(ME.km?'km_':'x_')+kind+'_'+id; }
+function hasUnread(kind,id){
+  const lm=LASTMSG[kind+':'+id]; if(!lm)return false;
+  const other = ME.km ? lm.them : lm.km; if(!other)return false;
+  let seen=null; try{ seen=localStorage.getItem(seenKey(kind,id)); }catch(e){}
   return !seen || new Date(other) > new Date(seen);
 }
-function markSeen(vid){ try{ localStorage.setItem(seenKey(vid), new Date().toISOString()); }catch(e){} paintUnreadDot(); }
+function markSeen(kind,id){ try{ localStorage.setItem(seenKey(kind,id), new Date().toISOString()); }catch(e){} paintUnreadDot(); }
 function paintUnreadDot(){
   const t=$('tab-wire'); if(!t)return;
-  const vids = ME.km ? Object.keys(LASTMSG) : (ME.vendor?[ME.vendor.id]:[]);
-  const un = vids.some(hasUnread);
+  const keys = ME.km ? Object.keys(LASTMSG)
+    : ME.amb ? ['a:'+ME.amb.id]
+    : (ME.vendor?['v:'+ME.vendor.id]:[]);
+  const un = keys.some(k=>{ const i=k.indexOf(':'); return hasUnread(k.slice(0,i),k.slice(i+1)); });
   let d=t.querySelector('.dot');
   if(un&&!d){ d=document.createElement('span'); d.className='dot'; t.appendChild(d); }
   if(!un&&d) d.remove();
@@ -894,6 +958,26 @@ function printSlip(orderId){
 /* ════════ LEDGER ════════ */
 function renderLedger(){
   const host=$('panel');
+  if(ME.amb&&!ME.km){
+    const b=ambBook(ME.amb.id);
+    host.innerHTML =
+      '<div class="tiles">'
+      +'<div class="tile"><div class="v">'+money(b.owed)+'</div><div class="k">Owed now</div></div>'
+      +'<div class="tile dim"><div class="v">'+money(b.pending)+'</div><div class="k">In the pipe</div></div>'
+      +'<div class="tile grn"><div class="v">'+money(b.paid)+'</div><div class="k">Paid to date</div></div>'
+      +'</div>'
+      +'<p class="sub" style="margin:0 2px 14px">You book <b style="color:var(--copper-hi)">'+(Number(ME.amb.rate)||0)+'%</b> of the house margin on your recruits’ sales — locked in per sale at the till. A line lands in <b style="color:var(--bone)">owed</b> when the vendor ships it.</p>'
+      +'<div class="card"><div class="card-h">📜 THE BOOK<span class="tag">every commissioned line · no buyer details, by design</span></div><div class="card-b">'
+      +(b.lines.length?b.lines.map(l=>'<div class="vrow"><span class="n"><b class="mono" style="color:var(--copper-hi)">'+esc(l.order_code)+'</b>'
+        +'<i>'+esc(l.vendor_name)+' · '+esc(l.item_name)+' ×'+l.qty+' · margin '+money(l.margin)
+        +(l.order_status==='refunded'?' · <span style="color:#e8967a">REFUNDED</span>':'')+'</i></span>'
+        +'<span class="m" style="color:var(--copper-hi)">'+money(l.commission)+'</span>'
+        +'<span class="m">'+(STATUS_PILL[l.line_status]||esc(l.line_status))+'</span></div>').join('')
+        :'<p class="sub">Nothing booked yet — it starts the first time one of your recruits sells.</p>')
+      +'</div></div>'
+      +ambPayoutHistory(ME.amb.id);
+    return;
+  }
   if(ME.km){
     const rows=BALANCES.slice().sort((a,b)=>Number(b.owed||0)-Number(a.owed||0));
     host.innerHTML =
@@ -904,8 +988,15 @@ function renderLedger(){
         +'<button class="btn-line gold" data-settle="'+esc(b.vendor_id)+'">SETTLE</button></div>').join('')
         :'<p class="sub">No vendors on the rolls yet.</p>')
       +'</div></div>'
+      +(AMBS.length?'<div class="card"><div class="card-h">🎖 AMBASSADOR COMMISSIONS<span class="tag">% of house margin · settle from here or the vendors tab</span></div><div class="card-b">'
+        +AMBS.map(a=>{ const b2=ambBook(a.id);
+          return '<div class="vrow"><span class="n"><b>🎖 '+esc(a.name)+'</b><i>'+(Number(a.rate)||0)+'% · pipe '+money(b2.pending)+' · paid '+money(b2.paid)+'</i></span>'
+            +'<span class="m" style="color:'+(b2.owed>0?'var(--copper-hi)':'var(--steel)')+'">'+money(b2.owed)+'</span>'
+            +'<button class="btn-line gold" data-asettle="'+esc(a.id)+'">SETTLE</button></div>'; }).join('')
+        +'</div></div>':'')
       +payoutHistory();
     host.querySelectorAll('[data-settle]').forEach(b=>b.addEventListener('click',()=>openPayout(b.dataset.settle)));
+    host.querySelectorAll('[data-asettle]').forEach(b=>b.addEventListener('click',()=>openAmbPayout(b.dataset.asettle)));
   }else{
     const b=BALANCES[0]||{owed:0,pending:0,paid:0};
     host.innerHTML =
@@ -918,6 +1009,15 @@ function renderLedger(){
       +payoutHistory();
   }
 }
+function ambPayoutHistory(aid){
+  const rows=AMB_PAYOUTS.filter(p=>p.ambassador_id===aid);
+  if(!rows.length)return '<div class="card"><div class="card-h">📜 PAYOUT HISTORY</div><div class="card-b"><p class="sub">Nothing settled yet.</p></div></div>';
+  return '<div class="card"><div class="card-h">📜 PAYOUT HISTORY</div><div class="card-b">'
+    +rows.map(p=>'<div class="vrow"><span class="n"><b>'+money(p.amount_usd)+'</b>'
+      +'<i>'+esc(p.method||'')+(p.ref?' · '+esc(p.ref):'')+(p.note?' · '+esc(p.note):'')+'</i></span>'
+      +'<span class="m" style="color:var(--steel)">'+day(p.created_at)+'</span></div>').join('')
+    +'</div></div>';
+}
 function payoutHistory(){
   if(!PAYOUTS.length) return '<div class="card"><div class="card-h">📜 PAYOUT HISTORY</div><div class="card-b"><p class="sub">Nothing settled yet.</p></div></div>';
   return '<div class="card"><div class="card-h">📜 PAYOUT HISTORY</div><div class="card-b">'
@@ -927,21 +1027,26 @@ function payoutHistory(){
     +'</div></div>';
 }
 function openPayout(vid){
-  payoutVendorId=vid;
+  payoutKind='v'; payoutVendorId=vid;
   const b=BALANCES.find(x=>x.vendor_id===vid);
   $('poSub').textContent=vName(vid)+' — owed '+money(b?b.owed:0);
   $('poAmt').value=b&&Number(b.owed)>0?Number(b.owed).toFixed(2):'';
   $('poRef').value=''; $('poNote').value=''; $('poMsg').textContent='';
   sheet('payoutSheet');
 }
+$('abGo').addEventListener('click', saveAmb);
 $('poGo').addEventListener('click', async()=>{
   const amt=parseFloat($('poAmt').value);
   if(!(amt>0)){ $('poMsg').textContent='> a real amount'; return; }
-  const r=await SB.from('vendor_payouts').insert({vendor_id:payoutVendorId, amount_usd:Math.round(amt*100)/100,
-    method:$('poMethod').value, ref:($('poRef').value||'').trim()||null, note:($('poNote').value||'').trim()||null, created_by:ME.uid});
+  const r = payoutKind==='amb'
+    ? await SB.from('amb_payouts').insert({ambassador_id:payoutVendorId, amount_usd:Math.round(amt*100)/100,
+        method:$('poMethod').value, ref:($('poRef').value||'').trim()||null, note:($('poNote').value||'').trim()||null, created_by:ME.uid})
+    : await SB.from('vendor_payouts').insert({vendor_id:payoutVendorId, amount_usd:Math.round(amt*100)/100,
+        method:$('poMethod').value, ref:($('poRef').value||'').trim()||null, note:($('poNote').value||'').trim()||null, created_by:ME.uid});
   if(r.error){ $('poMsg').textContent='> '+r.error.message; return; }
   sheet('payoutSheet',false); toast('💰 Recorded — the ledger squares');
-  await loadLedger(); if(TAB==='ledger')renderLedger();
+  await Promise.all([loadLedger(), loadAmbStuff()]);
+  if(TAB==='ledger')renderLedger(); if(TAB==='vendors')renderVendors();
 });
 
 /* ════════ MY GEAR (vendor) ════════ */
@@ -988,7 +1093,33 @@ function renderVendors(){
   host.innerHTML = '<button class="btn" id="vAdd" style="margin:2px 0 14px">🤝 ADD A VENDOR</button>'
     +(VENDORS.length?'<div class="cardgrid">'+VENDORS.map(vendorCard).join('')+'</div>'
       :'<p class="sub" style="text-align:center;padding:14px">No vendors on the rolls yet. Add the first, hand gear to their bench, mint their pass.</p>');
+  host.insertAdjacentHTML('beforeend', kmAmbSection());
   $('vAdd').addEventListener('click',()=>openVendorSheet(null));
+  const aAdd=$('ambAdd'); if(aAdd)aAdd.addEventListener('click',()=>openAmbSheet(null));
+  host.querySelectorAll('[data-aedit]').forEach(b=>b.addEventListener('click',()=>openAmbSheet(b.dataset.aedit)));
+  host.querySelectorAll('[data-apass]').forEach(b=>b.addEventListener('click',()=>openInvite(b.dataset.apass,'amb')));
+  host.querySelectorAll('[data-arate]').forEach(b=>b.addEventListener('click',async()=>{
+    const a=AMBS.find(x=>x.id===b.dataset.arate); if(!a)return;
+    const v=prompt('Commission — % of the house margin on their recruits’ sales.\nApplies to NEW sales only; history keeps its snapshot.', a.rate);
+    if(v===null)return; const n=parseFloat(v);
+    if(!(n>=0&&n<=100)){ toast('⚠ 0–100'); return; }
+    const r=await SB.from('ambassadors').update({rate:Math.round(n*100)/100}).eq('id',a.id);
+    if(r.error){toast('⚠ '+r.error.message);return;}
+    toast('🎖 Rate set — new sales book at '+n+'%');
+    await loadAmbStuff(); renderVendors(); }));
+  host.querySelectorAll('[data-awire]').forEach(b=>b.addEventListener('click',()=>{WIRE_KIND='a';WIRE_VENDOR=b.dataset.awire;openTab('wire');}));
+  host.querySelectorAll('[data-aactive]').forEach(b=>b.addEventListener('click',async()=>{
+    const a=AMBS.find(x=>x.id===b.dataset.aactive); if(!a)return;
+    if(a.active&&!confirm('Retire '+a.name+'? Their recruits stay on the rolls, but NEW sales stop booking them commission.'))return;
+    const r=await SB.from('ambassadors').update({active:!a.active}).eq('id',a.id);
+    if(r.error){toast('⚠ '+r.error.message);return;}
+    await loadAmbStuff(); renderVendors(); }));
+  host.querySelectorAll('[data-asettle]').forEach(b=>b.addEventListener('click',()=>openAmbPayout(b.dataset.asettle)));
+  host.querySelectorAll('[data-amrevoke]').forEach(b=>b.addEventListener('click',async()=>{
+    if(!confirm('Pull this crown’s login?'))return;
+    const r=await SB.from('ambassador_members').delete().eq('user_id',b.dataset.amrevoke);
+    if(r.error){toast('⚠ '+r.error.message);return;}
+    toast('Login pulled'); await loadAmbStuff(); renderVendors(); }));
   host.querySelectorAll('[data-vedit]').forEach(b=>b.addEventListener('click',()=>openVendorSheet(b.dataset.vedit)));
   host.querySelectorAll('[data-vgear]').forEach(b=>b.addEventListener('click',()=>openAssign(b.dataset.vgear)));
   host.querySelectorAll('[data-vpass]').forEach(b=>b.addEventListener('click',()=>openInvite(b.dataset.vpass)));
@@ -1013,7 +1144,8 @@ function vendorCard(v){
     +'<span class="tag">owed <b class="mono" style="color:var(--copper-hi)">'+money(b.owed)+'</b> · pipe '+money(b.pending)+'</span></div>'
     +'<div class="card-b">'
     +'<div class="sub">'+esc(v.contact_name||'—')+(v.email?' · '+esc(v.email):'')
-    +(v.phone&&telHref(v.phone)?' · <a style="color:var(--copper-hi);text-decoration:none" href="'+esc(telHref(v.phone))+'">'+esc(v.phone)+'</a>':(v.phone?' · '+esc(v.phone):''))+'</div>'
+    +(v.phone&&telHref(v.phone)?' · <a style="color:var(--copper-hi);text-decoration:none" href="'+esc(telHref(v.phone))+'">'+esc(v.phone)+'</a>':(v.phone?' · '+esc(v.phone):''))
+    +(v.ambassador_id?' · <span style="color:var(--warn)">🎖 recruited by '+esc(ambName(v.ambassador_id))+'</span>':'')+'</div>'
     +(v.notes?'<div class="sub" style="margin-top:4px;color:#6e767d">'+esc(v.notes)+'</div>':'')
     +'<div class="sub" style="margin-top:8px">🛡 '+gearN+' on their bench · passes: '
     +(mem.length?mem.map(m=>'<span class="mono" style="font-size:11.5px;color:var(--bone)">'+esc(m.email||m.user_id.slice(0,8))
@@ -1027,6 +1159,66 @@ function vendorCard(v){
     +'<button class="btn-line" data-vedit="'+esc(v.id)+'">✎ EDIT</button>'
     +'<button class="btn-line'+(v.active?' red':'')+'" data-vactive="'+esc(v.id)+'">'+(v.active?'RETIRE':'REVIVE')+'</button>'
     +'</div></div></div>';
+}
+function kmAmbSection(){
+  const rows=AMBS.map(a=>{
+    const b=ambBook(a.id);
+    const recruits=VENDORS.filter(v=>v.ambassador_id===a.id).length;
+    const mem=AMB_MEMBERS.filter(m=>m.ambassador_id===a.id);
+    return '<div class="vrow"'+(a.active?'':' style="opacity:.55"')+'><span class="n"><b>🎖 '+esc(a.name)+'</b>'
+      +(a.active?'':' <span class="pill red">RETIRED</span>')
+      +'<i>'+(Number(a.rate)||0)+'% of house margin · '+recruits+' recruit'+(recruits===1?'':'s')
+      +' · pipe '+money(b.pending)+' · paid '+money(b.paid)
+      +' · logins: '+(mem.length?mem.map(m=>esc(m.email||String(m.user_id).slice(0,8))
+          +' <button class="btn-ghost" style="padding:0 5px" data-amrevoke="'+esc(m.user_id)+'">✕</button>').join(' '):'<i>none</i>')+'</i></span>'
+      +'<span class="m" style="color:'+(b.owed>0?'var(--copper-hi)':'var(--steel)')+'">'+money(b.owed)+'</span>'
+      +'<button class="btn-line gold" data-asettle="'+esc(a.id)+'">SETTLE</button>'
+      +'<button class="btn-line gold" data-apass="'+esc(a.id)+'">🗝</button>'
+      +'<button class="btn-line" data-arate="'+esc(a.id)+'">%</button>'
+      +'<button class="btn-line" data-awire="'+esc(a.id)+'">📻</button>'
+      +'<button class="btn-line" data-aedit="'+esc(a.id)+'">✎</button>'
+      +'<button class="btn-line'+(a.active?' red':'')+'" data-aactive="'+esc(a.id)+'">'+(a.active?'RETIRE':'REVIVE')+'</button>'
+      +'</div>';
+  }).join('');
+  return '<div class="card" style="margin-top:14px;border-color:rgba(255,213,61,.35)"><div class="card-h">🎖 THE AMBASSADORS'
+    +'<span class="tag">recruiters · % of house margin, snapshotted per sale</span></div><div class="card-b">'
+    +'<button class="btn-line gold" id="ambAdd" style="margin-bottom:10px">🎖 CROWN AN AMBASSADOR</button>'
+    +(rows||'<p class="sub">No crowns handed out yet. An ambassador recruits vendors and earns a cut of the house margin on everything their recruits sell.</p>')
+    +'</div></div>';
+}
+let editAmbId=null;
+function openAmbSheet(aid){
+  editAmbId=aid;
+  const a=aid?AMBS.find(x=>x.id===aid):null;
+  $('abTitle').textContent=a?'✎ '+a.name.toUpperCase():'🎖 CROWN AN AMBASSADOR';
+  $('abName').value=a?a.name:''; $('abEmail').value=a?(a.email||''):'';
+  $('abPhone').value=a?(a.phone||''):''; $('abRate').value=a?a.rate:'10';
+  $('abMsg').textContent='';
+  sheet('ambSheet');
+}
+async function saveAmb(){
+  const row={ name:($('abName').value||'').trim(), email:($('abEmail').value||'').trim()||null,
+    phone:($('abPhone').value||'').trim()||null };
+  const rate=parseFloat($('abRate').value);
+  if(!row.name){ $('abMsg').textContent='> a name for the crown'; return; }
+  if(!(rate>=0&&rate<=100)){ $('abMsg').textContent='> rate is 0–100 (% of house margin)'; return; }
+  row.rate=Math.round(rate*100)/100;
+  const r=editAmbId
+    ? await SB.from('ambassadors').update(row).eq('id',editAmbId)
+    : await SB.from('ambassadors').insert(row).select().single();
+  if(r.error){ $('abMsg').textContent='> '+r.error.message; return; }
+  sheet('ambSheet',false);
+  await loadAmbStuff();
+  if(!editAmbId&&r.data){ toast('🎖 Crowned — now mint their login'); renderVendors(); openInvite(r.data.id,'amb'); }
+  else { toast('Saved'); renderVendors(); }
+}
+function openAmbPayout(aid){
+  payoutKind='amb'; payoutVendorId=aid;
+  const b=ambBook(aid);
+  $('poSub').textContent='🎖 '+ambName(aid)+' — owed '+money(b.owed);
+  $('poAmt').value=b.owed>0?b.owed.toFixed(2):'';
+  $('poRef').value=''; $('poNote').value=''; $('poMsg').textContent='';
+  sheet('payoutSheet');
 }
 function openVendorSheet(vid){
   editVendorId=vid;
@@ -1042,22 +1234,75 @@ $('vsGo').addEventListener('click', async()=>{
     email:($('vsEmail').value||'').trim()||null, phone:($('vsPhone').value||'').trim()||null,
     notes:($('vsNotes').value||'').trim()||null };
   if(!row.name){ $('vsMsg').textContent='> the shop needs a name'; return; }
+  if(!editVendorId && ME.amb && !ME.km){ row.ambassador_id=ME.amb.id; row.created_by=ME.uid; }
   const r = editVendorId
     ? await SB.from('vendors').update(row).eq('id',editVendorId)
     : await SB.from('vendors').insert(row);
   if(r.error){ $('vsMsg').textContent='> '+r.error.message; return; }
-  sheet('vendorSheet',false); toast(editVendorId?'Saved':'🤝 On the rolls — now hand them gear and mint a pass');
-  await loadVendors(); renderVendors();
+  sheet('vendorSheet',false); toast(editVendorId?'Saved':(ME.km?'🤝 On the rolls — now hand them gear and mint a pass':'🤝 Recruited — mint their pass and they can pitch gear'));
+  await loadVendors();
+  if(TAB==='vendors')renderVendors(); if(TAB==='myvend')renderMyVend();
 });
+
+/* ════════ MY VENDORS (ambassador) ════════ */
+function renderMyVend(){
+  const host=$('panel');
+  const cards=VENDORS.map(v=>{
+    const mem=MEMBERS.filter(m=>m.vendor_id===v.id);
+    const book=ambBook(ME.amb.id);
+    const fromThis=book.lines.filter(l=>l.vendor_id===v.id).reduce((s,l)=>s+Number(l.commission||0),0);
+    return '<div class="card"'+(v.active?'':' style="opacity:.6"')+'><div class="card-h">'+esc(v.name)
+      +(v.active?'':'<span class="pill red">RETIRED</span>')
+      +'<span class="tag">your commission from them so far: <b class="mono" style="color:var(--copper-hi)">'+money(fromThis)+'</b></span></div>'
+      +'<div class="card-b">'
+      +'<div class="sub">'+esc(v.contact_name||'—')+(v.email?' · '+esc(v.email):'')+(v.phone?' · '+esc(v.phone):'')+'</div>'
+      +(v.notes?'<div class="sub" style="margin-top:4px;color:#6e767d">'+esc(v.notes)+'</div>':'')
+      +'<div class="sub" style="margin-top:8px">passes: '
+      +(mem.length?mem.map(m=>'<span class="mono" style="font-size:11.5px;color:var(--bone)">'+esc(m.email||String(m.user_id).slice(0,8))
+          +'</span> <button class="btn-ghost" style="padding:0 6px" data-mrevoke="'+esc(m.user_id)+'" title="pull the pass">✕</button>').join(' ')
+        :'<i>none minted yet — mint one so they can work their bench</i>')+'</div>'
+      +'<div class="stat-row">'
+      +'<button class="btn-line gold" data-vpass="'+esc(v.id)+'">🗝 PASS</button>'
+      +'<button class="btn-line" data-vedit="'+esc(v.id)+'">✎ EDIT</button>'
+      +'<button class="btn-line'+(v.active?' red':'')+'" data-vactive="'+esc(v.id)+'">'+(v.active?'RETIRE':'REVIVE')+'</button>'
+      +'<button class="btn-line red" data-vkill="'+esc(v.id)+'">🗑 DELETE</button>'
+      +'</div></div></div>';
+  }).join('');
+  host.innerHTML='<button class="btn" id="vAdd" style="margin:2px 0 14px">🤝 RECRUIT A VENDOR</button>'
+    +'<p class="sub" style="margin:0 2px 12px">Bring a maker to the Armory, mint their pass, and every sale off their bench pays you <b style="color:var(--copper-hi)">'+(Number(ME.amb.rate)||0)+'%</b> of the house margin — booked automatically at the till. The Keymaster still approves all gear.</p>'
+    +(VENDORS.length?'<div class="cardgrid">'+cards+'</div>'
+      :'<p class="sub" style="text-align:center;padding:14px">Nobody recruited yet. First one’s the hardest.</p>');
+  $('vAdd').addEventListener('click',()=>openVendorSheet(null));
+  host.querySelectorAll('[data-vedit]').forEach(b=>b.addEventListener('click',()=>openVendorSheet(b.dataset.vedit)));
+  host.querySelectorAll('[data-vpass]').forEach(b=>b.addEventListener('click',()=>openInvite(b.dataset.vpass)));
+  host.querySelectorAll('[data-vactive]').forEach(b=>b.addEventListener('click',async()=>{
+    const v=VENDORS.find(x=>x.id===b.dataset.vactive); if(!v)return;
+    const r=await SB.from('vendors').update({active:!v.active}).eq('id',v.id);
+    if(r.error){toast('⚠ '+r.error.message);return;}
+    await loadVendors(); renderMyVend(); }));
+  host.querySelectorAll('[data-mrevoke]').forEach(b=>b.addEventListener('click',async()=>{
+    if(!confirm('Pull this pass? They lose the Dock Office immediately.'))return;
+    const r=await SB.from('vendor_members').delete().eq('user_id',b.dataset.mrevoke);
+    if(r.error){toast('⚠ '+r.error.message);return;}
+    toast('Pass pulled'); await loadVendors(); renderMyVend(); }));
+  host.querySelectorAll('[data-vkill]').forEach(b=>b.addEventListener('click',async()=>{
+    const v=VENDORS.find(x=>x.id===b.dataset.vkill); if(!v)return;
+    if(!confirm('Delete '+v.name+' outright? Only works while they have no sales on the books.'))return;
+    const r=await SB.from('vendors').delete().eq('id',v.id).select();
+    if(r.error){toast('⚠ '+r.error.message);return;}
+    if(!r.data||!r.data.length){ toast('⚠ Can’t delete — sales on the books, or not one of yours. RETIRE instead.'); return; }
+    toast('🗑 Gone'); await loadVendors(); renderMyVend(); }));
+}
 
 /* ---- the pass (login) ---- */
 function genPass(){ const a='23456789abcdefghjkmnpqrstvwxyzABCDEFGHJKMNPQRSTVWXYZ'; let s='';
   for(let i=0;i<12;i++)s+=a[Math.floor(Math.random()*a.length)]; return s; }
-function openInvite(vid){
+function openInvite(vid, kind){
+  inviteKind=kind==='amb'?'amb':'vendor';
   inviteVendorId=vid;
-  const v=VENDORS.find(x=>x.id===vid);
-  $('invSub').textContent='A pass for '+(v?v.name:'?')+' — they sign in at this same gate.';
-  $('invEmail').value=v&&v.email?v.email:''; $('invPass').value=genPass(); $('invMsg').textContent='';
+  const who = inviteKind==='amb' ? AMBS.find(x=>x.id===vid) : VENDORS.find(x=>x.id===vid);
+  $('invSub').textContent=(inviteKind==='amb'?'🎖 A crown login for ':'A pass for ')+(who?who.name:'?')+' — they sign in at this same gate.';
+  $('invEmail').value=who&&who.email?who.email:''; $('invPass').value=genPass(); $('invMsg').textContent='';
   sheet('inviteSheet');
 }
 $('invDice').addEventListener('click',()=>{ $('invPass').value=genPass(); });
@@ -1071,13 +1316,16 @@ $('invGo').addEventListener('click', async()=>{
     const r=await fetch(FN+'/vendor-invite',{ method:'POST',
       headers:{ 'Content-Type':'application/json', 'apikey':window.SUPABASE_ANON_KEY,
                 'Authorization':'Bearer '+(session?session.access_token:'') },
-      body:JSON.stringify({ email:email, vendor_id:inviteVendorId, temp_password:pass }) });
+      body:JSON.stringify(inviteKind==='amb'
+        ? { email:email, ambassador_id:inviteVendorId, temp_password:pass }
+        : { email:email, vendor_id:inviteVendorId, temp_password:pass }) });
     const j=await r.json().catch(()=>null);
     if(r.ok&&j&&j.ok){
       sheet('inviteSheet',false);
       toast(j.linked_existing ? '🗝 Linked — they already had an account; their old password stands'
                               : '🗝 Pass minted — hand them the email and temp password yourself');
-      await loadVendors(); renderVendors();
+      await Promise.all([loadVendors(), loadAmbStuff()]);
+      if(TAB==='vendors')renderVendors(); if(TAB==='myvend')renderMyVend();
     } else m.textContent='> '+((j&&j.error)||('the mint jammed ('+r.status+')'));
   }catch(e){ m.textContent='> no wire to the mint — check the function is deployed'; }
   $('invGo').disabled=false;
@@ -1130,15 +1378,26 @@ $('asGo').addEventListener('click', async()=>{
 
 /* ════════ THE WIRE ════════ */
 function telHref(p){ const d=String(p||'').replace(/[^+\d]/g,''); return d?('tel:'+d):null; }
-function currentWireVendor(){ return ME.km ? WIRE_VENDOR : (ME.vendor?ME.vendor.id:null); }
+function currentWireVendor(){
+  if(ME.km) return WIRE_VENDOR;
+  if(ME.amb) return ME.amb.id;
+  return ME.vendor?ME.vendor.id:null;
+}
+function currentWireKind(){ return ME.km ? WIRE_KIND : (ME.amb ? 'a' : 'v'); }
+function wireTable(){ return currentWireKind()==='a' ? 'amb_msgs' : 'vendor_msgs'; }
+function wireCol(){ return currentWireKind()==='a' ? 'ambassador_id' : 'vendor_id'; }
 function renderWire(){
   const host=$('panel');
   let head='';
   if(ME.km){
-    if(!WIRE_VENDOR&&VENDORS.length)WIRE_VENDOR=VENDORS[0].id;
-    head='<div class="chips">'+VENDORS.map(v=>'<button data-wv="'+esc(v.id)+'"'+(v.id===WIRE_VENDOR?' class="on"':'')+'>'
-      +(hasUnread(v.id)?'<span style="color:var(--ember)">●</span> ':'')+esc(v.name)+'</button>').join('')+'</div>';
-    if(!VENDORS.length)head='<p class="sub" style="padding:12px 2px">No vendors yet — the wire hums once one’s on the rolls.</p>';
+    if(!WIRE_VENDOR){ if(VENDORS.length){WIRE_VENDOR=VENDORS[0].id;WIRE_KIND='v';} else if(AMBS.length){WIRE_VENDOR=AMBS[0].id;WIRE_KIND='a';} }
+    head='<div class="chips">'
+      +VENDORS.map(v=>'<button data-wv="'+esc(v.id)+'"'+(WIRE_KIND==='v'&&v.id===WIRE_VENDOR?' class="on"':'')+'>'
+        +(hasUnread('v',v.id)?'<span style="color:var(--ember)">●</span> ':'')+esc(v.name)+'</button>').join('')
+      +AMBS.map(a=>'<button data-wa="'+esc(a.id)+'"'+(WIRE_KIND==='a'&&a.id===WIRE_VENDOR?' class="on"':'')+'>'
+        +(hasUnread('a',a.id)?'<span style="color:var(--ember)">●</span> ':'')+'🎖 '+esc(a.name)+'</button>').join('')
+      +'</div>';
+    if(!VENDORS.length&&!AMBS.length)head='<p class="sub" style="padding:12px 2px">No vendors yet — the wire hums once one’s on the rolls.</p>';
   }
   let redphone='';
   if(ME.km){
@@ -1158,16 +1417,18 @@ function renderWire(){
   host.innerHTML=head
     +redphone
     +'<div class="card"><div class="card-h">📻 THE WIRE'
-    +'<span class="tag">'+(ME.km?esc(vName(WIRE_VENDOR)||'—'):'straight line to the Keymaster')+'</span></div>'
+    +'<span class="tag">'+(ME.km?esc((WIRE_KIND==='a'?'🎖 '+ambName(WIRE_VENDOR):vName(WIRE_VENDOR))||'—'):'straight line to the Keymaster')+'</span></div>'
     +'<div class="card-b"><div class="msgs" id="wireMsgs"><p class="sub">Raising the mast…</p></div>'
     +'<div class="sendrow"><input class="field" id="wireIn" placeholder="Say the word…" maxlength="2000">'
     +'<button class="btn-line gold" id="wireGo">SEND</button></div></div></div>';
-  host.querySelectorAll('[data-wv]').forEach(b=>b.addEventListener('click',()=>{WIRE_VENDOR=b.dataset.wv;renderWire();}));
+  host.querySelectorAll('[data-wv]').forEach(b=>b.addEventListener('click',()=>{WIRE_KIND='v';WIRE_VENDOR=b.dataset.wv;renderWire();}));
+  host.querySelectorAll('[data-wa]').forEach(b=>b.addEventListener('click',()=>{WIRE_KIND='a';WIRE_VENDOR=b.dataset.wa;renderWire();}));
   const send=async()=>{
     const inp=$('wireIn'), body=(inp.value||'').trim(), vid=currentWireVendor();
     if(!body||!vid)return;
     inp.value='';
-    const r=await SB.from('vendor_msgs').insert({vendor_id:vid,user_id:ME.uid,from_km:ME.km,body:body}).select().single();
+    const row={user_id:ME.uid,from_km:ME.km,body:body}; row[wireCol()]=vid;
+    const r=await SB.from(wireTable()).insert(row).select().single();
     if(r.error){ toast('⚠ '+r.error.message); inp.value=body; return; }
     if(r.data&&!MSGS.some(m=>m.id===r.data.id)){ MSGS.push(r.data); paintMsgs(); }
   };
@@ -1186,8 +1447,8 @@ function renderWire(){
 async function loadMsgs(){
   const vid=currentWireVendor(); if(!vid){ MSGS=[]; paintMsgs(); return; }
   try{
-    const r=await SB.from('vendor_msgs').select('*').eq('vendor_id',vid).order('created_at',{ascending:true}).limit(300);
-    if(!r.error){ MSGS=r.data||[]; paintMsgs(); markSeen(vid); }
+    const r=await SB.from(wireTable()).select('*').eq(wireCol(),vid).order('created_at',{ascending:true}).limit(300);
+    if(!r.error){ MSGS=r.data||[]; paintMsgs(); markSeen(currentWireKind(),vid); }
   }catch(e){}
 }
 function paintMsgs(){
@@ -1762,27 +2023,28 @@ function poke(){ clearTimeout(pokeTimer); pokeTimer=setTimeout(async()=>{
   if(after>before)toast('⚓ New work on the hook');
   if(TAB==='orders')renderOrders(); if(TAB==='ledger')renderLedger();
 }, 900); }
-function onMsg(payload){
+function onMsg(kind){ return function(payload){
   const m=payload&&payload.new; if(!m)return;
-  const side=m.from_km?'km':'vendor';
-  (LASTMSG[m.vendor_id]=LASTMSG[m.vendor_id]||{})[side]=m.created_at;
-  const vid=currentWireVendor();
-  if(TAB==='wire'&&m.vendor_id===vid){
+  const id = kind==='a' ? m.ambassador_id : m.vendor_id;
+  const side=m.from_km?'km':'them';
+  (LASTMSG[kind+':'+id]=LASTMSG[kind+':'+id]||{})[side]=m.created_at;
+  if(TAB==='wire'&&currentWireKind()===kind&&id===currentWireVendor()){
     if(!MSGS.some(x=>x.id===m.id)){ MSGS.push(m); paintMsgs(); }
-    markSeen(vid);
+    markSeen(kind,id);
   }else{
     paintUnreadDot();
     const fromMe = ME.km ? m.from_km : !m.from_km;
     if(!fromMe)toast('📻 Word on the wire');
   }
-}
+}; }
 function subscribe(){
   if(subscribed)return; subscribed=true;
   try{
     const ch=SB.channel('dock-live');
     ch.on('postgres_changes',{event:'*',schema:'public',table:'orders'},poke)
       .on('postgres_changes',{event:'*',schema:'public',table:'order_items'},poke)
-      .on('postgres_changes',{event:'INSERT',schema:'public',table:'vendor_msgs'},onMsg)
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'vendor_msgs'},onMsg('v'))
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'amb_msgs'},onMsg('a'))
       .on('postgres_changes',{event:'*',schema:'public',table:'product_drafts'},()=>{
         loadDrafts().then(()=>{ if(TAB==='work')renderWork(); if(TAB==='gear')renderGear(); }); })
       .subscribe();
