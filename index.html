@@ -9544,7 +9544,20 @@ renderPorts();
       setTimeout(()=>reward(cat,true),600);
       return;
     }
-    location.href="mailto:"+KEYMASTER_MAIL+"?subject="+encodeURIComponent(w.subject)+"&body="+encodeURIComponent(w.body);
+    /* #wire-in — text reports now land INSIDE the app (member_wire, run
+       MEMBER-WIRE.sql once) so they show on the member's page in the Command
+       Center with a ✉ marker. Photos still ride the share/email path above.
+       No account or no table yet? The old mailto path still delivers. */
+    let landed=false;
+    try{
+      if(window.SB&&window.__shkUid){
+        const acct2=(typeof loadAcct==='function'?(loadAcct()||{}):{});
+        const r=await window.SB.from('member_wire').insert({user_id:window.__shkUid,handle:((acct2.handle||'').toUpperCase())||null,kind:cat,body:typed});
+        if(!r.error)landed=true;
+      }
+    }catch(e){}
+    if(!landed){ location.href="mailto:"+KEYMASTER_MAIL+"?subject="+encodeURIComponent(w.subject)+"&body="+encodeURIComponent(w.body); }
+    else { try{toast('✉ Word received — it’s in the log');}catch(e){} }
     sheet.classList.remove('on');document.getElementById('wordMsg').value="";
     setTimeout(()=>reward(cat,false),600);
   });
@@ -17427,8 +17440,9 @@ html.season-xmas.daylight{}
     <div id="kmTrades" class="sub" style="line-height:1.7;margin-bottom:14px">—</div>
 
     <div class="card-h">The Roster</div>
+    <div id="kmStats" style="margin:8px 0 10px"><span class="sub">counting heads…</span></div>
     <input class="field" id="kmFind" placeholder="filter — handle, card, name" style="margin:6px 0 6px">
-    <input class="field" id="kmNotice" placeholder="notice text — used by ⚠ warn, 🔨 ban and ✕ 🎖" style="margin-bottom:6px">
+    <input class="field" id="kmNotice" placeholder="notice text — rides along when you ✕ pass a request" style="margin-bottom:6px">
     <div id="kmRoster" class="sub" style="max-height:260px;overflow-y:auto;line-height:1.7;margin-bottom:14px">—</div>
 
     <div class="card-h">The Mint</div>
@@ -17471,6 +17485,19 @@ html.season-xmas.daylight{}
      These two sheets let the Keymaster work it WITHOUT leaving this app:
      crown a casual straight off the roster, and raise the SPYGLASS — a faithful,
      read-only replica of the dashboard that member sees behind the vendor gate. -->
+<!-- #mempage — THE MEMBER PAGE: one hand, the whole story, room to work.
+     The roster is now a clean list; tapping a row opens this. All the levers
+     (mint · word · ban · crown · ambassador) live here with space to breathe,
+     plus the member's stats and every report they've sent in (member_wire —
+     run MEMBER-WIRE.sql once). Sits UNDER the crowning/spyglass sheets in the
+     stack so those open on top of it. -->
+<div class="sheet" id="kmMemberSheet" role="dialog" aria-modal="true" aria-label="Member page">
+  <div class="sheet-card" style="text-align:left;max-height:88vh;overflow-y:auto">
+    <div id="kmMemBody"><p class="sub">—</p></div>
+    <button class="btn-ghost" style="width:100%;margin-top:12px" onclick="document.getElementById('kmMemberSheet').classList.remove('on')">‹ Back to the roster</button>
+  </div>
+</div>
+
 <!-- ═══════════ #trades — THE TRADES BOARD ═══════════
      Side work by the Order's own hands. A member posts what they do (one post
      per hand, trade_posts table — run TRADES-BOARD.sql once), the Keymaster
@@ -17708,6 +17735,7 @@ html.season-xmas.daylight{}
       if(r.error)throw r.error;
       _roster=r.data||[];
       try{await kmAmbLoad();}catch(e2){} /* #amb — the crowns ride the same pull; the roster still paints if this leg fails */
+      try{await kmWireLoad();}catch(e3){} /* #mempage — report counts ride along too */
       kmRosterDraw();
     }catch(e){out.textContent='roster failed: '+e.message;}
   };
@@ -17715,74 +17743,204 @@ html.season-xmas.daylight{}
     const out=$('kmRoster'); if(!out)return;
     const q=(($('kmFind')||{}).value||'').trim().toLowerCase();
     const rows=_roster.filter(x=>!q||[x.handle,x.card_id,x.full_name].some(v=>String(v||'').toLowerCase().includes(q)));
+    try{kmStatsDraw();}catch(e){} /* #mempage — the head-count strip rides every redraw */
     if(!rows.length){out.textContent=q?'no hand matches "'+q+'"':'no claimed accounts yet';return;}
+    /* #mempage — the roster is a LIST now, not a control panel: handle · card ·
+       name · stack, one line each. Every lever lives on the member page — tap
+       the row. Pills stay as quiet markers: ☠ key · 🎖 crown · ✉ word waiting. */
     out.innerHTML=rows.map(x=>{
-      const h=esc(x.handle||'?'), isF=String(x.card_id||'').trim().toUpperCase()==='D4928'; /* #km3 founder row: ban/uncrown never offered */
-      return '<div style="display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;border-bottom:1px solid var(--line-soft);padding:6px 0">'
-        +'<b style="color:var(--bone)">'+h+'</b>'
+      const h=esc(x.handle||'?');
+      const a=kmAmbOf(x.handle);
+      const uid=_ambUids[String(x.handle||'').toLowerCase()];
+      const mail=uid?(_wireUnhandled[uid]||0):0;
+      return '<div class="km-row" data-open="'+h+'" style="display:flex;gap:8px;align-items:center;border-bottom:1px solid var(--line-soft);padding:9px 2px;cursor:pointer">'
+        +'<div style="flex:1;min-width:0">'
+        +'<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><b style="color:var(--bone)">'+h+'</b>'
         +'<span class="mono" style="color:var(--copper-hi)">'+esc(x.card_id||'—')+'</span>'
-        +'<span style="color:var(--steel)">'+esc(x.full_name||'')+'</span>'
-        +(x.banned?'<span class="pill red">BANNED</span>':'')
         +(x.is_keymaster?'<span class="pill gold">☠</span>':'')
-        +(function(){const a=kmAmbOf(x.handle);return a?'<span class="pill gold">🎖 '+(Number(a.rate)||0)+'%</span>':'';})() /* #amb */
-        +'<span style="margin-left:auto" class="mono">'+(+x.port_bucks||0).toLocaleString()+' ⬡</span>'
-        +'<span style="flex-basis:100%;display:flex;gap:6px;margin-top:2px">'
-        +'<button class="btn-ghost km-act" data-a="mint" data-h="'+h+'" style="flex:1;padding:4px 0;font-size:11px">⬡ mint</button>'
-        +'<button class="btn-ghost km-act" data-a="warn" data-h="'+h+'" style="flex:1;padding:4px 0;font-size:11px">⚠ warn</button>'
-        +(isF?'':'<button class="btn-ghost km-act" data-a="ban" data-h="'+h+'" data-b="'+(x.banned?1:0)+'" style="flex:1;padding:4px 0;font-size:11px;color:'+(x.banned?'var(--ok)':'var(--ember)')+'">'+(x.banned?'✓ unban':'🔨 ban')+'</button>')
-        +(isF?'<span class="sub" style="flex:1;text-align:center;padding:4px 0;font-size:11px;color:var(--copper-hi)">⚓ founder</span>'
-             :'<button class="btn-ghost km-act" data-a="crown" data-h="'+h+'" data-k="'+(x.is_keymaster?1:0)+'" style="flex:1;padding:4px 0;font-size:11px;color:'+(x.is_keymaster?'var(--steel)':'var(--copper-hi)')+'">'+(x.is_keymaster?'✕ uncrown':'☠ crown')+'</button>')
-        +'</span>'
-        +(function(){ /* #amb — the third crown: promote off the roster, or raise the spyglass */
-            if(isF)return'';
-            const a=kmAmbOf(x.handle);
-            if(a)return '<span style="flex-basis:100%;display:flex;gap:6px;margin-top:2px">'
-              +'<button class="btn-ghost km-act" data-a="ambview" data-amb="'+esc(a.id)+'" data-h="'+h+'" style="flex:1;padding:4px 0;font-size:11px;color:#ffd53d">👁 their view</button>'
-              +'<button class="btn-ghost km-act" data-a="ambpull" data-amb="'+esc(a.id)+'" data-h="'+h+'" style="flex:1;padding:4px 0;font-size:11px;color:var(--steel)">✕ pull 🎖</button>'
-              +'</span>';
-            return x.banned?'':'<span style="flex-basis:100%;display:flex;gap:6px;margin-top:2px">'
-              +'<button class="btn-ghost km-act" data-a="amb" data-h="'+h+'" style="flex:1;padding:4px 0;font-size:11px;color:#ffd53d">🎖 make ambassador</button>'
-              +'</span>';
-          })()
+        +(a?'<span class="pill gold">🎖</span>':'')
+        +(x.banned?'<span class="pill red">BANNED</span>':'')
+        +(mail?'<span class="pill" style="border-color:rgba(77,226,255,.5);color:#4de2ff">✉ '+mail+'</span>':'')
+        +'</div>'
+        +'<div class="sub" style="color:var(--steel);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(x.full_name||'')+'</div>'
+        +'</div>'
+        +'<span class="mono" style="flex:none">'+(+x.port_bucks||0).toLocaleString()+' ⬡</span>'
+        +'<span style="flex:none;color:var(--steel)">›</span>'
         +'</div>';
     }).join('');
   }
+  function kmStatsDraw(){ /* #mempage — the raw numbers, right above the list */
+    const host=$('kmStats');if(!host)return;
+    const n=_roster.length;
+    const bucks=_roster.reduce((s,x)=>s+(+x.port_bucks||0),0);
+    const keys=_roster.filter(x=>x.is_keymaster).length;
+    const crowns=_roster.filter(x=>kmAmbOf(x.handle)).length;
+    const banned=_roster.filter(x=>x.banned).length;
+    const mail=Object.values(_wireUnhandled).reduce((s,v)=>s+v,0);
+    let newest=null,newestT=0;
+    _roster.forEach(x=>{const s=_profSince[String(x.handle||'').toLowerCase()];const t=s?new Date(s).getTime():0;if(t>newestT){newestT=t;newest=x.handle;}});
+    const tile=(v,k,c)=>'<div style="flex:1;border:1px solid var(--line-soft);border-radius:10px;padding:9px 6px;text-align:center"><div class="mono" style="font-size:17px;color:'+(c||'var(--bone)')+'">'+v+'</div><div class="sub" style="margin-top:1px;font-size:10.5px">'+k+'</div></div>';
+    host.innerHTML='<div style="display:flex;gap:8px">'
+      +tile(n.toLocaleString(),'MEMBERS')
+      +tile(bucks.toLocaleString()+' ⬡','IN CIRCULATION','var(--copper-hi)')
+      +tile(mail,'REPORTS WAITING',mail?'#4de2ff':'var(--steel)')
+      +'</div>'
+      +'<div class="sub" style="margin-top:6px;line-height:1.7">☠ '+keys+' key'+(keys===1?'':'s')+' · 🎖 '+crowns+' crown'+(crowns===1?'':'s')+' · 🔨 '+banned+' banned'
+      +(newest?' · ⚓ newest hand: <b style="color:var(--bone)">'+esc(newest)+'</b>'+(newestT?' <span style="color:var(--steel)">('+new Date(newestT).toLocaleDateString([],{month:'short',day:'numeric'})+')</span>':''):'')
+      +'</div>';
+  }
   const kf=$('kmFind'); if(kf)kf.addEventListener('input',kmRosterDraw);
   const kr=$('kmRoster');
-  if(kr)kr.addEventListener('click',async function(e){
-    const b=e.target.closest('button.km-act'); if(!b)return;
-    const h=b.dataset.h, a=b.dataset.a, msg=(($('kmNotice')||{}).value||'').trim();
-    if(a==='mint'){ if($('kmHandle'))$('kmHandle').value=h; if($('kmDelta'))$('kmDelta').focus(); try{toast('⬡ mint pre-filled for '+h);}catch(e2){} return; }
-    if(a==='amb'){ kmAmbOpen(h); return; }                        /* #amb — the crowning sheet */
-    if(a==='ambview'){ ambViewOpen(b.dataset.amb,h); return; }    /* #amb — the spyglass */
-    if(!window.SB){try{toast('backend off');}catch(e2){} return;}
-    b.disabled=true;
+  if(kr)kr.addEventListener('click',function(e){ /* #mempage — a row is a door now */
+    const row=e.target.closest('.km-row'); if(!row)return;
+    kmMemberOpen(row.dataset.open);
+  });
+
+  /* ═══════════ #mempage — ONE HAND, FULL PAGE ═══════════
+     Everything about one member with room to work: identity, stack, hours,
+     status pills, every lever (word · mint · ban · key · ambassador), whatever
+     sits on the desks (application / trade post), and their wire — the reports
+     and ideas they've sent in through SEND WORD, with a handled toggle. */
+  let _mem=null;
+  window.kmMemberRefresh=function(){ try{ if(_mem&&$('kmMemberSheet').classList.contains('on')) kmMemberOpen(_mem.handle); }catch(e){} };
+  window.kmMemberOpen=async function(handle){
+    const sh8=$('kmMemberSheet');if(!sh8)return;
+    sh8.classList.add('on');
+    const body=$('kmMemBody');body.innerHTML='<p class="sub">pulling their file…</p>';
+    const row=_roster.find(x=>String(x.handle||'').toLowerCase()===String(handle||'').toLowerCase());
+    if(!row){body.innerHTML='<p class="sub">no file for '+esc(handle)+'</p>';return;}
+    const uid=_ambUids[String(handle||'').toLowerCase()]||null;
+    let prof=null,app=null,trade=null,wire=[];
     try{
-      if(a==='warn'){
-        if(!msg){try{toast('Type the notice text first (the box above the roster)');}catch(e2){} b.disabled=false; return;}
-        const r=await window.SB.rpc('km_warn',{p_handle:h,p_msg:msg});
+      const [p,a2,t2,w2]=await Promise.all([
+        window.SB.from('profiles').select('*').eq('handle',row.handle).maybeSingle(),
+        uid?window.SB.from('amb_applications').select('*').eq('user_id',uid).maybeSingle():Promise.resolve({data:null}),
+        uid?window.SB.from('trade_posts').select('*').eq('user_id',uid).maybeSingle():Promise.resolve({data:null}),
+        uid?window.SB.from('member_wire').select('*').eq('user_id',uid).order('created_at',{ascending:false}).limit(50):Promise.resolve({data:[]})
+      ]);
+      prof=(p&&p.data)||null; app=(a2&&a2.data)||null; trade=(t2&&t2.data)||null; wire=(w2&&w2.data)||[];
+    }catch(e){}
+    _mem={handle:row.handle,row:row,uid:uid,prof:prof,app:app,trade:trade,wire:wire};
+    kmMemberDraw();
+  };
+  function kmMemberDraw(){
+    if(!_mem)return;
+    const body=$('kmMemBody');if(!body)return;
+    const x=_mem.row, h=esc(_mem.handle), isF=String(x.card_id||'').trim().toUpperCase()==='D4928';
+    const a=kmAmbOf(_mem.handle);
+    const prof=_mem.prof||{};
+    const since=prof.since?new Date(prof.since):null;
+    const hrsY=(prof.hrs_year!=null&&prof.hrs_year!=='')?(+prof.hrs_year||0):null;
+    const tile=(v,k,c)=>'<div style="flex:1;border:1px solid var(--line-soft);border-radius:10px;padding:10px 6px;text-align:center"><div class="mono" style="font-size:16px;color:'+(c||'var(--bone)')+'">'+v+'</div><div class="sub" style="margin-top:2px;font-size:10.5px">'+k+'</div></div>';
+    const pillrow=(x.is_keymaster?'<span class="pill gold">☠ holds a key</span>':'')
+      +(a?'<span class="pill gold">🎖 ambassador · '+(Number(a.rate)||0)+'%</span>':'')
+      +(x.banned?'<span class="pill red">BANNED</span>':'')
+      +(isF?'<span class="pill gold">⚓ founder</span>':'');
+    let desks='';
+    if(_mem.app)desks+='<div class="sub" style="margin-top:4px">🎖 ambassador application — <b style="color:var(--bone)">'+esc(_mem.app.status)+'</b>'+(_mem.app.payout_method?' · pay by '+esc(_mem.app.payout_method):'')+'</div>';
+    if(_mem.trade)desks+='<div class="sub" style="margin-top:4px">🛠 trade post — <b style="color:var(--bone)">'+esc(_mem.trade.status)+'</b>'+(_mem.trade.headline?' · '+esc(_mem.trade.headline):'')+'</div>';
+    const wire=_mem.wire||[], wireNew=wire.filter(w=>!w.handled).length;
+    const wireHTML=wire.length?wire.map(w=>'<div style="border:1px solid '+(w.handled?'var(--line-soft)':'rgba(77,226,255,.4)')+';border-radius:10px;padding:8px 10px;margin-bottom:6px'+(w.handled?';opacity:.62':'')+'">'
+      +'<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="pill">'+esc(w.kind||'word')+'</span><span style="margin-left:auto;color:var(--steel);font-size:10.5px">'+_dt(w.created_at)+'</span></div>'
+      +'<div class="sub" style="margin-top:5px;line-height:1.6;color:var(--bone)">'+esc(w.body||'')+'</div>'
+      +'<button class="btn-ghost mm-handled" data-wid="'+esc(w.id)+'" data-on="'+(w.handled?1:0)+'" style="margin-top:6px;padding:3px 10px;font-size:10.5px;color:'+(w.handled?'var(--steel)':'var(--ok)')+'">'+(w.handled?'↩ reopen':'✓ mark handled')+'</button>'
+      +'</div>').join('')
+      :'<p class="sub">No word from them yet — their SEND WORD reports land here the moment they hit send.</p>';
+    body.innerHTML=
+      '<div class="big" style="font-size:24px;letter-spacing:.06em">'+h+'</div>'
+      +'<div class="sub" style="margin-top:2px"><span class="mono" style="color:var(--copper-hi)">'+esc(x.card_id||'—')+'</span> · '+esc(x.full_name||'—')+'</div>'
+      +(pillrow?'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">'+pillrow+'</div>':'')
+      +'<div style="display:flex;gap:8px;margin-top:12px">'
+      +tile((+x.port_bucks||0).toLocaleString()+' ⬡','STACK','var(--copper-hi)')
+      +tile(since?since.toLocaleDateString([],{month:'short',year:'numeric'}):'—','ABOARD SINCE')
+      +tile(hrsY!=null?hrsY.toLocaleString():'—','HOURS THIS YEAR')
+      +'</div>'
+      +'<div class="card-h" style="margin-top:16px">The levers</div>'
+      +'<div class="sub" style="margin:6px 0 2px">Word to them — lands on their next open</div>'
+      +'<textarea class="field" id="mmWord" rows="2" style="width:100%;resize:vertical;margin-bottom:6px" placeholder="Straight talk — also rides along as the notice on ban and key moves"></textarea>'
+      +'<button class="btn" id="mmSend" type="button" style="width:100%">✉ SEND WORD</button>'
+      +'<div class="sub" style="margin:12px 0 2px">The mint</div>'
+      +'<div style="display:flex;gap:8px;margin-bottom:6px">'
+      +'<input class="field mono" id="mmDelta" inputmode="numeric" placeholder="±⬡ e.g. 100" style="flex:1">'
+      +'<input class="field" id="mmReason" placeholder="reason — shows in the ledger" style="flex:2">'
+      +'</div>'
+      +'<button class="btn-ghost" id="mmMint" type="button" style="width:100%">⬡ APPLY TO THEIR STACK</button>'
+      +'<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">'
+      +(isF?'':'<button class="btn-ghost mm-act" data-a="ban" style="flex:1;min-width:46%;padding:10px 0;color:'+(x.banned?'var(--ok)':'var(--ember)')+'">'+(x.banned?'✓ UNBAN':'🔨 BAN')+'</button>')
+      +(isF?'':'<button class="btn-ghost mm-act" data-a="crown" style="flex:1;min-width:46%;padding:10px 0;color:'+(x.is_keymaster?'var(--steel)':'var(--copper-hi)')+'">'+(x.is_keymaster?'✕ TAKE BACK THE KEY':'☠ HAND THEM A KEY')+'</button>')
+      +(isF?'':(a
+        ?'<button class="btn-ghost mm-act" data-a="ambview" style="flex:1;min-width:46%;padding:10px 0;color:#ffd53d">👁 THEIR DASHBOARD</button>'
+         +'<button class="btn-ghost mm-act" data-a="ambpull" style="flex:1;min-width:46%;padding:10px 0;color:var(--steel)">✕ PULL THE 🎖</button>'
+        :(x.banned?'':'<button class="btn-ghost mm-act" data-a="amb" style="flex:1;min-width:100%;padding:10px 0;color:#ffd53d">🎖 MAKE AMBASSADOR</button>')))
+      +'</div>'
+      +(desks?'<div class="card-h" style="margin-top:16px">On the desks</div>'+desks:'')
+      +'<div class="card-h" style="margin-top:16px">Their wire — reports &amp; ideas'+(wireNew?' <span class="pill" style="border-color:rgba(77,226,255,.5);color:#4de2ff">'+wireNew+' new</span>':'')+'</div>'
+      +'<div style="margin-top:6px">'+wireHTML+'</div>';
+  }
+  const mb=$('kmMemBody');
+  if(mb)mb.addEventListener('click',async function(e){
+    if(!_mem)return;
+    const h=_mem.handle;
+    const btn=e.target.closest('button'); if(!btn)return;
+    const msg=(($('mmWord')||{}).value||'').trim();
+    if(btn.id==='mmSend'){
+      if(!msg){try{toast('Type the word first');}catch(e2){}return;}
+      btn.disabled=true;
+      try{const r=await window.SB.rpc('km_warn',{p_handle:h,p_msg:msg});if(r.error)throw r.error;
+        $('mmWord').value='';try{toast('✉ sent — lands on their next open');}catch(e2){}}
+      catch(err){try{toast('✗ '+err.message);}catch(e2){}}
+      btn.disabled=false;return;
+    }
+    if(btn.id==='mmMint'){
+      const d=parseInt(($('mmDelta')||{}).value,10);
+      if(!d){try{toast('How many ⬡? Negative pulls back');}catch(e2){}return;}
+      btn.disabled=true;
+      try{const r=await window.SB.rpc('km_bucks',{p_handle:h,p_delta:d,p_reason:(($('mmReason')||{}).value||'').trim()||'the house moved it'});
         if(r.error)throw r.error;
-        try{toast('⚠ warning sent to '+h+' — lands on their next open');}catch(e2){}
-      }else if(a==='ban'){
-        const on=b.dataset.b!=='1';
+        try{toast('⬡ '+(d>0?'+':'')+d+' to '+h);}catch(e2){}
+        await kmRoster(); kmMemberOpen(h);}
+      catch(err){try{toast('✗ '+err.message);}catch(e2){}}
+      btn.disabled=false;return;
+    }
+    if(btn.classList.contains('mm-handled')){
+      const on=btn.dataset.on!=='1';
+      btn.disabled=true;
+      try{const r=await window.SB.from('member_wire').update({handled:on}).eq('id',btn.dataset.wid);
+        if(r.error)throw r.error;
+        try{await kmWireLoad();}catch(e2){}
+        kmRosterDraw(); kmMemberOpen(h);}
+      catch(err){try{toast('✗ '+err.message);}catch(e2){} btn.disabled=false;}
+      return;
+    }
+    const act=btn.classList.contains('mm-act')?btn.dataset.a:null;
+    if(!act)return;
+    if(act==='amb'){ kmAmbOpen(h); return; }
+    if(act==='ambview'){ const a2=kmAmbOf(h); if(a2)ambViewOpen(a2.id,h); return; }
+    btn.disabled=true;
+    try{
+      if(act==='ban'){
+        const on=!_mem.row.banned;
+        if(on&&!confirm('Ban '+h+'? Their card locks on their next open.')){btn.disabled=false;return;}
         const r=await window.SB.rpc('km_ban',{p_handle:h,p_on:on,p_msg:msg});
         if(r.error)throw r.error;
         try{toast(on?('🔨 '+h+' is banned'):('✓ '+h+' is back in the Order'));}catch(e2){}
-        kmRoster();
-      }else if(a==='crown'){ /* #km3 — hand them a key, or take it back */
-        const on=b.dataset.k!=='1';
+      }else if(act==='crown'){
+        const on=!_mem.row.is_keymaster;
         const r=await window.SB.rpc('km_crown',{p_handle:h,p_on:on,p_msg:msg});
         if(r.error)throw r.error;
-        try{toast(on?('☠ '+h+' now holds a key to the Command Center'):('✕ crown lifted from '+h));}catch(e2){}
-        kmRoster();
-      }else if(a==='ambpull'){ /* #amb — take the 🎖 back; the books keep their history */
-        if(!confirm('Pull the ambassador crown from '+h+'? Their recruits and commission history stay on the books — new sales just stop booking them.')){b.disabled=false;return;}
-        await kmAmbPull(b.dataset.amb,h,msg);
-        kmRoster();
+        try{toast(on?('☠ '+h+' now holds a key to the Command Center'):('✕ key taken back from '+h));}catch(e2){}
+      }else if(act==='ambpull'){
+        const a2=kmAmbOf(h);
+        if(a2){
+          if(!confirm('Pull the ambassador crown from '+h+'? Their recruits and commission history stay on the books — new sales just stop booking them.')){btn.disabled=false;return;}
+          await kmAmbPull(a2.id,h,msg);
+        }
       }
+      await kmRoster(); kmMemberOpen(h);
     }catch(err){try{toast('✗ '+err.message);}catch(e2){}}
-    b.disabled=false;
+    btn.disabled=false;
   });
+  (function(){const s8=$('kmMemberSheet');if(s8)s8.addEventListener('click',e=>{if(e.target===s8)s8.classList.remove('on');});})();
 
   /* ═══════════ #amb — AMBASSADORS FROM THE COMMAND CENTER ═══════════
      Same Supabase tables the Dock Office (dockoffice.html v17) runs on —
@@ -17793,17 +17951,24 @@ html.season-xmas.daylight{}
      through the vendor gate with the same email + password they already use
      here. If the direct link is refused (RLS), we fall back to the gate's own
      mint — the vendor-invite edge function — which needs their email. */
-  let _ambs=[],_ambMems=[],_ambUids={};   /* crowns · logins · handle(lower)→uid */
+  let _ambs=[],_ambMems=[],_ambUids={},_profSince={};   /* crowns · logins · handle(lower)→uid · handle(lower)→since */
   async function kmAmbLoad(){
     if(!window.SB)return;
     const [a,m,p]=await Promise.all([
       window.SB.from('ambassadors').select('*'),
       window.SB.from('ambassador_members').select('*'),
-      window.SB.from('profiles').select('id,handle')
+      window.SB.from('profiles').select('id,handle,since')
     ]);
     if(!a.error)_ambs=a.data||[];
     if(!m.error)_ambMems=m.data||[];
-    if(!p.error){_ambUids={};(p.data||[]).forEach(x=>{if(x&&x.handle)_ambUids[String(x.handle).toLowerCase()]=x.id;});}
+    if(!p.error){_ambUids={};_profSince={};(p.data||[]).forEach(x=>{if(x&&x.handle){_ambUids[String(x.handle).toLowerCase()]=x.id;_profSince[String(x.handle).toLowerCase()]=x.since||null;}});}
+  }
+  let _wireUnhandled={};   /* #mempage — uid → count of reports waiting */
+  async function kmWireLoad(){
+    _wireUnhandled={};
+    if(!window.SB)return;
+    const r=await window.SB.from('member_wire').select('user_id').eq('handled',false).limit(1000);
+    if(!r.error)(r.data||[]).forEach(x=>{_wireUnhandled[x.user_id]=(_wireUnhandled[x.user_id]||0)+1;});
   }
   function kmAmbOf(handle){ /* the ACTIVE crown a handle carries, if any */
     const lo=String(handle||'').toLowerCase(), uid=_ambUids[lo];
@@ -17870,6 +18035,7 @@ html.season-xmas.daylight{}
         try{kmApps();}catch(e6){}
       }
       await kmAmbLoad(); kmRosterDraw();
+      try{if(typeof kmMemberRefresh==='function')kmMemberRefresh();}catch(e7){} /* #mempage — the page under this sheet stays honest */
       if(minted&&tempPass){ /* fresh pass — leave the sheet up so the credentials can be copied */
         msgEl.innerHTML='🗝 Crown set and a fresh Dock Office pass minted. Hand these over yourself — they won’t be shown again:<br>'
           +'<b class="mono" style="color:var(--bone)">'+esc(email)+'</b> · temp password <b class="mono" style="color:var(--bone)">'+esc(tempPass)+'</b>';
