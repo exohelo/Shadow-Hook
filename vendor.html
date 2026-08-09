@@ -298,7 +298,8 @@ select.field{appearance:none;-webkit-appearance:none}
      being given half the width to say it in. */
   #panel[data-tab=vendors] .cardgrid,
   #panel[data-tab=ambs] .cardgrid,
-  #panel[data-tab=service] .cardgrid{grid-template-columns:1fr}
+  #panel[data-tab=service] .cardgrid,
+  #panel[data-tab=myvend] .cardgrid{grid-template-columns:1fr}
   .split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
   #panel[data-tab=wire]>.card{max-width:780px;margin-left:auto;margin-right:auto}
   #panel[data-tab=wire]>.chips{max-width:780px;margin-left:auto;margin-right:auto}
@@ -1359,7 +1360,11 @@ function openAmbPayout(aid){
 function openVendorSheet(vid){
   editVendorId=vid;
   const v=vid?VENDORS.find(x=>x.id===vid):null;
-  $('vsTitle').textContent=v?'✎ '+v.name.toUpperCase():'🤝 NEW VENDOR';
+  /* a row with no name used to throw here and the sheet never opened —
+     the same bug that was fixed on the crown sheet. #svcadd names the
+     button RECRUIT for an ambassador, so the sheet agrees with it. */
+  const newTitle=(ME.amb&&!ME.km)?'🤝 RECRUIT A VENDOR':'🤝 NEW VENDOR';
+  $('vsTitle').textContent=v?('✎ '+String(v.name||'this vendor').toUpperCase()):newTitle;
   $('vsName').value=v?v.name:''; $('vsContact').value=v?(v.contact_name||''):'';
   $('vsEmail').value=v?(v.email||''):''; $('vsPhone').value=v?(v.phone||''):'';
   $('vsNotes').value=v?(v.notes||''):''; $('vsMsg').textContent='';
@@ -1373,17 +1378,29 @@ $('vsGo').addEventListener('click', async()=>{
   if(!editVendorId && ME.amb && !ME.km){ row.ambassador_id=ME.amb.id; row.created_by=ME.uid; }
   const r = editVendorId
     ? await SB.from('vendors').update(row).eq('id',editVendorId)
-    : await SB.from('vendors').insert(row);
+    : await SB.from('vendors').insert(row).select();
   if(r.error){ $('vsMsg').textContent='> '+r.error.message; return; }
-  sheet('vendorSheet',false); toast(editVendorId?'Saved':(ME.km?'🤝 On the rolls — now hand them gear and mint a pass':'🤝 Recruited — mint their pass and they can pitch gear'));
+  sheet('vendorSheet',false); toast(editVendorId?'Saved':(ME.km?'🤝 On the rolls — now hand them gear and mint a pass':'🤝 Recruited — now mint their pass'));
+  const fresh = (!editVendorId && r.data && r.data[0]) ? r.data[0] : null;
   await loadVendors();
   if(TAB==='vendors')renderVendors(); if(TAB==='myvend')renderMyVend();
+  /* a recruit with no pass can't pitch anything, so don't leave them to find
+     the button — walk straight into minting, the way crowning already does */
+  if(!editVendorId){
+    const v2 = fresh || VENDORS.find(x=>x.name===row.name) || null;
+    if(v2) openInvite(v2.id, 'vendor', v2);
+  }
 });
 
 /* ════════ MY VENDORS (ambassador) ════════ */
 function renderMyVend(){
   const host=$('panel');
-  const cards=VENDORS.map(v=>{
+  /* the policy on `vendors` should already scope this, but the tab used to map
+     over every row it was handed — so a slack SELECT policy would have shown an
+     ambassador somebody else's recruits with PASS and RETIRE live on them. Fence
+     it here too; the server staying strict is then a second lock, not the only one. */
+  const mine=VENDORS.filter(v=>!ME.amb||ME.km||v.ambassador_id===ME.amb.id);
+  const cards=mine.map(v=>{
     const mem=MEMBERS.filter(m=>m.vendor_id===v.id);
     const book=ambBook(ME.amb.id);
     const fromThis=book.lines.filter(l=>l.vendor_id===v.id).reduce((s,l)=>s+Number(l.commission||0),0);
@@ -1406,7 +1423,7 @@ function renderMyVend(){
   }).join('');
   host.innerHTML='<button class="btn" id="vAdd" style="margin:2px 0 14px">🤝 RECRUIT A VENDOR</button>'
     +'<p class="sub" style="margin:0 2px 12px">Bring a maker to the Armory, mint their pass, and every sale off their bench pays you <b style="color:var(--copper-hi)">'+(Number(ME.amb.rate)||0)+'%</b> of the house margin — booked automatically at the till. The Keymaster still approves all gear.</p>'
-    +(VENDORS.length?'<div class="cardgrid">'+cards+'</div>'
+    +(mine.length?'<div class="cardgrid">'+cards+'</div>'
       :'<p class="sub" style="text-align:center;padding:14px">Nobody recruited yet. First one’s the hardest.</p>');
   $('vAdd').addEventListener('click',()=>openVendorSheet(null));
   host.querySelectorAll('[data-vedit]').forEach(b=>b.addEventListener('click',()=>openVendorSheet(b.dataset.vedit)));
