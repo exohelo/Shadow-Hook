@@ -380,11 +380,16 @@ select.field{appearance:none;-webkit-appearance:none}
   <button class="btn-ghost" style="width:100%;margin-top:8px" data-close="vendorSheet">Never mind</button>
 </div></div>
 
+<!-- #ambtab2 — the crown sheet, built to read like ADD A VENDOR: anyone can be
+     crowned, casual or not. Name, contact, email, phone, notes, cut. -->
 <div class="sheet" id="ambSheet"><div class="sheet-card">
   <div class="sheet-t" id="abTitle">🎖 CROWN AN AMBASSADOR</div>
-  <div class="lbl">NAME — HOW THE BOOKS KNOW THEM</div><input class="field" id="abName" placeholder="CASUAL KING">
-  <div class="lbl">EMAIL</div><input class="field" id="abEmail" type="email">
+  <p class="sub" style="margin:0 0 10px">An ambassador recruits makers to the Armory and earns a cut of the house margin on everything their recruits sell. <b style="color:var(--bone)">They don’t have to be a casual</b> — a shop owner, a friend of the Order, anybody.</p>
+  <div class="lbl">NAME — PERSON OR BUSINESS</div><input class="field" id="abName" placeholder="Rivera Signs — or Danny Rivera">
+  <div class="lbl">CONTACT NAME</div><input class="field" id="abContact" placeholder="who you actually talk to">
+  <div class="lbl">EMAIL — THIS IS THE LOGIN THEY’LL SIGN IN WITH</div><input class="field" id="abEmail" type="email">
   <div class="lbl">PHONE</div><input class="field" id="abPhone" inputmode="tel">
+  <div class="lbl">NOTES — HOW YOU KNOW THEM, WHAT THEY’RE WORKING</div><textarea class="field" id="abNotes"></textarea>
   <div class="lbl">COMMISSION — % OF THE HOUSE MARGIN ON THEIR RECRUITS’ SALES</div>
   <input class="field mono" id="abRate" inputmode="decimal" value="10">
   <p class="sub" style="margin-top:6px">Snapshotted onto every sale at the till — changing it later only touches new sales. Commission never exceeds what the house made.</p>
@@ -1210,56 +1215,90 @@ function vendorCard(v){
     +'<button class="btn-line'+(v.active?' red':'')+'" data-vactive="'+esc(v.id)+'">'+(v.active?'RETIRE':'REVIVE')+'</button>'
     +'</div></div></div>';
 }
+/* #ambtab2 — a crown gets a full card, the same anatomy as a vendor's: who they
+   are, how to reach them, what they're owed, and every lever spelled out in
+   words instead of a row of bare glyphs nobody can read. */
+function ambCard(a){
+  const b=ambBook(a.id);
+  const recruits=VENDORS.filter(v=>v.ambassador_id===a.id).length;
+  const mem=AMB_MEMBERS.filter(m=>m.ambassador_id===a.id);
+  const tel=a.phone&&telHref(a.phone)?telHref(a.phone):null;
+  return '<div class="card"'+(a.active?'':' style="opacity:.6"')+'><div class="card-h">🎖 '+esc(a.name)
+    +(a.active?'':'<span class="pill red">RETIRED</span>')
+    +'<span class="tag">owed <b class="mono" style="color:var(--copper-hi)">'+money(b.owed)+'</b> · pipe '+money(b.pending)+'</span></div>'
+    +'<div class="card-b">'
+    +'<div class="sub">'+esc(a.contact_name||'—')+(a.email?' · '+esc(a.email):'')
+    +(tel?' · <a style="color:var(--copper-hi);text-decoration:none" href="'+esc(tel)+'">'+esc(a.phone)+'</a>':(a.phone?' · '+esc(a.phone):''))+'</div>'
+    +(a.notes?'<div class="sub" style="margin-top:4px;color:#6e767d">'+esc(a.notes)+'</div>':'')
+    +'<div class="sub" style="margin-top:8px"><b class="mono" style="color:var(--copper-hi)">'+(Number(a.rate)||0)+'%</b> of house margin · 🤝 '
+    +recruits+' recruit'+(recruits===1?'':'s')+' · paid '+money(b.paid)+'</div>'
+    +'<div class="sub" style="margin-top:4px">🗝 signs in as: '
+    +(mem.length?mem.map(function(m){
+        /* a raw uuid fragment told the Keymaster nothing. Show the address they
+           actually type; only if no email is on file anywhere do we say so. */
+        const who=m.email||a.email;
+        return (who?'<span class="mono" style="font-size:11.5px;color:var(--bone)">'+esc(who)+'</span>'
+                   :'<i style="color:var(--warn)">minted — no email on file, add one with EDIT</i>')
+          +' <button class="btn-ghost" style="padding:0 6px" data-amrevoke="'+esc(m.user_id)+'" title="pull the login">✕</button>';
+      }).join(' ')
+      :'<i>no login minted yet — hit PASS</i>')+'</div>'
+    +'<div class="stat-row">'
+    +'<button class="btn-line gold" data-asettle="'+esc(a.id)+'">💰 SETTLE</button>'
+    +'<button class="btn-line gold" data-apass="'+esc(a.id)+'">🗝 PASS</button>'
+    +'<button class="btn-line" data-arate="'+esc(a.id)+'">% RATE</button>'
+    +'<button class="btn-line" data-awire="'+esc(a.id)+'">📻 WIRE</button>'
+    +(tel?'<a class="btn-line red" style="text-decoration:none" href="'+esc(tel)+'">☎ CALL</a>':'')
+    +'<button class="btn-line" data-aedit="'+esc(a.id)+'">✎ EDIT</button>'
+    +'<button class="btn-line'+(a.active?' red':'')+'" data-aactive="'+esc(a.id)+'">'+(a.active?'RETIRE':'REVIVE')+'</button>'
+    +'</div></div></div>';
+}
 function kmAmbSection(){
-  const rows=AMBS.map(a=>{
-    const b=ambBook(a.id);
-    const recruits=VENDORS.filter(v=>v.ambassador_id===a.id).length;
-    const mem=AMB_MEMBERS.filter(m=>m.ambassador_id===a.id);
-    return '<div class="vrow"'+(a.active?'':' style="opacity:.55"')+'><span class="n"><b>🎖 '+esc(a.name)+'</b>'
-      +(a.active?'':' <span class="pill red">RETIRED</span>')
-      +'<i>'+(Number(a.rate)||0)+'% of house margin · '+recruits+' recruit'+(recruits===1?'':'s')
-      +' · pipe '+money(b.pending)+' · paid '+money(b.paid)
-      +' · logins: '+(mem.length?mem.map(m=>esc(m.email||String(m.user_id).slice(0,8))
-          +' <button class="btn-ghost" style="padding:0 5px" data-amrevoke="'+esc(m.user_id)+'">✕</button>').join(' '):'<i>none</i>')+'</i></span>'
-      +'<span class="m" style="color:'+(b.owed>0?'var(--copper-hi)':'var(--steel)')+'">'+money(b.owed)+'</span>'
-      +'<button class="btn-line gold" data-asettle="'+esc(a.id)+'">SETTLE</button>'
-      +'<button class="btn-line gold" data-apass="'+esc(a.id)+'">🗝</button>'
-      +'<button class="btn-line" data-arate="'+esc(a.id)+'">%</button>'
-      +'<button class="btn-line" data-awire="'+esc(a.id)+'">📻</button>'
-      +'<button class="btn-line" data-aedit="'+esc(a.id)+'">✎</button>'
-      +'<button class="btn-line'+(a.active?' red':'')+'" data-aactive="'+esc(a.id)+'">'+(a.active?'RETIRE':'REVIVE')+'</button>'
-      +'</div>';
-  }).join('');
-  return '<div class="card" style="margin-top:14px;border-color:rgba(255,213,61,.35)"><div class="card-h">🎖 THE AMBASSADORS'
-    +'<span class="tag">recruiters · % of house margin, snapshotted per sale</span></div><div class="card-b">'
-    +'<button class="btn-line gold" id="ambAdd" style="margin-bottom:10px">🎖 CROWN AN AMBASSADOR</button>'
-    +(rows||'<p class="sub">No crowns handed out yet. An ambassador recruits vendors and earns a cut of the house margin on everything their recruits sell.</p>')
-    +'</div></div>';
+  /* the add button leads, big and full-width — the same read as ADD A VENDOR */
+  return '<button class="btn" id="ambAdd" style="margin:2px 0 14px">🎖 CROWN AN AMBASSADOR</button>'
+    +(AMBS.length?'<div class="cardgrid">'+AMBS.map(ambCard).join('')+'</div>'
+      :'<p class="sub" style="text-align:center;padding:14px">No crowns handed out yet. An ambassador recruits makers to the Armory and earns a cut of the house margin on everything their recruits sell — and they don’t have to be a casual.</p>');
 }
 let editAmbId=null;
 function openAmbSheet(aid){
   editAmbId=aid;
   const a=aid?AMBS.find(x=>x.id===aid):null;
-  $('abTitle').textContent=a?'✎ '+a.name.toUpperCase():'🎖 CROWN AN AMBASSADOR';
+  $('abTitle').textContent=a?'✎ '+String(a.name||'').toUpperCase():'🎖 CROWN AN AMBASSADOR';
   $('abName').value=a?a.name:''; $('abEmail').value=a?(a.email||''):'';
-  $('abPhone').value=a?(a.phone||''):''; $('abRate').value=a?a.rate:'10';
+  $('abContact').value=a?(a.contact_name||''):'';
+  $('abPhone').value=a?(a.phone||''):''; $('abNotes').value=a?(a.notes||''):'';
+  $('abRate').value=a?a.rate:'10';
   $('abMsg').textContent='';
   sheet('ambSheet');
 }
 async function saveAmb(){
   const row={ name:($('abName').value||'').trim(), email:($('abEmail').value||'').trim()||null,
-    phone:($('abPhone').value||'').trim()||null };
+    phone:($('abPhone').value||'').trim()||null,
+    contact_name:($('abContact').value||'').trim()||null,
+    notes:($('abNotes').value||'').trim()||null };
   const rate=parseFloat($('abRate').value);
   if(!row.name){ $('abMsg').textContent='> a name for the crown'; return; }
   if(!(rate>=0&&rate<=100)){ $('abMsg').textContent='> rate is 0–100 (% of house margin)'; return; }
   row.rate=Math.round(rate*100)/100;
-  const r=editAmbId
-    ? await SB.from('ambassadors').update(row).eq('id',editAmbId)
-    : await SB.from('ambassadors').insert(row).select().single();
+  $('abGo').disabled=true; $('abMsg').textContent='';
+  /* #ambtab2 — contact_name and notes are new columns. If AMBASSADOR-DETAILS.sql
+     hasn't been run yet the table rejects them by name; rather than dead-end the
+     Keymaster, drop the pair and put the crown through anyway. */
+  const put=r=>editAmbId ? SB.from('ambassadors').update(r).eq('id',editAmbId)
+                         : SB.from('ambassadors').insert(r).select().single();
+  let r=await put(row);
+  if(r.error && /contact_name|notes|column|schema/i.test(r.error.message||'')){
+    const lean=Object.assign({},row); delete lean.contact_name; delete lean.notes;
+    const r2=await put(lean);
+    if(!r2.error){
+      r=r2;
+      toast('🎖 Crowned — run AMBASSADOR-DETAILS.sql to keep contact & notes too');
+    }
+  }
+  $('abGo').disabled=false;
   if(r.error){ $('abMsg').textContent='> '+r.error.message; shkAlert('crown save',r.error); return; }
   sheet('ambSheet',false);
   await loadAmbStuff();
-  if(!editAmbId&&r.data){ toast('🎖 Crowned — now mint their login'); renderAmbs(); openInvite(r.data.id,'amb'); }
+  if(!editAmbId&&r.data){ toast('🎖 Crowned — now mint their login'); renderAmbs(); openInvite(r.data.id,'amb',r.data); }
   else { toast('Saved'); renderAmbs(); }
 }
 function openAmbPayout(aid){
@@ -1347,10 +1386,13 @@ function renderMyVend(){
 /* ---- the pass (login) ---- */
 function genPass(){ const a='23456789abcdefghjkmnpqrstvwxyzABCDEFGHJKMNPQRSTVWXYZ'; let s='';
   for(let i=0;i<12;i++)s+=a[Math.floor(Math.random()*a.length)]; return s; }
-function openInvite(vid, kind){
+function openInvite(vid, kind, seed){
   inviteKind=kind==='amb'?'amb':'vendor';
   inviteVendorId=vid;
-  const who = inviteKind==='amb' ? AMBS.find(x=>x.id===vid) : VENDORS.find(x=>x.id===vid);
+  /* #ambtab2 — `seed` is the row we JUST wrote. The reload that follows a crown
+     can lag or be hidden by a policy, and when it does the mint used to open
+     blank and make the Keymaster retype the address they just typed. */
+  const who = (inviteKind==='amb' ? AMBS.find(x=>x.id===vid) : VENDORS.find(x=>x.id===vid)) || seed || null;
   $('invSub').textContent=inviteKind==='amb'
     ?('🎖 A crown login for '+(who?who.name:'?')+' — they sign in at theshadowhook.com/ambassador.')
     :('A pass for '+(who?who.name:'?')+' — they sign in at this same gate.');
