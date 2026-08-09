@@ -1,114 +1,156 @@
-/* ═══════════════════════════════════════════════════════════════════════
-   SHADOW HOOK — vendor-invite
-   The Keymaster mints a dock pass. Given an email + vendor, this either
-   CREATES a fresh login (with the temp password the Keymaster hands over)
-   or LINKS an existing account (a vendor who's already a member keeps
-   their own password — it is never touched) — then writes vendor_members.
+// ═══════════════════════════════════════════════════════════════════════════
+// vendor-invite — MINT A DOCK PASS
+//
+// Deploy over your existing function:
+//     supabase functions deploy vendor-invite
+// (put this file at supabase/functions/vendor-invite/index.ts first)
+//
+// WHY IT'S BEING REPLACED. The deck sends { email, ambassador_id, temp_password }
+// when the Keymaster crowns somebody, and { email, vendor_id, temp_password }
+// when a bench gets a pass. The version currently deployed only ever looks for
+// vendor_id, so a crown comes back "bad vendor id" and no ambassador can ever
+// be minted a login. This one understands both.
+//
+// WHAT IT DOES
+//   1. checks the caller is allowed to mint this particular pass
+//   2. creates the auth account, or LINKS one that already exists — an existing
+//      password is never touched, which is what lets a casual keep their app
+//      login and pick up a crown on the same account
+//   3. writes the one membership row that opens the deck
+//
+// WHO MAY MINT
+//   · the Keymaster — anything
+//   · an ambassador — a pass for a vendor THEY recruited, and nothing else
+//   · anyone else — refused
+//
+// Needs no secrets of its own: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are
+// injected into every edge function by the platform.
+// ═══════════════════════════════════════════════════════════════════════════
 
-   Only a caller whose profile carries is_keymaster may use it.
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-   Deploy:  supabase functions deploy vendor-invite
-
-   POST body: { email, vendor_id, temp_password? }
-   Reply:     { ok, linked_existing, user_id }  or  { error }
-   ═══════════════════════════════════════════════════════════════════════ */
-import { createClient } from "npm:@supabase/supabase-js@2";
-
-const SB_URL     = Deno.env.get("SUPABASE_URL") ?? "";
-const SB_SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const ORIGIN     = Deno.env.get("ARMORY_ALLOWED_ORIGIN") ?? "*";
-
-const cors: Record<string, string> = {
-  "Access-Control-Allow-Origin": ORIGIN,
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
-const reply = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
+
+const reply = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...CORS, "Content-Type": "application/json" },
+  });
+
+const fail = (msg: string, status = 400) => reply({ ok: false, error: msg }, status);
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
-  if (req.method !== "POST")    return reply(405, { error: "POST only" });
+  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+  if (req.method !== "POST") return fail("post only", 405);
 
-  const admin = createClient(SB_URL, SB_SERVICE);
+  const URL = Deno.env.get("SUPABASE_URL")!;
+  const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
 
-  // ── the caller must be the Keymaster ────────────────────────────────
-  const jwt = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
-  if (!jwt || jwt.split(".").length !== 3) return reply(401, { error: "sign in first" });
-  const caller = await admin.auth.getUser(jwt);
-  const callerId = caller?.data?.user?.id;
-  if (!callerId) return reply(401, { error: "bad session" });
-  const { data: prof } = await admin.from("profiles").select("is_keymaster").eq("id", callerId).maybeSingle();
+  let body: Record<string, unknown>;
+  try { body = await req.json(); } catch { return fail("bad body"); }
+
+  const email = String(body.email ?? "").trim().toLowerCase();
+  const password = String(body.temp_password ?? "");
+  const vendorId = body.vendor_id ? String(body.vendor_id) : null;
+  const ambId = body.ambassador_id ? String(body.ambassador_id) : null;
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail("a real email");
+  if (password.length < 8) return fail("temp password needs 8+ characters");
+  if (!vendorId && !ambId) return fail("no vendor or ambassador to mint for");
+  if (vendorId && ambId) return fail("one at a time — a vendor or a crown, not both");
+
+  // ── who is asking? ───────────────────────────────────────────────────────
+  const auth = req.headers.get("Authorization") ?? "";
+  if (!auth.startsWith("Bearer ")) return fail("sign in first", 401);
+
+  const asCaller = createClient(URL, ANON, {
+    global: { headers: { Authorization: auth } },
+    auth: { persistSession: false },
+  });
+  const { data: { user: caller } } = await asCaller.auth.getUser();
+  if (!caller) return fail("sign in first", 401);
+
+  const admin = createClient(URL, SERVICE, { auth: { persistSession: false } });
+
+  // Keymaster?
+  const { data: prof } = await admin
+    .from("profiles").select("is_keymaster").eq("id", caller.id).maybeSingle();
   const isKm = !!prof?.is_keymaster;
 
-  // ── the pass being minted ───────────────────────────────────────────
-  let body: any;
-  try { body = await req.json(); } catch { return reply(400, { error: "bad JSON" }); }
-  const email    = String(body?.email ?? "").trim().toLowerCase();
-  const vendorId = String(body?.vendor_id ?? "").trim();
-  const ambId    = String(body?.ambassador_id ?? "").trim();
-  const tempPw   = String(body?.temp_password ?? "");
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return reply(400, { error: "that's not an email" });
-
-  // AMBASSADOR PASS — the Keymaster's crown alone
-  if (ambId) {
-    if (!isKm) return reply(403, { error: "crowning ambassadors is the Keymaster's alone" });
-    if (!/^[0-9a-f-]{36}$/i.test(ambId)) return reply(400, { error: "bad ambassador id" });
-    const { data: amb } = await admin.from("ambassadors").select("id,name").eq("id", ambId).maybeSingle();
-    if (!amb) return reply(404, { error: "no such ambassador" });
-    let uId: string | null = null; let linked = false;
-    try { const { data } = await admin.rpc("shk_user_id_by_email", { e: email });
-          if (data) { uId = data as string; linked = true; } } catch (_) {}
-    if (!uId) {
-      if (tempPw.length < 8) return reply(400, { error: "temp password needs 8+ characters" });
-      const created = await admin.auth.admin.createUser({ email, password: tempPw, email_confirm: true,
-        user_metadata: { shadowhook_ambassador: amb.name } });
-      if (created.error || !created.data?.user) return reply(500, { error: "could not create the login: " + (created.error?.message ?? "?") });
-      uId = created.data.user.id;
-    }
-    const { error: am } = await admin.from("ambassador_members")
-      .upsert({ user_id: uId, ambassador_id: ambId, email }, { onConflict: "user_id" });
-    if (am) return reply(500, { error: "could not write the crown: " + am.message });
-    return reply(200, { ok: true, linked_existing: linked, user_id: uId });
-  }
-
-  // VENDOR PASS — the Keymaster, or the ambassador who recruited this vendor
-  if (!/^[0-9a-f-]{36}$/i.test(vendorId)) return reply(400, { error: "bad vendor id" });
-  const { data: vendor, error: verr } = await admin.from("vendors")
-    .select("id,name,ambassador_id").eq("id", vendorId).maybeSingle();
-  if (verr || !vendor) return reply(404, { error: "no such vendor" });
   if (!isKm) {
-    const { data: mem } = await admin.from("ambassador_members")
-      .select("ambassador_id").eq("user_id", callerId).maybeSingle();
-    if (!mem?.ambassador_id || mem.ambassador_id !== vendor.ambassador_id) {
-      return reply(403, { error: "only the Keymaster or this vendor's recruiter can mint their pass" });
-    }
+    // only other road in: an ambassador minting for a vendor they recruited
+    if (ambId) return fail("only the Keymaster hands out crowns", 403);
+
+    const { data: mine } = await admin
+      .from("ambassador_members").select("ambassador_id").eq("user_id", caller.id).maybeSingle();
+    if (!mine?.ambassador_id) return fail("not yours to mint", 403);
+
+    const { data: v } = await admin
+      .from("vendors").select("id, ambassador_id").eq("id", vendorId!).maybeSingle();
+    if (!v) return fail("that bench isn’t on the rolls");
+    if (v.ambassador_id !== mine.ambassador_id) return fail("that vendor isn’t one of your recruits", 403);
+  } else if (ambId) {
+    const { data: a } = await admin.from("ambassadors").select("id").eq("id", ambId).maybeSingle();
+    if (!a) return fail("that crown isn’t on the rolls");
+  } else {
+    const { data: v } = await admin.from("vendors").select("id").eq("id", vendorId!).maybeSingle();
+    if (!v) return fail("that bench isn’t on the rolls");
   }
 
-  // ── existing account? link it, never touch its password ─────────────
-  let userId: string | null = null;
+  // ── the account: make one, or take the one that's already there ──────────
+  let uid: string | null = null;
   let linkedExisting = false;
-  try {
-    const { data } = await admin.rpc("shk_user_id_by_email", { e: email });
-    if (data) { userId = data as string; linkedExisting = true; }
-  } catch (_) { /* fall through to create */ }
 
-  if (!userId) {
-    if (tempPw.length < 8) return reply(400, { error: "temp password needs 8+ characters" });
-    const created = await admin.auth.admin.createUser({
-      email, password: tempPw, email_confirm: true,
-      user_metadata: { shadowhook_vendor: vendor.name },
-    });
-    if (created.error || !created.data?.user) {
-      return reply(500, { error: "could not create the login: " + (created.error?.message ?? "?") });
+  const made = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+  });
+
+  if (made.data?.user) {
+    uid = made.data.user.id;
+  } else {
+    const msg = String(made.error?.message ?? "").toLowerCase();
+    const dupe = msg.includes("already") || msg.includes("registered") ||
+                 msg.includes("exists") || made.error?.status === 422;
+    if (!dupe) return fail(made.error?.message || "the mint jammed making the account", 500);
+
+    // already an Order account — link it as-is, never touch their password
+    linkedExisting = true;
+    let page = 1;
+    while (page <= 20 && !uid) {
+      const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 200 });
+      if (error) return fail(error.message, 500);
+      const hit = data.users.find((u) => (u.email ?? "").toLowerCase() === email);
+      if (hit) uid = hit.id;
+      if (data.users.length < 200) break;
+      page++;
     }
-    userId = created.data.user.id;
+    if (!uid) return fail("that email already exists but couldn’t be found — check Authentication → Users", 500);
   }
 
-  // ── the pass itself ────────────────────────────────────────────────
-  const { error: merr } = await admin.from("vendor_members")
-    .upsert({ user_id: userId, vendor_id: vendorId, email }, { onConflict: "user_id" });
-  if (merr) return reply(500, { error: "could not write the pass: " + merr.message });
+  // ── the row that opens the deck ──────────────────────────────────────────
+  const table = ambId ? "ambassador_members" : "vendor_members";
+  const row: Record<string, unknown> = ambId
+    ? { user_id: uid, ambassador_id: ambId }
+    : { user_id: uid, vendor_id: vendorId };
 
-  return reply(200, { ok: true, linked_existing: linkedExisting, user_id: userId });
+  // the email column is useful (the deck shows who signs in) but is not on
+  // every install — write it if it takes, drop it and carry on if it doesn't
+  let ins = await admin.from(table).insert({ ...row, email });
+  if (ins.error && /column|schema cache|email/i.test(ins.error.message || "")) {
+    ins = await admin.from(table).insert(row);
+  }
+  if (ins.error) {
+    const dupe = /duplicate|unique/i.test(ins.error.message || "");
+    if (!dupe) return fail(ins.error.message, 500);
+    // already had the pass — that's a success, not a failure
+  }
+
+  return reply({ ok: true, linked_existing: linkedExisting, user_id: uid });
 });
