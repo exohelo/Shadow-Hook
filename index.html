@@ -18703,35 +18703,58 @@ html.season-xmas.daylight{}
   });
   ['tradesSheet','tradePostSheet'].forEach(id=>{const s7=$(id);if(s7)s7.addEventListener('click',e=>{if(e.target===s7)s7.classList.remove('on');});});
 
-  /* ---- #armtabs — SERVICES shelf inside the Armory: the live board, inline ---- */
+  /* ---- #armtabs — SERVICES shelf inside the Armory: the live board, inline,
+          with a search bar and category chips so a full board stays findable ---- */
+  let _svcRows=[],_svcCat='all',_svcQ='';
   window.armServices=async function(){
     const host=document.getElementById('svcBoard'); if(!host)return;
-    const btn='<button class="btn" style="width:100%;margin:2px 0 12px" onclick="location.href=\'/service\'">🛠 OFFER YOUR SERVICE</button>';
-    host.innerHTML=btn+'<p class="sub">reading the board…</p>';
-    if(!window.SB){host.innerHTML=btn+'<p class="sub">the wire is down — try again online</p>';return;}
+    host.innerHTML='<p class="sub">reading the board…</p>';
+    if(!window.SB){host.innerHTML='<p class="sub">the wire is down — try again online</p>';return;}
     try{
       const r=await window.SB.from('trade_posts').select('*').eq('status','live').order('created_at',{ascending:false});
       if(r.error)throw r.error;
-      const rows=r.data||[];
-      if(!rows.length){host.innerHTML=btn+'<p class="sub" style="text-align:center;padding:10px 0">No hands on the board yet — be the first.</p>';return;}
-      host.innerHTML=btn+rows.map(t=>{
-        const c=_tcat(t.category), tl=_tel(t.phone);
-        return '<div style="border:1px solid var(--line-soft);border-radius:10px;padding:10px;margin-bottom:8px">'
-          +'<div style="display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center"><span style="font-size:16px">'+c[1]+'</span>'
-          +'<b style="color:var(--bone)">'+esc(t.headline||'')+'</b>'
-          +'<span class="mono" style="margin-left:auto;color:var(--copper-hi);font-size:11px">'+esc(t.handle||'')+'</span></div>'
-          +'<div class="sub" style="margin-top:2px;color:var(--steel)">'+c[2]+(t.area?' · '+esc(t.area):'')+'</div>'
-          +(t.blurb?'<div class="sub" style="margin-top:4px;line-height:1.6">'+esc(t.blurb)+'</div>':'')
-          +(t.rate?'<div style="margin-top:4px"><b style="color:var(--copper-hi)">'+esc(t.rate)+'</b></div>':'')
-          +(tl?'<div style="display:flex;gap:6px;margin-top:8px">'
-            +'<a class="btn-ghost" style="flex:1;text-align:center;padding:5px 0;font-size:11px;text-decoration:none" href="tel:'+tl+'">☎ CALL</a>'
-            +'<a class="btn-ghost" style="flex:1;text-align:center;padding:5px 0;font-size:11px;text-decoration:none" href="sms:'+tl+'">💬 TEXT</a>'
-            +'</div>':'')
-          +'</div>';
-      }).join('')
-      +'<p class="sub" style="margin-top:10px;color:var(--steel)">Deal direct — rates and terms are between you and the hand you hire. The full board lives at <b style="color:var(--bone)">theshadowhook.com/service</b>.</p>';
-    }catch(e){host.innerHTML=btn+'<p class="sub">board failed: '+esc(e.message||'')+'</p>';}
+      _svcRows=r.data||[];
+      host.innerHTML='<button class="btn" style="width:100%;margin:2px 0 10px" onclick="location.href=\'/service\'">🛠 OFFER YOUR SERVICE</button>'
+        +'<input class="field" id="svcFind" placeholder="search — mowing, tamales, a handle, a town…" style="margin-bottom:8px">'
+        +'<div class="race-board-tabs" id="svcCats" style="margin-bottom:10px"></div>'
+        +'<div id="svcList"></div>'
+        +'<p class="sub" style="margin-top:10px;color:var(--steel)">Deal direct — rates and terms are between you and the hand you hire. The full board lives at <b style="color:var(--bone)">theshadowhook.com/service</b>.</p>';
+      const f=document.getElementById('svcFind');
+      if(f){f.value=_svcQ;f.addEventListener('input',()=>{_svcQ=f.value;svcDraw();});}
+      const sc=document.getElementById('svcCats');
+      if(sc)sc.addEventListener('click',e=>{const b=e.target.closest('button');if(b){_svcCat=b.dataset.v;svcDraw();}});
+      svcDraw();
+    }catch(e){host.innerHTML='<p class="sub">board failed: '+esc(e.message||'')+'</p>';}
   };
+  function svcDraw(){
+    const sc=document.getElementById('svcCats');
+    if(sc){
+      const have=[...new Set(_svcRows.map(t=>t.category))];
+      if(_svcCat!=='all'&&!have.includes(_svcCat))_svcCat='all';
+      sc.innerHTML='<button data-v="all">ALL</button>'+TRADE_CATS.filter(c=>have.includes(c[0])).map(c=>'<button data-v="'+c[0]+'">'+c[1]+' '+c[2].split(' ')[0].toUpperCase()+'</button>').join('');
+      seg(sc,_svcCat);
+    }
+    const host=document.getElementById('svcList'); if(!host)return;
+    const q=String(_svcQ||'').trim().toLowerCase();
+    const rows=_svcRows.filter(t=>(_svcCat==='all'||t.category===_svcCat)
+      &&(!q||[t.headline,t.blurb,t.handle,t.area,t.rate,_tcat(t.category)[2]].some(v=>String(v||'').toLowerCase().includes(q))));
+    if(!rows.length){host.innerHTML='<p class="sub" style="text-align:center;padding:10px 0">'+(q?'nothing on the board matches “'+esc(q)+'”':'No hands on the board yet — be the first.')+'</p>';return;}
+    host.innerHTML=rows.map(t=>{
+      const c=_tcat(t.category), tl=_tel(t.phone);
+      return '<div style="border:1px solid var(--line-soft);border-radius:10px;padding:10px;margin-bottom:8px">'
+        +'<div style="display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center"><span style="font-size:16px">'+c[1]+'</span>'
+        +'<b style="color:var(--bone)">'+esc(t.headline||'')+'</b>'
+        +'<span class="mono" style="margin-left:auto;color:var(--copper-hi);font-size:11px">'+esc(t.handle||'')+'</span></div>'
+        +'<div class="sub" style="margin-top:2px;color:var(--steel)">'+c[2]+(t.area?' · '+esc(t.area):'')+'</div>'
+        +(t.blurb?'<div class="sub" style="margin-top:4px;line-height:1.6">'+esc(t.blurb)+'</div>':'')
+        +(t.rate?'<div style="margin-top:4px"><b style="color:var(--copper-hi)">'+esc(t.rate)+'</b></div>':'')
+        +(tl?'<div style="display:flex;gap:6px;margin-top:8px">'
+          +'<a class="btn-ghost" style="flex:1;text-align:center;padding:5px 0;font-size:11px;text-decoration:none" href="tel:'+tl+'">☎ CALL</a>'
+          +'<a class="btn-ghost" style="flex:1;text-align:center;padding:5px 0;font-size:11px;text-decoration:none" href="sms:'+tl+'">💬 TEXT</a>'
+          +'</div>':'')
+        +'</div>';
+    }).join('');
+  }
   (function(){
     const am=document.getElementById('armMode');
     if(!am)return;
