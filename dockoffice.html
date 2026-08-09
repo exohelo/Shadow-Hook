@@ -199,6 +199,12 @@ select.field{appearance:none;-webkit-appearance:none}
 .mark-stage{border:1px solid var(--line-soft);border-radius:12px;padding:18px;text-align:center;
   background:repeating-conic-gradient(rgba(255,255,255,.035) 0 25%,transparent 0 50%) 0 0/22px 22px,var(--well)}
 .mark-stage img{max-width:min(320px,70%);height:auto;display:inline-block}
+.art-chip{flex:none;width:46px;height:46px;border-radius:9px;border:1px solid var(--line);
+  background:var(--well) center/cover no-repeat;display:flex;align-items:center;justify-content:center;
+  font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.06em;color:var(--steel)}
+.art-own{display:flex;gap:9px;align-items:flex-start;margin-top:10px;font-size:12.5px;line-height:1.5;color:var(--steel);cursor:pointer}
+.art-own input{width:17px;height:17px;flex:none;margin-top:1px;accent-color:#c9803f}
+
 
 /* #swipeback — on a tablet the gesture replaces the arrow; a laptop keeps it.
    html.swipeback is only set once the gesture script has actually armed. */
@@ -730,7 +736,7 @@ function openTab(k){
 
 /* ════════ DATA ════════ */
 async function refreshAll(){
-  await Promise.all([loadOrders(), loadLedger(), loadProducts(), loadStore(), loadReviews(), loadGate(), (ME.km||ME.amb)?loadVendors():Promise.resolve(), loadLastMsgs(), loadDrafts(), loadAmbStuff(), ME.km?loadService():Promise.resolve()]);
+  await Promise.all([loadOrders(), loadLedger(), loadProducts(), loadStore(), loadReviews(), loadGate(), (ME.km||ME.amb)?loadVendors():Promise.resolve(), loadLastMsgs(), loadDrafts(), loadAmbStuff(), ME.km?loadService():Promise.resolve(), loadArt()]);
 }
 let STORE=[];
 async function loadStore(){
@@ -2521,7 +2527,9 @@ function renderBrand(){
     +'<div class="vrow"><span class="n"><b>'+inches(150)+'</b><i>at 150 DPI — the floor for most screen printers. A modest front print.</i></span></div>'
     +'<p class="sub" style="margin-top:10px;color:var(--warn)">⚠ Going bigger than that — a full back panel, a banner — this file <b>will not hold up</b>. '
       +'Don’t scale it and hope. Ask the Keymaster on <b style="color:var(--bone)">THE WIRE</b> for the source artwork and we’ll get you one that does.</p>'
-    +'</div></div>';
+    +'</div></div>'
+    +artSection();   /* #locker */
+  artWire(host);
   const b=$('mkPng');
   if(b)b.addEventListener('click',async()=>{
     const m=$('mkMsg'); b.disabled=true; if(m)m.textContent='';
@@ -2546,6 +2554,163 @@ function renderBrand(){
     }
     b.disabled=false;
   });
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   #locker — YOUR ARTWORK · the other direction
+
+   THE MARK hands the crest out. This takes files back: print-ready art, proofs,
+   mockups. Run ARTWORK-LOCKER.sql once; until then the card says so and the
+   crest download above it carries on working.
+
+   IT DOES NOT TOUCH THE FILE. The workbench photo path runs everything through
+   a canvas — 1200px, re-encoded to JPEG — which is correct for a product shot
+   and destroys artwork: JPEG has no alpha, and 1200px lossy is not print. This
+   uploads the exact bytes it was handed, whatever the format.
+
+   THE FENCE. The bucket is private; nothing here is world-readable. Reads are
+   short-lived signed URLs minted on demand. Objects live under <vendor_id>/…
+   and the SQL fences both the objects and this book to that folder, so a vendor
+   sees only their own and the Keymaster sees all of it.
+
+   THE BOX THEY TICK. A locker anyone can post into is how somebody else's IP
+   ends up on your garments. Nothing uploads until they state the work is theirs
+   to use, and that answer is recorded on the row with their name against it.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const ART_MAX = 25*1024*1024;
+let ART=[], ART_ERR=null, ART_BUSY=false;
+const artSize=n=>{n=+n||0;return n>=1048576?(n/1048576).toFixed(1)+' MB':Math.max(1,Math.round(n/1024))+' KB';};
+function artKind(m,n){
+  m=String(m||'').toLowerCase(); n=String(n||'').toLowerCase();
+  if(/svg/.test(m)||/\.svg$/.test(n))return['SVG','vector — scales to any size'];
+  if(/pdf/.test(m)||/\.pdf$/.test(n))return['PDF','print-ready'];
+  if(/postscript|illustrator/.test(m)||/\.(ai|eps)$/.test(n))return['VECTOR','Illustrator / EPS'];
+  if(/photoshop/.test(m)||/\.psd$/.test(n))return['PSD','layered'];
+  if(/zip/.test(m)||/\.zip$/.test(n))return['ZIP','a bundle'];
+  if(/^image\//.test(m))return['IMAGE',(m.split('/')[1]||'').toUpperCase()];
+  return['FILE',''];
+}
+const artIsImg=r=>/^image\/(png|jpeg|webp|gif)$/.test(String(r&&r.mime||'').toLowerCase());
+function artVendorId(){ return (ME.vendor&&ME.vendor.id)||null; }
+function artCanUse(){ return !!(ME.km || artVendorId()); }
+
+async function loadArt(){
+  if(!artCanUse()){ ART=[]; return; }
+  try{
+    let q=SB.from('vendor_artwork').select('*').order('created_at',{ascending:false}).limit(500);
+    if(!ME.km) q=q.eq('vendor_id',artVendorId());
+    const r=await q; if(r.error)throw r.error;
+    ART=r.data||[]; ART_ERR=null;
+  }catch(e){
+    ART=[];
+    ART_ERR=/does not exist|relation|schema/i.test(e.message||'')
+      ? 'the locker isn’t built yet — run ARTWORK-LOCKER.sql once in Supabase'
+      : (e.message||'couldn’t read the locker');
+  }
+}
+function artRows(){
+  if(ART_ERR) return '<p class="sub" style="color:var(--warn)">⚠ '+esc(ART_ERR)+'</p>';
+  if(!ART.length) return '<p class="sub">Nothing in here yet. Anything you send the Keymaster by email can live here instead.</p>';
+  return ART.map(r=>{
+    const k=artKind(r.mime,r.name);
+    return '<div class="vrow">'
+      +'<span class="art-chip'+(artIsImg(r)?' img':'')+'" data-artthumb="'+esc(r.path)+'">'+esc(k[0])+'</span>'
+      +'<span class="n"><b>'+esc(r.label||r.name)+'</b>'
+      +'<i>'+esc(r.name)+' · '+artSize(r.bytes)+(k[1]?' · '+esc(k[1]):'')+' · '+rvwDate(r.created_at)
+      +(ME.km&&r.vendor_id?' · <b style="color:var(--copper-hi)">'+esc(vName(r.vendor_id))+'</b>':'')
+      +(r.owns_rights?'':' · <b style="color:var(--warn)">rights not stated</b>')+'</i></span>'
+      +'<button class="btn-line gold" data-artget="'+esc(r.path)+'">⬇ GET</button>'
+      +'<button class="btn-line red" data-artdel="'+esc(r.id)+'" data-artpath="'+esc(r.path)+'">✕</button>'
+      +'</div>';
+  }).join('');
+}
+function artSection(){
+  if(!artCanUse()) return '';
+  return '<div class="card"><div class="card-h">📁 YOUR ARTWORK'
+    +'<span class="tag">'+(ME.km?'everything every vendor has sent up':'your files — the Keymaster can see them')+'</span></div><div class="card-b">'
+    +'<p class="sub" style="margin-bottom:10px">Print files, proofs, mockups. Stored <b style="color:var(--bone)">exactly as you send them</b> — nothing is shrunk or re-saved, so transparency and resolution survive. Up to '+artSize(ART_MAX)+' a file.</p>'
+    +'<input type="file" id="artFile" style="color:var(--steel);font-size:13px;width:100%">'
+    +'<div class="lbl" style="margin-top:8px">WHAT IS IT? — OPTIONAL</div>'
+    +'<input class="field" id="artLabel" placeholder="back panel, 14 inch · hoodie proof v2">'
+    +'<label class="art-own"><input type="checkbox" id="artOwn"> <span>This artwork is mine, or I have the right to use it on gear for the Order.</span></label>'
+    +'<div class="msgline" id="artMsg"></div>'
+    +'<button class="btn" id="artGo" type="button" style="margin-top:6px">⬆ PUT IT IN THE LOCKER</button>'
+    +'<div class="card-h" style="margin-top:16px">In the locker</div>'
+    +artRows()
+    +'</div></div>';
+}
+async function artThumbs(host){
+  const need=[...host.querySelectorAll('.art-chip.img')];
+  if(!need.length)return;
+  try{
+    const paths=need.map(n=>n.dataset.artthumb);
+    const r=await SB.storage.from('artwork').createSignedUrls(paths,600);
+    if(r.error||!r.data)return;
+    r.data.forEach((d,i)=>{ if(d&&d.signedUrl&&need[i]){ need[i].style.backgroundImage='url("'+d.signedUrl+'")'; need[i].textContent=''; } });
+  }catch(e){}
+}
+function artWire(host){
+  const go=$('artGo');
+  if(go)go.addEventListener('click',artUpload);
+  host.querySelectorAll('[data-artget]').forEach(b=>b.addEventListener('click',async()=>{
+    b.disabled=true;
+    try{
+      const r=await SB.storage.from('artwork').createSignedUrl(b.dataset.artget,300,{download:true});
+      if(r.error)throw r.error;
+      const a=document.createElement('a'); a.href=r.data.signedUrl; a.rel='noopener';
+      document.body.appendChild(a); a.click(); a.remove();
+    }catch(e){ toast('⚠ '+(e.message||'couldn’t fetch that file')); shkAlert('artwork get',e); }
+    b.disabled=false;
+  }));
+  host.querySelectorAll('[data-artdel]').forEach(b=>b.addEventListener('click',async()=>{
+    if(!confirm('Take this out of the locker? It’s gone for good.'))return;
+    b.disabled=true;
+    try{
+      const d=await SB.from('vendor_artwork').delete().eq('id',b.dataset.artdel);
+      if(d.error)throw d.error;
+      try{ await SB.storage.from('artwork').remove([b.dataset.artpath]); }catch(e2){}
+      toast('✕ out of the locker'); await loadArt(); renderBrand();
+    }catch(e){ toast('⚠ '+(e.message||'couldn’t remove it')); shkAlert('artwork remove',e); b.disabled=false; }
+  }));
+  artThumbs(host);
+}
+async function artUpload(){
+  if(ART_BUSY)return;
+  const m=$('artMsg'), fi=$('artFile'), f=fi&&fi.files&&fi.files[0];
+  if(m){m.style.color='';m.textContent='';}
+  if(!f){ if(m)m.textContent='> pick a file first'; return; }
+  if(f.size>ART_MAX){ if(m)m.textContent='> that’s '+artSize(f.size)+' — the cap is '+artSize(ART_MAX)+'. Send a flattened copy, or put it in a zip.'; return; }
+  if(!$('artOwn').checked){ if(m)m.textContent='> tick the box — the Order can’t print artwork that isn’t yours to give'; return; }
+  const vid = ME.km ? (artVendorId()||'00000000-0000-0000-0000-000000000000') : artVendorId();
+  if(!vid){ if(m)m.textContent='> no bench on your pass — the Keymaster has to put you on one first'; return; }
+  ART_BUSY=true; const go=$('artGo'); if(go){go.disabled=true;go.textContent='⬆ SENDING…';}
+  try{
+    /* object keys travel inside signed URLs — collapse whitespace rather than
+       leave it to be percent-encoded and mis-handled somewhere downstream */
+    const safe=String(f.name||'file').replace(/\s+/g,'-').replace(/[^\w.\-]+/g,'_').slice(0,80);
+    const path=vid+'/'+Date.now()+'-'+safe;
+    /* the exact bytes, untouched — no canvas, no re-encode, no resize */
+    const up=await SB.storage.from('artwork').upload(path,f,{contentType:f.type||'application/octet-stream',upsert:false});
+    if(up.error)throw up.error;
+    const row=await SB.from('vendor_artwork').insert({vendor_id:vid,path:path,name:f.name,
+      label:($('artLabel').value||'').trim()||null,bytes:f.size,mime:f.type||null,
+      owns_rights:true,uploaded_by:ME.uid||null});
+    if(row.error){ try{ await SB.storage.from('artwork').remove([path]); }catch(e2){} throw row.error; }
+    if(fi)fi.value=''; const lb=$('artLabel'); if(lb)lb.value='';
+    toast('⬆ in the locker');
+    await loadArt(); renderBrand();
+  }catch(e){
+    const msg=String(e.message||e);
+    if(m){ m.style.color='var(--ember)';
+      m.textContent=/bucket|not found|does not exist|relation|schema/i.test(msg)
+        ? '> the locker isn’t built yet — run ARTWORK-LOCKER.sql once in Supabase'
+        : (/policy|permission|row-level|denied/i.test(msg)
+          ? '> the locker turned it away — check ARTWORK-LOCKER.sql has been run'
+          : (/payload|too large|maximum/i.test(msg) ? '> the server refused it as too big' : '> '+msg)); }
+    shkAlert('artwork upload',e);
+  }
+  ART_BUSY=false; const g2=$('artGo'); if(g2){g2.disabled=false;g2.textContent='⬆ PUT IT IN THE LOCKER';}
 }
 
 /* ════════ REALTIME + THE SLOW TIDE ════════ */
