@@ -72,6 +72,9 @@ try{var _sn=window.seasonNow();if(_sn)document.documentElement.classList.add('se
   --line:rgba(220,214,201,.14); --line-soft:rgba(220,214,201,.07);
   /* #70 — tokens that used to be hardcoded, so daylight mode can flip them */
   --well:#0e1113; --bubble:#22272d; --sel:#1a1610; --btn-hi:#242119; --btn-lo:#161410;
+  /* #reviews — the star gold. A token, not a literal, so daylight can darken it:
+     #ffd53d on the near-white daylight plate is barely a star at all. */
+  --star:#ffd53d;
 }
 *{margin:0;padding:0;box-sizing:border-box}
 html{-webkit-text-size-adjust:100%;overscroll-behavior-y:none}
@@ -967,6 +970,7 @@ html.daylight{
   --ember:#a33414; --ok:#3e7030; --warn:#8a6410;
   --line:rgba(33,28,20,.24); --line-soft:rgba(33,28,20,.11);
   --well:#eee8d9; --bubble:#e6dfcd; --sel:#f2e5c5; --btn-hi:#f3e7c9; --btn-lo:#e6d2a4;
+  --star:#9a6b00;   /* #reviews — a star you can still read in direct sun */
 }
 html.daylight body::before{background:radial-gradient(ellipse 120% 60% at 50% -8%, rgba(140,84,32,.05), transparent 55%)}
 /* the boot ritual stays dark — re-scope the dark palette inside it */
@@ -1511,6 +1515,24 @@ html.daylight #soNote{background:#fdf3e3;border-color:#e0c48a;color:#3a3f45}
 .pdp-spec div{display:flex;gap:10px;padding:5px 0;font-size:13px}
 .pdp-spec span:first-child{color:var(--steel);min-width:104px;flex:none}
 .pdp-spec span:last-child{color:var(--bone)}
+
+/* ---- #reviews — the word on the gear (product_reviews — run PRODUCT-REVIEWS.sql once).
+       Mirrors the service board's book: 5★ + comments, one voice per member. */
+.grev{display:flex;align-items:center;gap:5px;margin-top:1px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--steel)}
+.grev .st{color:var(--star);letter-spacing:1px}
+.pdp-revline{display:inline-flex;align-items:center;gap:7px;margin-top:8px;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--steel);cursor:pointer}
+.pdp-revline .st{color:var(--star);letter-spacing:2px}
+.pdp-revline b{color:var(--bone)}
+.pdp-rev{border-top:1px solid var(--line-soft);margin-top:22px;padding-top:14px}
+.prv-pick{font-size:30px;letter-spacing:8px;cursor:pointer;color:var(--star);margin:2px 0 8px;user-select:none}
+.prv-row{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line-soft);border-radius:10px;padding:8px 10px;margin-top:8px}
+.prv-row .n{flex:1;min-width:0;font-size:13px;line-height:1.55;color:var(--bone)}
+.prv-row .n .st{color:var(--star);letter-spacing:2px}
+.prv-row .n i{display:block;font-style:normal;color:var(--steel);overflow-wrap:anywhere}
+.prv-row .prv-del{flex:none;cursor:pointer;border:1px solid rgba(179,85,42,.55);border-radius:8px;background:transparent;padding:4px 9px;font-size:11px;color:var(--ember)}
+/* the jam line under the form — the app carries no .msgline of its own, so the
+   review block brings its own (same read as the service board's) */
+.prv-msg{color:var(--ember);font-family:'IBM Plex Mono',monospace;font-size:11.5px;margin-top:8px;min-height:16px;line-height:1.5}
 
 html.daylight .shop-rail button{background:#fff;border-color:#d8d2c6;color:#5c6570}
 html.daylight .shop-rail button.on{background:#fdf3e3;border-color:var(--copper);color:#8a4f1d}
@@ -3526,6 +3548,9 @@ function mergeDockets(a,b){
       if(_channel){ try{ window.SB.removeChannel(_channel); }catch(e){} _channel=null; }
       try{ sessionStorage.removeItem(HYDR); }catch(e){}
     }
+    /* #reviews — the word repaints with the key: sign in and the rating form
+       appears on an open product page; sign out and it steps back to browse. */
+    try{ if(window.sbLoadProductReviews)window.sbLoadProductReviews(); }catch(e){}
   }
   function boot(){
     if(!window.SB) return;
@@ -9363,6 +9388,7 @@ function renderShop(){
       +'<div class="shot"><img loading="lazy" alt="'+shEsc(p.name)+'" src="'+shEsc(gearShot(p,0))+'">'+badge+'</div>'
       +'<div class="gbrand">'+shEsc(p.brand||"The Shadow Hook")+'</div>'
       +'<div class="gname">'+shEsc(p.name)+'</div>'+price+bucks
+      +(function(){const s=prvStats(p.id);return s.n?'<div class="grev"><span class="st">'+prvStars(s.avg)+'</span>'+s.avg.toFixed(1)+' ('+s.n+')</div>':'';})()   /* #reviews — the word rides the card */
       +(cols.length?'<div class="gsw">'+cols.slice(0,4).map(c=>'<i style="background:'+gearHex(c&&c.hex)+'"></i>').join('')+(extra?'<span>'+extra+'</span>':'')+'</div>':'')
       +'</div>';
   }).join('');
@@ -9377,6 +9403,7 @@ function renderShop(){
 function openGear(id){
   const p=GEAR.find(x=>String(x.id)===String(id)); if(!p)return;
   gearProd=p; gearColor=0; gearSize=null;
+  _prvDirty=false;   /* #reviews — a fresh page reads your standing word, not the last page's draft */
   document.getElementById('gearShop').style.display="none";
   document.getElementById('gearView').style.display="block";
   try{document.getElementById('armoryHead').style.display="none";}catch(e){}
@@ -9395,6 +9422,9 @@ window.closeGear=closeGear;
 function paintGear(){
   const p=gearProd, host=document.getElementById('gearBody'); if(!p||!host)return;
   const cols=gearArr(p.colors), sizes=gearArr(p.sizes), specs=gearArr(p.specs);
+  /* #reviews — until the hand touches the form, the draft mirrors their standing
+     word (repaints ride over it; a dirty draft survives colourway taps) */
+  if(!_prvDirty){ const _pm=prvMine(p.id); _prvStars=_pm?(+_pm.stars||0):0; _prvDraft=(_pm&&_pm.body)?_pm.body:''; }
   /* the catalog can be swapped under an open product page by sbLoadProducts, so
      neither the colour index nor the chosen size can be assumed to still exist */
   if(!(gearColor>=0&&gearColor<cols.length))gearColor=0;
@@ -9408,6 +9438,8 @@ function paintGear(){
     +(cols.length>1?'<div class="pdp-thumbs">'+cols.map((cc,i)=>'<button type="button" data-i="'+i+'"'+(i===gearColor?' class="on"':'')+'><img alt="'+shEsc(cc&&cc.n)+'" src="'+shEsc(gearShot(p,i))+'"></button>').join('')+'</div>':'')
     +'<div class="pdp-brand">'+shEsc(p.brand||"The Shadow Hook")+'</div>'
     +'<div class="pdp-name">'+shEsc(p.name)+'</div>'
+    +(function(){const s=prvStats(p.id);   /* #reviews — the word, right under the name */
+        return (PRV.ok&&s.n)?'<div class="pdp-revline" id="gearRevTop" role="button" tabindex="0" title="read the reviews"><span class="st">'+prvStars(s.avg)+'</span><b>'+s.avg.toFixed(1)+'</b>· '+s.n+' review'+(s.n===1?'':'s')+' ▾</div>':'';})()
     +'<div style="margin-top:10px">'+badge+'</div>'
     +(!GEAR_SHOW_PRICES
         ?'<div class="pdp-soon">Coming soon</div>'
@@ -9427,7 +9459,8 @@ function paintGear(){
           +'<p class="sub" style="text-align:center;margin-top:8px;font-size:12px">Prices post on opening day. No charge today.</p>';
       })()
     +(specs.length?'<div class="pdp-spec"><div class="pdp-lbl" style="margin:0 0 4px">The Details</div>'
-       +specs.map(s=>{ const a=gearArr(s); return '<div><span>'+shEsc(a[0])+'</span><span>'+shEsc(a[1])+'</span></div>'; }).join('')+'</div>':'');
+       +specs.map(s=>{ const a=gearArr(s); return '<div><span>'+shEsc(a[0])+'</span><span>'+shEsc(a[1])+'</span></div>'; }).join('')+'</div>':'')
+    +gearRevBlock(p);   /* #reviews — the word of the Order closes the page */
 
   host.querySelectorAll('.pdp-thumbs button').forEach(b=>b.addEventListener('click',()=>{gearColor=+b.dataset.i||0;paintGear();}));
   host.querySelectorAll('.pdp-cols button').forEach(b=>b.addEventListener('click',()=>{gearColor=+b.dataset.ci||0;paintGear();}));
@@ -9439,6 +9472,12 @@ function paintGear(){
   if(n)n.addEventListener('click',()=>gearNotify(p,c));
   const ad=document.getElementById('gearAdd');   /* #vendor — the cart module takes it from here */
   if(ad)ad.addEventListener('click',()=>{ if(window.armoryAdd)window.armoryAdd(); });
+  /* #reviews — wire the word: the line under the name jumps down; the block posts */
+  const rt=document.getElementById('gearRevTop');
+  if(rt){ const jump=()=>{ const el=document.getElementById('gearRev'); if(el&&el.scrollIntoView)el.scrollIntoView({behavior:'smooth',block:'start'}); };
+    rt.addEventListener('click',jump);
+    rt.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); jump(); } }); }
+  gearRevWire(host,p);
 }
 /* interest goes on the wire so the command centre can see what to order first */
 function gearNotify(p,c){
@@ -9453,6 +9492,108 @@ function gearNotify(p,c){
       .catch(e=>console.warn('interest',e)); }catch(e){}
   }
   try{ toast('🔔 On the list — the Keymaster hears it'); }catch(e){}
+}
+
+/* ═══ #reviews — THE WORD ON THE GEAR: 5★ + comments, one voice per member ═══
+   Mirrors the service board's book (service_reviews) exactly, keyed by product
+   id instead of provider: product_reviews — run PRODUCT-REVIEWS.sql once in
+   Supabase. Everything degrades soft: if the book is missing (PRV.ok=false)
+   the floor paints exactly as before, no stars, no block, no errors. Every
+   field here is UNTRUSTED REMOTE DATA — shEsc everything, same as the shop. */
+let PRV={ok:false,by:{}}, _prvStars=0, _prvDraft='', _prvDirty=false;
+const prvStars=n=>{n=Math.max(0,Math.min(5,Math.round(n)));return '★'.repeat(n)+'☆'.repeat(5-n);};
+function prvStats(pid){const l=PRV.by[String(pid)]||[];if(!l.length)return{n:0,avg:0};return{n:l.length,avg:l.reduce((s,r)=>s+(+r.stars||0),0)/l.length};}
+function prvMine(pid){const uid=window.__shkUid;if(!uid)return null;return (PRV.by[String(pid)]||[]).find(r=>r.reviewer_id===uid)||null;}
+function prvKm(){try{if(window.__isKM)return true;return localStorage.getItem(K('km'))==='1';}catch(e){return false;}}
+function gearRevBlock(p){
+  if(!PRV.ok)return '';                       // the book isn't open — the page holds its tongue
+  const s=prvStats(p.id), list=PRV.by[String(p.id)]||[], mine=prvMine(p.id), km=prvKm();
+  let mineUi='';
+  if(!window.__shkUid){
+    mineUi='<p class="sub" style="margin:10px 0 2px">Browsing’s open to every hand — <b style="color:var(--bone)">claim your card</b> to leave your word.</p>';
+  }else{
+    mineUi='<div class="pdp-lbl" style="margin:14px 0 2px">Your rating</div>'
+      +'<div class="prv-pick" id="prvPick">'+[1,2,3,4,5].map(i=>'<span data-s="'+i+'">'+(i<=_prvStars?'★':'☆')+'</span>').join('')+'</div>'
+      +'<div class="pdp-lbl" style="margin:8px 0 6px">Your word — what should the next hand know?</div>'
+      +'<textarea class="field" id="prvBody" rows="3" maxlength="500" style="resize:vertical" placeholder="Fits true, held up through a hoot-owl shift, worth it.">'+shEsc(_prvDraft)+'</textarea>'
+      +'<div class="prv-msg" id="prvMsg"></div>'
+      +'<button class="btn" id="prvGo" type="button" style="margin-top:6px">'+(mine?'✎ UPDATE YOUR REVIEW':'⚓ POST YOUR REVIEW')+'</button>';
+  }
+  const rows=list.length?list.map(r=>'<div class="prv-row"><span class="n">'
+      +'<b class="st">'+prvStars(+r.stars||0)+'</b> <b>'+shEsc(r.reviewer_handle||'a hand')+'</b>'
+      +'<i>'+(r.body?shEsc(r.body):'<span style="opacity:.6">rating only</span>')+' · '+(function(){try{const d=new Date(r.created_at);return d.toLocaleDateString([],{month:'short',day:'numeric'});}catch(e){return'';}})()+'</i></span>'
+      +((km||r.reviewer_id===window.__shkUid)?'<button class="prv-del" type="button" data-rid="'+shEsc(r.id)+'" title="strike this review">✕</button>':'')
+      +'</div>').join('')
+    :'<p class="sub" style="margin-top:6px">Nothing yet. First word starts the record.</p>';
+  return '<div class="pdp-rev" id="gearRev"><div class="pdp-lbl" style="margin:0 0 6px">📝 The word on this gear</div>'
+    +'<div style="margin:2px 0 4px">'+(s.n
+      ?'<span style="font-size:22px;color:var(--star);letter-spacing:3px">'+prvStars(s.avg)+'</span> <b style="font-size:16px">'+s.avg.toFixed(1)+'</b> <span class="sub">out of 5 · '+s.n+' review'+(s.n===1?'':'s')+'</span>'
+      :'<span class="sub">No word on this gear yet — carried it? Leave the first review.</span>')+'</div>'
+    +mineUi
+    +'<div class="pdp-lbl" style="margin:16px 0 2px">Top reviews</div>'+rows+'</div>';
+}
+function gearRevWire(host,p){
+  const pick=document.getElementById('prvPick');
+  if(pick)pick.addEventListener('click',e=>{const sp=e.target.closest('[data-s]');if(!sp)return;
+    _prvStars=+sp.dataset.s||0;_prvDirty=true;
+    pick.querySelectorAll('[data-s]').forEach(x=>{x.textContent=(+x.dataset.s<=_prvStars)?'★':'☆';});});
+  const ta=document.getElementById('prvBody');
+  if(ta)ta.addEventListener('input',()=>{_prvDraft=ta.value;_prvDirty=true;});
+  const go=document.getElementById('prvGo');
+  if(go)go.addEventListener('click',prvPost);
+  host.querySelectorAll('button.prv-del').forEach(b=>b.addEventListener('click',()=>prvDel(b.dataset.rid)));
+}
+async function prvPost(){
+  const p=gearProd; if(!p)return;
+  const m=document.getElementById('prvMsg'), go=document.getElementById('prvGo');
+  if(!window.SB||!window.__shkUid){ if(m)m.textContent='> claim your card first — the book has to know whose word it is'; return; }
+  if(!(_prvStars>=1&&_prvStars<=5)){ if(m)m.textContent='> tap the stars first — 1 to 5'; return; }
+  if(go)go.disabled=true; if(m)m.textContent='';
+  try{
+    const acct=(typeof loadAcct==='function'?(loadAcct()||{}):{});
+    const r=await window.SB.from('product_reviews').upsert({product_id:String(p.id),reviewer_id:window.__shkUid,
+      reviewer_handle:((acct.handle||'').toUpperCase())||null,stars:_prvStars,
+      body:String(_prvDraft==null?'':_prvDraft).trim()||null},{onConflict:'product_id,reviewer_id'});
+    if(r.error)throw r.error;
+    _prvDirty=false;
+    try{toast('⚓ Your word is on the record');}catch(e2){}
+    await sbLoadProductReviews();               // repaints the grid and the open page
+  }catch(e){
+    const m2=document.getElementById('prvMsg');
+    if(m2)m2.textContent=/does not exist|relation|schema/i.test(e.message||'')?'> the review book isn’t open yet — check back soon':('> '+e.message);
+    try{ if(window.shkAlert)shkAlert('gear review',e); }catch(e2){}
+  }
+  const g2=document.getElementById('prvGo'); if(g2)g2.disabled=false;
+}
+async function prvDel(rid){
+  if(!window.SB||!rid)return;
+  if(!confirm('Strike this review from the record?'))return;
+  try{
+    const mineGone=gearProd&&(function(){const m=prvMine(gearProd.id);return !!(m&&String(m.id)===String(rid));})();
+    const r=await window.SB.from('product_reviews').delete().eq('id',rid);
+    if(r.error)throw r.error;
+    if(mineGone){ _prvStars=0; _prvDraft=''; _prvDirty=false; }   // your word struck — the form clears
+    try{toast('✕ struck');}catch(e2){}
+    await sbLoadProductReviews();
+  }catch(e){
+    try{toast('✗ '+e.message);}catch(e2){}
+    try{ if(window.shkAlert)shkAlert('gear review strike',e); }catch(e2){}
+  }
+}
+async function sbLoadProductReviews(){
+  if(!window.SB)return;
+  try{
+    const r=await window.SB.from('product_reviews').select('*').order('created_at',{ascending:false}).limit(2000);
+    if(r.error)throw r.error;
+    PRV.ok=true; PRV.by={};
+    (r.data||[]).forEach(x=>{ if(!x)return; const k=String(x.product_id); (PRV.by[k]=PRV.by[k]||[]).push(x); });
+  }catch(e){ PRV.ok=false; PRV.by={}; }        // the floor still paints without the book
+  /* a token refresh can land this mid-sentence — never repaint over a hand
+     that is literally typing their word (the data is in; the next paint has it) */
+  const typing=(function(){try{const a=document.activeElement;return !!(a&&a.id==='prvBody');}catch(e){return false;}})();
+  if(typing)return;
+  try{ renderShop(); }catch(e){}
+  if(gearProd){ try{ paintGear(); }catch(e){} }
 }
 /* ---- the catalog off the server; the seed holds the floor until it answers ---- */
 async function sbLoadProducts(){
@@ -9491,9 +9632,11 @@ async function sbLoadProducts(){
   }catch(e){ console.warn('[armory] products',e); }
 }
 window.renderShop=renderShop; window.openGear=openGear; window.sbLoadProducts=sbLoadProducts;
+window.sbLoadProductReviews=sbLoadProductReviews;   /* #reviews */
 (function(){ const b=document.getElementById('gearBack'); if(b)b.addEventListener('click',closeGear); })();
 renderShop();
 try{ sbLoadProducts(); }catch(e){}
+try{ sbLoadProductReviews(); }catch(e){}   /* #reviews — the word rides along; the floor never waits on it */
 
 /* #hull — PIN A HULL. VesselFinder can only deep-link by IMO, and the dispatch sheet
    only gives us a name, so an unlisted ship falls back to a name search. This closes
@@ -18749,7 +18892,7 @@ html.season-xmas.daylight{}
         +'<div class="sub" style="margin-top:2px;color:var(--steel)">'+c[2]+(t.area?' · '+esc(t.area):'')+'</div>'
         +(t.blurb?'<div class="sub" style="margin-top:4px;line-height:1.6">'+esc(t.blurb)+'</div>':'')
         +(t.rate?'<div style="margin-top:4px"><b style="color:var(--copper-hi)">'+esc(t.rate)+'</b></div>':'')
-        +(function(){const s=_svcRv[t.user_id];return (s&&s.n)?'<div style="margin-top:4px"><span style="color:#ffd53d;letter-spacing:2px;font-size:12px">'+_stars(s.sum/s.n)+'</span> <b class="mono" style="font-size:11px">'+(s.sum/s.n).toFixed(1)+'</b> <span class="sub">('+s.n+')</span></div>':'';})()
+        +(function(){const s=_svcRv[t.user_id];return (s&&s.n)?'<div style="margin-top:4px"><span style="color:var(--star);letter-spacing:2px;font-size:12px">'+_stars(s.sum/s.n)+'</span> <b class="mono" style="font-size:11px">'+(s.sum/s.n).toFixed(1)+'</b> <span class="sub">('+s.n+')</span></div>':'';})()
         +(tl?'<div style="display:flex;gap:6px;margin-top:8px">'
           +'<a class="btn-ghost" style="flex:1;text-align:center;padding:5px 0;font-size:11px;text-decoration:none" href="tel:'+tl+'">☎ CALL</a>'
           +'<a class="btn-ghost" style="flex:1;text-align:center;padding:5px 0;font-size:11px;text-decoration:none" href="sms:'+tl+'">💬 TEXT</a>'
