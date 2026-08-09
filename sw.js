@@ -14,7 +14,7 @@
      • Bumping the number below also wipes every old cache on activate, so nothing
        stale can survive.
    ──────────────────────────────────────────────────────────────────────────── */
-const CACHE = 'shadowhook-v20';  // ← bump this each time you deploy an update  (v20: the earning rules unfold inside THE BANK, no second overlay)
+const CACHE = 'shadowhook-v21';  // ← bump this each time you deploy an update  (v21: the wallet floats as a pill beside ☀ — the full rail returns when a promo runs)
 
 const SHELL = [
   '.',
