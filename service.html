@@ -85,10 +85,6 @@ label{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.12e
 
   <div class="card" id="kmCard" style="display:none;border-color:rgba(255,213,61,.4)"><h3 style="color:var(--gold)">The desk — waiting on a ruling</h3><div id="kmBody">—</div></div>
 
-  <div class="chips" id="kindRow" style="margin-bottom:2px">
-    <button data-k="service" class="on">🛠 SERVICES</button>
-    <button data-k="product">📦 PRODUCTS</button>
-  </div>
   <div class="chips" id="chips"></div>
   <div class="grid" id="board"></div>
   <p class="quiet" id="boardNote" style="display:none"></p>
@@ -100,9 +96,7 @@ label{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.12e
 <div class="sheet" id="postSheet"><div class="sheet-card">
   <h3 style="font-family:'Anton',sans-serif;font-size:18px;letter-spacing:.06em;color:var(--bone);border:0;padding:0;text-align:center;margin-bottom:4px">🛠 OFFER YOUR SERVICE</h3>
   <p class="quiet" style="padding:4px 0 10px;font-size:12.5px">Every post gets read before it goes up — edits ride back through approval too.</p>
-  <label>What are you offering?</label>
-  <select class="field" id="fKind"><option value="service">🛠 A service — work I do</option><option value="product">📦 A product — something I make or sell</option></select>
-  <label>The trade</label><select class="field" id="fCat"></select>
+  <label>What are you offering?</label><select class="field" id="fCat"></select>
   <label>Headline — one line that sells it</label><input class="field" id="fHead" maxlength="60" placeholder="Weekend landscaping — mow, trim, haul away">
   <label>What you do</label><textarea class="field" id="fBlurb" rows="3" maxlength="400" placeholder="Ten years of yards. Own truck and tools."></textarea>
   <label>Your rate — plain words</label><input class="field" id="fRate" maxlength="60" placeholder="$40/hr · free quotes">
@@ -159,7 +153,6 @@ const PCATS=[['food','🍳','Food & Treats'],['craft','🧵','Handmade & Crafts'
 const ALLCATS=CATS.concat(PCATS);
 const catOf=k=>ALLCATS.find(c=>c[0]===k)||CATS[CATS.length-1];
 const kindOf=t=>(t&&t.kind==='product')?'product':'service';
-let KIND='service';
 
 const ME={uid:null,email:'',handle:null,km:false};
 let LIVE=[],MINE=null,PEND=[],FILTER='all';
@@ -232,17 +225,14 @@ function mineDraw(){
 }
 function chipsDraw(){
   const host=$('chips');
-  const pool=LIVE.filter(t=>kindOf(t)===KIND);
-  const have=[...new Set(pool.map(t=>t.category))];
+  const have=[...new Set(LIVE.map(t=>t.category))];
   host.innerHTML='<button data-v="all"'+(FILTER==='all'?' class="on"':'')+'>ALL</button>'
     +ALLCATS.filter(c=>have.includes(c[0])).map(c=>'<button data-v="'+c[0]+'"'+(FILTER===c[0]?' class="on"':'')+'>'+c[1]+' '+c[2].split(' ')[0].toUpperCase()+'</button>').join('');
-  document.querySelectorAll('#kindRow button').forEach(b=>b.classList.toggle('on',b.dataset.k===KIND));
 }
 function boardDraw(){
   const host=$('board');
-  const rows=LIVE.filter(t=>kindOf(t)===KIND&&(FILTER==='all'||t.category===FILTER));
-  if(!rows.length){host.innerHTML='';$('boardNote').style.display='';
-    $('boardNote').textContent=KIND==='product'?'No goods on the shelf yet — be the first to put yours up.':'No hands on the board yet — be the first.';return;}
+  const rows=LIVE.filter(t=>FILTER==='all'||t.category===FILTER);
+  if(!rows.length){host.innerHTML='';$('boardNote').style.display='';$('boardNote').textContent='No hands on the board yet — be the first.';return;}
   host.innerHTML=rows.map(t=>{
     const c=catOf(t.category),tl=_tel(t.phone);
     return '<div class="post"><div class="hd"><span class="em">'+c[1]+'</span><div><b>'+esc(t.headline||'')+'</b>'
@@ -296,14 +286,12 @@ function kmDraw(){
     catch(e){toast('✗ '+e.message);shkAlert('ruling',e);b.disabled=false;}
   }));
 }
-function fCatFill(kind,sel){
-  const list=kind==='product'?PCATS:CATS;
-  $('fCat').innerHTML=list.map(c=>'<option value="'+c[0]+'"'+(sel===c[0]?' selected':'')+'>'+c[1]+' '+c[2]+'</option>').join('');
+function fCatFill(sel){
+  const grp=(label,list)=>'<optgroup label="'+label+'">'+list.map(c=>'<option value="'+c[0]+'"'+(sel===c[0]?' selected':'')+'>'+c[1]+' '+c[2]+'</option>').join('')+'</optgroup>';
+  $('fCat').innerHTML=grp('🛠 WORK I DO',CATS)+grp('📦 THINGS I MAKE OR SELL',PCATS);
 }
 function formOpen(prev){
-  const k=prev?kindOf(prev):'service';
-  $('fKind').value=k;
-  fCatFill(k,prev?prev.category:null);
+  fCatFill(prev?prev.category:null);
   $('fHead').value=prev?(prev.headline||''):'';
   $('fBlurb').value=prev?(prev.blurb||''):'';
   $('fRate').value=prev?(prev.rate||''):'';
@@ -312,7 +300,6 @@ function formOpen(prev){
   $('fMsg').textContent='';
   $('postSheet').classList.add('on');
 }
-$('fKind').addEventListener('change',()=>fCatFill($('fKind').value,null));
 $('fGo').addEventListener('click',async()=>{
   const m=$('fMsg');
   if(!ME.uid){m.textContent='✗ sign in first';return;}
@@ -322,7 +309,8 @@ $('fGo').addEventListener('click',async()=>{
   if(!phone){m.textContent='✗ a phone — it’s how work finds you';return;}
   $('fGo').disabled=true;m.textContent='';
   try{
-    const row={user_id:ME.uid,handle:ME.handle,name:null,kind:$('fKind').value,category:$('fCat').value,headline:head,blurb:blurb,
+    const cat=$('fCat').value;
+    const row={user_id:ME.uid,handle:ME.handle,name:null,kind:(PCATS.some(c=>c[0]===cat)?'product':'service'),category:cat,headline:head,blurb:blurb,
       rate:($('fRate').value||'').trim()||null,area:($('fArea').value||'').trim()||null,phone:phone,status:'pending'};
     const r=await SB.from('trade_posts').upsert(row,{onConflict:'user_id'});
     if(r.error)throw r.error;
@@ -352,7 +340,6 @@ $('aGo').addEventListener('click',async()=>{
   boot();
 });
 $('chips').addEventListener('click',e=>{const b=e.target.closest('button');if(b){FILTER=b.dataset.v;chipsDraw();boardDraw();}});
-$('kindRow').addEventListener('click',e=>{const b=e.target.closest('button');if(b){KIND=b.dataset.k;FILTER='all';chipsDraw();boardDraw();}});
 document.querySelectorAll('.sheet').forEach(s=>s.addEventListener('click',e=>{if(e.target===s)s.classList.remove('on');}));
 boot();
 </script>

@@ -2372,9 +2372,17 @@ window.DEVLOG=(function(){
 
     <!-- ==== THE SHOP ==== -->
     <div id="gearShop">
-      <div class="shop-rail" id="shopRail"></div>
-      <div class="shop-grid" id="shopGrid"></div>
-      <p class="sub" id="shopNote" style="margin-top:14px">Prices post on opening day. <b style="color:var(--copper-hi)">⚑ Gear you want that's not here? Send word.</b></p>
+      <!-- #armtabs — one Armory, two shelves: the gear (PRODUCTS) and the hands (SERVICES).
+           Services render inline off the same trade_posts book the /service page reads. -->
+      <div class="race-board-tabs" id="armMode" style="margin:0 0 12px">
+        <button data-v="products" class="on">🛡 PRODUCTS</button><button data-v="services">🛠 SERVICES</button>
+      </div>
+      <div id="armProducts">
+        <div class="shop-rail" id="shopRail"></div>
+        <div class="shop-grid" id="shopGrid"></div>
+        <p class="sub" id="shopNote" style="margin-top:14px">Prices post on opening day. <b style="color:var(--copper-hi)">⚑ Gear you want that's not here? Send word.</b></p>
+      </div>
+      <div id="svcBoard" style="display:none"></div>
     </div>
 
     <!-- ==== ONE PRODUCT ==== -->
@@ -18554,7 +18562,9 @@ html.season-xmas.daylight{}
      through) | passed (turned back — rework it) | retired (the member docked it).
      EVERY edit rides back through pending, so nothing lands on the board unread.
      Contact is direct — CALL/TEXT — no till, no cut, no money through the app. */
-  const TRADE_CATS=[['yard','🌱','Landscaping & Yard'],['fix','🔧','Handyman & Repairs'],['kids','👶','Babysitting & Childcare'],['care','❤️','Caretaking & Elder Care'],['haul','🚚','Moving & Hauling'],['clean','🧽','Cleaning'],['auto','🚗','Auto & Detailing'],['cook','🍳','Cooking & Catering'],['teach','📚','Tutoring & Lessons'],['pets','🐕','Pet Care'],['other','🛠','Something else']];
+  const TRADE_CATS=[['yard','🌱','Landscaping & Yard'],['fix','🔧','Handyman & Repairs'],['kids','👶','Babysitting & Childcare'],['care','❤️','Caretaking & Elder Care'],['haul','🚚','Moving & Hauling'],['clean','🧽','Cleaning'],['auto','🚗','Auto & Detailing'],['cook','🍳','Cooking & Catering'],['teach','📚','Tutoring & Lessons'],['pets','🐕','Pet Care'],['other','🛠','Something else'],
+    /* #armtabs — the product side of the board shares the same book */
+    ['food','🍳','Food & Treats'],['craft','🧵','Handmade & Crafts'],['apparel','👕','Apparel & Prints'],['art','🎨','Art & Stickers'],['jewelry','💍','Jewelry & Accessories'],['candles','🕯','Candles & Scents'],['other2','📦','Something else']];
   const _tcat=k=>TRADE_CATS.find(c=>c[0]===k)||['other','🛠','Something else'];
   const _tel=p=>{const d=String(p||'').replace(/[^+\d]/g,'');return d||null;};
   let _trades=[],_tradeMine=null,_tradeFilter='all';
@@ -18692,6 +18702,49 @@ html.season-xmas.daylight{}
     _tpGo.disabled=false;
   });
   ['tradesSheet','tradePostSheet'].forEach(id=>{const s7=$(id);if(s7)s7.addEventListener('click',e=>{if(e.target===s7)s7.classList.remove('on');});});
+
+  /* ---- #armtabs — SERVICES shelf inside the Armory: the live board, inline ---- */
+  window.armServices=async function(){
+    const host=document.getElementById('svcBoard'); if(!host)return;
+    const btn='<button class="btn" style="width:100%;margin:2px 0 12px" onclick="location.href=\'/service\'">🛠 OFFER YOUR SERVICE</button>';
+    host.innerHTML=btn+'<p class="sub">reading the board…</p>';
+    if(!window.SB){host.innerHTML=btn+'<p class="sub">the wire is down — try again online</p>';return;}
+    try{
+      const r=await window.SB.from('trade_posts').select('*').eq('status','live').order('created_at',{ascending:false});
+      if(r.error)throw r.error;
+      const rows=r.data||[];
+      if(!rows.length){host.innerHTML=btn+'<p class="sub" style="text-align:center;padding:10px 0">No hands on the board yet — be the first.</p>';return;}
+      host.innerHTML=btn+rows.map(t=>{
+        const c=_tcat(t.category), tl=_tel(t.phone);
+        return '<div style="border:1px solid var(--line-soft);border-radius:10px;padding:10px;margin-bottom:8px">'
+          +'<div style="display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center"><span style="font-size:16px">'+c[1]+'</span>'
+          +'<b style="color:var(--bone)">'+esc(t.headline||'')+'</b>'
+          +'<span class="mono" style="margin-left:auto;color:var(--copper-hi);font-size:11px">'+esc(t.handle||'')+'</span></div>'
+          +'<div class="sub" style="margin-top:2px;color:var(--steel)">'+c[2]+(t.area?' · '+esc(t.area):'')+'</div>'
+          +(t.blurb?'<div class="sub" style="margin-top:4px;line-height:1.6">'+esc(t.blurb)+'</div>':'')
+          +(t.rate?'<div style="margin-top:4px"><b style="color:var(--copper-hi)">'+esc(t.rate)+'</b></div>':'')
+          +(tl?'<div style="display:flex;gap:6px;margin-top:8px">'
+            +'<a class="btn-ghost" style="flex:1;text-align:center;padding:5px 0;font-size:11px;text-decoration:none" href="tel:'+tl+'">☎ CALL</a>'
+            +'<a class="btn-ghost" style="flex:1;text-align:center;padding:5px 0;font-size:11px;text-decoration:none" href="sms:'+tl+'">💬 TEXT</a>'
+            +'</div>':'')
+          +'</div>';
+      }).join('')
+      +'<p class="sub" style="margin-top:10px;color:var(--steel)">Deal direct — rates and terms are between you and the hand you hire. The full board lives at <b style="color:var(--bone)">theshadowhook.com/service</b>.</p>';
+    }catch(e){host.innerHTML=btn+'<p class="sub">board failed: '+esc(e.message||'')+'</p>';}
+  };
+  (function(){
+    const am=document.getElementById('armMode');
+    if(!am)return;
+    am.addEventListener('click',function(e){
+      const b=e.target.closest('button'); if(!b)return;
+      am.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+      const svc=b.dataset.v==='services';
+      const gp=document.getElementById('armProducts'), sv=document.getElementById('svcBoard');
+      if(gp)gp.style.display=svc?'none':'';
+      if(sv)sv.style.display=svc?'':'none';
+      if(svc)try{armServices();}catch(e2){}
+    });
+  })();
 
   /* ---- #trades — the Keymaster's desk: rule on board posts ---- */
   let _tradePend=[];
