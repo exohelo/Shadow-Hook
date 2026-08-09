@@ -348,8 +348,8 @@ select.field{appearance:none;-webkit-appearance:none}
 <!-- the sign-in gate -->
 <div class="sheet" id="authSheet"><div class="sheet-card">
   <div class="sheet-t">🗝 SIGN IN</div>
-  <p class="sub" style="text-align:center;margin-bottom:12px">Same email and password you use in the app. Browsing needs no sign-in — posting does.</p>
-  <span class="lbl">EMAIL</span><input class="field" id="aEmail" type="email" autocomplete="username">
+  <p class="sub" style="text-align:center;margin-bottom:12px">Sign in the way you do in the app — your <b style="color:var(--bone)">dispatch #</b> and password. Browsing needs no sign-in; posting does.</p>
+  <span class="lbl">EMAIL — OR YOUR DISPATCH #</span><input class="field" id="aEmail" type="text" autocomplete="username" spellcheck="false" autocapitalize="off" placeholder="you@example.com — or D4928">
   <span class="lbl">PASSWORD</span><input class="field" id="aPass" type="password" autocomplete="current-password">
   <div class="msgline" id="aMsg"></div>
   <button class="btn" id="aGo" style="margin-top:10px;width:100%">THROUGH THE GATE</button>
@@ -649,6 +649,21 @@ $('fGo').addEventListener('click',async()=>{
   }
   $('fGo').disabled=false;
 });
+/* #casualid — A CASUAL HAS NO EMAIL.
+   Card accounts are created by the app as <dispatch#>@shadowhook.com — D4928
+   becomes d4928@shadowhook.com. That address is a fiction: it receives no mail
+   and the member has never seen it. Asking them for "your email" at a gate is
+   asking for something they do not have and could not guess.
+   So the gate takes either: a real email (a vendor, an outside ambassador), or
+   the dispatch number off their card, which we turn into the same address the
+   app signs them in with. Nothing else changes — same password, same account. */
+const CARD_RE = /^[A-Za-z]\s*[-–]?\s*\d{3,5}$/;
+function loginToEmail(v){
+  const s = String(v||'').trim();
+  if(s.indexOf('@') >= 0) return s.toLowerCase();
+  if(CARD_RE.test(s)) return s.replace(/[\s\-–]/g,'').toLowerCase() + '@shadowhook.com';
+  return s.toLowerCase();          // anything else: let the server say no
+}
 function authOpen(){$('aEmail').value='';$('aPass').value='';$('aMsg').textContent='';$('authSheet').classList.add('on');}
 $('tbAuth').addEventListener('click',async()=>{
   if(ME.uid){ if(!confirm('Sign out?'))return; try{await SB.auth.signOut();}catch(e){} location.reload(); }
@@ -656,8 +671,9 @@ $('tbAuth').addEventListener('click',async()=>{
 });
 $('aGo').addEventListener('click',async()=>{
   const m=$('aMsg');
-  const email=($('aEmail').value||'').trim(),pass=$('aPass').value||'';
-  if(!email||!pass){m.textContent='✗ email and password, both';return;}
+  const typed=($('aEmail').value||'').trim(),pass=$('aPass').value||'';
+  const email=loginToEmail(typed);
+  if(!typed||!pass){m.textContent='✗ your dispatch # or email, and your password';return;}
   $('aGo').disabled=true;m.textContent='';
   const r=await SB.auth.signInWithPassword({email:email,password:pass});
   $('aGo').disabled=false;

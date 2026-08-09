@@ -347,7 +347,7 @@ select.field{appearance:none;-webkit-appearance:none}
     <div class="gate-sub">🎖 Ambassador gate · recruits, commissions &amp; the wire · v1</div>
     <div class="card" style="margin-top:26px;text-align:left"><div class="card-b">
       <div class="lbl" style="margin-top:2px">EMAIL</div>
-      <input class="field" id="gEmail" type="email" autocomplete="username" placeholder="you@yourshop.com">
+      <input class="field" id="gEmail" type="text" autocomplete="username" spellcheck="false" autocapitalize="off" placeholder="you@yourshop.com — or D4928">
       <div class="lbl">PASSWORD</div>
       <input class="field" id="gPass" type="password" autocomplete="current-password" placeholder="••••••••">
       <div class="msgline" id="gMsg"></div>
@@ -756,10 +756,26 @@ function show(which){ ['gate','nopass','apply','app'].forEach(id=>{ const el=$(i
 
 $('gGo').addEventListener('click', gateGo);
 $('gPass').addEventListener('keydown', e=>{ if(e.key==='Enter')gateGo(); });
+/* #casualid — A CASUAL HAS NO EMAIL.
+   Card accounts are created by the app as <dispatch#>@shadowhook.com — D4928
+   becomes d4928@shadowhook.com. That address is a fiction: it receives no mail
+   and the member has never seen it. Asking them for "your email" at a gate is
+   asking for something they do not have and could not guess.
+   So the gate takes either: a real email (a vendor, an outside ambassador), or
+   the dispatch number off their card, which we turn into the same address the
+   app signs them in with. Nothing else changes — same password, same account. */
+const CARD_RE = /^[A-Za-z]\s*[-–]?\s*\d{3,5}$/;
+function loginToEmail(v){
+  const s = String(v||'').trim();
+  if(s.indexOf('@') >= 0) return s.toLowerCase();
+  if(CARD_RE.test(s)) return s.replace(/[\s\-–]/g,'').toLowerCase() + '@shadowhook.com';
+  return s.toLowerCase();          // anything else: let the server say no
+}
 async function gateGo(){
-  const email=($('gEmail').value||'').trim(), pass=$('gPass').value||'';
+  const typed=($('gEmail').value||'').trim(), pass=$('gPass').value||'';
+  const email=loginToEmail(typed);
   const m=$('gMsg'); m.textContent='';
-  if(!email||!pass){ m.textContent='> email and password, both'; return; }
+  if(!typed||!pass){ m.textContent='> your email or dispatch #, and your password'; return; }
   $('gGo').disabled=true; $('gGo').textContent='CHECKING THE ROLLS…';
   const r = await SB.auth.signInWithPassword({ email, password:pass });
   $('gGo').disabled=false; $('gGo').textContent='🗝 THROUGH THE GATE';
