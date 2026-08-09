@@ -275,8 +275,13 @@ select.field{appearance:none;-webkit-appearance:none}
   .stage,.stage.wide{max-width:1160px}
   .cardgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
   .cardgrid>.card{margin-bottom:0}
-  /* the vendor roll reads as one long column — full-width cards, stacked */
-  #panel[data-tab=vendors] .cardgrid{grid-template-columns:1fr}
+  /* the vendor roll reads as one long column — full-width cards, stacked.
+     #ambtab2 — the crowns read the same way. An ambassador's card carries the
+     same contact block, notes and row of levers a vendor's does, and it was
+     being given half the width to say it in. */
+  #panel[data-tab=vendors] .cardgrid,
+  #panel[data-tab=ambs] .cardgrid,
+  #panel[data-tab=service] .cardgrid{grid-template-columns:1fr}
   .split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
   #panel[data-tab=wire]>.card{max-width:780px;margin-left:auto;margin-right:auto}
   #panel[data-tab=wire]>.chips{max-width:780px;margin-left:auto;margin-right:auto}
@@ -670,7 +675,7 @@ $('pwGo').addEventListener('click', async()=>{
 function buildTabs(){
   const t=$('tabs');
   const tabs = ME.km
-    ? [['orders','⚓ ORDERS'],['vendors','🤝 VENDORS'],['ambs','🎖 AMBASSADORS'],['work','🛠 WORKBENCH'],['ledger','💰 LEDGER'],['wire','📻 THE WIRE'],['floor','🏬 THE FLOOR']]
+    ? [['orders','⚓ ORDERS'],['vendors','🤝 VENDORS'],['ambs','🎖 AMBASSADORS'],['service','🧰 SERVICE'],['work','🛠 WORKBENCH'],['ledger','💰 LEDGER'],['wire','📻 THE WIRE'],['floor','🏬 THE FLOOR']]
     : ME.amb
     ? [['myvend','🤝 MY VENDORS'],['ledger','💰 MY LEDGER'],['wire','📻 THE WIRE'],['floor','🏬 THE FLOOR']]
     : [['orders','⚓ ORDERS'],['ledger','💰 MY LEDGER'],['wire','📻 THE WIRE'],['gear','🛡 MY GEAR'],['floor','🏬 THE FLOOR']];
@@ -685,6 +690,7 @@ function openTab(k){
   else if(k==='myvend') renderMyVend();
   else if(k==='vendors') renderVendors();
   else if(k==='ambs') renderAmbs();   /* #ambtab */
+  else if(k==='service') renderService();   /* #svctab */
   else if(k==='work') renderWork();
   else if(k==='ledger') renderLedger();
   else if(k==='wire') renderWire();
@@ -694,7 +700,7 @@ function openTab(k){
 
 /* ════════ DATA ════════ */
 async function refreshAll(){
-  await Promise.all([loadOrders(), loadLedger(), loadProducts(), loadStore(), loadReviews(), loadGate(), (ME.km||ME.amb)?loadVendors():Promise.resolve(), loadLastMsgs(), loadDrafts(), loadAmbStuff()]);
+  await Promise.all([loadOrders(), loadLedger(), loadProducts(), loadStore(), loadReviews(), loadGate(), (ME.km||ME.amb)?loadVendors():Promise.resolve(), loadLastMsgs(), loadDrafts(), loadAmbStuff(), ME.km?loadService():Promise.resolve()]);
 }
 let STORE=[];
 async function loadStore(){
@@ -1695,6 +1701,162 @@ function openDraftSheet(mode, ref){
   sheet('draftSheet');
   setTimeout(renderPreview,30);
 }
+/* ═══════════════════════════════════════════════════════════════════════════
+   #svctab — 🧰 SERVICE · THE ORDER'S OWN BOARD, ON THE KEYMASTER'S DESK
+
+   Side work by the Order's own hands — the board members post to at
+   theshadowhook.com/service. It runs on `trade_posts` (TRADES-BOARD.sql), one
+   post per member, and the same book carries the things members MAKE as well as
+   the work they DO, so both land here and a chip sorts them.
+
+   status walks: pending → live (the Keymaster waves it through)
+                         | passed (turned back — rework it)
+                         | retired (the member docked it themselves)
+   EVERY edit rides back through pending, so nothing reaches the board unread.
+
+   The ruling desk used to live only inside the app's Command Center. This is
+   the same desk where the Keymaster actually works. Nothing here touches money:
+   contact is direct, CALL and TEXT, no till and no cut.
+
+   The word of the Order (service_reviews) rides along, so you can see who is
+   actually good before you point an ambassador at them. If that table isn't
+   there yet the board still paints — it just shows no stars.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const SVC_CATS=[['yard','🌱','Landscaping & Yard'],['fix','🔧','Handyman & Repairs'],['kids','👶','Babysitting & Childcare'],
+  ['care','❤️','Caretaking & Elder Care'],['haul','🚚','Moving & Hauling'],['clean','🧽','Cleaning'],
+  ['auto','🚗','Auto & Detailing'],['cook','🍳','Cooking & Catering'],['teach','📚','Tutoring & Lessons'],
+  ['pets','🐕','Pet Care'],['other','🛠','Something else'],
+  ['food','🍳','Food & Treats'],['craft','🧵','Handmade & Crafts'],['apparel','👕','Apparel & Prints'],
+  ['art','🎨','Art & Stickers'],['jewelry','💍','Jewelry & Accessories'],['candles','🕯','Candles & Scents'],
+  ['other2','📦','Something else']];
+const svcCat=k=>SVC_CATS.find(c=>c[0]===k)||['other','🛠','Something else'];
+const svcKind=t=>(t&&t.kind==='product')?'product':'service';
+let SVC={live:[],pend:[],rv:{},rvOk:false}, SVCFILTER='all', SVCOPEN={};
+
+async function loadService(){
+  try{
+    const [live,pend]=await Promise.all([
+      SB.from('trade_posts').select('*').eq('status','live').order('created_at',{ascending:false}),
+      SB.from('trade_posts').select('*').eq('status','pending').order('created_at')
+    ]);
+    if(live.error)throw live.error;
+    SVC.live=live.data||[]; SVC.pend=(pend&&pend.data)||[];
+    SVC.err=null;
+  }catch(e){
+    SVC.live=[];SVC.pend=[];
+    SVC.err=/does not exist|relation|schema/i.test(e.message||'')
+      ?'the board isn’t built yet — run TRADES-BOARD.sql in Supabase'
+      :('board failed: '+(e.message||''));
+  }
+  try{ /* the word of the Order — absent stars never stop the board */
+    const r=await SB.from('service_reviews').select('post_user_id,stars,body,reviewer_handle,created_at,id')
+      .order('created_at',{ascending:false}).limit(2000);
+    if(r.error)throw r.error;
+    SVC.rvOk=true; SVC.rv={};
+    (r.data||[]).forEach(x=>{ if(!x)return; (SVC.rv[x.post_user_id]=SVC.rv[x.post_user_id]||[]).push(x); });
+  }catch(e){ SVC.rvOk=false; SVC.rv={}; }
+  paintSvcDot();
+}
+function svcStats(uid){ const l=SVC.rv[uid]||[]; if(!l.length)return{n:0,avg:0};
+  return {n:l.length, avg:l.reduce((s,r)=>s+(+r.stars||0),0)/l.length}; }
+function paintSvcDot(){
+  const t=$('tab-service'); if(!t)return;
+  const waiting=ME.km&&SVC.pend.length;
+  let d=t.querySelector('.dot');
+  if(waiting&&!d){ d=document.createElement('span'); d.className='dot'; t.appendChild(d); }
+  if(!waiting&&d) d.remove();
+}
+function svcCard(t){
+  const c=svcCat(t.category), tel=telHref(t.phone), s=svcStats(t.user_id);
+  const isProd=svcKind(t)==='product';
+  const open=!!SVCOPEN[t.user_id];
+  const list=SVC.rv[t.user_id]||[];
+  return '<div class="card"><div class="card-h">'+c[1]+' '+esc(t.headline||'—')
+    +'<span class="pill '+(isProd?'amb':'cop')+'">'+(isProd?'📦 PRODUCT':'🛠 SERVICE')+'</span>'
+    +'<span class="tag">'+(s.n
+        ?'<span style="color:#ffd53d;letter-spacing:2px">'+rvwStr(s.avg)+'</span> <b class="mono">'+s.avg.toFixed(1)+'</b> · '+s.n+' review'+(s.n===1?'':'s')
+        :'<i>no word yet</i>')+'</span></div>'
+    +'<div class="card-b">'
+    +'<div class="sub">'+(t.handle?'<b class="mono" style="color:var(--copper-hi)">'+esc(t.handle)+'</b> · ':'')
+    +esc(c[2])+(t.area?' · '+esc(t.area):'')+(t.phone?' · '+esc(t.phone):'')+'</div>'
+    +(t.blurb?'<div class="sub" style="margin-top:4px;color:#6e767d;line-height:1.6">'+esc(t.blurb)+'</div>':'')
+    +(t.rate?'<div class="sub" style="margin-top:4px">asks <b style="color:var(--copper-hi)">'+esc(t.rate)+'</b></div>':'')
+    +(isProd?'<div class="sub" style="margin-top:6px;color:var(--warn)">🤝 Armory-worthy? Recruit them as a vendor, or point an ambassador at them.</div>':'')
+    +'<div class="stat-row">'
+    +(tel?'<a class="btn-line red" style="text-decoration:none" href="'+esc(tel)+'">☎ CALL</a>'
+         +'<a class="btn-line" style="text-decoration:none" href="'+esc(tel.replace(/^tel:/,'sms:'))+'">💬 TEXT</a>':'')
+    +(SVC.rvOk?'<button class="btn-line'+(open?' gold':'')+'" data-svcrev="'+esc(t.user_id)+'">📝 '+(open?'HIDE THE WORD':'THE WORD'+(s.n?' ('+s.n+')':''))+'</button>':'')
+    +'<button class="btn-line red" data-svcpull="'+esc(t.user_id)+'">✕ PULL</button>'
+    +'</div>'
+    +(open?'<div style="margin-top:10px;border-top:1px solid var(--line-soft);padding-top:10px">'
+        +(list.length?list.map(r=>'<div style="border:1px solid var(--line-soft);border-radius:10px;padding:8px 10px;margin-bottom:8px;font-size:12.5px;line-height:1.55">'
+            +'<span style="color:#ffd53d;letter-spacing:2px">'+rvwStr(+r.stars||0)+'</span> <b>'+esc(r.reviewer_handle||'a hand')+'</b>'
+            +' <span class="sub" style="font-size:11px">· '+rvwDate(r.created_at)+'</span>'
+            +'<div class="sub" style="margin-top:3px'+(r.body?'':';opacity:.6')+'">'+(r.body?esc(r.body):'rating only')+'</div>'
+            +'</div>').join('')
+          :'<p class="sub">No word on them yet — the Order writes these in the app.</p>')
+      +'</div>':'')
+    +'</div></div>';
+}
+function renderService(){
+  const host=$('panel');
+  if(SVC.err){ host.innerHTML='<p class="sub" style="text-align:center;padding:18px;color:var(--ember)">'+esc(SVC.err)+'</p>'; return; }
+  /* the ruling desk leads — anything waiting is the only thing that's urgent */
+  const desk=SVC.pend.length
+    ? '<div class="card" style="border-color:rgba(238,180,107,.45)"><div class="card-h">⚖ WAITING ON YOUR RULING'
+      +'<span class="tag">'+SVC.pend.length+' in for approval · nothing reaches the board unread</span></div><div class="card-b">'
+      +SVC.pend.map(t=>{ const c=svcCat(t.category), isProd=svcKind(t)==='product';
+        return '<div class="vrow"><span class="n"><b>'+c[1]+' '+esc(t.headline||'?')+'</b> '
+          +'<span class="pill '+(isProd?'amb':'cop')+'">'+(isProd?'📦 PRODUCT':'🛠 SERVICE')+'</span>'
+          +'<i>'+esc(t.handle||'a hand')+' · '+esc(c[2])+' · '+esc(t.phone||'no phone')
+          +(t.area?' · '+esc(t.area):'')+(t.rate?' · asks '+esc(t.rate):'')
+          +(t.blurb?'<br>“'+esc(t.blurb)+'”':'')+'</i></span>'
+          +'<button class="btn-line gold svc-rule" data-do="live" data-u="'+esc(t.user_id)+'">✓ POST IT</button>'
+          +'<button class="btn-line svc-rule" data-do="pass" data-u="'+esc(t.user_id)+'">✕ PASS</button>'
+          +'</div>'; }).join('')
+      +'</div></div>'
+    : '<div class="card"><div class="card-h">⚖ THE RULING DESK<span class="tag">quiet</span></div>'
+      +'<div class="card-b"><p class="sub">Nothing in for approval. New posts from the board land here the moment a hand sends one up.</p></div></div>';
+  /* the live board */
+  const kinds=[['all','EVERYTHING'],['service','🛠 SERVICES'],['product','📦 THINGS THEY MAKE']];
+  const rows=SVC.live.filter(t=>SVCFILTER==='all'||svcKind(t)===SVCFILTER);
+  host.innerHTML=desk
+    +'<p class="sub" style="margin:14px 2px 10px">On the board now — this is what every hand sees at <b style="color:var(--bone)">theshadowhook.com/service</b>. Deal direct; rates and terms are between the two of them.</p>'
+    +'<div class="chips">'+kinds.map(([k,l])=>'<button data-svck="'+k+'"'+(k===SVCFILTER?' class="on"':'')+'>'+l+'</button>').join('')+'</div>'
+    +(rows.length?'<div class="cardgrid">'+rows.map(svcCard).join('')+'</div>'
+      :'<p class="sub" style="text-align:center;padding:16px">'+(SVC.live.length?'Nothing on this shelf.':'No hands on the board yet.')+'</p>');
+  host.querySelectorAll('[data-svck]').forEach(b=>b.addEventListener('click',()=>{SVCFILTER=b.dataset.svck;renderService();}));
+  host.querySelectorAll('[data-svcrev]').forEach(b=>b.addEventListener('click',()=>{
+    const u=b.dataset.svcrev; SVCOPEN[u]=!SVCOPEN[u]; renderService(); }));
+  host.querySelectorAll('button.svc-rule').forEach(b=>b.addEventListener('click',async()=>{
+    const t=SVC.pend.find(x=>x.user_id===b.dataset.u); if(!t)return;
+    const on=b.dataset.do==='live';
+    if(!on&&!confirm('Pass on '+(t.handle||'this post')+'? They can rework it and send it through again.'))return;
+    b.disabled=true;
+    try{
+      const r=await SB.from('trade_posts').update({status:on?'live':'passed'}).eq('user_id',t.user_id);
+      if(r.error)throw r.error;
+      try{ await SB.rpc('km_warn',{p_handle:t.handle,p_msg:on
+        ?('🛠 Your post is on the board — “'+(t.headline||'')+'” now shows at theshadowhook.com/service for every hand in the Order.')
+        :'Your post didn’t clear this round. Rework it and send it through again.'}); }catch(e2){}
+      toast(on?'✓ on the board':'✕ passed');
+      await loadService(); renderService();
+    }catch(e){ toast('⚠ '+e.message); shkAlert('service ruling',e); b.disabled=false; }
+  }));
+  host.querySelectorAll('[data-svcpull]').forEach(b=>b.addEventListener('click',async()=>{
+    const t=SVC.live.find(x=>x.user_id===b.dataset.svcpull); if(!t)return;
+    if(!confirm('Pull '+(t.handle||'this hand')+'’s post off the board? They’ll be told to rework it.'))return;
+    b.disabled=true;
+    try{
+      const r=await SB.from('trade_posts').update({status:'passed'}).eq('user_id',t.user_id);
+      if(r.error)throw r.error;
+      try{ await SB.rpc('km_warn',{p_handle:t.handle,p_msg:'Your post was pulled from the board. Rework it and send it through again.'}); }catch(e2){}
+      toast('✕ pulled'); await loadService(); renderService();
+    }catch(e){ toast('⚠ '+e.message); shkAlert('service pull',e); b.disabled=false; }
+  }));
+  paintSvcDot();
+}
+
 /* ════ THE FLOOR PREVIEW — the Armory's own art, ported line for line ════ */
 let pvState={ci:0,size:null,mode:'card'}, pvPhotoURL=null, pvTimer=null;
 function pvHex(h){ const s=String(h==null?'':h).trim();
@@ -2223,6 +2385,12 @@ function subscribe(){
       .on('postgres_changes',{event:'INSERT',schema:'public',table:'amb_msgs'},onMsg('a'))
       .on('postgres_changes',{event:'*',schema:'public',table:'product_drafts'},()=>{
         loadDrafts().then(()=>{ if(TAB==='work')renderWork(); if(TAB==='gear')renderGear(); }); })
+      /* #svctab — a hand sends a post up and the ruling desk lights up at once */
+      .on('postgres_changes',{event:'*',schema:'public',table:'trade_posts'},()=>{
+        if(!ME.km)return;
+        const before=SVC.pend.length;
+        loadService().then(()=>{ if(SVC.pend.length>before)toast('🧰 New work in for approval');
+          if(TAB==='service')renderService(); }); })
       .subscribe();
   }catch(e){ console.warn('realtime',e); }
   /* the slow tide — realtime or not, the office never goes stale */
