@@ -18691,7 +18691,8 @@ html.season-xmas.daylight{}
 
   /* ---- #armtabs — SERVICES shelf inside the Armory: the live board, inline,
           with a search bar and category chips so a full board stays findable ---- */
-  let _svcRows=[],_svcCat='all',_svcQ='';
+  let _svcRows=[],_svcCat='all',_svcQ='',_svcRv={};
+  const _stars=n=>{n=Math.max(0,Math.min(5,Math.round(n)));return '★'.repeat(n)+'☆'.repeat(5-n);};
   window.armServices=async function(){
     const host=document.getElementById('svcBoard'); if(!host)return;
     host.innerHTML='<p class="sub">reading the board…</p>';
@@ -18700,6 +18701,11 @@ html.season-xmas.daylight{}
       const r=await window.SB.from('trade_posts').select('*').eq('status','live').order('created_at',{ascending:false});
       if(r.error)throw r.error;
       _svcRows=r.data||[];
+      _svcRv={};
+      try{ /* the word of the Order rides along — stars still absent won't stop the shelf */
+        const rr=await window.SB.from('service_reviews').select('post_user_id,stars').limit(2000);
+        if(!rr.error)(rr.data||[]).forEach(x=>{const k=x.post_user_id;(_svcRv[k]=_svcRv[k]||{n:0,sum:0});_svcRv[k].n++;_svcRv[k].sum+=(+x.stars||0);});
+      }catch(e2){}
       host.innerHTML='<div class="card" style="border-color:rgba(77,226,255,.35)">'
         +'<div class="card-b" style="cursor:pointer" onclick="location.href=\'/service\'">'
         +'<div style="display:flex;align-items:center;gap:14px">'
@@ -18743,6 +18749,7 @@ html.season-xmas.daylight{}
         +'<div class="sub" style="margin-top:2px;color:var(--steel)">'+c[2]+(t.area?' · '+esc(t.area):'')+'</div>'
         +(t.blurb?'<div class="sub" style="margin-top:4px;line-height:1.6">'+esc(t.blurb)+'</div>':'')
         +(t.rate?'<div style="margin-top:4px"><b style="color:var(--copper-hi)">'+esc(t.rate)+'</b></div>':'')
+        +(function(){const s=_svcRv[t.user_id];return (s&&s.n)?'<div style="margin-top:4px"><span style="color:#ffd53d;letter-spacing:2px;font-size:12px">'+_stars(s.sum/s.n)+'</span> <b class="mono" style="font-size:11px">'+(s.sum/s.n).toFixed(1)+'</b> <span class="sub">('+s.n+')</span></div>':'';})()
         +(tl?'<div style="display:flex;gap:6px;margin-top:8px">'
           +'<a class="btn-ghost" style="flex:1;text-align:center;padding:5px 0;font-size:11px;text-decoration:none" href="tel:'+tl+'">☎ CALL</a>'
           +'<a class="btn-ghost" style="flex:1;text-align:center;padding:5px 0;font-size:11px;text-decoration:none" href="sms:'+tl+'">💬 TEXT</a>'

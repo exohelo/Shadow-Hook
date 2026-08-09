@@ -352,6 +352,17 @@ select.field{appearance:none;-webkit-appearance:none}
   <button class="btn-ghost" style="width:100%;margin-top:8px" onclick="document.getElementById('authSheet').classList.remove('on')">Never mind</button>
 </div></div>
 
+<!-- the reviews sheet — the word of the Order on one provider -->
+<div class="sheet" id="revSheet"><div class="sheet-card">
+  <div class="sheet-t">📝 THE WORD ON THEM</div>
+  <p class="sub" id="rvWho" style="text-align:center;margin-bottom:6px">—</p>
+  <div id="rvAvg" style="text-align:center;margin-bottom:12px">—</div>
+  <div id="rvMine"></div>
+  <div class="card-h" style="margin:14px 0 8px">Top reviews</div>
+  <div id="rvList"><p class="sub">—</p></div>
+  <button class="btn-ghost" style="width:100%;margin-top:12px" onclick="document.getElementById('revSheet').classList.remove('on')">Close</button>
+</div></div>
+
 <div id="toast"></div>
 
 <script>
@@ -390,6 +401,9 @@ const kindOf=t=>(t&&t.kind==='product')?'product':'service';
 
 const ME={uid:null,email:'',handle:null,km:false};
 let LIVE=[],MINE=null,PEND=[],FILTER='all';
+let RV={ok:false,by:{}},_revFor=null,_revStars=0;
+const starStr=n=>{n=Math.max(0,Math.min(5,Math.round(n)));return '★'.repeat(n)+'☆'.repeat(5-n);};
+function rvStats(uid){const l=RV.by[uid]||[];if(!l.length)return{n:0,avg:0};return{n:l.length,avg:l.reduce((s,r)=>s+(+r.stars||0),0)/l.length};}
 
 function shkAlert(where,err){ /* jams land in THE ALARMS in the Command Center */
   try{
@@ -426,6 +440,11 @@ async function load(){
     const [l,m,p]=await Promise.all(jobs);
     if(l&&l.error)throw l.error;
     LIVE=(l&&l.data)||[]; MINE=(m&&m.data)||null; PEND=(p&&p.data)||[];
+    try{ /* the word of the Order — reviews ride along; the board still paints without them */
+      const rr=await SB.from('service_reviews').select('*').order('created_at',{ascending:false}).limit(1000);
+      if(rr.error)throw rr.error;
+      RV.ok=true;RV.by={};(rr.data||[]).forEach(r=>{(RV.by[r.post_user_id]=RV.by[r.post_user_id]||[]).push(r);});
+    }catch(e){RV.ok=false;RV.by={};}
     $('boardNote').style.display='none';
   }catch(e){
     LIVE=[];MINE=null;PEND=[];
@@ -475,12 +494,17 @@ function boardDraw(){
       +'<div class="sub">'+c[2]+(t.area?' · '+esc(t.area):'')+'</div>'
       +(t.blurb?'<div class="sub" style="margin-top:5px;color:#a9adbf;line-height:1.6">'+esc(t.blurb)+'</div>':'')
       +(t.rate?'<div style="margin-top:7px"><b style="color:var(--copper-hi,#4de2ff)">'+esc(t.rate)+'</b></div>':'')
+      +(RV.ok?(function(){const s=rvStats(t.user_id);
+          return s.n?'<div style="margin-top:7px"><span style="color:#ffd53d;letter-spacing:2px">'+starStr(s.avg)+'</span> <b>'+s.avg.toFixed(1)+'</b> <span class="sub">· '+s.n+' review'+(s.n===1?'':'s')+'</span></div>'
+                    :'<div class="sub" style="margin-top:7px">no reviews yet — hired them? leave the first</div>';})():'')
       +'<div class="stat-row">'
       +(tl?'<a class="btn-line gold" style="text-decoration:none" href="tel:'+tl+'">☎ CALL</a>'
           +'<a class="btn-line" style="text-decoration:none" href="sms:'+tl+'">💬 TEXT</a>':'')
+      +(RV.ok?'<button class="btn-line" data-rev="'+esc(t.user_id)+'">📝 REVIEWS</button>':'')
       +(ME.km?'<button class="btn-line red" data-pull="'+esc(t.user_id)+'">✕ PULL</button>':'')
       +'</div></div></div>';
   }).join('');
+  host.querySelectorAll('[data-rev]').forEach(b=>b.addEventListener('click',()=>revOpen(b.dataset.rev)));
   host.querySelectorAll('[data-pull]').forEach(b=>b.addEventListener('click',async()=>{
     const t=LIVE.find(x=>x.user_id===b.dataset.pull);if(!t)return;
     if(!confirm('Pull '+(t.handle||'this hand')+'’s post off the board? They’ll be told to rework it.'))return;
@@ -525,6 +549,67 @@ function fCatFill(sel){
   $('fCat').innerHTML=grp('🛠 WORK I DO',CATS)+grp('📦 THINGS I MAKE OR SELL',PCATS);
 }
 function vendHint(){const h=$('fVendHint');if(h)h.style.display=PCATS.some(c=>c[0]===$('fCat').value)?'':'none';}
+/* ═══ the word of the Order — 5★ + comments, one voice per member ═══ */
+function revOpen(uid){
+  _revFor=uid;
+  const t=LIVE.find(x=>x.user_id===uid)||{};
+  $('rvWho').innerHTML='<b style="color:var(--bone)">'+esc(t.headline||'')+'</b>'+(t.handle?' · <span class="pill cop">'+esc(t.handle)+'</span>':'');
+  const s=rvStats(uid);
+  $('rvAvg').innerHTML=s.n
+    ?'<span style="font-size:26px;color:#ffd53d;letter-spacing:4px">'+starStr(s.avg)+'</span><br><b style="font-size:18px">'+s.avg.toFixed(1)+'</b> <span class="sub">out of 5 · '+s.n+' review'+(s.n===1?'':'s')+'</span>'
+    :'<span class="sub">No word on them yet — hired them? Leave the first review.</span>';
+  const mine=(RV.by[uid]||[]).find(r=>r.reviewer_id===ME.uid);
+  _revStars=mine?(+mine.stars||0):0;
+  const box=$('rvMine');
+  if(!ME.uid){
+    box.innerHTML='<p class="sub" style="text-align:center;margin-bottom:8px">Hired them? <b style="color:var(--bone)">Sign in</b> to leave your word.</p>'
+      +'<button class="btn" id="rvSign" style="width:100%">🗝 SIGN IN</button>';
+    const b=$('rvSign');if(b)b.addEventListener('click',()=>{$('revSheet').classList.remove('on');authOpen();});
+  }else if(uid===ME.uid){
+    box.innerHTML='<p class="sub" style="text-align:center">This post is yours — the Order does the talking here.</p>';
+  }else{
+    box.innerHTML='<span class="lbl">YOUR RATING</span>'
+      +'<div id="rvPick" style="font-size:30px;letter-spacing:8px;cursor:pointer;color:#ffd53d;margin:4px 0 8px">'
+      +[1,2,3,4,5].map(i=>'<span data-s="'+i+'">'+(i<=_revStars?'★':'☆')+'</span>').join('')+'</div>'
+      +'<span class="lbl">YOUR WORD — WHAT SHOULD THE NEXT CASUAL KNOW?</span>'
+      +'<textarea class="field" id="rvBody" rows="3" maxlength="500" style="resize:vertical" placeholder="Showed up on time, yard looks sharp, fair price.">'+(mine&&mine.body?esc(mine.body):'')+'</textarea>'
+      +'<div class="msgline" id="rvMsg"></div>'
+      +'<button class="btn" id="rvGo" style="width:100%;margin-top:6px">'+(mine?'✎ UPDATE YOUR REVIEW':'⚓ POST YOUR REVIEW')+'</button>';
+    const pick=$('rvPick');
+    pick.addEventListener('click',e=>{const sp=e.target.closest('[data-s]');if(!sp)return;_revStars=+sp.dataset.s;
+      pick.querySelectorAll('[data-s]').forEach(x=>{x.textContent=(+x.dataset.s<=_revStars)?'★':'☆';});});
+    $('rvGo').addEventListener('click',async()=>{
+      const m=$('rvMsg');
+      if(!(_revStars>=1&&_revStars<=5)){m.textContent='> tap the stars first — 1 to 5';return;}
+      $('rvGo').disabled=true;m.textContent='';
+      try{
+        const r=await SB.from('service_reviews').upsert({post_user_id:uid,reviewer_id:ME.uid,reviewer_handle:ME.handle,
+          stars:_revStars,body:($('rvBody').value||'').trim()||null},{onConflict:'post_user_id,reviewer_id'});
+        if(r.error)throw r.error;
+        toast('⚓ Your word is on the record');
+        await load();chipsDraw();boardDraw();revOpen(uid);
+      }catch(e){
+        m.textContent=/does not exist|relation|schema/i.test(e.message||'')?'> the review book isn’t open yet — check back soon':('> '+e.message);
+        shkAlert('review',e);
+      }
+      const g=$('rvGo');if(g)g.disabled=false;
+    });
+  }
+  const list=RV.by[uid]||[];
+  $('rvList').innerHTML=list.length?list.map(r=>'<div class="vrow"><span class="n">'
+      +'<b style="color:#ffd53d;letter-spacing:2px">'+starStr(+r.stars||0)+'</b> <b>'+esc(r.reviewer_handle||'a hand')+'</b>'
+      +'<i>'+(r.body?esc(r.body):'<span style="opacity:.6">rating only</span>')+' · '+(function(){try{const d=new Date(r.created_at);return d.toLocaleDateString([],{month:'short',day:'numeric'});}catch(e){return'';}})()+'</i></span>'
+      +((ME.km||r.reviewer_id===ME.uid)?'<button class="btn-line red rv-del" data-rid="'+esc(r.id)+'">✕</button>':'')
+      +'</div>').join('')
+    :'<p class="sub">Nothing yet. First word starts the record.</p>';
+  $('rvList').querySelectorAll('button.rv-del').forEach(b=>b.addEventListener('click',async()=>{
+    if(!confirm('Strike this review from the record?'))return;
+    try{const r=await SB.from('service_reviews').delete().eq('id',b.dataset.rid);if(r.error)throw r.error;
+      toast('✕ struck');await load();chipsDraw();boardDraw();revOpen(uid);}
+    catch(e){toast('✗ '+e.message);shkAlert('review strike',e);}
+  }));
+  $('revSheet').classList.add('on');
+}
 function formOpen(prev){
   fCatFill(prev?prev.category:null);
   vendHint();
