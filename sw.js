@@ -14,7 +14,7 @@
      • Bumping the number below also wipes every old cache on activate, so nothing
        stale can survive.
    ──────────────────────────────────────────────────────────────────────────── */
-const CACHE = 'shadowhook-v30';  // ← bump this each time you deploy an update  (v30: maker posts hint at the vendor road — the board scouts for the Armory)
+const CACHE = 'shadowhook-v31';  // ← bump this each time you deploy an update  (v31: the posters live inside their shelves — ambassador leads PRODUCTS, service leads SERVICES)
 
 const SHELL = [
   '.',
