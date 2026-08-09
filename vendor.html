@@ -190,6 +190,10 @@ select.field{appearance:none;-webkit-appearance:none}
 .floor-grid .pv-card:active{transform:scale(.98)}
 .pv-mine{position:absolute;top:8px;right:8px;padding:3px 8px;border-radius:6px;font-size:9px;letter-spacing:.12em;background:rgba(201,128,63,.92);color:#1a1208;font-weight:700}
 .floor-pdp-wrap{max-width:340px;margin:0 auto}
+/* #swipeback — on a tablet the gesture replaces the arrow; a laptop keeps it.
+   html.swipeback is only set once the gesture script has actually armed. */
+@media (hover:none) and (pointer:coarse){ html.swipeback #floorBack{display:none} }
+.swiping{box-shadow:-24px 0 50px rgba(0,0,0,.62), 24px 0 50px rgba(0,0,0,.62)}
 
 /* ---- the packing slip (print) ---- */
 #slip{display:none}
@@ -2123,6 +2127,68 @@ function renderFloorPDP(host){
   host.querySelectorAll('[data-fci]').forEach(b=>b.addEventListener('click',()=>{floorCi=+b.dataset.fci;renderFloor();}));
   host.querySelectorAll('[data-fsz]').forEach(b=>b.addEventListener('click',()=>{floorSize=b.dataset.fsz;renderFloor();}));
 }
+
+/* ════════ #swipeback — SWIPE FROM EITHER EDGE TO LEAVE A FLOOR PRODUCT ════════
+   The office is a desk tool, so on a laptop the ‹ Back to the floor button stays
+   put. On a tablet the arrow steps aside and the page follows your thumb instead
+   — in from the left edge, or in from the right, whichever hand you're using.
+   Going back CLICKS THAT SAME BUTTON, so the two roads can never disagree. */
+(function(){
+  "use strict";
+  var TOUCH=false; try{ TOUCH=('ontouchstart' in window)||(navigator.maxTouchPoints>0); }catch(e){}
+  if(!TOUCH) return;
+  var EDGE=28, SLOP=10, TAKE=0.32, FLICK=0.45, g=null, REDUCED=false;
+  try{ REDUCED=window.matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(e){}
+  function view(){ var b=document.getElementById('floorBack'), p=document.getElementById('panel');
+    return (b&&p&&floorProd)?{el:p,btn:b}:null; }
+  function sideScroller(node,stop){
+    for(var n=node;n&&n!==stop&&n!==document.body;n=n.parentNode){
+      if(n.nodeType!==1) continue;
+      if(n.scrollWidth>n.clientWidth+2){ var ox=window.getComputedStyle(n).overflowX;
+        if(ox==='auto'||ox==='scroll') return true; }
+    }
+    return false;
+  }
+  function settle(tr,leave){
+    var el=tr.el, ms=REDUCED?0:220;
+    el.style.transition=ms?('transform '+ms+'ms cubic-bezier(.4,0,.2,1)'):'none';
+    el.style.transform=leave?('translateX('+(tr.dir*100)+'%)'):'translateX(0)';
+    setTimeout(function(){ if(leave){ try{ tr.btn.click(); }catch(e){} }
+      el.style.transition=''; el.style.transform='';
+      try{ el.classList.remove('swiping'); }catch(e){} }, ms+20);
+  }
+  document.addEventListener('touchstart',function(e){
+    g=null; if(!e.touches||e.touches.length!==1) return;
+    var t=e.touches[0], W=window.innerWidth||1, L=t.clientX<=EDGE, R=t.clientX>=W-EDGE;
+    if(!L&&!R) return;
+    var v=view(); if(!v) return;
+    if(sideScroller(e.target,v.el)) return;
+    g={el:v.el,btn:v.btn,x0:t.clientX,y0:t.clientY,dir:L?1:-1,t0:Date.now(),live:false,W:W};
+  },{passive:true});
+  document.addEventListener('touchmove',function(e){
+    if(!g) return;
+    if(!e.touches||e.touches.length!==1){ g=null; return; }
+    var t=e.touches[0], dx=t.clientX-g.x0, dy=t.clientY-g.y0;
+    if(!g.live){
+      if(Math.abs(dy)>Math.abs(dx)&&Math.abs(dy)>SLOP){ g=null; return; }
+      if(Math.abs(dx)<SLOP) return;
+      if(g.dir>0?dx<0:dx>0){ g=null; return; }
+      g.live=true; g.el.style.transition='none';
+      try{ g.el.classList.add('swiping'); }catch(e2){}
+    }
+    var far=Math.max(0,g.dir>0?dx:-dx);
+    g.el.style.transform='translateX('+(g.dir*far)+'px)';
+    if(e.cancelable) e.preventDefault();
+  },{passive:false});
+  document.addEventListener('touchend',function(e){
+    if(!g) return; var tr=g; g=null; if(!tr.live) return;
+    var t=(e.changedTouches&&e.changedTouches[0])||null, dx=t?(t.clientX-tr.x0):0;
+    var far=Math.max(0,tr.dir>0?dx:-dx), speed=far/Math.max(1,Date.now()-tr.t0);
+    settle(tr, far>tr.W*TAKE || speed>FLICK);
+  },{passive:true});
+  document.addEventListener('touchcancel',function(){ if(g){ var tr=g; g=null; if(tr.live) settle(tr,false); } },{passive:true});
+  document.documentElement.classList.add('swipeback');
+})();
 
 /* ════════ REALTIME + THE SLOW TIDE ════════ */
 let subscribed=false, pokeTimer=null, refreshing=false;

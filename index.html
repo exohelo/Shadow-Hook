@@ -1534,6 +1534,34 @@ html.daylight #soNote{background:#fdf3e3;border-color:#e0c48a;color:#3a3f45}
    review block brings its own (same read as the service board's) */
 .prv-msg{color:var(--ember);font-family:'IBM Plex Mono',monospace;font-size:11.5px;margin-top:8px;min-height:16px;line-height:1.5}
 
+/* ---- #swipeback — the gesture replaces the arrow, but only on a real finger.
+        html.swipeback is set by the script at the end of this file, so if that
+        script never runs every arrow stays exactly where it was. ---- */
+@media (hover:none) and (pointer:coarse){
+  html.swipeback .pdp-back,
+  html.swipeback .room-back,
+  html.swipeback .yi-back{display:none}
+  /* the title took its spacing from the arrow that used to sit beside it */
+  html.swipeback .room-top,
+  html.swipeback .yi-top{padding-left:16px}
+}
+/* while a drag is live nothing underneath may select, scroll or highlight */
+html.swipe-live{overscroll-behavior-x:none}
+html.swipe-live *{user-select:none;-webkit-user-select:none}
+/* the panel being dragged lifts off the page — shadow on BOTH sides, since it
+   can be travelling either way depending on which edge the thumb came in from */
+.swiping{box-shadow:-24px 0 50px rgba(0,0,0,.62), 24px 0 50px rgba(0,0,0,.62)}
+/* sits exactly where the app's own toasts sit, and clears the room/yard overlays
+   (z-index 80) the same way they do */
+.swipe-hint{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom));transform:translate(-50%,16px);
+  z-index:97;pointer-events:none;background:linear-gradient(184deg,var(--btn-hi),var(--btn-lo));
+  border:1px solid rgba(238,180,107,.45);border-radius:16px;box-shadow:0 12px 30px rgba(0,0,0,.5);
+  padding:10px 17px;font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.03em;color:var(--copper-hi);
+  width:max-content;max-width:calc(100vw - 28px);text-align:center;line-height:1.45;
+  opacity:0;transition:opacity .32s ease,transform .32s ease}
+.swipe-hint.go{opacity:1;transform:translate(-50%,0)}
+@media (prefers-reduced-motion: reduce){ .swipe-hint{transition:opacity .01s} }
+
 html.daylight .shop-rail button{background:#fff;border-color:#d8d2c6;color:#5c6570}
 html.daylight .shop-rail button.on{background:#fdf3e3;border-color:var(--copper);color:#8a4f1d}
 html.daylight .gcard .shot,html.daylight .pdp-hero,html.daylight .pdp-thumbs button{background:#f3efe7;border-color:#ded8cc}
@@ -19495,6 +19523,171 @@ window.shareCall=shareCall;
   }catch(e){}
   renderFab();
   handleReturn();
+})();
+</script>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   #swipeback — SWIPE FROM EITHER EDGE TO GO BACK
+
+   Every full-screen sub-view in the app (a product page, a chat room, the yard
+   map, each terminal's yard viewer) used to be left only by a little ‹ arrow in
+   its top-left corner. On a phone that's the hardest pixel on the screen to
+   reach one-handed. This gives all of them the gesture instead:
+
+     · drag in from the LEFT edge  → the view follows your thumb to the right
+     · drag in from the RIGHT edge → it follows your thumb to the left
+
+   Both go back, the way Android's system gesture does, so it works whichever
+   hand is holding the phone.
+
+   THE VIEW FOLLOWS YOUR FINGER. It is not a fling-and-hope: the panel tracks
+   the drag one-to-one, so you can see how far you've come and change your mind.
+   Let go past a third of the width — or flick it — and it leaves. Anything less
+   and it snaps home.
+
+   WHAT IT WON'T DO:
+     · fight a vertical scroll (goes vertical → we let go instantly)
+     · fight the sideways strips (colourway thumbs, category chips, the shop
+       rail) — a drag starting inside anything horizontally scrollable is left
+       alone
+     · fight pinch-zoom on the yard maps — two fingers down and we bow out
+     · fire on a wrong-way drag
+
+   HOW IT GOES BACK: it CLICKS THE VIEW'S OWN BACK BUTTON. It does not
+   re-implement closing. Whatever that button does today — leaving the chat
+   room, clearing the product, restoring the header — is exactly what the
+   gesture does, and it stays right if that button's job ever changes.
+
+   The arrow itself only hides on genuine touch devices, and only once this
+   script has run and armed the gesture (html.swipeback). A laptop keeps its
+   arrow, and if this file ever fails to parse, every arrow comes back.
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function(){
+  "use strict";
+  var TOUCH=false;
+  try{ TOUCH=('ontouchstart' in window)||(navigator.maxTouchPoints>0); }catch(e){}
+  if(!TOUCH) return;                       // a mouse has no edge to swipe from
+
+  /* [container, its own back button] — overlays first: they stack on top of a
+     product page, so when both are open the overlay is the one to leave. */
+  var VIEWS=[['roomView','roomBack'],['yardMapView','ymBack'],
+             ['yiw','yiBack'],['wbw','wbBack'],['itw','itBack'],['ttw','ttBack'],
+             ['gearView','gearBack']];
+
+  var EDGE=28,          // how far in from the edge a drag may start (px)
+      SLOP=10,          // movement before we commit to a direction
+      TAKE=0.32,        // past this share of the width, it leaves
+      FLICK=0.45;       // …or this fast (px per ms), however short
+  var REDUCED=false;
+  try{ REDUCED=window.matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(e){}
+
+  function shown(el){
+    if(!el) return false;
+    var cs=window.getComputedStyle(el);
+    return cs.display!=='none' && cs.visibility!=='hidden';
+  }
+  function openView(){
+    for(var i=0;i<VIEWS.length;i++){
+      var el=document.getElementById(VIEWS[i][0]), btn=document.getElementById(VIEWS[i][1]);
+      if(el&&btn&&shown(el)) return {el:el,btn:btn};
+    }
+    return null;
+  }
+  /* a drag that starts on something which itself scrolls sideways belongs to
+     that strip, not to us */
+  function onSideScroller(node,stop){
+    for(var n=node;n&&n!==stop&&n!==document.body;n=n.parentNode){
+      if(n.nodeType!==1) continue;
+      if(n.scrollWidth>n.clientWidth+2){
+        var ox=window.getComputedStyle(n).overflowX;
+        if(ox==='auto'||ox==='scroll') return true;
+      }
+    }
+    return false;
+  }
+
+  var g=null;   // the drag in progress
+
+  function settle(tr,leave){
+    var el=tr.el, ms=REDUCED?0:220;
+    el.style.transition=ms?('transform '+ms+'ms cubic-bezier(.4,0,.2,1)'):'none';
+    el.style.transform=leave?('translateX('+(tr.dir*100)+'%)'):'translateX(0)';
+    window.setTimeout(function(){
+      if(leave){ try{ tr.btn.click(); }catch(e){} }
+      el.style.transition=''; el.style.transform='';   // hand the view back to its own CSS
+      try{ el.classList.remove('swiping'); document.documentElement.classList.remove('swipe-live'); }catch(e){}
+    }, ms+20);
+  }
+
+  document.addEventListener('touchstart',function(e){
+    g=null;
+    if(!e.touches||e.touches.length!==1) return;       // two fingers = pinch, not us
+    var t=e.touches[0], W=window.innerWidth||1;
+    var left=t.clientX<=EDGE, right=t.clientX>=W-EDGE;
+    if(!left&&!right) return;
+    var v=openView(); if(!v) return;
+    if(onSideScroller(e.target,v.el)) return;
+    g={el:v.el,btn:v.btn,x0:t.clientX,y0:t.clientY,dir:left?1:-1,t0:Date.now(),live:false,W:W};
+  },{passive:true});
+
+  document.addEventListener('touchmove',function(e){
+    if(!g) return;
+    if(!e.touches||e.touches.length!==1){ g=null; return; }   // second finger landed
+    var t=e.touches[0], dx=t.clientX-g.x0, dy=t.clientY-g.y0;
+    if(!g.live){
+      if(Math.abs(dy)>Math.abs(dx)&&Math.abs(dy)>SLOP){ g=null; return; }  // they're scrolling
+      if(Math.abs(dx)<SLOP) return;
+      if(g.dir>0?dx<0:dx>0){ g=null; return; }                             // wrong way
+      g.live=true;
+      g.el.style.transition='none';
+      try{ document.documentElement.classList.add('swipe-live'); g.el.classList.add('swiping'); }catch(e2){}
+      hintSeen();
+    }
+    var far=Math.max(0, g.dir>0?dx:-dx);
+    g.el.style.transform='translateX('+(g.dir*far)+'px)';
+    if(e.cancelable) e.preventDefault();      // the page must not scroll under the drag
+  },{passive:false});
+
+  function release(e){
+    if(!g) return;
+    var tr=g; g=null;
+    if(!tr.live){ return; }
+    var t=(e.changedTouches&&e.changedTouches[0])||null;
+    var dx=t?(t.clientX-tr.x0):0;
+    var far=Math.max(0, tr.dir>0?dx:-dx);
+    var speed=far/Math.max(1,Date.now()-tr.t0);
+    settle(tr, far>tr.W*TAKE || speed>FLICK);
+  }
+  document.addEventListener('touchend',release,{passive:true});
+  document.addEventListener('touchcancel',function(e){ if(g){ var tr=g; g=null; if(tr.live) settle(tr,false); } },{passive:true});
+
+  /* ---- one quiet lesson, then never again ----------------------------------
+     We're taking the arrow away on touch, so the first time a hand opens one of
+     these views it gets told once how to get out. Shown twice at most, then it
+     stays out of the way forever. */
+  var HKEY='shadowhook_swipeback_hint';
+  function hintSeen(){ try{ localStorage.setItem(HKEY,'9'); }catch(e){} }
+  function hintCount(){ try{ return +(localStorage.getItem(HKEY)||0)||0; }catch(e){ return 9; } }
+  function hint(){
+    if(hintCount()>=2) return;
+    try{ localStorage.setItem(HKEY,String(hintCount()+1)); }catch(e){}
+    var d=document.createElement('div');
+    d.className='swipe-hint';
+    d.textContent='swipe in from either edge to go back';
+    document.body.appendChild(d);
+    window.setTimeout(function(){ d.classList.add('go'); },30);
+    window.setTimeout(function(){ d.classList.remove('go');
+      window.setTimeout(function(){ try{ d.remove(); }catch(e){} },400); }, 2600);
+  }
+  var lastOpen=false;
+  window.setInterval(function(){
+    var now=!!openView();
+    if(now&&!lastOpen) hint();
+    lastOpen=now;
+  },400);
+
+  document.documentElement.classList.add('swipeback');   // armed — the CSS may hide the arrows now
 })();
 </script>
 
