@@ -100,6 +100,7 @@ select.field{appearance:none;-webkit-appearance:none}
 .chips::-webkit-scrollbar{display:none}
 .chips button{flex:none;padding:7px 13px;border:1px solid var(--line);border-radius:999px;background:none;color:var(--steel);font-weight:600;font-size:11.5px;letter-spacing:.08em}
 .chips button.on{border-color:rgba(238,180,107,.5);color:var(--copper-hi);background:#1c1409}
+.chips button:disabled{opacity:.4}
 
 .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
 .tile{background:linear-gradient(184deg,var(--plate-2),var(--plate));border:1px solid var(--line);border-radius:14px;padding:12px 12px 10px;text-align:center}
@@ -346,7 +347,10 @@ select.field{appearance:none;-webkit-appearance:none}
       <input class="field" id="gPass" type="password" autocomplete="current-password" placeholder="••••••••">
       <div class="msgline" id="gMsg"></div>
       <button class="btn" id="gGo" style="margin-top:10px">🗝 THROUGH THE GATE</button>
-      <p class="sub" style="text-align:center;margin-top:12px">Passes are minted by the Keymaster. Lost yours? Send word — <b style="color:var(--bone)">support@theshadowhook.com</b></p>
+      <!-- #linkin — there was no way back in from this page. Anyone who never
+           had a password, or lost one, had to email support and wait. -->
+      <button class="btn-line" id="gLink" style="width:100%;margin-top:8px">✉ EMAIL ME A SIGN-IN LINK</button>
+      <p class="sub" style="text-align:center;margin-top:12px">Passes are minted by the Keymaster. Lost yours? Use the link button above — or send word to <b style="color:var(--bone)">support@theshadowhook.com</b></p>
     </div></div>
   </div>
 
@@ -355,6 +359,10 @@ select.field{appearance:none;-webkit-appearance:none}
     <div class="crest">☠</div>
     <div class="gate-title" style="font-size:28px;margin-top:16px">NO DOCK PASS</div>
     <p class="sub" style="margin-top:10px">This account isn't on the vendor rolls and doesn't carry the Keymaster's key.<br>If that's wrong, send word to the Keymaster.</p>
+    <!-- #linkin — somebody minted by link can land here rather than on their
+         own deck. Without this button there is no password control anywhere
+         on their road, and the link they arrived on is already spent. -->
+    <button class="btn-line gold" id="npPw" style="margin-top:12px">🔑 SET A PASSWORD</button>
     <button class="btn-line" id="npOut" style="margin-top:22px">SIGN OUT</button>
   </div>
 
@@ -443,15 +451,40 @@ select.field{appearance:none;-webkit-appearance:none}
   <button class="btn-ghost" style="width:100%;margin-top:8px" data-close="svcSheet">Never mind</button>
 </div></div>
 
+<!-- #linkin — THE MINT.
+     The old sheet had exactly one road: invent a password for another person
+     and hand it over. That works for a hand you see at the hall. It does not
+     work for a shop owner across town, and it never should have been the only
+     way in. The link road is now the default; the password road stays for the
+     person standing in front of you. -->
 <div class="sheet" id="inviteSheet"><div class="sheet-card">
   <div class="sheet-t">🗝 MINT A DOCK PASS</div>
   <p class="sub" style="text-align:center" id="invSub"></p>
-  <div class="lbl">THEIR EMAIL</div><input class="field" id="invEmail" type="email">
-  <div class="lbl">TEMP PASSWORD — HAND IT TO THEM YOURSELF</div>
-  <div style="display:flex;gap:8px"><input class="field" id="invPass" style="flex:1"><button class="btn-line gold" id="invDice" style="flex:none">🎲</button></div>
+  <div class="lbl">THEIR EMAIL</div><input class="field" id="invEmail" type="email" autocapitalize="off" spellcheck="false">
+
+  <div class="lbl">HOW THEY GET IN</div>
+  <div class="chips" id="invMode">
+    <button data-imode="link" class="on">✉ CUT THEM A LINK</button>
+    <button data-imode="password">🎲 SET A TEMP PASSWORD</button>
+  </div>
+
+  <div id="invLinkWrap">
+    <p class="sub" style="margin:0">One click and they're inside, then they set their own password. <b style="color:var(--bone)">You never invent it, never say it out loud, never put it in a text.</b> The link works once and it expires — cut a fresh one any time.</p>
+  </div>
+
+  <div id="invPassWrap" hidden>
+    <div class="lbl">TEMP PASSWORD — HAND IT TO THEM YOURSELF</div>
+    <div style="display:flex;gap:8px"><input class="field" id="invPass" style="flex:1"><button class="btn-line gold" id="invDice" style="flex:none">🎲</button></div>
+    <p class="sub" style="margin-top:8px;color:var(--warn)">Only for someone in the room with you. If you'd have to text it, cut a link instead — a password in a message stays in that message forever.</p>
+  </div>
+
+  <!-- the cut link lives OUTSIDE both wrappers on purpose: flipping the chips
+       after a mint must never hide the one thing you cannot get back -->
+  <div id="invLinkOut" hidden></div>
+
   <p class="sub" style="margin-top:8px">If the email already has an Order account, it's <b style="color:var(--bone)">linked as-is</b> — their password is never touched.</p>
   <div class="msgline" id="invMsg"></div>
-  <button class="btn" id="invGo" style="margin-top:10px">MINT THE PASS</button>
+  <button class="btn" id="invGo" style="margin-top:10px">✉ CUT THEM A LINK</button>
   <button class="btn-ghost" style="width:100%;margin-top:8px" data-close="inviteSheet">Never mind</button>
 </div></div>
 
@@ -583,8 +616,16 @@ if(!window.supabase || !window.supabase.createClient){
      if(m)m.textContent='> the engine library did not load — hard-refresh (Ctrl+F5)'; })();
   throw new Error('supabase-js missing');
 }
+/* #linkin — READ THE HASH BEFORE ANY CLIENT BOOTS.
+   supabase-js swallows #access_token=… the instant a client with
+   detectSessionInUrl initialises, so by the time route() runs there is nothing
+   left to look at. Grab it here, once, while it's still on the address bar. */
+let ARRIVED_BY_LINK = /(^|[#&?])(access_token=|token_hash=|type=(recovery|invite|magiclink|signup))/
+  .test(String(location.hash||'') + String(location.search||''));
+
 const SB = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY, {
   auth:{ persistSession:true, autoRefreshToken:true,
+         detectSessionInUrl:true,
          storageKey:'shadowhook_dock_auth' }   /* its own drawer — never collides with the main app's session */
 });
 const FN = window.SUPABASE_URL.replace(/\/+$/,'') + '/functions/v1';
@@ -640,6 +681,22 @@ async function route(){
   const { data:{ session } } = await SB.auth.getSession();
   if(!session){ show('gate'); return; }
   ME.uid = session.user.id; ME.email = session.user.email || '';
+  /* #linkin — they came in on a one-time link, so this account has no password
+     they know, and the link died the moment this page loaded. Offer the sheet
+     HERE, before the vendor bounce and the applicant screen return below —
+     whichever way this session is about to be sorted, they get their one
+     chance to set a password they can come back with. */
+  if(ARRIVED_BY_LINK){
+    let asked=false; try{ asked=!!sessionStorage.getItem('dock_link_pw'); }catch(e){}
+    if(!asked){
+      try{ sessionStorage.setItem('dock_link_pw','1'); }catch(e){}
+      setTimeout(function(){ try{
+        $('pw1').value=''; $('pw2').value='';
+        $('pwMsg').textContent='You came in on a one-time link \u2014 set a password now so you can get back in without one.';
+        sheet('pwSheet');
+      }catch(e){} }, 700);
+    }
+  }
   /* the Keymaster's key? */
   let km=false;
   try{ const r = await SB.from('profiles').select('is_keymaster').eq('id', ME.uid).maybeSingle();
@@ -709,10 +766,40 @@ async function gateGo(){
   const r = await SB.auth.signInWithPassword({ email, password:pass });
   $('gGo').disabled=false; $('gGo').textContent='🗝 THROUGH THE GATE';
   if(r.error){ m.textContent='> '+r.error.message; return; }
+  ARRIVED_BY_LINK=false;   /* #linkin — they came in on a password, not a link */
   route();
 }
+/* #linkin — a sign-in link, for anyone this gate can actually reach by mail.
+   shouldCreateUser:false is not optional: without it this button is a public
+   "make me an account" endpoint on a page that hands out dock passes. */
+$('gLink').addEventListener('click', async()=>{
+  const typed=($('gEmail').value||'').trim(), m=$('gMsg'); m.textContent='';
+  const email=loginToEmail(typed);
+  if(!/^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/.test(email)){ m.textContent='> put your email in the box first'; return; }
+  if(/@shadowhook\.com$/i.test(email)){
+    m.textContent='> a dispatch card has no inbox \u2014 sign in with your password, or ask the Keymaster'; return; }
+  const b=$('gLink'); b.disabled=true; b.textContent='SENDING\u2026';
+  const r = await SB.auth.signInWithOtp({ email:email,
+    options:{ shouldCreateUser:false, emailRedirectTo: location.origin+location.pathname } });
+  b.disabled=false; b.textContent='\u2709 EMAIL ME A SIGN-IN LINK';
+  /* With shouldCreateUser:false, GoTrue answers "Signups not allowed for otp"
+     when the address isn't registered. Printing that verbatim makes this button
+     a membership oracle \u2014 anyone can probe the rolls one address at a time \u2014
+     and tells a crown who fat-fingered their own email something untrue. One
+     neutral answer for both cases. */
+  const quiet = r.error && (r.error.code==='otp_disabled' || r.error.code==='user_not_found'
+                            || /not allowed|not found|otp_disabled|signup/i.test(r.error.message||''));
+  if(r.error && !quiet){ m.textContent='> '+r.error.message; return; }   /* rate limits and SMTP faults DO get through */
+  /* otp_disabled is ALSO what comes back when magic links are switched off for
+     the whole project \u2014 in which case this button says \u201csent\u201d forever and
+     nobody ever gets mail. shkAlert can't help here (no ME.uid at the gate). */
+  if(r.error && r.error.code==='otp_disabled')console.warn('[dock] magic links may be disabled project-wide \u2014 Auth \u203a Providers \u203a Email');
+  m.textContent='> sent \u2014 if that address is on the rolls, the link is in it now';
+});
 $('npOut').addEventListener('click', async()=>{ await SB.auth.signOut(); location.reload(); });
 $('tbOut').addEventListener('click', async()=>{ await SB.auth.signOut(); location.reload(); });
+$('npPw').addEventListener('click', ()=>{ $('pw1').value=''; $('pw2').value='';
+  $('pwMsg').textContent='Set a password here, then sign in with it at the deck that\u2019s yours.'; sheet('pwSheet'); });
 $('tbPw').addEventListener('click', ()=>{ $('pw1').value=''; $('pw2').value=''; $('pwMsg').textContent=''; sheet('pwSheet'); });
 $('pwGo').addEventListener('click', async()=>{
   const a=$('pw1').value, b=$('pw2').value, m=$('pwMsg');
@@ -1465,7 +1552,25 @@ function renderMyVend(){
 
 /* ---- the pass (login) ---- */
 function genPass(){ const a='23456789abcdefghjkmnpqrstvwxyzABCDEFGHJKMNPQRSTVWXYZ'; let s='';
-  for(let i=0;i<12;i++)s+=a[Math.floor(Math.random()*a.length)]; return s; }
+  for(let i=0;i<16;i++)s+=a[Math.floor(Math.random()*a.length)]; return s; }
+
+/* #linkin — where a minted link should put somebody down. A crown's deck and a
+   vendor's Dock Office are different pages sharing one auth drawer
+   ('shadowhook_dock_auth'), so landing on the wrong one used to mean a bounce
+   to a screen with no password control and a link already spent. */
+function passHome(kind){ return location.origin + (kind==='amb' ? '/ambassador' : '/dockoffice'); }
+
+/* #linkin — which road this mint is taking. 'link' is the default and should
+   stay the default: it is the only one that works for somebody you cannot put
+   a password into the hand of. */
+let inviteMode='link';
+function setInviteMode(mode){
+  inviteMode = (mode==='password') ? 'password' : 'link';
+  document.querySelectorAll('#invMode button').forEach(b=>b.classList.toggle('on', b.dataset.imode===inviteMode));
+  $('invLinkWrap').hidden = inviteMode!=='link';
+  $('invPassWrap').hidden = inviteMode!=='password';
+  $('invGo').textContent = inviteMode==='link' ? '\u2709 CUT THEM A LINK' : '🗝 MINT THE PASS';
+}
 function openInvite(vid, kind, seed){
   inviteKind=kind==='amb'?'amb':'vendor';
   inviteVendorId=vid;
@@ -1474,35 +1579,101 @@ function openInvite(vid, kind, seed){
      blank and make the Keymaster retype the address they just typed. */
   const who = (inviteKind==='amb' ? AMBS.find(x=>x.id===vid) : VENDORS.find(x=>x.id===vid)) || seed || null;
   $('invSub').textContent=inviteKind==='amb'
-    ?('🎖 A crown login for '+(who?who.name:'?')+' — they sign in at theshadowhook.com/ambassador.')
-    :('A pass for '+(who?who.name:'?')+' — they sign in at this same gate.');
-  $('invEmail').value=who&&who.email?who.email:''; $('invPass').value=genPass(); $('invMsg').textContent='';
+    ?('🎖 A crown login for '+(who?who.name:'?')+' \u2014 they sign in at theshadowhook.com/ambassador.')
+    :('A pass for '+(who?who.name:'?')+' \u2014 they sign in at theshadowhook.com/dockoffice.');
+  /* #linkin — auth stores addresses lowercase. A capitalised one on the card
+     ("Ruth.d.gutierrez@\u2026") used to go up as typed and miss the account that
+     already existed, so the mint tried to make a second one. */
+  $('invEmail').value=(who&&who.email?String(who.email):'').trim().toLowerCase();
+  $('invPass').value=genPass(); $('invMsg').textContent='';
+  const out=$('invLinkOut'); if(out){ out.hidden=true; out.innerHTML=''; }
+  setInviteMode('link');
   sheet('inviteSheet');
 }
+document.querySelectorAll('#invMode button').forEach(b=>b.addEventListener('click',()=>setInviteMode(b.dataset.imode)));
 $('invDice').addEventListener('click',()=>{ $('invPass').value=genPass(); });
 $('invGo').addEventListener('click', async()=>{
-  const email=($('invEmail').value||'').trim(), pass=$('invPass').value||'', m=$('invMsg');
-  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ m.textContent='> a real email'; return; }
-  if(pass.length<8){ m.textContent='> temp password needs 8+ characters'; return; }
-  $('invGo').disabled=true; m.textContent='';
+  const email=($('invEmail').value||'').trim().toLowerCase(), pass=$('invPass').value||'', m=$('invMsg');
+  /* tracks the mint's own rule: no trailing dot, no doubled dot \u2014 "x@y.com."
+     sails past the classic one-liner and then resolves differently server-side */
+  if(!/^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/.test(email)){ m.textContent='> a real email'; return; }
+  /* 8 was thin for something a human types under pressure \u2014 the last one minted
+     by hand was the person's own first name and four digits. */
+  if(inviteMode==='password' && pass.length<12){ m.textContent='> a hand-delivered password needs 12+ characters \u2014 hit the dice'; return; }
+  const prev=$('invLinkOut'); if(prev){ prev.hidden=true; prev.innerHTML=''; }   /* last mint's link is not this mint's link */
+  const mintingAs=inviteMode;   /* the chips must not be able to change it mid-flight */
+  $('invGo').disabled=true;
+  document.querySelectorAll('#invMode button').forEach(b=>b.disabled=true);
+  m.textContent=mintingAs==='link'?'cutting the link\u2026':'minting\u2026';
   try{
+    /* #linkin — the mint refuses an address that isn't written on the card
+       (it's the only audit trail of who an ambassador minted for). The vendor
+       sheet lets that field go in blank, so fill it here rather than dead-end
+       the Keymaster with "fix it with EDIT first" over an empty box. */
+    if(inviteKind!=='amb'){
+      const v=VENDORS.find(x=>x.id===inviteVendorId);
+      if(v && !String(v.email||'').trim()){
+        const up=await SB.from('vendors').update({email:email}).eq('id',inviteVendorId);
+        if(!up.error)v.email=email;
+      }
+    }
     const { data:{ session } } = await SB.auth.getSession();
+    const payload={ email:email, mode:mintingAs, redirect_to: passHome(inviteKind) };
+    if(inviteKind==='amb') payload.ambassador_id=inviteVendorId; else payload.vendor_id=inviteVendorId;
+    if(mintingAs==='password') payload.temp_password=pass;
     const r=await fetch(FN+'/vendor-invite',{ method:'POST',
       headers:{ 'Content-Type':'application/json', 'apikey':window.SUPABASE_ANON_KEY,
                 'Authorization':'Bearer '+(session?session.access_token:'') },
-      body:JSON.stringify(inviteKind==='amb'
-        ? { email:email, ambassador_id:inviteVendorId, temp_password:pass }
-        : { email:email, vendor_id:inviteVendorId, temp_password:pass }) });
+      body:JSON.stringify(payload) });
     const j=await r.json().catch(()=>null);
     if(r.ok&&j&&j.ok){
-      sheet('inviteSheet',false);
-      toast(j.linked_existing ? '🗝 Linked — they already had an account; their old password stands'
-                              : '🗝 Pass minted — hand them the email and temp password yourself');
-      await Promise.all([loadVendors(), loadAmbStuff()]);
-      if(TAB==='vendors')renderVendors(); if(TAB==='ambs')renderAmbs(); if(TAB==='myvend')renderMyVend();
+      if(j.action_link){
+        /* #linkin \u2014 the sheet STAYS UP. This link is the whole handover and it
+           is shown exactly once; closing out from under the Keymaster would
+           throw it away. */
+        m.textContent=''; setInviteMode('link');
+        const out=$('invLinkOut'); out.hidden=false;
+        out.innerHTML='<p class="sub" style="margin:12px 0 6px;color:var(--bone)">'
+          +(j.linked_existing?'They already had an Order account \u2014 this opens it. Their password was not touched.'
+                             :'Account made. This link is the whole handover.')
+          +'</p><textarea class="field mono" id="invLinkTxt" rows="3" readonly style="font-size:11px"></textarea>'
+          +'<div style="display:flex;gap:8px"><button class="btn-line gold" id="invCopy" style="flex:1">📋 COPY</button>'
+          +'<a class="btn-line" id="invMail" style="flex:1;text-align:center;text-decoration:none;line-height:2.2">\u2709 OPEN IN MAIL</a></div>'
+          +'<p class="sub" style="margin-top:8px">Send it however you already talk to them. It signs them in once; they set their own password from \u2699 in the top bar. Then it\u2019s dead.</p>';
+        $('invLinkTxt').value=j.action_link;
+        $('invCopy').addEventListener('click',async()=>{
+          try{ await navigator.clipboard.writeText(j.action_link); toast('📋 Link copied'); }
+          catch(e){ try{ $('invLinkTxt').select(); }catch(e2){} toast('Select it and copy'); }
+        });
+        $('invMail').href='mailto:'+encodeURIComponent(email)
+          +'?subject='+encodeURIComponent('Your pass to The Order of the Shadow Hook')
+          +'&body='+encodeURIComponent('Click this once and you\u2019re in \u2014 then set your own password from the \u2699 in the top bar.\n\n'
+              +j.action_link+'\n\n\u2014 the Keymaster');
+        toast(j.linked_existing?'🗝 Linked \u2014 link cut':'🗝 Pass minted \u2014 link cut');
+      } else if(mintingAs==='password'){
+        sheet('inviteSheet',false);
+        toast(j.linked_existing ? '🗝 Linked \u2014 they already had an account; their old password stands'
+                                : '🗝 Pass minted \u2014 hand them the email and temp password yourself');
+      } else {
+        /* ok:true on the link road but nothing to hand over. Almost always the
+           old function still deployed. Do NOT close with a cheerful toast about
+           a temp password that was never generated \u2014 they'd have nothing. */
+        m.textContent='> the mint answered ok but cut no link \u2014 redeploy vendor-invite (v2), or use a temp password';
+        shkAlert('pass mint','link mode returned no action_link');
+      }
+      /* the reload comes AFTER the link is on the screen, and inside its own
+         guard. It used to run first \u2014 so a throw in loadAmbStuff (an RLS
+         refusal is the realistic one) landed in the catch below, threw away a
+         one-time link that had already been cut, and reported the mint as
+         never having happened. */
+      try{
+        await Promise.all([loadVendors(), loadAmbStuff()]);
+        if(TAB==='vendors')renderVendors(); if(TAB==='ambs')renderAmbs(); if(TAB==='myvend')renderMyVend();
+      }catch(e2){ shkAlert('pass mint refresh',e2); }
     } else { m.textContent='> '+((j&&j.error)||('the mint jammed ('+r.status+')')); shkAlert('pass mint',(j&&j.error)||('mint jammed '+r.status)); }
-  }catch(e){ m.textContent='> no wire to the mint — check the function is deployed'; shkAlert('pass mint',e); }
+  }catch(e){ m.textContent='> no wire to the mint \u2014 check the function is deployed'; shkAlert('pass mint',e); }
   $('invGo').disabled=false;
+  document.querySelectorAll('#invMode button').forEach(b=>b.disabled=false);
 });
 
 /* ---- gear assignment + the cut ---- */
