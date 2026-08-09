@@ -14,7 +14,7 @@
      • Bumping the number below also wipes every old cache on activate, so nothing
        stale can survive.
    ──────────────────────────────────────────────────────────────────────────── */
-const CACHE = 'shadowhook-v22';  // ← bump this each time you deploy an update  (v22: the pill sizes to fit PORT BUCKS in full)
+const CACHE = 'shadowhook-v24';  // ← bump this each time you deploy an update  (v24: the page steps down clear of the floating wallet — no more overlap)
 
 const SHELL = [
   '.',
