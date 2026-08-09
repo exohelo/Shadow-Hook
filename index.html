@@ -1446,15 +1446,36 @@ html.arcade .scan-ic{--sc-ic-a:rgba(36,31,66,.92);--sc-ic-b:rgba(13,11,24,.92)}
 .hullpin:active{background:rgba(201,128,63,.3)}
 .hullpin.set{background:rgba(127,174,106,.12);border-color:rgba(127,174,106,.4);color:#7fae6a}
 /* #fix5 — the signed-out notice: loud enough to act on, quiet enough to tuck away */
-#soNote{margin:0 12px 10px;padding:11px 13px;border-radius:10px;position:relative;
-  background:rgba(216,165,68,.10);border:1px solid rgba(216,165,68,.42);color:var(--bone);
-  font-size:13px;line-height:1.45;padding-right:34px}
-#soNote b{color:var(--warn)}
-#soNote #soGo{display:block;margin-top:9px;background:linear-gradient(180deg,var(--btn-hi),var(--btn-lo));
-  border:1px solid rgba(216,165,68,.55);color:var(--warn);font-family:'Barlow Condensed',sans-serif;font-weight:700;
-  font-size:12.5px;letter-spacing:.14em;text-transform:uppercase;padding:8px 16px;border-radius:8px;cursor:pointer}
-#soNote #soHide{position:absolute;top:6px;right:8px;background:none;border:0;color:var(--steel);font-size:15px;cursor:pointer;padding:2px 6px}
-html.daylight #soNote{background:#fdf3e3;border-color:#e0c48a;color:#3a3f45}
+/* #sonote — "this device isn't signed in". Two things were wrong with it: the
+   Port Bucks strip and the daylight toggle hang off the fixed header and landed
+   ON TOP of it (JS clears them now), and every colour was a hardcoded amber —
+   which on the cream daylight plate was yellow-on-white and near unreadable.
+   Every colour is a theme token now, so it turns cyan in the arcade skin and
+   goes dark on paper, and it reads as a card rather than a browser warning bar. */
+#soNote{position:relative;display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;
+  margin:0 12px 12px;padding:13px 38px 13px 13px;border-radius:16px;
+  background:linear-gradient(140deg,var(--plate-2),var(--plate) 70%);
+  border:1px solid var(--line);box-shadow:0 12px 30px rgba(0,0,0,.30),inset 0 1px 0 rgba(255,255,255,.05);
+  font-size:13px;line-height:1.5;color:var(--bone)}
+#soNote .so-ic{flex:none;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:17px;font-style:normal;background:var(--sel);border:1px solid var(--line);color:var(--copper-hi);
+  animation:soPulse 2.8s ease-in-out infinite}
+@keyframes soPulse{0%,100%{box-shadow:0 0 0 0 rgba(128,128,128,0)}50%{box-shadow:0 0 0 5px rgba(128,128,128,.07)}}
+#soNote .so-txt{flex:1;min-width:170px}
+#soNote .so-txt b{display:block;color:var(--copper-hi);font-family:'Barlow Condensed',sans-serif;
+  font-weight:700;font-size:15px;letter-spacing:.07em;text-transform:uppercase;line-height:1.2}
+#soNote .so-txt span{display:block;margin-top:4px;color:var(--steel)}
+#soNote #soGo{flex:none;margin-top:2px;background:linear-gradient(180deg,var(--btn-hi),var(--btn-lo));
+  border:1px solid var(--line);color:var(--copper-hi);font-family:'Barlow Condensed',sans-serif;font-weight:700;
+  font-size:12.5px;letter-spacing:.14em;text-transform:uppercase;padding:10px 18px;border-radius:99px;cursor:pointer;
+  transition:transform .12s ease,box-shadow .12s ease}
+#soNote #soGo:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(0,0,0,.3)}
+#soNote #soGo:active{transform:translateY(1px)}
+#soNote #soHide{position:absolute;top:8px;right:9px;background:none;border:0;color:var(--steel);
+  font-size:15px;cursor:pointer;padding:3px 6px;border-radius:8px;line-height:1}
+#soNote #soHide:hover{color:var(--bone)}
+@media(max-width:430px){ #soNote #soGo{width:100%;margin-top:2px} }
+@media(prefers-reduced-motion:reduce){ #soNote .so-ic{animation:none} }
 /* ===================== THE ARMORY — STOREFRONT =====================
    A real shop front: filter rail, product grid, and a full detail page. Every
    product renders from the catalog (server table with a local seed), so the
@@ -4352,11 +4373,24 @@ function signedOutNotice(){
     if(sessionStorage.getItem('shk_so_hid')) return;
     const app=document.getElementById('app'); if(!app) return;
     const d=document.createElement('div'); d.id='soNote';
-    d.innerHTML='<b>⚠ This device isn’t signed in.</b> Your rings, marks and Port Bucks live on your '
-      +'Brotherhood account — anything logged here stays on this browser until you sign in.'
+    d.innerHTML='<i class="so-ic">🗝</i>'
+      +'<span class="so-txt"><b>This device isn’t signed in</b>'
+      +'<span>Your rings, marks and Port Bucks live on your Brotherhood account. Anything logged here stays on this browser until you sign in.</span></span>'
       +'<button type="button" id="soGo">Sign in</button>'
       +'<button type="button" id="soHide" aria-label="Tuck away">✕</button>';
     app.insertBefore(d, app.firstChild);
+    /* the Port Bucks strip and the daylight toggle hang off the bottom of the
+       fixed header at z-index 30 — they were landing on top of this. Measure
+       where they actually end and start below them, rather than guess. */
+    try{
+      let low=0;
+      ['bankStrip','dayBtn'].forEach(function(id){
+        const el=document.getElementById(id); if(!el)return;
+        const r=el.getBoundingClientRect(); if(r.height)low=Math.max(low,r.bottom);
+      });
+      const mine=d.getBoundingClientRect().top;
+      if(low>mine) d.style.marginTop=Math.ceil(low-mine+10)+'px';
+    }catch(e){}
     d.querySelector('#soHide').addEventListener('click',()=>{ try{sessionStorage.setItem('shk_so_hid','1');}catch(e){} d.remove(); });
     d.querySelector('#soGo').addEventListener('click',()=>{
       shConfirm("Signing in on this device means passing the gate again — your full name as printed on your PMA card, and your dispatch #. Everything already logged on this device stays put.",
