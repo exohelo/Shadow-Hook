@@ -14,7 +14,7 @@
      • Bumping the number below also wipes every old cache on activate, so nothing
        stale can survive.
    ──────────────────────────────────────────────────────────────────────────── */
-const CACHE = 'shadowhook-v24';  // ← bump this each time you deploy an update  (v24: the page steps down clear of the floating wallet — no more overlap)
+const CACHE = 'shadowhook-v25';  // ← bump this each time you deploy an update  (v25: 🎖 the Ambassador Deck — theshadowhook.com/ambassador, their own gate)
 
 const SHELL = [
   '.',
