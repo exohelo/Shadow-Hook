@@ -1570,12 +1570,6 @@ html.swipe-live *{user-select:none;-webkit-user-select:none}
 .swipe-hint.go{opacity:1;transform:translate(-50%,0)}
 @media (prefers-reduced-motion: reduce){ .swipe-hint{transition:opacity .01s} }
 
-/* #ambpage — the ambassador screen: a real room, not a popup. Reads wide on a
-   monitor, full-bleed on a phone, and scrolls as one page. */
-.amb-page{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px 16px 40px}
-.amb-page-in{max-width:620px;margin:0 auto}
-.amb-page .card-h{margin-top:4px}
-
 /* ---- #ambskin — the recruiting poster. Every colour comes from a token, so it
         sits in the copper skin, the arcade skin and both day modes without
         anyone having to remember to restyle it again. ---- */
@@ -2426,7 +2420,7 @@ window.DEVLOG=(function(){
       <div id="armProducts">
         <!-- #amb — the recruiting poster leads the products shelf -->
         <div class="card amb-poster">
-          <div class="card-b" onclick="ambApplyOpen()">
+          <div class="card-b" onclick="location.href='/ambassador'">
             <div style="display:flex;align-items:center;gap:14px">
               <div class="seal" style="margin:0;width:58px;height:58px;font-size:24px">🎖</div>
               <div style="flex:1">
@@ -17927,31 +17921,11 @@ html.season-xmas.daylight{}
      Opens from the recruiting poster at the top of the Armory. Applications land
      in amb_applications (run AMBASSADOR-APPLICATIONS.sql once) and surface in the
      Command Center as CROWN REQUESTS, one tap from the crowning sheet. -->
-<!-- #ambpage — BECOME AN AMBASSADOR. This was a modal: the whole pitch, the
-     rules and the form crammed into a popup that scrolled inside itself. It
-     opens as a full screen now, the same way the service board does — its own
-     header, its own room, and the edge-swipe gesture works on it like every
-     other screen. Applications land in amb_applications (run
-     AMBASSADOR-APPLICATIONS.sql once) and surface in the Command Center. -->
-<div class="roomscreen" id="ambApplyView" role="dialog" aria-modal="true" aria-label="Become an ambassador">
-  <div class="room-top">
-    <button class="room-back" id="ambApplyBack" type="button" aria-label="Back to the Armory">‹</button>
-    <div class="room-id"><span class="room-ico amb-t">🎖</span>
-      <div><b class="amb-t">BECOME AN AMBASSADOR</b><span>the Order pays the hands who bring makers to the Armory</span></div></div>
-  </div>
-  <div class="amb-page">
-    <div class="amb-page-in">
-      <div class="card-h">What it is</div>
-      <p class="sub" style="margin:6px 0 14px;line-height:1.75">An ambassador is a recruiter. You know a print shop, a leather worker, a sticker maker, somebody with gear the docks would actually wear — you bring them to the Order. Their goods get checked, the worthy gear gets shelved, and it sells right here in the Armory.</p>
-      <div class="card-h">How it works</div>
-      <p class="sub" style="margin:6px 0 6px;line-height:1.75"><b style="color:var(--bone)">1 ·</b> Apply below. Every application gets read, and word comes to your phone either way.</p>
-      <p class="sub" style="margin:0 0 6px;line-height:1.75"><b style="color:var(--bone)">2 ·</b> Crowned? The <b style="color:var(--bone)">Dock Office</b> opens to you — your own gate for signing up vendors and watching your money.</p>
-      <p class="sub" style="margin:0 0 6px;line-height:1.75"><b style="color:var(--bone)">3 ·</b> Every sale off your recruits’ benches pays you a <b class="amb-t">cut of the house margin</b> — booked automatically at the till, on every sale, for as long as they sell. You don’t touch inventory, shipping, or money handling.</p>
-      <p class="sub" style="margin:0 0 16px;line-height:1.75"><b style="color:var(--bone)">4 ·</b> You get settled on the regular run. How you’re paid gets sorted once you’re crowned — nothing to work out now. Nothing comes out of your pocket. Ever.</p>
-      <div id="ambApplyBody"><p class="sub">—</p></div>
-    </div>
-  </div>
-</div>
+<!-- #arrive — BECOME AN AMBASSADOR moved off the app entirely. The poster in
+     the Armory now leaves for /ambassador, the same way the service poster
+     leaves for /service. A member is already signed in when they land there,
+     the pitch and the application live on the deck, and the deck stays locked
+     until the Keymaster crowns them. -->
 
 <div class="sheet" id="kmAmbSheet" role="dialog" aria-modal="true" aria-label="Crown an ambassador">
   <div class="sheet-card" style="text-align:left">
@@ -18677,88 +18651,6 @@ html.season-xmas.daylight{}
      hold steady · otherwise → the form (a passed application prefills it for
      another run). Payouts by Zelle/Venmo/Cash App/check — bank numbers are
      NEVER collected here; direct deposit gets set up with the Keymaster. */
-  window.ambApplyOpen=async function(){
-    const sh4=$('ambApplyView');if(!sh4)return;
-    sh4.classList.add('on');
-    try{ $('ambApplyScroll')||sh4.querySelector('.amb-page').scrollTo(0,0); }catch(e){}
-    const body=$('ambApplyBody');if(!body)return;
-    if(!window.SB){body.innerHTML='<div class="card-h">The application</div><p class="sub" style="margin:6px 0">The wire to the Order is down — try again when you’re back online.</p>';return;}
-    const uid=window.__shkUid;
-    if(!uid){body.innerHTML='<div class="card-h">The application</div><p class="sub" style="margin:6px 0;line-height:1.7">Claim your card first — the Order has to know which hand is asking. Open your profile, claim your card, then come back to this poster.</p>';return;}
-    body.innerHTML='<p class="sub">checking the rolls…</p>';
-    let ex=null;
-    try{
-      const am=await window.SB.from('ambassador_members').select('ambassador_id').eq('user_id',uid).maybeSingle();
-      if(am&&am.data&&am.data.ambassador_id){
-        body.innerHTML='<div class="card-h">You’re already crowned</div><p class="sub" style="margin:6px 0;line-height:1.75">🎖 Your deck is open — sign in at <b style="color:var(--bone)">theshadowhook.com/ambassador</b> with the same email and password you use here.</p>';
-        return;
-      }
-      const r=await window.SB.from('amb_applications').select('*').eq('user_id',uid).maybeSingle();
-      if(r&&r.data)ex=r.data;
-    }catch(e){}
-    if(ex&&ex.status==='pending'){
-      body.innerHTML='<div class="card-h">Application’s in</div><p class="sub" style="margin:6px 0;line-height:1.75">⚓ It’s in for approval. Word lands on your phone the moment it’s ruled on — crowns aren’t handed out in a hurry, and that’s exactly why they’re worth wearing.</p>';
-      return;
-    }
-    ambApplyForm(ex);
-  };
-  function ambApplyForm(prev){
-    const body=$('ambApplyBody');if(!body)return;
-    const acct=(typeof loadAcct==='function'?(loadAcct()||{}):{});
-    const vName=prev?(prev.name||''):(acct.name||acct.handle||'');
-    const vPhone=prev?(prev.phone||''):'';
-    const vEmail=prev?(prev.email||''):'';
-    const vPitch=prev?(prev.pitch||''):'';
-    body.innerHTML=
-      '<div class="card-h">The application</div>'
-      +(prev&&prev.status==='passed'?'<p class="sub" style="margin:6px 0;color:var(--steel)">It didn’t clear last time — doors reopen, ships come back. Sharpen the pitch and send it again.</p>':'')
-      +'<div class="sub" style="margin:8px 0 2px">Your name</div>'
-      +'<input class="field" id="ambApName" style="margin-bottom:4px">'
-      +'<div class="sub" style="margin:8px 0 2px">Phone</div>'
-      +'<input class="field" id="ambApPhone" inputmode="tel" placeholder="(310) 555-0199" style="margin-bottom:4px">'
-      +'<div class="sub" style="margin:8px 0 2px">Email</div>'
-      +'<input class="field" id="ambApEmail" type="email" style="margin-bottom:4px">'
-      /* #ambpage — no payout question here. Nobody is owed anything until they
-         are crowned and a recruit actually sells, so asking now is a form field
-         that earns nothing and one more reason to abandon the application. */
-      +'<div class="sub" style="margin:8px 0 2px">Who would you recruit first? — optional, but it helps your case</div>'
-      +'<textarea class="field" id="ambApPitch" rows="2" style="width:100%;resize:vertical;margin-bottom:6px" placeholder="My cousin runs a print shop in San Pedro…"></textarea>'
-      +'<div class="sub" id="ambApMsg" style="margin:6px 0"></div>'
-      +'<button class="btn" id="ambApGo" type="button" style="width:100%">⚓ SEND IT FOR APPROVAL</button>';
-    $('ambApName').value=vName;$('ambApPhone').value=vPhone;$('ambApEmail').value=vEmail;
-    $('ambApPitch').value=vPitch;
-    /* no auth-email prefill here — card accounts carry a synthetic
-       cardID@shadowhook.com login under the hood, and surfacing that fake
-       address just confuses people. They type their real one or leave it blank. */
-    $('ambApGo').addEventListener('click',async function(){
-      const m=$('ambApMsg');
-      const name=($('ambApName').value||'').trim(), phone=($('ambApPhone').value||'').trim(), email=($('ambApEmail').value||'').trim();
-      const pitch=($('ambApPitch').value||'').trim();
-      if(!name){m.textContent='✗ your name — the books need it';return;}
-      if(!phone&&!email){m.textContent='✗ a phone or an email — there has to be a way to reach you';return;}
-      const go=$('ambApGo');go.disabled=true;m.textContent='sending word…';
-      try{
-        const row={user_id:window.__shkUid,handle:(acct.handle||'').toUpperCase()||null,name:name,phone:phone||null,email:email||null,
-          /* they settle up once they're crowned — this is the value the form
-             already wrote whenever somebody picked "sort it out later" */
-          payout_method:'Sort it out later',payout_detail:null,pitch:pitch||null,status:'pending'};
-        const r=await window.SB.from('amb_applications').upsert(row,{onConflict:'user_id'});
-        if(r.error)throw r.error;
-        body.innerHTML='<div class="card-h">Application’s in</div><p class="sub" style="margin:6px 0;line-height:1.75">⚓ It’s in. Every application gets read — word lands on your phone the moment it’s ruled on.</p>';
-        try{toast('⚓ Sent in for approval');}catch(e2){}
-      }catch(err){
-        m.textContent=/does not exist|relation|schema/i.test(err.message||'')
-          ?'✗ the application book isn’t on the shelf yet — try again soon'
-          :('✗ '+err.message);
-        shkAlert('amb application',err);   /* #alarms */
-        go.disabled=false;
-      }
-    });
-  }
-  /* #ambpage — the back arrow closes the screen; the edge-swipe does too */
-  (function(){const bk=$('ambApplyBack');
-    if(bk)bk.addEventListener('click',()=>{const v=$('ambApplyView');if(v)v.classList.remove('on');});})();
-
   /* ═══════════ #trades — THE TRADES BOARD ═══════════
      Side work by the Order's own hands (trade_posts — run TRADES-BOARD.sql once).
      One post per member. status walks: pending → live (the Keymaster waves it
@@ -19617,7 +19509,7 @@ window.shareCall=shareCall;
 
   /* [container, its own back button] — overlays first: they stack on top of a
      product page, so when both are open the overlay is the one to leave. */
-  var VIEWS=[['roomView','roomBack'],['yardMapView','ymBack'],['ambApplyView','ambApplyBack'],
+  var VIEWS=[['roomView','roomBack'],['yardMapView','ymBack'],
              ['yiw','yiBack'],['wbw','wbBack'],['itw','itBack'],['ttw','ttBack'],
              ['gearView','gearBack']];
 

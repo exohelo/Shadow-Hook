@@ -195,6 +195,12 @@ select.field{appearance:none;-webkit-appearance:none}
 .floor-grid .pv-card{width:auto;cursor:pointer;transition:transform .12s}
 .floor-grid .pv-card:active{transform:scale(.98)}
 .pv-mine{position:absolute;top:8px;right:8px;padding:3px 8px;border-radius:6px;font-size:9px;letter-spacing:.12em;background:rgba(201,128,63,.92);color:#1a1208;font-weight:700}
+.ap-wrap{max-width:620px;margin:0 auto;padding:26px 16px 60px}
+.ap-wrap .card{margin-bottom:12px}
+.ap-state{display:flex;gap:12px;align-items:flex-start;padding:4px 0}
+.ap-state .dot2{flex:none;width:10px;height:10px;border-radius:50%;margin-top:5px}
+.ap-state.wait .dot2{background:var(--warn);box-shadow:0 0 10px var(--warn)}
+.ap-state.no .dot2{background:var(--ember);box-shadow:0 0 10px var(--ember)}
 .floor-pdp-wrap{max-width:340px;margin:0 auto}
 .mark-stage{border:1px solid var(--line-soft);border-radius:12px;padding:18px;text-align:center;
   background:repeating-conic-gradient(rgba(255,255,255,.035) 0 25%,transparent 0 50%) 0 0/22px 22px,var(--well)}
@@ -358,6 +364,41 @@ select.field{appearance:none;-webkit-appearance:none}
     <p class="sub" style="margin-top:10px" id="npMsg">This deck belongs to the Order's ambassadors.<br>Want in? Apply at the <b style="color:var(--bone)">BECOME AN AMBASSADOR</b> poster in the app's Armory.</p>
     <div style="margin-top:22px"><a class="btn" href="/" style="display:inline-block;text-decoration:none;padding:12px 22px">⚓ BACK TO THE APP</a></div>
     <button class="btn-line" id="npOut" style="margin-top:12px">SIGN OUT</button>
+  </div>
+
+
+  <!-- ═══ #arrive — BECOME AN AMBASSADOR: the pitch and the application ═══
+       A casual taps the poster in the app and lands here already signed in.
+       This is what they see until the Keymaster crowns them: what the job is,
+       what it pays, and the form. Once crowned, route() sends them straight
+       past this into the deck itself. -->
+  <div id="apply" hidden>
+    <div class="ap-wrap">
+      <div class="crest" style="margin-bottom:14px">🎖</div>
+      <div class="gate-title" style="text-align:center">BECOME AN AMBASSADOR</div>
+      <p class="sub" style="text-align:center;margin:8px 0 4px">The Order pays the hands who bring makers to the Armory.</p>
+      <p class="sub" id="apWho" style="text-align:center;margin:0 0 18px;color:var(--copper-hi)"></p>
+
+      <div class="card"><div class="card-h">What it is</div><div class="card-b">
+        <p class="sub" style="line-height:1.75">An ambassador is a recruiter. You know a print shop, a leather worker, a sticker maker, somebody with gear the docks would actually wear — you bring them to the Order. Their goods get checked, the worthy gear gets shelved, and it sells right here in the Armory.</p>
+      </div></div>
+
+      <div class="card"><div class="card-h">How it works</div><div class="card-b">
+        <div class="vrow"><span class="n"><b>1 · Apply below</b><i>Every application gets read, and word comes back either way.</i></span></div>
+        <div class="vrow"><span class="n"><b>2 · Get crowned</b><i>This deck opens up — your own gate for signing up vendors and watching your money.</i></span></div>
+        <div class="vrow"><span class="n"><b>3 · Get paid, forever</b><i>Every sale off your recruits’ benches pays you a cut of the house margin — booked automatically at the till, on every sale, for as long as they sell. You don’t touch inventory, shipping, or money handling.</i></span></div>
+        <div class="vrow"><span class="n"><b>4 · Nothing out of pocket</b><i>How you’re paid gets sorted once you’re crowned. Nothing comes out of your pocket. Ever.</i></span></div>
+      </div></div>
+
+      <div class="card" id="apCard"><div class="card-h" id="apHead">The application</div>
+        <div class="card-b" id="apBody"><p class="sub">reading the rolls…</p></div>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-top:14px">
+        <a class="btn-line" href="/" style="flex:1;text-align:center;text-decoration:none">⚓ BACK TO THE APP</a>
+        <button class="btn-line" id="apOut" style="flex:none">SIGN OUT</button>
+      </div>
+    </div>
   </div>
 
   <!-- ═══ THE OFFICE ═══ -->
@@ -586,10 +627,24 @@ if(!window.supabase || !window.supabase.createClient){
      if(m)m.textContent='> the engine library did not load — hard-refresh (Ctrl+F5)'; })();
   throw new Error('supabase-js missing');
 }
-const SB = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY, {
+/* #arrive — TWO DRAWERS, ONE DOOR.
+   A minted dock pass (a vendor, an outside ambassador, the Keymaster) keeps its
+   own drawer, so signing in here can never disturb whoever is signed into the
+   app on this device — that separation is deliberate and stays.
+   But a casual who taps BECOME AN AMBASSADOR in the app is ALREADY signed in:
+   the app keeps its session in supabase's DEFAULT drawer. So we open that one
+   too, read-only as far as this deck is concerned, and if it holds a session we
+   work as that member. No second login, no password to remember, and the app's
+   session is never written to from here. */
+const SB_DOCK = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY, {
   auth:{ persistSession:true, autoRefreshToken:true,
-         storageKey:'shadowhook_dock_auth' }   /* its own drawer — never collides with the main app's session */
+         storageKey:'shadowhook_dock_auth' }
 });
+const SB_APP = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY, {
+  auth:{ persistSession:true, autoRefreshToken:false }
+});
+let SB = SB_DOCK;            // a minted pass wins; the app session is the fallback
+let CAME_FROM_APP = false;
 const FN = window.SUPABASE_URL.replace(/\/+$/,'') + '/functions/v1';
 
 /* ---- little tools ---- */
@@ -640,7 +695,14 @@ let editVendorId=null, assignVendorId=null, payoutVendorId=null, shipTarget=null
 
 /* ════════ THE GATE ════════ */
 async function route(){
-  const { data:{ session } } = await SB.auth.getSession();
+  /* the pass in the dock drawer first; failing that, the app session */
+  let session=null;
+  try{ session=(await SB_DOCK.auth.getSession()).data.session||null; }catch(e){}
+  if(session){ SB=SB_DOCK; CAME_FROM_APP=false; }
+  else{
+    try{ session=(await SB_APP.auth.getSession()).data.session||null; }catch(e){}
+    if(session){ SB=SB_APP; CAME_FROM_APP=true; }
+  }
   if(!session){ show('gate'); return; }
   ME.uid = session.user.id; ME.email = session.user.email || '';
   /* the Keymaster's key? */
@@ -662,9 +724,15 @@ async function route(){
         const m = await SB.from('vendor_members').select('vendor_id').eq('user_id', ME.uid).maybeSingle();
         isVendor=!!(m.data&&m.data.vendor_id);
       }catch(e){}
-      const np=$('npMsg');
-      if(np&&isVendor)np.innerHTML='This deck belongs to the Order’s ambassadors.<br>Your vendor pass works at the Dock Office — <b style="color:var(--bone)">theshadowhook.com/dockoffice</b>.';
-      show('nopass'); return;
+      if(isVendor){
+        const np=$('npMsg');
+        if(np)np.innerHTML='Your vendor pass works at the <b style="color:var(--bone)">Dock Office</b> — theshadowhook.com/dockoffice.<br>This deck is for the Order’s ambassadors.';
+        show('nopass'); return;
+      }
+      /* #arrive — not crowned, not a vendor: this is somebody who wants in.
+         They get the pitch and the application right here, and the deck stays
+         shut until the Keymaster crowns them. */
+      show('apply'); await applyRoute(); return;
     }
   }
   show('app');
@@ -683,7 +751,8 @@ async function route(){
   openTab(ME.amb&&!ME.km ? 'myvend' : 'orders');
   subscribe();
 }
-function show(which){ ['gate','nopass','app'].forEach(id=>{ $(id).hidden = (id!==which); if(id===which)$(id).removeAttribute('hidden'); }); }
+function show(which){ ['gate','nopass','apply','app'].forEach(id=>{ const el=$(id); if(!el)return;
+  el.hidden = (id!==which); if(id===which)el.removeAttribute('hidden'); }); }
 
 $('gGo').addEventListener('click', gateGo);
 $('gPass').addEventListener('keydown', e=>{ if(e.key==='Enter')gateGo(); });
@@ -2762,6 +2831,109 @@ async function artUpload(){
     shkAlert('artwork upload',e);
   }
   ART_BUSY=false; const g2=$('artGo'); if(g2){g2.disabled=false;g2.textContent='⬆ PUT IT IN THE LOCKER';}
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   #arrive — THE APPLICATION, ON THE DECK
+
+   The pitch used to live in a popup inside the app, and the deck itself was a
+   locked door reading NO CROWN YET. Now they are the same place: a casual taps
+   the poster, arrives here already signed in on their app session, and reads
+   the job with the form under it. The deck stays shut until they're crowned.
+
+   The four things a hand can be, and what they see:
+     · never applied      → the form
+     · application in     → what it says, and that word comes back either way
+     · turned back        → what the Keymaster said, and the form again to rework
+     · crowned            → they never reach this screen; route() opens the deck
+   ═══════════════════════════════════════════════════════════════════════════ */
+let APPLY_PREV=null;
+async function applyRoute(){
+  const who=$('apWho');
+  if(who)who.textContent=(ME.email||'')+(CAME_FROM_APP?' · signed in from the app':'');
+  const body=$('apBody'); if(!body)return;
+  body.innerHTML='<p class="sub">reading the rolls…</p>';
+  APPLY_PREV=null;
+  try{
+    const r=await SB.from('amb_applications').select('*').eq('user_id',ME.uid).maybeSingle();
+    if(r&&r.data)APPLY_PREV=r.data;
+  }catch(e){
+    if(/does not exist|relation|schema/i.test(e.message||'')){
+      $('apHead').textContent='The application';
+      body.innerHTML='<p class="sub" style="color:var(--warn)">⚠ The application book isn’t on the shelf yet — run AMBASSADOR-APPLICATIONS.sql once. Send word to the Keymaster and they’ll open it.</p>';
+      wireApplyOut(); return;
+    }
+  }
+  const st=APPLY_PREV&&APPLY_PREV.status;
+  if(st==='pending'){
+    $('apHead').textContent='Your application is in';
+    body.innerHTML='<div class="ap-state wait"><span class="dot2"></span><span class="n">'
+      +'<b>⚓ It’s in for approval.</b>'
+      +'<i>Every application gets read. Word comes back either way — and the moment you’re crowned, this deck opens up on its own. Nothing else to do.</i></span></div>'
+      +'<div class="sub" style="margin-top:10px;color:var(--steel)">Sent '+day(APPLY_PREV.created_at||APPLY_PREV.updated_at||new Date().toISOString())+'</div>'
+      +'<button class="btn-ghost" id="apEdit" style="width:100%;margin-top:12px">✎ Change what I sent</button>';
+    const e=$('apEdit'); if(e)e.addEventListener('click',()=>applyForm(APPLY_PREV));
+    wireApplyOut(); return;
+  }
+  applyForm(APPLY_PREV);
+  wireApplyOut();
+}
+function applyForm(prev){
+  const body=$('apBody'); if(!body)return;
+  $('apHead').textContent=(prev&&prev.status==='passed')?'It didn’t clear — run it again':'The application';
+  const v=k=>prev&&prev[k]?String(prev[k]):'';
+  body.innerHTML=
+     ((prev&&prev.status==='passed')
+       ? '<div class="ap-state no"><span class="dot2"></span><span class="n"><b>Turned back last round.</b>'
+         +'<i>'+(prev.km_note?esc(prev.km_note):'Doors reopen, ships come back. Sharpen the pitch and send it again.')+'</i></span></div>'
+       : '')
+    +'<div class="lbl">YOUR NAME</div><input class="field" id="apName" placeholder="Danny Rivera">'
+    +'<div class="lbl">PHONE</div><input class="field" id="apPhone" inputmode="tel" placeholder="(310) 555-0199">'
+    +'<div class="lbl">EMAIL</div><input class="field" id="apEmail" type="email">'
+    +'<div class="lbl">WHO WOULD YOU RECRUIT FIRST? — OPTIONAL, BUT IT HELPS YOUR CASE</div>'
+    +'<textarea class="field" id="apPitch" rows="3" placeholder="My cousin runs a print shop in San Pedro…"></textarea>'
+    +'<p class="sub" style="margin:8px 0 0;color:var(--steel)">No bank details here, ever. How you get paid is sorted after you’re crowned.</p>'
+    +'<div class="msgline" id="apMsg"></div>'
+    +'<button class="btn" id="apGo" style="width:100%;margin-top:6px">⚓ SEND IT FOR APPROVAL</button>';
+  $('apName').value=v('name')||(ME.handle||'');
+  $('apPhone').value=v('phone');
+  /* card accounts carry a synthetic cardID@shadowhook.com login under the hood,
+     so never prefill that — they type a real one or leave it be */
+  $('apEmail').value=v('email')||(/@shadowhook\.com$/i.test(ME.email||'')?'':(ME.email||''));
+  $('apPitch').value=v('pitch');
+  $('apGo').addEventListener('click',applySend);
+}
+async function applySend(){
+  const m=$('apMsg'), go=$('apGo');
+  const name=($('apName').value||'').trim(), phone=($('apPhone').value||'').trim(),
+        email=($('apEmail').value||'').trim(), pitch=($('apPitch').value||'').trim();
+  if(!name){ m.textContent='✗ your name — the books need it'; return; }
+  if(!phone&&!email){ m.textContent='✗ a phone or an email — there has to be a way to reach you'; return; }
+  go.disabled=true; m.textContent='sending word…';
+  try{
+    const row={user_id:ME.uid,name:name,phone:phone||null,email:email||null,
+      payout_method:'Sort it out later',payout_detail:null,pitch:pitch||null,status:'pending'};
+    const r=await SB.from('amb_applications').upsert(row,{onConflict:'user_id'});
+    if(r.error)throw r.error;
+    toast('⚓ Sent in for approval');
+    await applyRoute();
+  }catch(e){
+    m.textContent=/does not exist|relation|schema/i.test(e.message||'')
+      ? '✗ the application book isn’t on the shelf yet — send word to the Keymaster'
+      : ('✗ '+(e.message||'it didn’t go through'));
+    shkAlert('amb application',e);
+    go.disabled=false;
+  }
+}
+function wireApplyOut(){
+  const b=$('apOut');
+  if(b&&!b.__wired){ b.__wired=1;
+    b.addEventListener('click',async()=>{
+      try{ await SB.auth.signOut(); }catch(e){}
+      location.href='/';
+    });
+  }
 }
 
 /* ════════ REALTIME + THE SLOW TIDE ════════ */
