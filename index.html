@@ -1570,6 +1570,12 @@ html.swipe-live *{user-select:none;-webkit-user-select:none}
 .swipe-hint.go{opacity:1;transform:translate(-50%,0)}
 @media (prefers-reduced-motion: reduce){ .swipe-hint{transition:opacity .01s} }
 
+/* #ambpage — the ambassador screen: a real room, not a popup. Reads wide on a
+   monitor, full-bleed on a phone, and scrolls as one page. */
+.amb-page{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px 16px 40px}
+.amb-page-in{max-width:620px;margin:0 auto}
+.amb-page .card-h{margin-top:4px}
+
 /* ---- #ambskin — the recruiting poster. Every colour comes from a token, so it
         sits in the copper skin, the arcade skin and both day modes without
         anyone having to remember to restyle it again. ---- */
@@ -17921,19 +17927,29 @@ html.season-xmas.daylight{}
      Opens from the recruiting poster at the top of the Armory. Applications land
      in amb_applications (run AMBASSADOR-APPLICATIONS.sql once) and surface in the
      Command Center as CROWN REQUESTS, one tap from the crowning sheet. -->
-<div class="sheet" id="ambApplySheet" role="dialog" aria-modal="true" aria-label="Become an ambassador">
-  <div class="sheet-card" style="text-align:left;max-height:86vh;overflow-y:auto">
-    <div class="big amb-t" style="font-size:20px;letter-spacing:.07em;text-align:center">🎖 BECOME AN AMBASSADOR</div>
-    <p class="sub" style="margin:8px 0 12px;text-align:center;line-height:1.7">The Order pays the hands who bring makers to the Armory.</p>
-    <div class="card-h">What it is</div>
-    <p class="sub" style="margin:6px 0 12px;line-height:1.75">An ambassador is a recruiter. You know a print shop, a leather worker, a sticker maker, somebody with gear the docks would actually wear — you bring them to the Order. Their goods get checked, the worthy gear gets shelved, and it sells right here in the Armory.</p>
-    <div class="card-h">How it works</div>
-    <p class="sub" style="margin:6px 0 5px;line-height:1.75"><b style="color:var(--bone)">1 ·</b> Apply below. Every application gets read, and word comes to your phone either way.</p>
-    <p class="sub" style="margin:0 0 5px;line-height:1.75"><b style="color:var(--bone)">2 ·</b> Crowned? The <b style="color:var(--bone)">Dock Office</b> opens to you — your own gate for signing up vendors and watching your money.</p>
-    <p class="sub" style="margin:0 0 5px;line-height:1.75"><b style="color:var(--bone)">3 ·</b> Every sale off your recruits' benches pays you a <b class="amb-t">cut of the house margin</b> — booked automatically at the till, on every sale, for as long as they sell. You don't touch inventory, shipping, or money handling.</p>
-    <p class="sub" style="margin:0 0 12px;line-height:1.75"><b style="color:var(--bone)">4 ·</b> You get settled on the regular run — Zelle, Venmo, check, however you set it below. Nothing comes out of your pocket. Ever.</p>
-    <div id="ambApplyBody"><p class="sub">—</p></div>
-    <button class="btn-ghost" style="width:100%;margin-top:10px" onclick="document.getElementById('ambApplySheet').classList.remove('on')">Close</button>
+<!-- #ambpage — BECOME AN AMBASSADOR. This was a modal: the whole pitch, the
+     rules and the form crammed into a popup that scrolled inside itself. It
+     opens as a full screen now, the same way the service board does — its own
+     header, its own room, and the edge-swipe gesture works on it like every
+     other screen. Applications land in amb_applications (run
+     AMBASSADOR-APPLICATIONS.sql once) and surface in the Command Center. -->
+<div class="roomscreen" id="ambApplyView" role="dialog" aria-modal="true" aria-label="Become an ambassador">
+  <div class="room-top">
+    <button class="room-back" id="ambApplyBack" type="button" aria-label="Back to the Armory">‹</button>
+    <div class="room-id"><span class="room-ico amb-t">🎖</span>
+      <div><b class="amb-t">BECOME AN AMBASSADOR</b><span>the Order pays the hands who bring makers to the Armory</span></div></div>
+  </div>
+  <div class="amb-page">
+    <div class="amb-page-in">
+      <div class="card-h">What it is</div>
+      <p class="sub" style="margin:6px 0 14px;line-height:1.75">An ambassador is a recruiter. You know a print shop, a leather worker, a sticker maker, somebody with gear the docks would actually wear — you bring them to the Order. Their goods get checked, the worthy gear gets shelved, and it sells right here in the Armory.</p>
+      <div class="card-h">How it works</div>
+      <p class="sub" style="margin:6px 0 6px;line-height:1.75"><b style="color:var(--bone)">1 ·</b> Apply below. Every application gets read, and word comes to your phone either way.</p>
+      <p class="sub" style="margin:0 0 6px;line-height:1.75"><b style="color:var(--bone)">2 ·</b> Crowned? The <b style="color:var(--bone)">Dock Office</b> opens to you — your own gate for signing up vendors and watching your money.</p>
+      <p class="sub" style="margin:0 0 6px;line-height:1.75"><b style="color:var(--bone)">3 ·</b> Every sale off your recruits’ benches pays you a <b class="amb-t">cut of the house margin</b> — booked automatically at the till, on every sale, for as long as they sell. You don’t touch inventory, shipping, or money handling.</p>
+      <p class="sub" style="margin:0 0 16px;line-height:1.75"><b style="color:var(--bone)">4 ·</b> You get settled on the regular run. How you’re paid gets sorted once you’re crowned — nothing to work out now. Nothing comes out of your pocket. Ever.</p>
+      <div id="ambApplyBody"><p class="sub">—</p></div>
+    </div>
   </div>
 </div>
 
@@ -18662,8 +18678,9 @@ html.season-xmas.daylight{}
      another run). Payouts by Zelle/Venmo/Cash App/check — bank numbers are
      NEVER collected here; direct deposit gets set up with the Keymaster. */
   window.ambApplyOpen=async function(){
-    const sh4=$('ambApplySheet');if(!sh4)return;
+    const sh4=$('ambApplyView');if(!sh4)return;
     sh4.classList.add('on');
+    try{ $('ambApplyScroll')||sh4.querySelector('.amb-page').scrollTo(0,0); }catch(e){}
     const body=$('ambApplyBody');if(!body)return;
     if(!window.SB){body.innerHTML='<div class="card-h">The application</div><p class="sub" style="margin:6px 0">The wire to the Order is down — try again when you’re back online.</p>';return;}
     const uid=window.__shkUid;
@@ -18692,8 +18709,6 @@ html.season-xmas.daylight{}
     const vPhone=prev?(prev.phone||''):'';
     const vEmail=prev?(prev.email||''):'';
     const vPitch=prev?(prev.pitch||''):'';
-    const vMethod=prev?(prev.payout_method||'Zelle'):'Zelle';
-    const vDetail=prev?(prev.payout_detail||''):'';
     body.innerHTML=
       '<div class="card-h">The application</div>'
       +(prev&&prev.status==='passed'?'<p class="sub" style="margin:6px 0;color:var(--steel)">It didn’t clear last time — doors reopen, ships come back. Sharpen the pitch and send it again.</p>':'')
@@ -18703,40 +18718,30 @@ html.season-xmas.daylight{}
       +'<input class="field" id="ambApPhone" inputmode="tel" placeholder="(310) 555-0199" style="margin-bottom:4px">'
       +'<div class="sub" style="margin:8px 0 2px">Email</div>'
       +'<input class="field" id="ambApEmail" type="email" style="margin-bottom:4px">'
-      +'<div class="sub" style="margin:8px 0 2px">How you’d like to get paid</div>'
-      +'<select class="field" id="ambApMethod" style="margin-bottom:4px">'
-        +['Zelle','Venmo','Cash App','Check','Direct deposit','Sort it out later'].map(m=>'<option value="'+m+'"'+(m===vMethod?' selected':'')+'>'+(m==='Direct deposit'?'Direct deposit — arranged in person':m)+'</option>').join('')
-      +'</select>'
-      +'<div class="sub" id="ambApDetailLbl" style="margin:8px 0 2px">Zelle — the phone or email tied to it</div>'
-      +'<input class="field" id="ambApDetail" style="margin-bottom:4px">'
-      +'<p class="sub" id="ambApSafe" style="margin:6px 0;color:var(--steel)">No bank or card numbers in this form — ever. Direct deposit gets arranged in person.</p>'
+      /* #ambpage — no payout question here. Nobody is owed anything until they
+         are crowned and a recruit actually sells, so asking now is a form field
+         that earns nothing and one more reason to abandon the application. */
       +'<div class="sub" style="margin:8px 0 2px">Who would you recruit first? — optional, but it helps your case</div>'
       +'<textarea class="field" id="ambApPitch" rows="2" style="width:100%;resize:vertical;margin-bottom:6px" placeholder="My cousin runs a print shop in San Pedro…"></textarea>'
       +'<div class="sub" id="ambApMsg" style="margin:6px 0"></div>'
       +'<button class="btn" id="ambApGo" type="button" style="width:100%">⚓ SEND IT FOR APPROVAL</button>';
     $('ambApName').value=vName;$('ambApPhone').value=vPhone;$('ambApEmail').value=vEmail;
-    $('ambApDetail').value=vDetail;$('ambApPitch').value=vPitch;
+    $('ambApPitch').value=vPitch;
     /* no auth-email prefill here — card accounts carry a synthetic
        cardID@shadowhook.com login under the hood, and surfacing that fake
        address just confuses people. They type their real one or leave it blank. */
-    const LBL={'Zelle':'Zelle — the phone or email tied to it','Venmo':'Venmo — your @handle','Cash App':'Cash App — your $cashtag','Check':'Check — who it should be made out to','Direct deposit':'','Sort it out later':''};
-    function detailSync(){
-      const v=$('ambApMethod').value, l=LBL[v]||'';
-      $('ambApDetailLbl').style.display=l?'':'none';
-      $('ambApDetail').style.display=l?'':'none';
-      if(l)$('ambApDetailLbl').textContent=l;
-    }
-    $('ambApMethod').addEventListener('change',detailSync); detailSync();
     $('ambApGo').addEventListener('click',async function(){
       const m=$('ambApMsg');
       const name=($('ambApName').value||'').trim(), phone=($('ambApPhone').value||'').trim(), email=($('ambApEmail').value||'').trim();
-      const method=$('ambApMethod').value, detail=($('ambApDetail').value||'').trim(), pitch=($('ambApPitch').value||'').trim();
+      const pitch=($('ambApPitch').value||'').trim();
       if(!name){m.textContent='✗ your name — the books need it';return;}
       if(!phone&&!email){m.textContent='✗ a phone or an email — there has to be a way to reach you';return;}
       const go=$('ambApGo');go.disabled=true;m.textContent='sending word…';
       try{
         const row={user_id:window.__shkUid,handle:(acct.handle||'').toUpperCase()||null,name:name,phone:phone||null,email:email||null,
-          payout_method:method,payout_detail:(LBL[method]?detail:null)||null,pitch:pitch||null,status:'pending'};
+          /* they settle up once they're crowned — this is the value the form
+             already wrote whenever somebody picked "sort it out later" */
+          payout_method:'Sort it out later',payout_detail:null,pitch:pitch||null,status:'pending'};
         const r=await window.SB.from('amb_applications').upsert(row,{onConflict:'user_id'});
         if(r.error)throw r.error;
         body.innerHTML='<div class="card-h">Application’s in</div><p class="sub" style="margin:6px 0;line-height:1.75">⚓ It’s in. Every application gets read — word lands on your phone the moment it’s ruled on.</p>';
@@ -18750,8 +18755,9 @@ html.season-xmas.daylight{}
       }
     });
   }
-  /* backdrop close for the apply sheet */
-  (function(){const s5=$('ambApplySheet');if(s5)s5.addEventListener('click',e=>{if(e.target===s5)s5.classList.remove('on');});})();
+  /* #ambpage — the back arrow closes the screen; the edge-swipe does too */
+  (function(){const bk=$('ambApplyBack');
+    if(bk)bk.addEventListener('click',()=>{const v=$('ambApplyView');if(v)v.classList.remove('on');});})();
 
   /* ═══════════ #trades — THE TRADES BOARD ═══════════
      Side work by the Order's own hands (trade_posts — run TRADES-BOARD.sql once).
@@ -19611,7 +19617,7 @@ window.shareCall=shareCall;
 
   /* [container, its own back button] — overlays first: they stack on top of a
      product page, so when both are open the overlay is the one to leave. */
-  var VIEWS=[['roomView','roomBack'],['yardMapView','ymBack'],
+  var VIEWS=[['roomView','roomBack'],['yardMapView','ymBack'],['ambApplyView','ambApplyBack'],
              ['yiw','yiBack'],['wbw','wbBack'],['itw','itBack'],['ttw','ttBack'],
              ['gearView','gearBack']];
 
