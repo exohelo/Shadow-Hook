@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#0b0d0f">
 <meta name="robots" content="noindex,nofollow">
-<title>The Dock Office — The Order of The Shadow Hook</title>
+<title>The Ambassador Deck — The Order of The Shadow Hook</title>
 <!-- ═══════════════════════════════════════════════════════════════════════
      THE DOCK OFFICE — vendor.html
      The side gate. Vendors log in here to work the Armory's order queue:
@@ -309,8 +309,8 @@ select.field{appearance:none;-webkit-appearance:none}
   <div id="gate">
     <div class="crest">⚓</div>
     <div class="wordmark">THE ORDER OF THE SHADOW HOOK</div>
-    <div class="gate-title">THE DOCK OFFICE</div>
-    <div class="gate-sub">Vendor gate · orders, shipping &amp; the ledger · v17 — the ambassadors</div>
+    <div class="gate-title">THE AMBASSADOR DECK</div>
+    <div class="gate-sub">🎖 Ambassador gate · recruits, commissions &amp; the wire · v1</div>
     <div class="card" style="margin-top:26px;text-align:left"><div class="card-b">
       <div class="lbl" style="margin-top:2px">EMAIL</div>
       <input class="field" id="gEmail" type="email" autocomplete="username" placeholder="you@yourshop.com">
@@ -318,22 +318,22 @@ select.field{appearance:none;-webkit-appearance:none}
       <input class="field" id="gPass" type="password" autocomplete="current-password" placeholder="••••••••">
       <div class="msgline" id="gMsg"></div>
       <button class="btn" id="gGo" style="margin-top:10px">🗝 THROUGH THE GATE</button>
-      <p class="sub" style="text-align:center;margin-top:12px">Passes are minted by the Keymaster. Lost yours? Send word — <b style="color:var(--bone)">support@theshadowhook.com</b></p>
+      <p class="sub" style="text-align:center;margin-top:12px">Crowns are earned — apply at the <b style="color:var(--bone)">BECOME AN AMBASSADOR</b> poster in the app's Armory. Lost your login? Send word — <b style="color:var(--bone)">support@theshadowhook.com</b></p>
     </div></div>
   </div>
 
   <!-- ═══ NO PASS ═══ -->
   <div id="nopass" hidden style="text-align:center;padding-top:12vh">
-    <div class="crest">☠</div>
-    <div class="gate-title" style="font-size:28px;margin-top:16px">NO DOCK PASS</div>
-    <p class="sub" style="margin-top:10px">This account isn't on the vendor rolls and doesn't carry the Keymaster's key.<br>If that's wrong, send word to the Keymaster.</p>
+    <div class="crest">🎖</div>
+    <div class="gate-title" style="font-size:28px;margin-top:16px">NO CROWN YET</div>
+    <p class="sub" style="margin-top:10px" id="npMsg">This deck belongs to the Order's ambassadors.<br>Want in? Apply at the <b style="color:var(--bone)">BECOME AN AMBASSADOR</b> poster in the app's Armory.</p>
     <button class="btn-line" id="npOut" style="margin-top:22px">SIGN OUT</button>
   </div>
 
   <!-- ═══ THE OFFICE ═══ -->
   <div id="app" hidden>
     <div id="topbar">
-      <div><div class="t" id="tbTitle">THE DOCK OFFICE</div><div class="w" id="tbWho">—</div></div>
+      <div><div class="t" id="tbTitle">THE AMBASSADOR DECK</div><div class="w" id="tbWho">—</div></div>
       <div class="sp"></div>
       <button class="icobtn" id="tbPw" title="Change password">🔑</button>
       <button class="icobtn" id="tbOut" title="Sign out">⏻</button>
@@ -595,24 +595,24 @@ async function route(){
   try{ const r = await SB.from('profiles').select('is_keymaster').eq('id', ME.uid).maybeSingle();
        km = !!(r.data && r.data.is_keymaster); }catch(e){}
   ME.km = km;
-  if(!km){
+  if(!km){ /* #deck — this gate is the AMBASSADORS'. Crowns first; a vendor pass gets pointed home. */
     try{
-      const m = await SB.from('vendor_members').select('vendor_id').eq('user_id', ME.uid).maybeSingle();
-      if(m.data && m.data.vendor_id){
-        const v = await SB.from('vendors').select('*').eq('id', m.data.vendor_id).maybeSingle();
-        ME.vendor = v.data || null;
+      const am = await SB.from('ambassador_members').select('ambassador_id').eq('user_id', ME.uid).maybeSingle();
+      if(am.data && am.data.ambassador_id){
+        const a = await SB.from('ambassadors').select('*').eq('id', am.data.ambassador_id).maybeSingle();
+        ME.amb = a.data || null;
       }
     }catch(e){}
-    if(!ME.vendor){
+    if(!ME.amb){
+      let isVendor=false;
       try{
-        const am = await SB.from('ambassador_members').select('ambassador_id').eq('user_id', ME.uid).maybeSingle();
-        if(am.data && am.data.ambassador_id){
-          const a = await SB.from('ambassadors').select('*').eq('id', am.data.ambassador_id).maybeSingle();
-          ME.amb = a.data || null;
-        }
+        const m = await SB.from('vendor_members').select('vendor_id').eq('user_id', ME.uid).maybeSingle();
+        isVendor=!!(m.data&&m.data.vendor_id);
       }catch(e){}
+      const np=$('npMsg');
+      if(np&&isVendor)np.innerHTML='This deck belongs to the Order’s ambassadors.<br>Your vendor pass works at the Dock Office — <b style="color:var(--bone)">theshadowhook.com/dockoffice</b>.';
+      show('nopass'); return;
     }
-    if(!ME.vendor && !ME.amb){ show('nopass'); return; }
   }
   show('app');
   $('tbWho').textContent = ME.km ? ('☠ the Keymaster · '+ME.email)
@@ -656,7 +656,7 @@ function buildTabs(){
   const tabs = ME.km
     ? [['orders','⚓ ORDERS'],['vendors','🤝 VENDORS'],['ambs','🎖 AMBASSADORS'],['work','🛠 WORKBENCH'],['ledger','💰 LEDGER'],['wire','📻 THE WIRE'],['floor','🏬 THE FLOOR']]
     : ME.amb
-    ? [['myvend','🤝 MY VENDORS'],['ledger','💰 MY LEDGER'],['wire','📻 THE WIRE'],['floor','🏬 THE FLOOR']]
+    ? [['myvend','🤝 MY VENDORS'],['ledger','💰 MY LEDGER'],['myprod','🛡 MY PRODUCTS'],['floor','🏬 THE STORE'],['wire','📻 THE WIRE']]
     : [['orders','⚓ ORDERS'],['ledger','💰 MY LEDGER'],['wire','📻 THE WIRE'],['gear','🛡 MY GEAR'],['floor','🏬 THE FLOOR']];
   t.innerHTML = tabs.map(([k,l])=>'<button data-tab="'+k+'" id="tab-'+k+'">'+l+'</button>').join('');
   t.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>openTab(b.dataset.tab)));
@@ -667,6 +667,7 @@ function openTab(k){
   document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on', b.dataset.tab===k));
   if(k==='orders') renderOrders();
   else if(k==='myvend') renderMyVend();
+  else if(k==='myprod') renderMyProd();   /* #deck — their recruits' gear */
   else if(k==='vendors') renderVendors();
   else if(k==='ambs') renderAmbs();   /* #ambtab */
   else if(k==='work') renderWork();
@@ -1972,6 +1973,29 @@ function floorNorm(p){
     ship:(p.ship_usd!=null&&isFinite(+p.ship_usd)&&+p.ship_usd>0)?+p.ship_usd:null,
     status:p.status||'soon', deal:p.deal||null };
 }
+/* ════════ #deck — MY PRODUCTS: gear from their recruits' benches ════════ */
+function renderMyProd(){
+  const host=$('panel');
+  const mineV=VENDORS.filter(v=>!ME.amb||v.ambassador_id===ME.amb.id);
+  const ids=mineV.map(v=>v.id);
+  const list=STORE.filter(p=>ids.indexOf(p.vendor_id)>=0);
+  host.innerHTML='<p class="sub" style="margin:0 2px 10px">Gear off <b style="color:var(--bone)">your recruits’</b> benches — every sale here books your cut automatically at the till.</p>'
+    +(list.length?'<div class="floor-grid">'+list.map(p=>{
+        const d=floorNorm(p);
+        const shot=(d.images&&d.images[0])||d.image||pvArt(d,0);
+        const vn=(mineV.find(v=>v.id===p.vendor_id)||{}).name||'—';
+        return '<div class="pv-card" data-mp="'+esc(p.id)+'"><div class="pv-shot"><img loading="lazy" alt="" src="'+esc(shot)+'">'
+          +(d.status==='soon'?'<span class="pv-badge">SOON</span>':'')+'</div>'
+          +'<div class="pv-brand">'+esc(String(vn).toUpperCase())+'</div>'
+          +'<div class="pv-name">'+esc(d.name)+'</div>'
+          +(d.retail!=null?'<div class="pv-price">'+pvMoney(d.retail)+'</div>':'<div class="pv-price soon">Coming soon</div>')
+          +'<div style="height:12px"></div></div>';
+      }).join('')+'</div>'
+      :'<p class="sub" style="text-align:center;padding:16px">Nothing from your recruits on the shelf yet. Walk <b style="color:var(--bone)">THE STORE</b> tab, see what sells — then bring the maker who’d make it better.</p>');
+  host.querySelectorAll('[data-mp]').forEach(c=>c.addEventListener('click',()=>{
+    floorProd=STORE.find(p=>String(p.id)===c.dataset.mp)||null; floorCi=0; floorSize=null;
+    openTab('floor'); window.scrollTo(0,0); }));
+}
 function renderFloor(){
   const host=$('panel');
   if(floorProd){ renderFloorPDP(host); return; }
@@ -1985,7 +2009,8 @@ function renderFloor(){
     +'<div class="msgline" id="gateMsg">'+(GATE.err?'&gt; '+esc(GATE.err):'')+'</div>'
     +'</div></div>') : '';
   host.innerHTML=gate
-    +'<p class="sub" style="margin:0 2px 10px">The Armory as the hands will see it — <b style="color:var(--bone)">browse only</b>; the till lives in the app. Prices show once the Keymaster posts them.</p>'
+    +'<p class="sub" style="margin:0 2px 10px">The Armory as the hands will see it — <b style="color:var(--bone)">browse only</b>; the till lives in the app. Prices show once the Keymaster posts them.'
+    +(ME.amb&&!ME.km?' <b style="color:#ffd53d">See a gap on these shelves? You know a maker — that’s your commission walking around loose.</b>':'')+'</p>'
     +'<div class="chips">'+FLOOR_CATS.map(([k,l])=>'<button data-fc="'+k+'"'+(k===FLOORCAT?' class="on"':'')+'>'+esc(l)+'</button>').join('')+'</div>'
     +(list.length?'<div class="floor-grid">'+list.map(p=>{
         const d=floorNorm(p);
