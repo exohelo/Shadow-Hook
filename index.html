@@ -1453,10 +1453,18 @@ html.arcade .scan-ic{--sc-ic-a:rgba(36,31,66,.92);--sc-ic-b:rgba(13,11,24,.92)}
    Every colour is a theme token now, so it turns cyan in the arcade skin and
    goes dark on paper, and it reads as a card rather than a browser warning bar. */
 #soNote{position:relative;display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;
-  margin:0 12px 12px;padding:13px 38px 13px 13px;border-radius:16px;
+  /* #sonote2 — while this is up the chips that hang off the header step aside
+     (html.so-open below), so it sits flush and takes the space back. That also
+     settles a contradiction: the strip was showing a Port Bucks balance right
+     beside a warning that the balance on this device isn't the real one.
+     soClear() stays as a backstop in case that rule ever fails to apply. */
+  margin:12px;padding:13px 38px 13px 13px;border-radius:16px;
   background:linear-gradient(140deg,var(--plate-2),var(--plate) 70%);
   border:1px solid var(--line);box-shadow:0 12px 30px rgba(0,0,0,.30),inset 0 1px 0 rgba(255,255,255,.05);
   font-size:13px;line-height:1.5;color:var(--bone)}
+/* the notice is up: the wallet strip and the daylight chip stand down. They
+   come straight back the moment it's tucked away or the hand signs in. */
+html.so-open #bankStrip,html.so-open .dayBtn{display:none!important}
 #soNote .so-ic{flex:none;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;
   font-size:17px;font-style:normal;background:var(--sel);border:1px solid var(--line);color:var(--copper-hi);
   animation:soPulse 2.8s ease-in-out infinite}
@@ -4364,6 +4372,26 @@ function localEnter(){
 })();
 /* A signed-out device is not "synced". Say so where the member will see it, offer the
    way back, and let them tuck it away for the session — it returns next launch. */
+/* keep the notice clear of the chips that hang off the header. Called again and
+   again — it is idempotent: it resets to the CSS floor, measures, then adds. */
+function soClear(d){
+  try{
+    if(!d||!d.isConnected) return;
+    d.style.marginTop='';                                  // back to the floor
+    let low=0;
+    ['bankStrip','dayBtn'].forEach(function(id){
+      const el=document.getElementById(id); if(!el)return;
+      const r=el.getBoundingClientRect();
+      if(r.height>0 && r.width>0) low=Math.max(low,r.bottom);
+    });
+    if(!low) return;                                       // nothing laid out yet
+    const box=d.getBoundingClientRect();
+    if(!box.height) return;                                // still behind the boot screen
+    const floor=parseFloat(window.getComputedStyle(d).marginTop)||0;
+    const need=low-box.top+10;
+    if(need>0) d.style.marginTop=Math.ceil(floor+need)+'px';
+  }catch(e){}
+}
 function signedOutNotice(){
   try{
     if(!window.SB) return;                                  // no backend at all: nothing to sign into
@@ -4379,19 +4407,22 @@ function signedOutNotice(){
       +'<button type="button" id="soGo">Sign in</button>'
       +'<button type="button" id="soHide" aria-label="Tuck away">✕</button>';
     app.insertBefore(d, app.firstChild);
-    /* the Port Bucks strip and the daylight toggle hang off the bottom of the
-       fixed header at z-index 30 — they were landing on top of this. Measure
-       where they actually end and start below them, rather than guess. */
-    try{
-      let low=0;
-      ['bankStrip','dayBtn'].forEach(function(id){
-        const el=document.getElementById(id); if(!el)return;
-        const r=el.getBoundingClientRect(); if(r.height)low=Math.max(low,r.bottom);
-      });
-      const mine=d.getBoundingClientRect().top;
-      if(low>mine) d.style.marginTop=Math.ceil(low-mine+10)+'px';
-    }catch(e){}
-    d.querySelector('#soHide').addEventListener('click',()=>{ try{sessionStorage.setItem('shk_so_hid','1');}catch(e){} d.remove(); });
+    try{ document.documentElement.classList.add('so-open'); }catch(e){}
+    /* The CSS margin above already clears the strip. This only tightens or
+       widens it once the app is really on screen — the strip grows when it
+       carries a promo line, and the boot screen means it cannot be measured at
+       the moment this runs. Re-run on load, on resize, and after the boot
+       animation has had time to hand over. */
+    soClear(d);
+    ['load','resize','orientationchange'].forEach(function(ev){
+      window.addEventListener(ev, function(){ soClear(d); }, {passive:true});
+    });
+    [400, 1500, 3000].forEach(function(ms){ window.setTimeout(function(){ soClear(d); }, ms); });
+    d.querySelector('#soHide').addEventListener('click',()=>{
+      try{sessionStorage.setItem('shk_so_hid','1');}catch(e){}
+      try{ document.documentElement.classList.remove('so-open'); }catch(e){}   /* wallet strip returns */
+      d.remove();
+    });
     d.querySelector('#soGo').addEventListener('click',()=>{
       shConfirm("Signing in on this device means passing the gate again — your full name as printed on your PMA card, and your dispatch #. Everything already logged on this device stays put.",
         ()=>{ try{ const gp=document.getElementById('gatePage'); gp.style.display=""; gp.classList.add('on');
