@@ -469,7 +469,8 @@ select.field{appearance:none;-webkit-appearance:none}
   </div>
 
   <div id="invLinkWrap">
-    <p class="sub" style="margin:0">One click and they're inside, then they set their own password. <b style="color:var(--bone)">You never invent it, never say it out loud, never put it in a text.</b> The link works once and it expires — cut a fresh one any time.</p>
+    <p class="sub" id="invLinkNote" style="margin:0">One click and they're inside, then they set their own password. <b style="color:var(--bone)">You never invent it, never say it out loud, never put it in a text.</b> The link works once and it expires — cut a fresh one any time.</p>
+    <p class="sub" id="invCardWarn" hidden style="margin-top:8px;color:var(--warn)">There's no email on this vendor's card yet, and the mint reads the address from there. Close this, hit ✎ EDIT, put their address on the card, then mint.</p>
   </div>
 
   <div id="invPassWrap" hidden>
@@ -482,7 +483,7 @@ select.field{appearance:none;-webkit-appearance:none}
        after a mint must never hide the one thing you cannot get back -->
   <div id="invLinkOut" hidden></div>
 
-  <p class="sub" style="margin-top:8px">If the email already has an Order account, it's <b style="color:var(--bone)">linked as-is</b> — their password is never touched.</p>
+  <p class="sub" id="invExist" style="margin-top:8px">If the email already has an Order account, it's <b style="color:var(--bone)">linked as-is</b> — their password is never touched.</p>
   <div class="msgline" id="invMsg"></div>
   <button class="btn" id="invGo" style="margin-top:10px">✉ CUT THEM A LINK</button>
   <button class="btn-ghost" style="width:100%;margin-top:8px" data-close="inviteSheet">Never mind</button>
@@ -622,6 +623,7 @@ if(!window.supabase || !window.supabase.createClient){
    left to look at. Grab it here, once, while it's still on the address bar. */
 let ARRIVED_BY_LINK = /(^|[#&?])(access_token=|token_hash=|type=(recovery|invite|magiclink|signup))/
   .test(String(location.hash||'') + String(location.search||''));
+let PW_PROMPTED = false;   /* #linkin — spent when the sheet actually shows, not before */
 
 const SB = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY, {
   auth:{ persistSession:true, autoRefreshToken:true,
@@ -650,7 +652,7 @@ document.querySelectorAll('.sheet').forEach(s=>s.addEventListener('click',e=>{ i
    can't flood the book. */
 function shkAlert(where,err){
   try{
-    if(!window.SB||!ME.uid)return;
+    if(!SB||!ME.uid)return;
     window.__errN=(window.__errN||0)+1; if(window.__errN>6)return;
     const msg=String((err&&err.message)||err||'?').slice(0,300);
     const who=ME.km?'KEYMASTER':((ME.amb&&ME.amb.name)||(ME.vendor&&ME.vendor.name)||ME.email||'?');
@@ -686,16 +688,13 @@ async function route(){
      HERE, before the vendor bounce and the applicant screen return below —
      whichever way this session is about to be sorted, they get their one
      chance to set a password they can come back with. */
-  if(ARRIVED_BY_LINK){
-    let asked=false; try{ asked=!!sessionStorage.getItem('dock_link_pw'); }catch(e){}
-    if(!asked){
-      try{ sessionStorage.setItem('dock_link_pw','1'); }catch(e){}
-      setTimeout(function(){ try{
-        $('pw1').value=''; $('pw2').value='';
-        $('pwMsg').textContent='You came in on a one-time link \u2014 set a password now so you can get back in without one.';
-        sheet('pwSheet');
-      }catch(e){} }, 700);
-    }
+  if(ARRIVED_BY_LINK && !PW_PROMPTED){
+    setTimeout(function(){ try{
+      if(PW_PROMPTED)return;
+      $('pw1').value=''; $('pw2').value='';
+      $('pwMsg').textContent='You came in on a one-time link \u2014 set a password now so you can get back in without one.';
+      sheet('pwSheet'); PW_PROMPTED=true;
+    }catch(e){} }, 700);
   }
   /* the Keymaster's key? */
   let km=false;
@@ -1551,8 +1550,15 @@ function renderMyVend(){
 }
 
 /* ---- the pass (login) ---- */
-function genPass(){ const a='23456789abcdefghjkmnpqrstvwxyzABCDEFGHJKMNPQRSTVWXYZ'; let s='';
-  for(let i=0;i<16;i++)s+=a[Math.floor(Math.random()*a.length)]; return s; }
+/* #linkin — this makes a REAL account password. Math.random() is xorshift128+;
+   its state is recoverable from a handful of outputs, so a vendor who was
+   legitimately handed one temp password could predict every other one minted
+   from that tab. The rejection loop keeps every character equally likely. */
+function genPass(){ const a='23456789abcdefghjkmnpqrstvwxyzABCDEFGHJKMNPQRSTVWXYZ';
+  const lim=Math.floor(256/a.length)*a.length, buf=new Uint8Array(32); let s='';
+  while(s.length<16){ crypto.getRandomValues(buf);
+    for(let i=0;i<buf.length&&s.length<16;i++) if(buf[i]<lim) s+=a[buf[i]%a.length]; }
+  return s; }
 
 /* #linkin — where a minted link should put somebody down. A crown's deck and a
    vendor's Dock Office are different pages sharing one auth drawer
@@ -1585,6 +1591,18 @@ function openInvite(vid, kind, seed){
      ("Ruth.d.gutierrez@\u2026") used to go up as typed and miss the account that
      already existed, so the mint tried to make a second one. */
   $('invEmail').value=(who&&who.email?String(who.email):'').trim().toLowerCase();
+  /* #linkin — an ambassador may only CREATE a login. The mint refuses them an
+     address that already has an account, and refuses a second link for one
+     they already minted. Promising "cut a fresh one any time" to somebody the
+     server is going to 409 is worse than promising nothing. */
+  const km=!!ME.km;
+  $('invLinkNote').innerHTML = km
+    ? 'One click and they’re inside, then they set their own password. <b style="color:var(--bone)">You never invent it, never say it out loud, never put it in a text.</b> The link works once and it expires — cut a fresh one any time.'
+    : 'One click and they’re inside, then they set their own password. <b style="color:var(--bone)">You never invent it, never say it out loud, never put it in a text.</b> It works once and it expires, and only the Keymaster can cut a second — so send it while they’re expecting it.';
+  $('invExist').innerHTML = km
+    ? 'If the email already has an Order account, it’s <b style="color:var(--bone)">linked as-is</b> — their password is never touched.'
+    : 'If the email already has an Order account, <b style="color:var(--bone)">the Keymaster has to link it</b> — send word rather than minting.';
+  $('invCardWarn').hidden = km || inviteKind==='amb' || !!(who&&String(who.email||'').trim());
   $('invPass').value=genPass(); $('invMsg').textContent='';
   const out=$('invLinkOut'); if(out){ out.hidden=true; out.innerHTML=''; }
   setInviteMode('link');
@@ -1606,17 +1624,11 @@ $('invGo').addEventListener('click', async()=>{
   document.querySelectorAll('#invMode button').forEach(b=>b.disabled=true);
   m.textContent=mintingAs==='link'?'cutting the link\u2026':'minting\u2026';
   try{
-    /* #linkin — the mint refuses an address that isn't written on the card
-       (it's the only audit trail of who an ambassador minted for). The vendor
-       sheet lets that field go in blank, so fill it here rather than dead-end
-       the Keymaster with "fix it with EDIT first" over an empty box. */
-    if(inviteKind!=='amb'){
-      const v=VENDORS.find(x=>x.id===inviteVendorId);
-      if(v && !String(v.email||'').trim()){
-        const up=await SB.from('vendors').update({email:email}).eq('id',inviteVendorId);
-        if(!up.error)v.email=email;
-      }
-    }
+    /* #linkin — an earlier draft of this quietly wrote whatever was typed here
+       onto the vendor's card so the mint would accept it. That defeated the
+       point: the address on the card is the only record of who an ambassador
+       minted for, and writing it from a stale in-memory row could overwrite
+       one the Keymaster had just set. The sheet warns instead — see openInvite. */
     const { data:{ session } } = await SB.auth.getSession();
     const payload={ email:email, mode:mintingAs, redirect_to: passHome(inviteKind) };
     if(inviteKind==='amb') payload.ambassador_id=inviteVendorId; else payload.vendor_id=inviteVendorId;
