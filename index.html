@@ -692,6 +692,14 @@ html.daylight .heist{background:rgba(64,54,38,.6)}
   text-shadow:0 1px 4px rgba(0,0,0,.8);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 /* the Create Story card (leads the row, like FB/IG) */
 #socialFeed .sty-tile.create{background:var(--plate)}
+/* #floorreal(aug10) — the empty wall, in place of the retired demo reel.
+   Dashed and quiet so it reads as an invitation, not as somebody's story. */
+#socialFeed .sty-tile.empty{background:var(--plate);border:1px dashed var(--line-soft);display:flex;
+  flex-direction:column;align-items:center;justify-content:center;gap:8px;opacity:.85}
+#socialFeed .sty-tile.empty .sty-cover,#socialFeed .sty-tile.empty .sty-grad{display:none}
+#socialFeed .sty-tile.empty .sty-empty-ic{font-size:30px;opacity:.5}
+#socialFeed .sty-tile.empty .sty-name{position:static;left:auto;right:auto;bottom:auto;text-align:center;
+  padding:0 10px;color:var(--steel);font-family:'IBM Plex Mono',monospace;font-size:10.5px;line-height:1.45;letter-spacing:0}
 #socialFeed .sty-tile.create .sty-top{position:absolute;left:0;right:0;top:0;height:64%;overflow:hidden;
   background:radial-gradient(120% 80% at 50% 30%,rgba(238,180,107,.28),#14110b),#0a0b0d}
 #socialFeed .sty-tile.create .sty-top::after{content:"";position:absolute;inset:0;background:var(--crest-img) center 44%/auto 82% no-repeat;opacity:.55}
@@ -2269,6 +2277,9 @@ window.DEVLOG=(function(){
     #socialFeed .hero-count{margin-top:5px;font-size:11.5px;color:var(--steel);display:flex;align-items:center;gap:6px}
     #socialFeed .hero-count b{color:var(--copper-hi);font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:800;letter-spacing:.02em}
     #socialFeed .hero-count .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);animation:floorPulse 2.6s infinite}
+    /* #floorreal(aug10) — the empty-hall line where the live count used to sit.
+       No pulsing dot: nothing is happening, and the dot would say otherwise. */
+    #socialFeed .hero-count.quiet{font-style:italic;opacity:.72}
     #socialFeed .hero-msg{margin-top:11px;padding:10px 12px;border-radius:12px;background:var(--well);border:1px solid var(--line-soft);font-size:12.5px;display:flex;gap:8px;align-items:baseline}
     #socialFeed .hero-msg .who{color:var(--copper-hi);font-weight:700;flex:none}
     #socialFeed .hero-msg .tx{color:var(--steel);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
@@ -3726,6 +3737,10 @@ function mergeDockets(a,b){
     /* #reviews — the word repaints with the key: sign in and the rating form
        appears on an open product page; sign out and it steps back to browse. */
     try{ if(window.sbLoadProductReviews)window.sbLoadProductReviews(); }catch(e){}
+    /* #floorreal(aug10) — presence is keyed by uid, so signing in or out has to
+       rebuild the roster entry; otherwise the old key lingers and the hall
+       counts a hand who isn't there. */
+    try{ if(window.floorRekey)window.floorRekey(); }catch(e){}
   }
   function boot(){
     if(!window.SB) return;
@@ -11270,6 +11285,7 @@ async function chatJoin(room){
   chatLeave();
   if(!room)return;
   CURRENT_ROOM=room; _chatSeen.clear(); _chatLive=false;
+  try{ floorTrack(room); }catch(e){}   /* #floorreal — you're in the room; the hall can see it */
   chatResetFeed(room);
   /* #chatpos — where did this hand leave off? Everything after that gets the
      NEW-mark, and the room opens ON it instead of dumping you at the bottom. */
@@ -11326,6 +11342,7 @@ function chatLeave(){
   try{if(CURRENT_ROOM)markRoomSeen(CURRENT_ROOM);}catch(e){}   // #chatpos — everything on screen when you walk out counts as read
   if(_chatChan){var _c=_chatChan;_chatChan=null;try{window.SB.removeChannel(_c);}catch(e){}}   // #toastfix — null FIRST so the CLOSED status stays quiet
   if(_chatPoll){clearInterval(_chatPoll);_chatPoll=null;}CURRENT_ROOM=null;
+  try{ floorTrack(null); }catch(e){}   /* #floorreal — back on the shelves, out of the room's count */
 }
 async function chatOutbound(msg){ // {kind, body, url, cost}
   const room=CURRENT_ROOM;
@@ -11714,6 +11731,7 @@ async function sbLoadSocial(){
     ((cc&&cc.data)||[]).forEach(c=>{RSVP_N[c.gathering_id]=+c.n||0;});
     try{localStorage.setItem('shadowhook_social_v1',JSON.stringify({r:ALL_ROOMS,g:ALL_GATHS,n:RSVP_N,h:RSVP_NAMES}))}catch(e){}
     try{await sbMigrateSocial();}catch(e){}
+    try{floorJoin();}catch(e){}   /* #floorreal — take our place on the roster the hall is counted from */
     renderSocialFeed();
     try{processPendingJoin();}catch(e){}
     try{processPendingShare();}catch(e){}
@@ -11822,13 +11840,81 @@ let GATH_RSVP={};try{GATH_RSVP=JSON.parse(localStorage.getItem(K('gathrsvp'))||'
 
 /* “on the floor” — a stable ambient count (no jitter): derived from the room name
    and the hour, and it breathes with the day the way dock work does. */
-function floorCount(name,hero){
-  let h=0;for(let i=0;i<name.length;i++)h=(h*31+name.charCodeAt(i))>>>0;
-  const curve=[.52,.44,.4,.36,.4,.55,.7,.8,.85,.8,.72,.7,.74,.72,.7,.73,.79,.87,.95,1,.98,.9,.78,.64];
-  const hr=(new Date()).getHours();
-  const base=hero?190:(12+(h%26));
-  return Math.max(hero?96:4, Math.round(base*curve[hr])+(h%6));
+/* ═══ #floorreal(aug10) — WHO IS ACTUALLY ON THE FLOOR ═══
+   WHAT THIS REPLACED. floorCount used to hash the room's NAME into a number,
+   multiply it by a time-of-day curve, and print the result as "164 on the
+   floor now". No member was ever counted. The Hall Floor read ~190 at peak
+   because the word "hero" set base=190, and it never moved no matter who was
+   in the room, because nothing about it could. Trending ranked rooms by those
+   hashes, so "#1 HOTTEST" meant "longest name", near enough.
+
+   WHAT IT IS NOW. One shared Realtime presence channel. Every phone with the
+   app open joins it and publishes one thing: which room it's standing in
+   (null on the shelves). Supabase keeps the roster; we read it back. So the
+   count is people, and when the hall is empty it says so.
+
+   TWO NUMBERS, TWO MEANINGS, kept apart on purpose:
+   · floorCount(room) — hands with THAT room open, the way a voice channel
+     shows who's actually in it.
+   · floorTotal()     — hands with the app open at all, anywhere in it.
+   The old code blurred these by summing fabrications; a real count can't be
+   fudged that way, and the honest version is more useful anyway.
+
+   No schema, no SQL: presence lives in the Realtime service, not a table. */
+let FLOOR={by:Object.create(null),total:0,ok:false};
+let _flChan=null,_flPaint=null;
+function floorCount(name){ return FLOOR.by[String(name)]||0; }
+function floorTotal(){ return FLOOR.total; }
+/* the counts are only worth printing once the roster has actually landed —
+   before that we know nothing, and printing 0 would be its own little lie */
+function floorKnown(){ return FLOOR.ok; }
+function _flRepaint(){
+  clearTimeout(_flPaint);
+  /* presence syncs on every join and leave; a busy hall would repaint the
+     whole feed dozens of times a second without this */
+  _flPaint=setTimeout(function(){
+    try{ if(typeof renderSocialFeed==='function')renderSocialFeed(); }catch(e){}
+    try{ if(typeof renderHallStats==='function')renderHallStats(); }catch(e){}
+  },600);
 }
+function floorJoin(){
+  try{
+    if(!window.SB||_flChan)return;
+    const key=window.__shkUid||('anon-'+Math.random().toString(36).slice(2));
+    const ch=window.SB.channel('floor',{config:{presence:{key:key}}});
+    ch.on('presence',{event:'sync'},function(){
+      try{
+        const st=ch.presenceState()||{};
+        const by=Object.create(null); let total=0;
+        Object.keys(st).forEach(function(k){
+          const metas=st[k]||[]; if(!metas.length)return;
+          total++;                                     // one hand, however many tabs
+          const r=metas[metas.length-1].room;          // newest meta wins
+          if(r)by[String(r)]=(by[String(r)]||0)+1;
+        });
+        FLOOR.by=by; FLOOR.total=total; FLOOR.ok=true;
+        _flRepaint();
+      }catch(e){}
+    });
+    ch.subscribe(function(s){
+      if(s==='SUBSCRIBED'){ try{ ch.track({room:(typeof CURRENT_ROOM!=='undefined'&&CURRENT_ROOM)||null}); }catch(e){} }
+    });
+    _flChan=ch;
+  }catch(e){}
+}
+/* called when a hand walks into a room or back out onto the shelves */
+function floorTrack(room){
+  try{ if(_flChan&&_flChan.track)_flChan.track({room:room||null}); }catch(e){}
+}
+window.floorJoin=floorJoin; window.floorTrack=floorTrack;
+/* the roster has to be rebuilt under the new identity when a member signs in
+   or out — presence is keyed by uid, and a stale key would haunt the hall */
+function floorRekey(){
+  try{ if(_flChan){ const c=_flChan; _flChan=null; window.SB.removeChannel(c); } }catch(e){}
+  FLOOR={by:Object.create(null),total:0,ok:false};
+  floorJoin();
+}
+window.floorRekey=floorRekey;
 function agoShort(ts){
   if(!ts)return"";
   let s=Math.floor((Date.now()-ts)/1000); if(s<0)s=0;
@@ -12877,11 +12963,14 @@ function openHub(){ try{gotoTab('order')}catch(e){} try{setHallView('hall')}catc
 function renderHallStats(){
   const box=document.getElementById('hubStats'); if(!box)return;
   let nRooms=0;try{nRooms=BUILTIN_ROOMS.length+ALL_ROOMS.length+joinedRooms().filter(j=>!ALL_ROOMS.some(s=>s.id===j.id)).length;}catch(e){nRooms=1;}   // de-duped — a joined room already on the server list counts once
-  let onFloor=0;try{[{n:'The Hall Floor'}].concat(ALL_ROOMS.map(r=>({n:r.name}))).forEach(r=>onFloor+=floorCount(r.n,r.n==='The Hall Floor'));}catch(e){}
+  /* #floorreal(aug10) — the total is the presence roster itself, not a sum of
+     per-room counts: a hand browsing the shelves is on the floor too, and the
+     old sum-of-hashes counted nobody at all. "—" until the roster lands. */
+  let onFloor=null;try{ if(floorKnown())onFloor=floorTotal(); }catch(e){}
   let nStories=0;try{nStories=storiesFeed().length;}catch(e){}
   let nGaths=0;try{nGaths=(typeof BUILTIN_GATHS!=='undefined'?BUILTIN_GATHS.length:0)+ALL_GATHS.length;}catch(e){}
   box.innerHTML='<div class="st"><b>'+nRooms.toLocaleString()+'</b><span>Lobbies</span></div>'
-    +'<div class="st"><b>'+onFloor.toLocaleString()+'</b><span>On the floor</span></div>'
+    +'<div class="st"><b>'+(onFloor==null?'—':onFloor.toLocaleString())+'</b><span>On the floor</span></div>'
     +'<div class="st"><b>'+nGaths.toLocaleString()+'</b><span>Gatherings</span></div>'
     +'<div class="st"><b>'+nStories.toLocaleString()+'</b><span>Stories</span></div>';
 }
@@ -12910,7 +12999,9 @@ function renderSocialFeed(){
   const stories=storiesFeed();
   html+='<div class="fsec">'
     +'<div class="fsec-h"><span class="ttl">📣 Stories</span>'
-      +'<span class="more">'+(stories.length?stories.length+' shared':'demo reel · share yours')+'</span></div>'
+      /* #floorreal(aug10) — the header advertised a "demo reel" that no longer
+         plays. An empty wall says it's empty and invites the first one in. */
+      +'<span class="more">'+(stories.length?stories.length+' shared':'nothing shared yet')+'</span></div>'
     +'<div class="sty-reel">';
   /* the Create card leads the row */
   html+='<div class="sty-tile create" data-new="story">'
@@ -12935,20 +13026,27 @@ function renderSocialFeed(){
         +'<div class="sty-name">'+esc(s.by||'a hand')+'</div>'
       +'</div>';
     });
-  }else{                                               // #stories2 — the DEMO REEL: tap → the full viewer's placeholder clips
-    DEMO_STORIES.forEach((d,i)=>{
-      html+='<div class="sty-tile" data-si="'+i+'" style="--pc:'+d.color+'">'
-        +'<div class="sty-cover"></div><div class="sty-grad"></div>'
-        +'<div class="sty-av"></div>'
-        +'<div class="sty-play">▶</div>'
-        +'<div class="sty-name">'+esc(d.t)+'</div>'
-      +'</div>';
-    });
+  }else{
+    /* #floorreal(aug10) — the DEMO REEL is off the wall. Three placeholder
+       tiles with names like "Night side, Pier 400" read as three stories
+       nobody shared, and a fresh board shouldn't open on props. One quiet
+       tile says the wall is empty, which is true and is also the invitation —
+       the ＋ Share a Story tile sits right beside it. */
+    html+='<div class="sty-tile empty" data-new="story">'
+      +'<div class="sty-cover"></div><div class="sty-grad"></div>'
+      +'<div class="sty-empty-ic">🎞</div>'
+      +'<div class="sty-name">No stories yet — share the first</div>'
+    +'</div>';
   }
   html+='</div></div>';
 
   /* ---------- TRENDING — the hottest lobbies right now (by who's on the floor) ---------- */
-  const trend=rooms.map(r=>({r:r,n:floorCount(r.n,!!r.hero)})).sort((a,b)=>b.n-a.n).slice(0,6);
+  /* #floorreal(aug10) — Trending exists to rank rooms by who's in them. With
+     the hashes gone there is nothing to rank until somebody is actually
+     standing somewhere, so the whole section stays away rather than posting a
+     leaderboard of zeroes. It reappears the moment two rooms have hands in
+     them — which is the only time "#1 HOTTEST" ever meant anything. */
+  const trend=rooms.map(r=>({r:r,n:floorCount(r.n)})).filter(t=>t.n>0).sort((a,b)=>b.n-a.n).slice(0,6);
   if(trend.length>1){
     html+='<div class="fsec"><div class="fsec-h"><span class="ttl">🔥 Trending</span><span class="more">most alive now</span></div>'
       +'<div class="trend">'
@@ -12969,7 +13067,13 @@ function renderSocialFeed(){
       +'<div class="hero-av">'+esc(hero.ico)+'</div>'
       +'<div class="hero-main"><div class="hero-name">'+esc(hero.n)+'<span class="hero-live"><i></i>LIVE</span></div>'
       +'<div class="hero-sub">'+esc(hero.tagline||'')+'</div>'
-      +'<div class="hero-count"><i class="dot"></i><b>'+floorCount(hero.n,true)+'</b> on the floor now</div></div>'
+      /* #floorreal(aug10) — an empty hall says the door is open, not "0 on the
+         floor now". The count only appears once there is somebody to count. */
+      +(function(){const n=floorCount(hero.n);
+        return n>0
+          ?'<div class="hero-count"><i class="dot"></i><b>'+n+'</b> on the floor now</div>'
+          :'<div class="hero-count quiet">the hall’s open — first one in starts the talk</div>';})()
+      +'</div>'
       +'</div>'
       +'<div class="hero-msg" data-prev="'+esc(hero.n)+'"><span class="who"></span><span class="tx">Tap in — the hall’s open, board talk’s running.</span><span class="tm"></span></div>'
       +'</div>';
@@ -12980,7 +13084,11 @@ function renderSocialFeed(){
       +'<div class="chan-main">'
         +'<div class="chan-top"><span class="chan-name">'+esc(r.n)+'</span></div>'
         +'<div class="chan-msg" data-prev="'+esc(r.n)+'">'+esc(r.tagline||'')+'</div>'
-        +'<div class="chan-tags"><span class="chan-mini"><i class="dot"></i>'+floorCount(r.n)+' on the floor</span>'+(r.mine?'<span class="chan-mini yours">★ yours</span>':'')+(r.priv?'<span class="chan-mini lock">🗝 invite-only</span>':'')+'</div>'
+        +'<div class="chan-tags">'
+        /* #floorreal(aug10) — no chip at all on an empty room. A room nobody
+           is standing in should read as quiet, not as "0 on the floor". */
+        +(function(){const n=floorCount(r.n);return n>0?'<span class="chan-mini"><i class="dot"></i>'+n+' on the floor</span>':'';})()
+        +(r.mine?'<span class="chan-mini yours">★ yours</span>':'')+(r.priv?'<span class="chan-mini lock">🗝 invite-only</span>':'')+'</div>'
       +'</div>'
       +'<div class="chan-r"><span class="chan-time" data-time="'+esc(r.n)+'"></span><span class="chan-unread" data-unread="'+esc(r.n)+'" style="display:none"></span></div>'
       +((r.mine||r.priv)?'<button class="feed-inv" data-inv="room" data-name="'+esc(r.n)+'"'+(r.id?' data-rid="'+esc(r.id)+'"':'')+' aria-label="Invite to '+esc(r.n)+'">⤴</button>':'')
