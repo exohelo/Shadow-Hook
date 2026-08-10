@@ -9797,6 +9797,139 @@ function recFor(){
 }
 
 var shopQ='';
+/* ═══════════ #search(aug10) — THE TRADE'S WORDS, NOT OURS ═══════════
+   A longshoreman searching for a safety vest types "safety vest". Our shelf
+   says "Class 2 Hi-Vis Vest". Both are right; only one of them was findable.
+   This table is the translation, and it runs in the hand's direction: every
+   `say` is something a member might actually type, and `mean` is the words our
+   shelf uses. Add to it whenever somebody tells you they couldn't find a thing
+   we plainly sell — that is the real bug report for a search box. */
+const SHOP_ALIAS=[
+  {say:['safety vest','hi vis','hivis','high vis','high visibility','reflective','class 2','class two','orange vest','yellow vest','visibility','safety jacket'], mean:'hi-vis vest class 2 ppe'},
+  {say:['helmet','hardhat','hard hat','lid','skull bucket','bump cap','head protection','brim'], mean:'full-brim hard hat ppe'},
+  {say:['glasses','eye glasses','safety glasses','specs','eye protection','eye pro','eyewear','goggles','googles','shades','sunglasses','sun glasses','anti fog'], mean:'impact-rated safety glasses ppe'},
+  {say:['ear plugs','earplugs','ear muffs','earmuffs','muffs','hearing','ear protection','ear pro','ear defenders','noise'], mean:'over-ear hearing protection ppe'},
+  {say:['gloves','glove','work gloves','cut gloves','cut resistant','hand protection','mitts'], mean:'cut-resistant work gloves ppe'},
+  {say:['boots','boot','steel toe','steeltoe','steel-toe','shoes','footwear','work boots','safety boots'], mean:'steel-toe dock boot ppe'},
+  {say:['knee pads','kneepads','knee pad','knees','kneeling'], mean:'lashing knee pads ppe'},
+  {say:['rain gear','raingear','rain coat','raincoat','rain jacket','rain shell','slicker','wet weather','foul weather','waterproof jacket','poncho'], mean:'hoot-owl rain shell ppe'},
+  {say:['hoodie','hoody','sweatshirt','sweater','jumper','pullover','sweat shirt'], mean:'the crest hoodie apparel'},
+  {say:['tee','t shirt','tshirt','t-shirt','shirt'], mean:'stay out the bite tee apparel'},
+  {say:['beanie','knit cap','watch cap','wool hat','toque','skull cap','winter hat'], mean:'hoot-owl beanie apparel'},
+  {say:['flashlight','flash light','torch','light','headlamp','head lamp'], mean:'dock flashlight'},
+  {say:['cooler','lunch box','lunchbox','lunch bag','ice chest','lunch pail'], mean:'hoot-owl cooler bag'},
+  {say:['tumbler','thermos','mug','cup','coffee','water bottle','bottle','flask'], mean:'insulated tumbler'},
+  {say:['tote','bag','duffel','duffle','gear bag','backpack','carryall'], mean:'dock gear tote'},
+  {say:['sticker','stickers','decal','decals','sticker pack'], mean:'hard hat sticker decal set'},
+  {say:['pin','pins','lapel pin','enamel pin','badge'], mean:'enamel pin set'},
+  {say:['magnet','magnets','fridge magnet'], mean:'crest magnet set'},
+  {say:['coin','challenge coin','medallion','token'], mean:'the challenge coin'},
+  {say:['tally','counter','clicker','click counter','counting'], mean:'tally counter pad'},
+  {say:['phone mount','phone holder','phone cradle','car mount','cradle','mount'], mean:'cab phone mount'},
+  {say:['sun shade','sunshade','windshield','wind shield','visor','sun visor'], mean:'windshield sun shade'},
+  {say:['air cleaner','air purifier','purifier','air filter','cabin air'], mean:'portable cab air cleaner'},
+  {say:['card holder','badge holder','id holder','dispatch card','card case'], mean:'dispatch card holder'},
+  {say:['hanger','hard hat hanger','hat hook','hook'], mean:'hard hat hanger'},
+  {say:['plate frame','license plate','licence plate','number plate'], mean:'license plate frame'},
+  {say:['notepad','note pad','pad','notebook','write','tally pad'], mean:'dock tally pad'},
+  /* whole-shelf words — someone browsing a category rather than an item */
+  {say:['ppe','safety gear','safety','protection','protective'], mean:'ppe'},
+  {say:['clothes','clothing','apparel','wear','merch'], mean:'apparel'},
+  {say:['accessory','accessories','odds and ends'], mean:'acc'}
+];
+function shopNorm(s){ return String(s==null?'':s).toLowerCase().replace(/[^a-z0-9 ]+/g,' ').replace(/\s+/g,' ').trim(); }
+/* edit distance, normalised. Bigrams alone miss vowel swaps — "gluvs" against
+   "gloves" shares only one pair and scores 0.22, which reads as unrelated. By
+   edits it is two changes in six letters, which is plainly a typo. Take the
+   better of the two measures and short words stop falling through. */
+function shopLev(a,b){
+  a=shopNorm(a); b=shopNorm(b);
+  if(a===b)return 1; if(!a.length||!b.length)return 0;
+  const m=a.length,n=b.length; let prev=new Array(n+1),cur=new Array(n+1);
+  for(let j=0;j<=n;j++)prev[j]=j;
+  for(let i=1;i<=m;i++){
+    cur[0]=i;
+    for(let j=1;j<=n;j++){
+      cur[j]=Math.min(prev[j]+1, cur[j-1]+1, prev[j-1]+(a[i-1]===b[j-1]?0:1));
+    }
+    const t=prev; prev=cur; cur=t;
+  }
+  return 1-(prev[n]/Math.max(m,n));
+}
+/* a typo changes a word's spelling, not its size. "sweatshirt" and "tshirt"
+   share every letter-pair of the shorter one and score 0.71 as a pair-overlap,
+   which had a hand searching for a hoodie handed a tee. Four letters apart is
+   not a slip of the thumb, so length has a vote. */
+function shopNear(a,b){
+  a=shopNorm(a); b=shopNorm(b);
+  if(Math.abs(a.length-b.length)>2)return 0;
+  return Math.max(shopSim(a,b), shopLev(a,b));
+}
+/* #search(aug10) — match aliases on WHOLE WORDS, not raw substrings. A plain
+   indexOf made "sweatshirt" match the alias 'shirt' hiding inside it, so a hand
+   looking for a hoodie was handed the tee. Words, prefixes and near-misses —
+   in that order — and phrases still match as phrases. */
+function shopExpand(raw){
+  const out=[]; if(!raw)return out;
+  const qw=raw.split(' ').filter(Boolean);
+  SHOP_ALIAS.forEach(a=>{
+    let hit=false;
+    for(let i=0;i<a.say.length&&!hit;i++){
+      const t=a.say[i];
+      if(t.indexOf(' ')>=0){ if(raw.indexOf(t)>=0)hit=true; continue; }   // a phrase stays a phrase
+      for(let j=0;j<qw.length;j++){
+        const w=qw[j];
+        if(w===t){hit=true;break;}                                        // said exactly
+        if(w.length>=4&&t.length>=4&&(w.indexOf(t)===0||t.indexOf(w)===0)){hit=true;break;}  // half-typed
+        if(w.length>=4&&shopNear(w,t)>=0.66){hit=true;break;}             // mistyped
+      }
+    }
+    if(hit)out.push(a.mean);
+  });
+  return out;
+}
+/* Dice coefficient on letter pairs — enough to forgive "googles" or "gluvs"
+   without dragging a fuzzy-search library into a file this size. */
+function shopSim(a,b){
+  a=shopNorm(a); b=shopNorm(b);
+  if(!a||!b)return 0; if(a===b)return 1; if(a.length<2||b.length<2)return 0;
+  const pairs=t=>{const m=Object.create(null);for(let i=0;i<t.length-1;i++){const g=t.slice(i,i+2);m[g]=(m[g]||0)+1;}return m;};
+  const A=pairs(a),B=pairs(b); let hit=0,tot=0;
+  for(const g in A){ tot+=A[g]; if(B[g])hit+=Math.min(A[g],B[g]); }
+  for(const g in B){ tot+=B[g]; }
+  return tot?(2*hit)/tot:0;
+}
+/* the whole product as one searchable string — specs included, because the
+   answer to "A4" or "NRR 27" lives in the spec table and nowhere else */
+function shopHay(p){
+  let sp='';
+  try{ sp=(gearArr(p.specs)||[]).map(x=>Array.isArray(x)?x.join(' '):String(x)).join(' '); }catch(e){}
+  return shopNorm([p.name,p.brand,p.cat,p.blurb,sp].join(' '));
+}
+function shopScore(p,Q){
+  const name=shopNorm(p.name), hay=shopHay(p);
+  let s=0;
+  /* #search(aug10) — THE NAME OUTRANKS THE BLURB, always. A passing mention beat
+     the product itself: the Hard Hat Sticker Pack says "mark your lid" in its
+     blurb, so searching "lid" put stickers above the actual hard hat. Being the
+     thing has to count for more than mentioning it. */
+  if(name===Q.raw)s+=200;                       // they typed it exactly
+  else if(name.indexOf(Q.raw)>=0)s+=90;         // the whole phrase is in the name
+  else if(hay.indexOf(Q.raw)>=0)s+=18;          // only mentioned in passing
+  const nw=name.split(' ').filter(Boolean);
+  Q.words.forEach(w=>{
+    if(name.indexOf(w)>=0){ s+=20; return; }
+    if(hay.indexOf(w)>=0){ s+=8; return; }
+    let best=0; for(let i=0;i<nw.length;i++){ const v=shopNear(w,nw[i]); if(v>best)best=v; }
+    if(best>=0.7)s+=Math.round(18*best);        // a typo, forgiven
+  });
+  Q.mean.forEach(m=>{
+    shopNorm(m).split(' ').filter(Boolean).forEach(w=>{
+      if(name.indexOf(w)>=0)s+=18; else if(hay.indexOf(w)>=0)s+=5;
+    });
+  });
+  return s;
+}
 function renderShop(){
   const rail=document.getElementById('shopRail'), grid=document.getElementById('shopGrid');
   if(!rail||!grid)return;
@@ -9809,21 +9942,53 @@ function renderShop(){
   try{ const on=rail.querySelector('button.on');
        if(on&&on.scrollIntoView)on.scrollIntoView({block:'nearest',inline:'center'}); }catch(e){}
 
-  /* #shop2 — the search reads the name, the maker and the shelf, because a
-     hand who half-remembers "that thing Good Guy made" has to find it. */
-  const words=shopQ.toLowerCase().split(/\s+/).filter(Boolean);
-  const hits=p=>{ if(!words.length)return true;
-    const hay=((p.name||'')+' '+(p.brand||'')+' '+(p.cat||'')+' '+(p.blurb||'')).toLowerCase();
-    return words.every(w=>hay.indexOf(w)>=0); };
-
-  const list=GEAR.filter(p=>p.status!=='retired')
-                 .filter(p=>gearCat==='saved'?favHas(p.id):(gearCat==="all"||p.cat===gearCat))
-                 .filter(hits)
-                 .slice().sort((a,b)=>((a.sort==null?500:+a.sort||0)-(b.sort==null?500:+b.sort||0)));
+  /* #search(aug10) — SAY IT HOW YOU'D SAY IT.
+     The old search took the query apart and demanded EVERY word appear somewhere
+     in the name, maker, shelf or blurb. "safety vest" therefore found nothing:
+     the shelf calls it a Class 2 Hi-Vis Vest, which contains "vest" but has no
+     "safety" in it anywhere. A hand had to already know our words to find our
+     gear, which is backwards — they know the JOB's words.
+     Three changes: a query is expanded through a trade vocabulary (safety vest →
+     hi-vis, muffs → hearing protection, lid → hard hat), matches are SCORED
+     rather than filtered so the best answer leads, and a miss falls back to the
+     nearest thing on the shelf instead of an empty page. */
+  const Q=(function(){
+    const raw=shopNorm(shopQ);
+    return {raw:raw, words:raw.split(' ').filter(Boolean), mean:shopExpand(raw)};
+  })();
+  const base=GEAR.filter(p=>p.status!=='retired')
+                 .filter(p=>gearCat==='saved'?favHas(p.id):(gearCat==="all"||p.cat===gearCat));
+  let list, closest=false;
+  if(!Q.words.length){
+    list=base.slice().sort((a,b)=>((a.sort==null?500:+a.sort||0)-(b.sort==null?500:+b.sort||0)));
+  }else{
+    let sc=base.map(p=>({p:p,s:shopScore(p,Q)})).filter(x=>x.s>0).sort((a,b)=>b.s-a.s);
+    if(!sc.length){
+      /* nothing scored — rank the whole shelf by raw resemblance and show the
+         best few. An empty page tells a hand we carry nothing; "closest we have"
+         tells them what we DO carry, which is the useful answer. */
+      sc=base.map(p=>({p:p,s:shopSim(Q.raw,p.name)})).sort((a,b)=>b.s-a.s)
+             .filter(x=>x.s>0.18).slice(0,6);
+      closest=sc.length>0;
+    }
+    list=sc.map(x=>x.p);
+  }
+  const words=Q.words;   /* the empty-state copy below still reads this */
 
   paintRecs();
   try{ renderRevNudge(); }catch(e){}   /* #verified(aug10) — the week-later ask rides the floor */
   const note=document.getElementById('shopNote'); if(note)note.style.display=words.length?'none':'';
+  /* #search(aug10) — say plainly when these are near-misses, not matches */
+  try{
+    let cm=document.getElementById('shopClosest');
+    if(closest){
+      if(!cm){ cm=document.createElement('p'); cm.id='shopClosest'; cm.className='sub';
+        cm.style.cssText='margin:2px 0 10px;padding:9px 12px;border:1px dashed var(--line-soft);border-radius:11px;line-height:1.55';
+        grid.parentNode.insertBefore(cm,grid); }
+      cm.innerHTML='Nothing on the shelf is called “<b>'+shEsc(shopQ)+'</b>”. Closest we carry:';
+      cm.style.display='';
+    } else if(cm) cm.style.display='none';
+  }catch(e){}
 
   if(!list.length){
     grid.innerHTML='<p class="sub" style="grid-column:1/-1;text-align:center;padding:26px 8px;line-height:1.7">'
