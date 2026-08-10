@@ -1622,6 +1622,7 @@ html.so-open #bankStrip,html.so-open .dayBtn{display:none!important}
 .rvn-x{margin-top:9px;width:100%;cursor:pointer;background:transparent;border:0;padding:5px;
   font-size:11px;color:var(--steel);font-family:'IBM Plex Mono',monospace}
 
+
 /* ---- #swipeback — the gesture replaces the arrow, but only on a real finger.
         html.swipeback is set by the script at the end of this file, so if that
         script never runs every arrow stays exactly where it was. ---- */
@@ -1667,6 +1668,24 @@ html.daylight .pdp-sizes button{background:#fff;border-color:#d8d2c6}
 html.daylight .pdp-sizes button.on{background:#fdf3e3}
 
 .prof-actions{display:flex;flex-direction:column;gap:10px;margin-top:15px}
+/* ---- #alerts(aug10) — per-type bells. One switch for everything is why people
+        mute an app entirely: a hand who wants dispatch pings but not chatter had
+        to choose, and chose silence. These are separate on purpose. ---- */
+.albox{margin:14px 0 2px;padding:11px 13px;border:1px solid var(--line-soft);border-radius:12px}
+.albox h4{margin:0 0 3px;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--copper)}
+.albox .alnote{font-size:11.5px;line-height:1.5;color:var(--steel);margin:0 0 9px}
+.alrow{display:flex;align-items:flex-start;gap:11px;padding:9px 0;border-top:1px solid var(--line-soft)}
+.alrow:first-of-type{border-top:0}
+.alrow .alm{flex:1;min-width:0}
+.alrow .alt{font-size:13.5px;color:var(--bone);line-height:1.3}
+.alrow .als{font-size:11px;color:var(--steel);line-height:1.45;margin-top:2px}
+.alsw{flex:none;width:44px;height:26px;border-radius:999px;border:1px solid var(--line);background:var(--plate);
+  position:relative;cursor:pointer;transition:.18s;padding:0}
+.alsw i{position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:var(--steel);transition:.18s}
+.alsw.on{border-color:rgba(238,180,107,.6);background:var(--sel)}
+.alsw.on i{left:20px;background:var(--copper-hi)}
+.alsw:disabled{opacity:.4;cursor:default}
 .btn-logout{cursor:pointer;width:100%;border:1px solid rgba(179,85,42,.7);border-radius:10px;padding:15px;
   background:linear-gradient(184deg,#3a1c11,#22110b);font-family:'Anton',sans-serif;font-size:16px;letter-spacing:.12em;
   color:#f2a184;text-transform:uppercase;box-shadow:inset 0 1px 0 rgba(242,161,132,.18);
@@ -3290,6 +3309,24 @@ window.DEVLOG=(function(){
       <div style="margin:12px 0 2px;padding:10px 12px;border:1px solid rgba(128,128,128,.35);border-radius:12px">
         <div style="font-size:13px;line-height:1.5;opacity:.8;margin-bottom:8px">Missing something? Save a backup of everything on this phone, or restore one you saved before.</div>
         <button class="btn-line" id="pfRecover" type="button" onclick="location.hash='recover';location.reload()">⟲ RECOVERY</button>
+      </div>
+
+      <!-- #alerts(aug10) — the bells, one per kind -->
+      <div class="albox" id="alBox">
+        <h4>🔔 Alerts</h4>
+        <p class="alnote" id="alNote">Phone alerts while the app is open or freshly put away.</p>
+        <div class="alrow"><div class="alm">
+            <div class="alt">The board</div>
+            <div class="als">When the call is predicted to reach your number, and a live ping as it nears you.</div>
+          </div><button class="alsw" id="alBoard" type="button" role="switch" aria-label="Board alerts"><i></i></button></div>
+        <div class="alrow"><div class="alm">
+            <div class="alt">Chat replies</div>
+            <div class="als">When someone posts in a room you're in — never for your own word.</div>
+          </div><button class="alsw" id="alChat" type="button" role="switch" aria-label="Chat reply alerts"><i></i></button></div>
+        <div class="alrow" id="alStoreRow" style="display:none"><div class="alm">
+            <div class="alt">The store <span style="color:var(--ember)">· Keymaster</span></div>
+            <div class="als">A sale lands, a vendor pitches gear for approval, or a vendor writes on the wire.</div>
+          </div><button class="alsw" id="alStore" type="button" role="switch" aria-label="Store alerts"><i></i></button></div>
       </div>
 
       <div class="prof-actions">
@@ -20737,7 +20774,8 @@ window.shareCall=shareCall;
     var el=tr.el, ms=REDUCED?0:220;
     el.style.transition=ms?('transform '+ms+'ms cubic-bezier(.4,0,.2,1)'):'none';
     el.style.transform=leave?('translateX('+(tr.dir*100)+'%)'):'translateX(0)';
-    window.setTimeout(function(){
+    window.setTimeout
+(function(){
       if(leave){ try{ tr.btn.click(); }catch(e){} }
       el.style.transition=''; el.style.transform='';   // hand the view back to its own CSS
       try{ el.classList.remove('swiping'); document.documentElement.classList.remove('swipe-live'); }catch(e){}
@@ -20813,6 +20851,180 @@ window.shareCall=shareCall;
 
   document.documentElement.classList.add('swipeback');   // armed — the CSS may hide the arrows now
 })();
+/* ═══════════════ #alerts(aug10) — THE BELLS ═══════════════
+   THE PROBLEM: a member posts in the hall and nobody knows. The board alert was
+   the app's only bell, and it rang for exactly one thing.
+
+   ONE FUNNEL. Every alert in the app goes through alertFire(). Nothing else may
+   call showNotification. That is deliberate and it is the whole design: today
+   alertFire draws a LOCAL notification, which only reaches a phone while the app
+   is alive. When Web Push lands, alertFire is the single function that changes —
+   the triggers below, the prefs, the throttles and the UI all stay exactly as
+   they are. "Local now, push after" only costs nothing if there is one door.
+
+   WHAT IT CANNOT DO YET, said plainly: a closed app cannot ring. iOS suspends a
+   backgrounded PWA within minutes and Android will too eventually. So these
+   reach a hand who has the app open or just put it down — the same reach the
+   firing-line alert has always had. Chat replies are the case that most wants
+   real push, and the trigger below is already shaped to feed it.               */
+const ALERT_KINDS={
+  board:{key:'notify',      dflt:false},   /* the original bell — same key it always used */
+  chat: {key:'notify_chat', dflt:true },
+  store:{key:'notify_store',dflt:true }    /* Keymaster only */
+};
+function alertOn(kind){
+  const k=ALERT_KINDS[kind]; if(!k)return false;
+  try{ const v=localStorage.getItem(K(k.key)); return v==null?k.dflt:v==='1'; }catch(e){ return k.dflt; }
+}
+function setAlertOn(kind,v){
+  const k=ALERT_KINDS[kind]; if(!k)return;
+  try{ localStorage.setItem(K(k.key), v?'1':'0'); }catch(e){}
+}
+window.alertOn=alertOn;
+/* the one door. kind gates on its own switch; permission gates on the browser. */
+function alertFire(kind,o){
+  try{
+    if(!o||!o.title)return false;
+    if(!alertOn(kind))return false;
+    if(typeof Notification==='undefined'||Notification.permission!=='granted')return false;
+    /* #push-later — when Web Push arrives, this is where it forks: post the same
+       payload to the send function for THIS member's subscription instead of
+       drawing it locally. Everything upstream stays put. */
+    const opts={body:o.body||'',tag:o.tag||('shadowhook-'+kind),
+                vibrate:o.vibrate||[90,50,90],data:o.data||null};
+    if(SW_REG&&SW_REG.showNotification)SW_REG.showNotification(o.title,opts);
+    else new Notification(o.title,{body:opts.body,tag:opts.tag});
+    return true;
+  }catch(e){ return false; }
+}
+window.alertFire=alertFire;
+
+/* a burst of ten messages in a room is one thing worth knowing, not ten buzzes */
+const _alLast=Object.create(null);
+function alertThrottled(key,ms){
+  const now=Date.now(); if(_alLast[key]&&now-_alLast[key]<(ms||45000))return false;
+  _alLast[key]=now; return true;
+}
+
+/* which rooms count as MINE — the hall, anything I opened, anything I joined or
+   made. Without this a member would be pinged for every room on the Order. */
+function alertMyRooms(){
+  const set=Object.create(null);
+  try{ (BUILTIN_ROOMS||[]).forEach(r=>{ if(r&&r.n)set[r.n]=1; }); }catch(e){}
+  try{ Object.keys(CHAT_SEEN||{}).forEach(n=>{ set[n]=1; }); }catch(e){}
+  try{ joinedRooms().forEach(j=>{ if(j&&j.n)set[j.n]=1; }); }catch(e){}
+  try{ (ALL_ROOMS||[]).forEach(r=>{ if(r&&isMineRow(r)&&r.name)set[r.name]=1; }); }catch(e){}
+  return set;
+}
+
+let _alChan=null;
+function alertsJoin(){
+  try{
+    if(!window.SB||_alChan)return;
+    const km=(typeof prvKm==='function')&&prvKm();
+    const ch=window.SB.channel('alerts-'+(window.__shkUid||'anon')+'-'+Date.now());
+
+    /* ── chat replies · every member ─────────────────────────────────── */
+    ch.on('postgres_changes',{event:'INSERT',schema:'public',table:'messages'},p=>{
+      try{
+        const m=p&&p.new; if(!m||!m.room)return;
+        if(String(m.by_id||'')===String(ACCT_ID))return;          // never your own word
+        if(CURRENT_ROOM===m.room)return;                          // you are already reading it
+        if(!alertMyRooms()[m.room])return;                        // not a room you're in
+        if(!alertThrottled('chat:'+m.room))return;
+        const who=String(m.by_handle||'a hand');
+        const line=(m.kind&&m.kind!=='text')?('sent '+(m.kind==='image'?'a photo':m.kind==='video'?'a clip':m.kind)):String(m.body||'');
+        alertFire('chat',{title:'💬 '+m.room,
+          body:who+': '+(line.length>90?line.slice(0,90)+'…':line),
+          tag:'shadowhook-chat-'+m.room, data:{room:m.room}});
+      }catch(e){}
+    });
+
+    /* ── the store · Keymaster only ──────────────────────────────────── */
+    if(km){
+      ch.on('postgres_changes',{event:'INSERT',schema:'public',table:'orders'},p=>{
+        try{ const o=p&&p.new; if(!o)return;
+          if(!alertThrottled('sale:'+(o.id||o.code),15000))return;
+          alertFire('store',{title:'⚓ A sale landed',
+            body:(o.code?('Order '+o.code):'A new order')+(o.buyer_name?(' · '+o.buyer_name):'')+' — the Dock Office has it.',
+            tag:'shadowhook-sale',vibrate:[120,60,120,60,180]});
+        }catch(e){}
+      });
+      ch.on('postgres_changes',{event:'INSERT',schema:'public',table:'product_drafts'},p=>{
+        try{ const d=p&&p.new; if(!d)return;
+          if(!alertThrottled('draft:'+(d.id||''),15000))return;
+          alertFire('store',{title:'🛠 Gear waiting on you',
+            body:String(d.name||'A vendor')+' was pitched for the shelf — it sits until you price it.',
+            tag:'shadowhook-approval'});
+        }catch(e){}
+      });
+      ch.on('postgres_changes',{event:'INSERT',schema:'public',table:'vendor_msgs'},p=>{
+        try{ const v=p&&p.new; if(!v||v.from_km)return;            // your own word doesn't ring
+          if(!alertThrottled('vmsg:'+(v.vendor_id||''),30000))return;
+          const b=String(v.body||'');
+          alertFire('store',{title:'📻 A vendor is on the wire',
+            body:b.length>100?b.slice(0,100)+'…':b, tag:'shadowhook-vmsg'});
+        }catch(e){}
+      });
+    }
+    ch.subscribe(function(st){ try{console.log('[alerts] '+st+(km?' · keymaster':''));}catch(e){} });
+    _alChan=ch;
+  }catch(e){}
+}
+/* the roster is keyed on who you are and WHAT you are — a member promoted to
+   Keymaster needs the store triggers added, which means a fresh channel. */
+function alertsRejoin(){
+  try{ if(_alChan){ const c=_alChan; _alChan=null; window.SB.removeChannel(c); } }catch(e){}
+  alertsJoin();
+}
+window.alertsJoin=alertsJoin; window.alertsRejoin=alertsRejoin;
+
+/* ── the switches ──────────────────────────────────────────────────────── */
+function alPaint(){
+  try{
+    const km=(typeof prvKm==='function')&&prvKm();
+    const row=document.getElementById('alStoreRow'); if(row)row.style.display=km?'':'none';
+    [['alBoard','board'],['alChat','chat'],['alStore','store']].forEach(([id,kind])=>{
+      const b=document.getElementById(id); if(!b)return;
+      b.classList.toggle('on',alertOn(kind)&&(typeof Notification!=='undefined'&&Notification.permission==='granted'));
+      b.setAttribute('aria-checked',alertOn(kind)?'true':'false');
+    });
+    const n=document.getElementById('alNote');
+    if(n){
+      if(typeof Notification==='undefined')
+        n.textContent='This browser can’t send phone alerts. On iPhone, add the app to your home screen first.';
+      else if(Notification.permission==='denied')
+        n.textContent='Alerts are blocked for this site — turn them back on in your phone’s settings.';
+      else if(Notification.permission!=='granted')
+        n.textContent='Tap a switch to allow alerts. They reach you while the app is open or freshly put away.';
+      else n.textContent='Alerts reach you while the app is open or freshly put away.';
+    }
+  }catch(e){}
+}
+window.alPaint=alPaint;
+async function alToggle(kind){
+  try{
+    if(typeof Notification==='undefined'){ try{toast('This browser can’t send phone alerts');}catch(e){} return; }
+    if(alertOn(kind)&&Notification.permission==='granted'){ setAlertOn(kind,false); alPaint(); syncBell(); return; }
+    if(Notification.permission!=='granted'){
+      const perm=await Notification.requestPermission();
+      if(perm!=='granted'){ try{toast('Alerts blocked — enable them for this site in your phone settings');}catch(e){} alPaint(); return; }
+    }
+    setAlertOn(kind,true); alPaint(); syncBell();
+    alertFire(kind,{title:'🔔 Alerts on',body:kind==='chat'?'You’ll hear when someone answers in your rooms.'
+      :kind==='store'?'You’ll hear on sales, pitches and vendor word.'
+      :'You’ll hear when the board’s coming for your number.',tag:'shadowhook-'+kind});
+  }catch(e){}
+}
+/* the old bell and the new board switch are the same setting — keep them honest */
+function syncBell(){ try{ if(typeof renderBell==='function')renderBell(); }catch(e){} }
+(function(){
+  const on=(id,kind)=>{const b=document.getElementById(id); if(b)b.addEventListener('click',()=>alToggle(kind));};
+  on('alBoard','board'); on('alChat','chat'); on('alStore','store');
+  try{ alPaint(); }catch(e){}
+  setTimeout(function(){ try{ alertsJoin(); }catch(e){} },3000);
+})();
+
 </script>
 
 </body>
