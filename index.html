@@ -99,6 +99,14 @@ button{font-family:inherit;-webkit-tap-highlight-color:transparent;-webkit-touch
 /* #58 — "Starting on" recolored + the Casual ID stands out bigger */
 .cs-lbl{color:var(--bone);font-size:11px;letter-spacing:.2em;font-weight:600}
 .cs-id{font-family:'IBM Plex Mono',monospace;font-size:17.5px;color:var(--copper-hi);letter-spacing:.05em;font-weight:700}
+/* #pending(aug10) — Pending must not wear the card's clothes. A real opening
+   card is big and copper because a hand acts on it; this is smaller, steel and
+   italic, so it reads as a state and never as an ID somebody could walk on. */
+.cs-id.pending{font-size:14px;color:var(--steel);font-style:italic;letter-spacing:.02em;font-weight:600}
+.cs-why{display:block;margin-top:2px;font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.06em;color:var(--steel);opacity:.8}
+/* #pending(aug10) — the held personal-odds line, where the % normally sits */
+.odds-hold{border:1px dashed var(--line-soft);border-radius:11px;padding:11px 13px;margin-top:10px;
+  font-size:12.5px;line-height:1.6;color:var(--steel)}
 .card-h .sl{color:var(--copper);font-family:'IBM Plex Mono',monospace}
 .card-h .tag{margin-left:auto;font-size:10.5px;letter-spacing:.12em;color:var(--steel);font-weight:500;text-align:right}
 .card-b{padding:15px 18px 17px}
@@ -5282,7 +5290,20 @@ function renderCallStart(){
   const past=RECENT.filter(r=>_ok(r)<_po);
   const last=past[past.length-1];
   const id=last?handoffCard(last):"";   /* #noflop0 — one handoff rule, so "Starting on" can't drift off the record */
-  el.innerHTML='<span class="cs-lbl">Starting on</span> <b class="cs-id">'+(id||"—")+'</b>';
+  /* #pending(aug10) — "Starting on M4884" WAS A GUESS WEARING A FACT'S CLOTHES.
+     handoffCard falls back to the last board's OWN start whenever that board was
+     never sealed, so the moment one dispatch ended the header kept printing the
+     card the PREVIOUS board opened on — a real-looking ID, bold and copper, that
+     nothing had confirmed. The early count would land, the engine would re-figure,
+     and every number it produced was measured from an opening card a dispatch
+     behind. startConfirmed() has always known the difference; only the phone alert
+     was listening. The header says it out loud now: Pending until the board before
+     this one is SEALED, which is the NO FLOP call the hands already post. */
+  const ok=(typeof startConfirmed!=='function')||startConfirmed();
+  el.innerHTML=(ok&&id)
+    ? '<span class="cs-lbl">Starting on</span> <b class="cs-id">'+id+'</b>'
+    : '<span class="cs-lbl">Starting on</span> <b class="cs-id pending">Pending</b>'
+      +'<span class="cs-why">waiting on the last board’s seal</span>';
 }
 /* #114 — the predictions re-figure the moment data lands, wherever it lands from:
    a logged board, a wire correction, a bot sheet, or the boot seed. */
@@ -5607,6 +5628,25 @@ function renderWireStage(o){
   }
 }
 window.renderWireStage=renderWireStage;
+/* #pending(aug10) — the wire with no opening card under it. Every element the
+   live stage writes gets written here too, or the last real call's numbers sit
+   on screen underneath a Pending header, which is the exact confusion this is
+   meant to end. */
+function renderWireHeld(){
+  const set=(id,html)=>{const el=document.getElementById(id); if(el)el.innerHTML=html;};
+  const srcEl=document.getElementById('wSrc');
+  if(srcEl){ srcEl.className='wire-src est';
+    srcEl.textContent='⏸ HOLDING · no opening card yet'; }
+  set('predStop','—');
+  set('wMoves','waiting on the last board’s <b>NO FLOP</b> seal — the call runs the moment its end card lands');
+  set('wTrack','');
+  set('wMeters','<div class="wm-move"><div class="wm-lbl">CHANCE IT MOVES<span class="pct">—</span></div>'
+    +'<div class="wm-bar"><div class="wm-fill" style="width:3%;opacity:.35"></div></div></div>');
+  const run=document.getElementById('wRun');
+  if(run){ run.className='wire-runaway steady'; run.style.display='block';
+    run.innerHTML='a call measured off the last dispatch’s card would be a dispatch behind — so there isn’t one'; }
+}
+window.renderWireHeld=renderWireHeld;
 /* #204 — the key of the board being predicted, and whether its FINAL sheet is in.
    PM board's final = the night "N" sheet; AM board's final = the day "D" sheet. Both land
    in DISPATCH_DATA[<date>_<slot>] with a real total the moment they're parsed/uploaded. */
@@ -6060,6 +6100,23 @@ try{ V4.loadWeather(); }catch(e){}
 
 /* ====== end v4 engine ====== */
 function publishCall(){
+  /* #pending(aug10) — NO ANCHOR, NO CALL. Everything below measures FROM the
+     opening card: the stop letter, the band, the ladder, the runaway odds, and
+     the personal "chance you get a job". Anchored on a carried-over card those
+     aren't estimates that are a bit off — they're measured from the wrong end
+     of a dispatch that already ran, and they LOOK exactly as confident as a
+     real call. The old note said "guessing out loud on screen is the job", and
+     that's true when the guess is about the COUNT; this one is about where the
+     board starts, which isn't a guess at all once the seal lands. So the wire
+     holds and says what it's waiting for. The count-source chip goes with it —
+     an EARLY count is no use when the thing it feeds has nowhere to start. */
+  if(typeof startConfirmed==='function' && !startConfirmed()){
+    window._lastCall=null; window._lastStageO=null; window._predSource=null;
+    window._publishedKey=_predKey();
+    try{ renderWireHeld(); }catch(e){}
+    try{ renderMyOdds(null,null); }catch(e){}
+    return;
+  }
   /* the next board picks up where the last one ENDED — predict from there.
      #114b — anchored on the last COMPLETED board, never a future bot row */
   const key=_predKey();
@@ -6205,6 +6262,15 @@ function renderMyOdds(startId, moved){
   const el=document.getElementById('myOdds'); if(!el)return;
   const my=myBoardId();
   if(!my){el.innerHTML='';return;}   /* no in-app messaging — alerts are opt-in via the bell once verified */
+  /* #pending(aug10) — "you have a 78% chance of getting a job" is measured as
+     the distance from the opening card to yours. With no opening card there is
+     no distance, and a percentage here is worse than none: this is the number a
+     hand decides whether to drive to the hall on. */
+  if(!startId){
+    el.innerHTML='<div class="odds-hold">Your odds are holding — the board before this one hasn’t been sealed, '
+      +'so there’s no opening card to measure your number from yet.</div>';
+    return;
+  }
   const idx=c=>AZ.indexOf(c);
   const frac=id=>Math.min(0.999,Math.max(0,(parseInt(id.slice(1),10)||0)/10000)); // rough position inside the letter
   const start=idx(startId[0])+frac(startId), mine=idx(my[0])+frac(my);
