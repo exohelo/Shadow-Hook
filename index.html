@@ -883,6 +883,11 @@ html.daylight .heist{background:rgba(64,54,38,.6)}
 .arc-row .h{position:relative;flex:1;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--bone);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .arc-row .v{position:relative;font-family:'Anton',sans-serif;color:var(--copper-hi)}
 .arc-row.you{border-color:rgba(238,180,107,.55);background:#161009;animation:arcIn .4s both,youGlow 2.4s ease-in-out infinite}
+/* #boards2b(aug10) — the ⋯ marker between the last visible rung and a member
+   ranked below it. Dashed and quiet on purpose: it is a distance, not a rank,
+   and it must never read as somebody's row. */
+.arc-row.gap{justify-content:center;padding:5px 11px;border-style:dashed;background:transparent;animation:none}
+.arc-row.gap .g{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--steel);letter-spacing:.06em}
 @keyframes youGlow{0%,100%{box-shadow:0 0 5px rgba(238,180,107,.18)}50%{box-shadow:0 0 16px rgba(238,180,107,.45)}}
 /* #14/#52/#80 + #race — THE RACE, now the arena atop Social */
 .race-arena{position:relative;overflow:hidden;border-radius:18px;margin:0 0 22px;padding:16px 14px 12px;
@@ -2416,19 +2421,19 @@ window.DEVLOG=(function(){
     </div>
 
     <div class="card">
-      <div class="card-h">🏆 The Boards <span class="sl">//</span> D-Squad <span class="tag" id="lbTag">hours · week</span></div>
+      <!-- #boards2(aug10) — one metric, one period, two lists. Hours left with the
+           HOURS tab (they still rank in the Race arena, which is where an hours
+           race belongs); month and year left with them. What's here now is the
+           week's Port Bucks, read either across the whole Record or inside your
+           own letter. The "-Squad" in the head follows YOUR letter — it used to
+           be the string "D-Squad" hardcoded for everybody. -->
+      <div class="card-h">🏆 The Boards <span class="sl">//</span> <span id="lbScopeName">All Hands</span> <span class="tag" id="lbTag">this week</span></div>
       <div class="card-b" style="padding-top:6px">
-        <div class="lbseg" id="lbMetric">
-          <button type="button" data-m="hrs" class="on">⏱ HOURS</button>
-          <button type="button" data-m="pb">⬡ PORT BUCKS</button>
-        </div>
-        <div class="lbseg" id="lbPeriod">
-          <button type="button" data-p="week" class="on">WEEK</button>
-          <button type="button" data-p="month">MONTH</button>
-          <button type="button" data-p="year">YEAR</button>
+        <div class="lbseg" id="lbScope">
+          <button type="button" data-sc="all" class="on">🌍 ALL HANDS</button>
+          <button type="button" data-sc="squad" id="lbSquadBtn">⚓ MY SQUAD</button>
         </div>
         <div id="lbList"></div>
-        <p class="sub" style="margin-top:8px;color:#586067">Verified members · handles only · ranks ride the wire, refreshed every few minutes.</p>
       </div>
     </div>
 
@@ -10837,17 +10842,34 @@ function checkMarks(){ // real rules on real data — marks are earned, never gi
     if(yrs>=5)unlockBadge(bix("Five-Year Salt"));
   }}catch(e){}
 }
-/* ===== #5 + #9 — THE BOARDS: Hours & Port Bucks · Week / Month / Year =====
-   Backend fills BOARDS[metric_period] with [[handle, value], …] for verified members.
-   Until then the member's own live numbers hold the board so it's never dead. */
-const BOARDS={hrs_week:[],hrs_month:[],hrs_year:[],pb_week:[],pb_month:[],pb_year:[]};
-const lbState={metric:'hrs',period:'week'};
+/* ═══ #5 + #9 + #boards2(aug10) — THE BOARDS: Port Bucks, this week ═══
+   One metric, one period, two lists: the whole Record, or your own letter.
+
+   #weekreal(aug10) — WHAT "WEEK" USED TO MEAN. Nothing. The board read each
+   member's LIFETIME port_bucks balance and printed it under week, month AND
+   year — three tabs, one number, two of them lies (the old #known(bucks) note
+   admitted as much and waited for a backend that was already here). With month
+   and year gone, "week" was about to become the only label on the card, so it
+   had to start being true. It reads the `board_week` view now: every earn and
+   spend already lands in bucks_book with a timestamp, so the week's total is a
+   sum of deltas since Monday and the board genuinely resets each Monday.
+   Run BOARDS-WEEK.sql once. If that view isn't there the board falls back to
+   the old lifetime numbers AND SAYS SO in the tag — a stale board that admits
+   it is fine; a fresh-looking board carrying last year's totals is not.
+
+   BOARDS.week holds [{h:handle, v:bucks, L:letter}, …]. The letter is what
+   splits the squad list out of the global one — one character on the public
+   profiles row, which is the squad name and nothing more; card_id stays where
+   it belongs, on profiles_private, readable only by its owner. */
+const BOARDS={week:[],mode:'week'};   // mode: 'week' (real) | 'alltime' (fallback)
+const lbState={scope:'all'};          // 'all' | 'squad'
+/* the member's own letter — the squad IS the letter, so no id, no squad */
+function myLetter(){ const id=(typeof myBoardId==='function')?myBoardId():null; return id?String(id).charAt(0).toUpperCase():null; }
+/* #boards2(aug10) — myBoardValue lives on for the HOURS rollup only: pushMyHours
+   still publishes hrs_week/month/year to the member's profile row, because the
+   Command Center member sheet reads hrs_year. The bucks branch is gone with the
+   metric tab — the week's stack now comes off the wire, not off a local balance. */
 function myBoardValue(metric,period){
-  /* #known(bucks) — `period` is deliberately ignored for bucks: there is no per-period
-     buck ledger on the device (only a running balance), so week / month / year all
-     report the same lifetime number under a period label. Honest fix needs the
-     backend to keep dated buck rows; until then the tag is the thing that lies. */
-  if(metric==='pb')return CREDITS; // per-period buck ledgers arrive with the backend
   const now=new Date();let from;
   if(period==='week'){from=new Date(now);from.setDate(now.getDate()-((now.getDay()+6)%7));from.setHours(0,0,0,0);}
   else if(period==='month')from=new Date(now.getFullYear(),now.getMonth(),1);
@@ -10857,21 +10879,55 @@ function myBoardValue(metric,period){
 }
 function renderBoards(){
   const el=document.getElementById('lbList');if(!el)return;
-  const {metric,period}=lbState, unit=metric==='pb'?'⬡':'hrs';
-  const tag=document.getElementById('lbTag');if(tag)tag.textContent=(metric==='pb'?'port bucks':'hours')+' · '+period;
-  document.querySelectorAll('#lbMetric button').forEach(b=>b.classList.toggle('on',b.dataset.m===metric));
-  document.querySelectorAll('#lbPeriod button').forEach(b=>b.classList.toggle('on',b.dataset.p===period));
+  const unit='⬡';
+  const L=myLetter();
+  /* #boards2(aug10) — no letter, no squad. An unverified hand has no card and
+     therefore no letter to be ranked inside, so the tab stands down and says
+     why rather than showing them an empty board they can't ever join. */
+  const squadOk=!!L;
+  if(lbState.scope==='squad'&&!squadOk)lbState.scope='all';
+  const scope=lbState.scope;
+  const sqBtn=document.getElementById('lbSquadBtn');
+  if(sqBtn){ sqBtn.textContent=squadOk?('⚓ '+L+'-SQUAD'):'⚓ MY SQUAD';
+             sqBtn.disabled=!squadOk;
+             sqBtn.style.opacity=squadOk?'':'.45';
+             sqBtn.title=squadOk?'':'Verify your card at the gate to take a squad'; }
+  document.querySelectorAll('#lbScope button').forEach(b=>b.classList.toggle('on',b.dataset.sc===scope));
+  const nm=document.getElementById('lbScopeName');
+  if(nm)nm.textContent=(scope==='squad'&&L)?(L+'-Squad'):'All Hands';
+  /* the tag never claims a week it isn't reading — see #weekreal above */
+  const tag=document.getElementById('lbTag');
+  /* #boards2(aug10) — the tag dropped "port bucks" because the card carries no
+     other metric now; its whole job is to say WHICH WINDOW you're looking at,
+     and it must never say "week" while the fallback is serving lifetime. */
+  if(tag)tag.textContent=(BOARDS.mode==='week'?'this week':'all time');
+
   /* #75 — arcade board: podium for the top 3 (empty pedestals wait to be claimed),
      glow-badged avatars, XP-style fill bars behind ranks 4+, pulsing YOU row. */
-  const mine=myBoardValue(metric,period);
   const handle=((document.getElementById('meHandle')||{}).textContent||'YOU').trim()||'YOU';
+  const myH0=handle.toUpperCase();
+  const pool=(BOARDS.week||[]).filter(x=>scope!=='squad'||String(x.L||'').toUpperCase()===L);
+  /* my own number comes off the same list the board is drawn from, so the YOU
+     row can never disagree with the row above it the way it used to */
+  const meRow=(BOARDS.week||[]).find(x=>String(x.h||'').trim().toUpperCase()===myH0);
+  const mine=meRow?(+meRow.v||0):0;
+  /* #boards2b(aug10) — WHERE A HAND OUTSIDE THE TEN ACTUALLY STANDS. The board
+     drew ten and then tacked the member on the end at rank "—", so anybody
+     past the cut read as unranked: no idea whether they were 11th or 200th,
+     and no sense of the climb. Their true place comes off the same scoped list
+     the board is drawn from, so the number can't disagree with the rows above.
+     Null means genuinely unplaced (nothing earned this window) — that still
+     reads "—", because inventing a position would be worse than admitting one
+     isn't earned yet. */
+  const myIx=pool.findIndex(x=>String(x.h||'').trim().toUpperCase()===myH0);
+  const myRank=myIx>=0?myIx+1:null;
   /* #fix(bucks) — `you:false` was hardcoded, so once the backend fills BOARDS the
      member rendered TWICE: once from their server row, and again in the trailing
      YOU row below, carrying a different number (their local lifetime CREDITS).
      max() then mixed the two scales and pinned the YOU bar near 100%. Match on
      handle so the member is recognised in the list and the duplicate row drops. */
-  const myH=handle.toUpperCase();
-  let rows=(BOARDS[metric+'_'+period]||[]).slice(0,10).map(a=>({h:a[0],v:+a[1],you:String(a[0]||'').trim().toUpperCase()===myH}));
+  const myH=myH0;
+  let rows=pool.slice(0,10).map(a=>({h:a.h,v:+a.v||0,you:String(a.h||'').trim().toUpperCase()===myH}));
   const empty=!rows.length;
   if(empty)rows=[{h:handle,v:mine,you:true}];
   const youOn=rows.some(r=>r.you);
@@ -10891,71 +10947,123 @@ function renderBoards(){
   rows.slice(3).forEach((r,i)=>{
     html+='<div class="arc-row'+(r.you?' you':'')+'" style="animation-delay:'+(i*70)+'ms"><i class="fill" style="width:'+Math.max(4,Math.round(r.v/max*100))+'%"></i><div class="r">'+(i+4)+'</div><div class="h">'+r.h+(r.you?' · YOU':'')+'</div><div class="v">'+r.v.toLocaleString()+' '+unit+'</div></div>';
   });
-  if(!youOn)html+='<div class="arc-row you"><i class="fill" style="width:'+Math.max(4,Math.round(mine/max*100))+'%"></i><div class="r">—</div><div class="h">'+handle+' · YOU</div><div class="v">'+mine.toLocaleString()+' '+unit+'</div></div>';
-  if(empty)html+='<p class="sub" style="text-align:center;padding:8px 0 2px">'+(metric==='pb'
-      ?'You hold the crown — for now. Every verified hand ranks the moment their stack moves.'
-      :'First blood takes the crown. Log hours, hold the podium — two pedestals sit open.')+'</p>';
+  if(!youOn){
+    /* the ⋯ marker counts who stands between the last visible rung and them —
+       the same read the Race arena gives, so a hand sees one climb, not two
+       different ways of being told they're behind. */
+    if(myRank&&myRank>rows.length){
+      const between=myRank-rows.length-1;
+      if(between>0){
+        const noun=scope==='squad'?(between===1?'squadmate':'squadmates'):(between===1?'hand':'hands');
+        html+='<div class="arc-row gap"><span class="g">⋯ '+between.toLocaleString()+' '+noun+' between</span></div>';
+      }
+    }
+    html+='<div class="arc-row you"><i class="fill" style="width:'+Math.max(4,Math.round(mine/max*100))+'%"></i><div class="r">'+(myRank||'—')+'</div><div class="h">'+handle+' · YOU</div><div class="v">'+mine.toLocaleString()+' '+unit+'</div></div>';
+  }
+  /* #boards2(aug10) — the empty note has to match what's actually on the board.
+     The old line congratulated the member on holding the crown, which read as
+     nonsense on a Monday morning when they were crowned with nothing: the
+     board was empty because NOBODY had earned yet, themselves included. */
+  if(empty)html+='<p class="sub" style="text-align:center;padding:8px 0 2px">'+(
+    mine>0
+      ? (scope==='squad'
+          ? 'You hold '+L+'-Squad — for now. Every squadmate ranks the moment their stack moves.'
+          : 'You hold the crown — for now. Every verified hand ranks the moment their stack moves.')
+      : (BOARDS.mode==='week'
+          ? (scope==='squad'
+              ? 'Nothing’s moved in '+L+'-Squad since Monday. First buck earned takes the crown.'
+              : 'Nothing’s moved on the Record since Monday. First buck earned takes the crown.')
+          : 'No stacks on the board yet. First buck earned takes the crown.')
+  )+'</p>';
   el.innerHTML=html;
 }
 window.renderBoards=renderBoards;
-document.querySelectorAll('#lbMetric button').forEach(b=>b.addEventListener('click',()=>{lbState.metric=b.dataset.m;renderBoards();}));
-document.querySelectorAll('#lbPeriod button').forEach(b=>b.addEventListener('click',()=>{lbState.period=b.dataset.p;renderBoards();}));
+document.querySelectorAll('#lbScope button').forEach(b=>b.addEventListener('click',()=>{
+  if(b.disabled)return; lbState.scope=b.dataset.sc; renderBoards();
+}));
 renderBoards();
 /* ===== #boards-live — THE WIRE FILLS THE BOARDS =====
-   BOARDS sat declared-but-never-fed since #5: the podium could only ever show
-   the local hand and two OPEN pedestals, while the caption promised ranks that
-   never came. It feeds from `profiles` now:
-   · PORT BUCKS — handle + port_bucks, the same columns the Command Center
-     pulse already reads. Lifetime stack under every period tab (a true
-     per-period ledger still needs dated buck rows — #known(bucks) above).
-   · HOURS — each member publishes their own week/month/year rollup onto their
-     own profiles row (pushMyHours: fired from saveDK whenever the log changes,
-     and on the 5-minute heartbeat). hrs_asof stamps the push; a rollup from
-     before the period's start reads as 0, so a hand idle since last week
-     cannot squat this week's board on a stale number.
-   ONE-TIME SQL (Supabase) for the hours side — bucks ranks with no schema work:
+   · THIS WEEK'S BUCKS — the `board_week` view (BOARDS-WEEK.sql): handle, letter
+     and the sum of that member's bucks_book deltas since Monday, LA time. The
+     view aggregates the ledger so no member ever reads another's individual
+     lines — only the totals that are the whole point of a board.
+   · FALLBACK — no view (SQL not run) drops back to lifetime port_bucks off
+     `profiles`, and renderBoards flips the tag to "all time" so the card can't
+     pass a stale number off as this week's race.
+   · THE LETTER — profiles.letter, one character, published by each member's own
+     phone (pushMyLetter). It's the squad name, nothing more: the full card_id
+     stays on profiles_private where only its owner can read it. No letter on a
+     row just means that hand doesn't appear in a squad list yet.
+   · HOURS — pushMyHours still publishes hrs_week/month/year to the member's own
+     row. The hours BOARD is gone (hours race in the Race arena), but the
+     Command Center member sheet reads hrs_year, so the rollup stays.
+   ONE-TIME SQL (Supabase): run BOARDS-WEEK.sql. The hours columns, if you
+   haven't already:
      alter table profiles
        add column if not exists hrs_week  integer,
        add column if not exists hrs_month integer,
        add column if not exists hrs_year  integer,
        add column if not exists hrs_asof  date;
-   RLS: members must be able to SELECT handle/port_bucks/hrs_* across profiles,
+   RLS: members must be able to SELECT handle/port_bucks/letter across profiles,
    and UPDATE their own row. Every failure here is silent — the board simply
    runs local, exactly as it did before. */
-function _lbPeriodStart(period){
-  const now=new Date();let from;
-  if(period==='week'){from=new Date(now);from.setDate(now.getDate()-((now.getDay()+6)%7));from.setHours(0,0,0,0);}
-  else if(period==='month')from=new Date(now.getFullYear(),now.getMonth(),1);
-  else from=new Date(now.getFullYear(),0,1);
-  return from;
-}
+/* #boards2(aug10) — _lbPeriodStart went with the hours board: it existed to
+   age out stale hrs_ rollups, and nothing reads those on this card any more.
+   The week boundary now lives in the board_week view, in one place, so the
+   client and the ledger can't drift into disagreeing about when Monday was. */
 async function sbLoadBoards(){
   if(!window.SB)return;
-  let rows=null,hrsOk=true;
+  /* ---- 1. the real week, off the ledger ---- */
   try{
-    let r=await window.SB.from('profiles').select('handle,port_bucks,hrs_week,hrs_month,hrs_year,hrs_asof,banned');
-    if(r&&r.error&&/hrs_/i.test(String(r.error.message))){   /* hours columns not born yet — bucks still rank */
-      hrsOk=false;
-      r=await window.SB.from('profiles').select('handle,port_bucks,banned');
+    const r=await window.SB.from('board_week').select('handle,letter,bucks').order('bucks',{ascending:false}).limit(300);
+    if(r&&!r.error&&Array.isArray(r.data)&&r.data.length){
+      BOARDS.week=r.data
+        .filter(x=>x&&x.handle&&String(x.handle).trim())
+        .map(x=>({h:String(x.handle).trim(),v:+x.bucks||0,L:String(x.letter||'').toUpperCase().charAt(0)||''}))
+        .filter(x=>x.v>0);
+      BOARDS.mode='week';
+      try{renderBoards();}catch(e){}
+      return;
     }
+    /* an EMPTY view is a real answer, not a failure: nobody has moved a buck
+       since Monday. Show the empty board rather than falling back to lifetime
+       totals, which would look like a busy week that never happened. */
+    if(r&&!r.error&&Array.isArray(r.data)){
+      BOARDS.week=[]; BOARDS.mode='week';
+      try{renderBoards();}catch(e){}
+      return;
+    }
+  }catch(e){}
+  /* ---- 2. no view yet — lifetime stacks, honestly labelled ---- */
+  let rows=null;
+  try{
+    let r=await window.SB.from('profiles').select('handle,port_bucks,letter,banned');
+    if(r&&r.error&&/letter/i.test(String(r.error.message)))       /* letter column not born yet — global still ranks */
+      r=await window.SB.from('profiles').select('handle,port_bucks,banned');
     if(!r||r.error||!r.data)return;
     rows=r.data.filter(x=>x&&x.handle&&String(x.handle).trim()&&x.banned!==true);
   }catch(e){return;}
-  const list=pick=>rows.map(x=>[String(x.handle).trim(),+pick(x)||0]).filter(a=>a[1]>0)
-    .sort((a,b)=>b[1]-a[1]).slice(0,100);
-  const pb=list(x=>x.port_bucks);
-  BOARDS.pb_week=pb;BOARDS.pb_month=pb;BOARDS.pb_year=pb;   /* lifetime under every tab — #known(bucks) */
-  if(hrsOk)['week','month','year'].forEach(p=>{
-    const from=_lbPeriodStart(p);
-    BOARDS['hrs_'+p]=list(x=>{
-      if(!x.hrs_asof)return 0;
-      try{if(new Date(String(x.hrs_asof).slice(0,10)+"T12:00")<from)return 0;}catch(e){return 0;}
-      return x['hrs_'+p];
-    });
-  });
+  BOARDS.week=rows.map(x=>({h:String(x.handle).trim(),v:+x.port_bucks||0,L:String(x.letter||'').toUpperCase().charAt(0)||''}))
+    .filter(x=>x.v>0).sort((a,b)=>b.v-a.v).slice(0,300);
+  BOARDS.mode='alltime';
   try{renderBoards();}catch(e){}
 }
 window.sbLoadBoards=sbLoadBoards;
+/* #boards2(aug10) — publish MY letter so the squad lists can form. Its own call
+   with its own failure, deliberately kept out of the hours update: a missing
+   `letter` column must not take the hrs_ rollup down with it. The letter only
+   ever changes when the card does, so this writes once a session at most. */
+let _pmlDone=null;
+function pushMyLetter(){
+  try{
+    if(!window.SB||!window.__shkUid)return;
+    const L=myLetter(); if(!L)return;
+    const stamp=window.__shkUid+':'+L;
+    if(_pmlDone===stamp)return; _pmlDone=stamp;
+    window.SB.from('profiles').update({letter:L}).eq('id',window.__shkUid).then(()=>{},()=>{_pmlDone=null;});
+  }catch(e){}
+}
+window.pushMyLetter=pushMyLetter;
 let _pmhT=null;
 function pushMyHours(){
   clearTimeout(_pmhT);
@@ -10972,8 +11080,8 @@ function pushMyHours(){
 window.pushMyHours=pushMyHours;
 /* boot: push first (debounce lands ~4s, after sign-in hydrates), read at 9s;
    then the 5-minute heartbeat keeps rollups fresh across week/month edges */
-[2500,9000].forEach(ms=>setTimeout(function(){try{pushMyHours()}catch(e){} try{sbLoadBoards()}catch(e){}},ms));
-setInterval(function(){try{pushMyHours()}catch(e){} try{sbLoadBoards()}catch(e){}},300000);
+[2500,9000].forEach(ms=>setTimeout(function(){try{pushMyHours()}catch(e){} try{pushMyLetter()}catch(e){} try{sbLoadBoards()}catch(e){}},ms));
+setInterval(function(){try{pushMyHours()}catch(e){} try{pushMyLetter()}catch(e){} try{sbLoadBoards()}catch(e){}},300000);
 /* #83 — openBucksBoard removed with the Armory's Top Earners card */
 /* ===== #26 — THE DAY COUNT: nightly participation report =====
    Backend posts DAY_REPORT after each night board closes. Shape:
