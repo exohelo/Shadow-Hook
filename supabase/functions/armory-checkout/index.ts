@@ -10,11 +10,24 @@
              supabase secrets set ARMORY_ALLOWED_ORIGIN=https://www.theshadowhook.com   (optional; default *)
 
    POST body: {
-     items:  [{ id, color, size, qty }],          // color/size are display strings
-     buyer:  { name, email },                     // email gets the Stripe receipt
+     items:   [{ id, color, size, qty }],          // color/size are display strings
+     buyer:   { name, email },                     // email gets the Stripe receipt
+     ship_to: { name, line1, line2, city, state, postal_code, country },  // OPTIONAL
      return_url: "https://www.theshadowhook.com/" // where Stripe sends them back
    }
    Reply: { url, code }  or  { error }
+
+   ── v2, and why ─────────────────────────────────────────────────────────
+   ADDRESS. If the app sends ship_to, Stripe is told the address instead of
+   asking for it, and the order carries it from the moment it's written. If it
+   doesn't, we fall back to Stripe collecting it exactly as before — so this
+   version is safe to deploy BEFORE the page that uses it, and an old cached
+   page keeps working.
+
+   SAVED CARDS. A signed-in buyer gets a Stripe Customer (kept on
+   profiles.stripe_customer_id) and the card is saved to it, so the next
+   checkout offers it back. The card itself never comes near this database —
+   all that is stored is Stripe's handle for the customer.
    ═══════════════════════════════════════════════════════════════════════ */
 import Stripe from "npm:stripe@17.7.0";
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -57,6 +70,34 @@ Deno.serve(async (req) => {
   const buyerName  = String(body?.buyer?.name  ?? "").slice(0, 120).trim();
   const buyerEmail = String(body?.buyer?.email ?? "").slice(0, 160).trim();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyerEmail)) return reply(400, { error: "a real email is needed for the receipt" });
+
+  /* ── where it lands ──────────────────────────────────────────────────
+     Optional on purpose: absent means "let Stripe ask", which is what every
+     order before today did. Present means the buyer already chose it in the
+     app and must not be asked twice. Half an address is worse than none, so
+     an incomplete one is refused rather than quietly shipped. */
+  const cut = (v: unknown, n: number) => String(v ?? "").slice(0, n).trim();
+  let shipTo: Record<string, string> | null = null;
+  if (body?.ship_to && typeof body.ship_to === "object") {
+    const a = body.ship_to;
+    const s2 = {
+      name:        cut(a.name, 120),
+      line1:       cut(a.line1, 200),
+      line2:       cut(a.line2, 200),
+      city:        cut(a.city, 100),
+      state:       cut(a.state, 60),
+      postal_code: cut(a.postal_code, 20),
+      country:     (cut(a.country, 2) || "US").toUpperCase(),
+    };
+    const missing = (["name", "line1", "city", "state", "postal_code"] as const).filter((k) => !s2[k]);
+    if (missing.length) return reply(400, { error: `the address is missing its ${missing.join(", ")}` });
+    if (s2.country !== "US") return reply(400, { error: "the Armory only posts inside the US for now" });
+    shipTo = s2;
+  }
+
+  /* the delivery instruction and the gift flag, both straight off the till */
+  const shipNote = cut(body?.note, 140) || null;
+  const isGift   = body?.gift === true;
 
   let returnUrl = String(body?.return_url ?? "").slice(0, 400);
   if (!/^https?:\/\//i.test(returnUrl)) returnUrl = ORIGIN !== "*" ? ORIGIN : "";
@@ -152,6 +193,8 @@ Deno.serve(async (req) => {
     user_id: userId, buyer_name: buyerName || null, buyer_email: buyerEmail,
     subtotal_usd: subtotal, shipping_usd: shipping, total_usd: total,
     payment_status: "pending",
+    ship_to: shipTo,   // null keeps the old behaviour: the webhook fills it in from Stripe
+    note: shipNote, gift: isGift,
   }).select("id,code").single();
   if (oerr || !order) return reply(500, { error: "could not open the order: " + (oerr?.message ?? "?") });
 
@@ -165,6 +208,32 @@ Deno.serve(async (req) => {
   // ── open the till ───────────────────────────────────────────────────
   try {
     const stripe = new Stripe(STRIPE_KEY);
+
+    /* ── the customer ───────────────────────────────────────────────────
+       Only for a signed-in buyer — a masked hand checking out anonymously has
+       nowhere to hang a saved card, and shouldn't. Reuse the handle if we have
+       one; if Stripe has since forgotten it (deleted in the dashboard), make a
+       fresh one rather than failing the sale. */
+    let customerId: string | null = null;
+    if (userId) {
+      try {
+        const prof = await admin.from("profiles").select("stripe_customer_id").eq("id", userId).maybeSingle();
+        const known = prof.data?.stripe_customer_id ?? null;
+        if (known) {
+          const c = await stripe.customers.retrieve(known).catch(() => null);
+          if (c && !(c as { deleted?: boolean }).deleted) customerId = known;
+        }
+        if (!customerId) {
+          const made = await stripe.customers.create({
+            email: buyerEmail,
+            name: buyerName || undefined,
+            metadata: { shadowhook_uid: userId },
+          });
+          customerId = made.id;
+          await admin.from("profiles").update({ stripe_customer_id: customerId }).eq("id", userId);
+        }
+      } catch (_) { customerId = null; }   // never let card-saving cost somebody a sale
+    }
     const line_items: Stripe.Checkout.SessionCreateParams.LineItem[] = lines.map((l) => ({
       quantity: l.qty,
       price_data: {
@@ -184,11 +253,24 @@ Deno.serve(async (req) => {
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       line_items,
-      customer_email: buyerEmail,
+      /* Stripe rejects customer and customer_email together — one or the other. */
+      ...(customerId ? { customer: customerId } : { customer_email: buyerEmail }),
       client_reference_id: order.id,
       metadata: { order_id: order.id, order_code: order.code },
-      payment_intent_data: { metadata: { order_id: order.id, order_code: order.code } },
-      shipping_address_collection: { allowed_countries: ["US"] },
+      payment_intent_data: {
+        metadata: { order_id: order.id, order_code: order.code },
+        /* save the card against the customer so the next till already knows it */
+        ...(customerId ? { setup_future_usage: "on_session" as const } : {}),
+        /* the address the buyer already chose — Stripe uses it rather than asking */
+        ...(shipTo
+          ? { shipping: { name: shipTo.name, address: {
+                line1: shipTo.line1, line2: shipTo.line2 || undefined,
+                city: shipTo.city, state: shipTo.state,
+                postal_code: shipTo.postal_code, country: shipTo.country } } }
+          : {}),
+      },
+      /* only ask when the app didn't already */
+      ...(shipTo ? {} : { shipping_address_collection: { allowed_countries: ["US"] as const } }),
       phone_number_collection: { enabled: true },
       success_url: `${returnUrl}?armory_paid=1&code=${encodeURIComponent(order.code)}`,
       cancel_url:  `${returnUrl}?armory_cancel=1`,
@@ -198,7 +280,10 @@ Deno.serve(async (req) => {
     await admin.from("orders").update({ stripe_session_id: session.id }).eq("id", order.id);
     return reply(200, { url: session.url, code: order.code });
   } catch (e) {
-    await admin.from("orders").update({ payment_status: "cancelled", note: "stripe session failed" }).eq("id", order.id);
+    await admin.from("orders").update({
+      payment_status: "cancelled",
+      note: [shipNote, "stripe session failed"].filter(Boolean).join(" · "),
+    }).eq("id", order.id);
     return reply(502, { error: "Stripe refused the session: " + (e as Error).message });
   }
 });
