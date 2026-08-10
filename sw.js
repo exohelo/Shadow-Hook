@@ -14,7 +14,7 @@
      • Bumping the number below also wipes every old cache on activate, so nothing
        stale can survive.
    ──────────────────────────────────────────────────────────────────────────── */
-const CACHE = 'shadowhook-v32';  // ← bump this each time you deploy an update  (v32: ★ the word of the Order — 5-star reviews ride the service board)
+const CACHE = 'shadowhook-v33';  // ← bump this each time you deploy an update  (v33: the bells — alerts for chat replies, sales, approvals and vendor word)
 
 const SHELL = [
   '.',
@@ -112,12 +112,28 @@ self.addEventListener('push', (e) => {
   e.waitUntil(self.registration.showNotification(title, opts));
 });
 
+/* #alerts(aug10) — TAPPING AN ALERT HAS TO LAND SOMEWHERE.
+   This used to focus whatever window it found and stop there, so a member tapped
+   "NACLDOG replied in The Hall Floor" and got the app on whatever tab they left
+   it on — with no idea where the reply was. data.url was only honoured when NO
+   window existed, which is the rarer case. Now an already-open app is TOLD where
+   to go before it is focused, and a cold start carries the destination in the
+   URL hash so the app can read it on boot. */
 self.addEventListener('notificationclick', (e) => {
   e.notification.close();
-  const target = (e.notification.data && e.notification.data.url) || '.';
+  const d = e.notification.data || {};
+  const hash = d.room ? ('#room=' + encodeURIComponent(d.room))
+             : d.go   ? ('#go=' + encodeURIComponent(d.go))
+             : '';
+  const target = (d.url || '.') + hash;
   e.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
-      for (const c of list) { if ('focus' in c) return c.focus(); }
+      for (const c of list) {
+        if ('focus' in c) {
+          try { c.postMessage({ type: 'ALERT_TAP', room: d.room || null, go: d.go || null }); } catch (_) {}
+          return c.focus();
+        }
+      }
       if (self.clients.openWindow) return self.clients.openWindow(target);
     })
   );
