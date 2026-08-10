@@ -3192,6 +3192,11 @@ window.DEVLOG=(function(){
     </div>
   </div>
 
+  <!-- #toastnull(aug10) — THE TOAST NODE WENT MISSING. The .toast CSS was all still
+       here (base, .on, daylight, arcade) but the element itself was not in the
+       document, so every toast() call grabbed null and threw. Restored. -->
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
   <!-- ======== PROFILE & ACCOUNT — opens from the header identity / ⚙ ======== -->
   <div class="sheet" id="profileSheet" role="dialog" aria-modal="true" aria-label="Your account">
     <div class="sheet-card" style="text-align:left">
@@ -10440,8 +10445,33 @@ let toastT=null;
   window.shConfirm=function(msg,onYes,opts){opts=opts||{};open(msg,{title:opts.title,icon:opts.icon,confirm:true,onOk:onYes,onNo:opts.onNo,okText:opts.okText||"Do it",noText:opts.noText})};
   window.alert=function(m){open(m)};
 })();
-function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('on');
-  clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),2600)}
+/* #toastnull(aug10) — THE BUG THAT ATE THE DROP LOG. This reached for #toast and
+   set .textContent on it with no guard, but the node had gone missing from the
+   document (only the CSS survived) — so all 134 toast() call sites threw
+   "Cannot set properties of null (setting 'textContent')", and every one NOT
+   wrapped in try/catch killed its handler mid-flight. The worst of them:
+   dropAdd → addCredits → toast → throw, which aborted the click BEFORE
+   dropSave(o) ran. The member got billed the +10 ⬡, the drop never landed, and
+   the console sat on "ALL QUIET…" no matter how many calls they punched in.
+   Same throw hit spendCredits, the docket seals and NO FLOP.
+   The node is back in the markup above; this builds one on demand if it ever
+   walks off again, and the whole body is wrapped: a toast that can't be shown
+   is a missed message, never a dead button. */
+function toastNode(){
+  let t=document.getElementById('toast');
+  if(!t){
+    t=document.createElement('div');t.id='toast';t.className='toast';
+    t.setAttribute('role','status');t.setAttribute('aria-live','polite');
+    (document.body||document.documentElement).appendChild(t);
+  }
+  return t;
+}
+function toast(msg){
+  try{
+    const t=toastNode();t.textContent=String(msg==null?"":msg);t.classList.add('on');
+    clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),2600);
+  }catch(e){}
+}
 function bixLate(p){return BADGES.findIndex(b=>b[1].startsWith(p))}
 /* game-feel pass — every buck that moves floats off the balance chip like game gold */
 function buckPop(n){
