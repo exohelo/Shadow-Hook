@@ -20936,7 +20936,7 @@ function alertsJoin(){
         const line=(m.kind&&m.kind!=='text')?('sent '+(m.kind==='image'?'a photo':m.kind==='video'?'a clip':m.kind)):String(m.body||'');
         alertFire('chat',{title:'💬 '+m.room,
           body:who+': '+(line.length>90?line.slice(0,90)+'…':line),
-          tag:'shadowhook-chat-'+m.room, data:{room:m.room}});
+          tag:'shadowhook-chat-'+m.room, data:{room:m.room}});   /* data.room → the tap opens THAT room */
       }catch(e){}
     });
 
@@ -20947,7 +20947,7 @@ function alertsJoin(){
           if(!alertThrottled('sale:'+(o.id||o.code),15000))return;
           alertFire('store',{title:'⚓ A sale landed',
             body:(o.code?('Order '+o.code):'A new order')+(o.buyer_name?(' · '+o.buyer_name):'')+' — the Dock Office has it.',
-            tag:'shadowhook-sale',vibrate:[120,60,120,60,180]});
+            tag:'shadowhook-sale',vibrate:[120,60,120,60,180],data:{go:'command'}});
         }catch(e){}
       });
       ch.on('postgres_changes',{event:'INSERT',schema:'public',table:'product_drafts'},p=>{
@@ -20955,7 +20955,7 @@ function alertsJoin(){
           if(!alertThrottled('draft:'+(d.id||''),15000))return;
           alertFire('store',{title:'🛠 Gear waiting on you',
             body:String(d.name||'A vendor')+' was pitched for the shelf — it sits until you price it.',
-            tag:'shadowhook-approval'});
+            tag:'shadowhook-approval',data:{go:'command'}});
         }catch(e){}
       });
       ch.on('postgres_changes',{event:'INSERT',schema:'public',table:'vendor_msgs'},p=>{
@@ -20963,7 +20963,7 @@ function alertsJoin(){
           if(!alertThrottled('vmsg:'+(v.vendor_id||''),30000))return;
           const b=String(v.body||'');
           alertFire('store',{title:'📻 A vendor is on the wire',
-            body:b.length>100?b.slice(0,100)+'…':b, tag:'shadowhook-vmsg'});
+            body:b.length>100?b.slice(0,100)+'…':b, tag:'shadowhook-vmsg', data:{go:'command'}});
         }catch(e){}
       });
     }
@@ -20978,6 +20978,56 @@ function alertsRejoin(){
   alertsJoin();
 }
 window.alertsJoin=alertsJoin; window.alertsRejoin=alertsRejoin;
+
+/* #alerts(aug10) — WHERE A TAP LANDS. The service worker either postMessages a
+   live app (already open) or opens a fresh one carrying #room=… / #go=… in the
+   hash. Both roads end here, so a tapped alert puts the member in front of the
+   thing it was about instead of wherever they happened to leave the app. */
+function alertGo(o){
+  try{
+    o=o||{};
+    if(o.room){
+      try{ if(typeof gotoTab==='function')gotoTab('order'); }catch(e){}
+      try{ if(typeof setHallView==='function')setHallView('hall'); }catch(e){}
+      /* the feed may still be painting on a cold start — give it a beat, and
+         look up the room's real icon so the header isn't a stranger */
+      setTimeout(function(){
+        try{
+          const sv=(typeof serverRoomByName==='function')?serverRoomByName(o.room):null;
+          if(typeof openRoom==='function')
+            openRoom(o.room,(sv&&sv.ico)||'⚓',(sv&&sv.by_handle)?('by '+sv.by_handle):'');
+        }catch(e){}
+      },380);
+      return;
+    }
+    if(o.go==='command'){
+      try{ if(typeof gotoTab==='function')gotoTab('order'); }catch(e){}
+      /* only a Keymaster has the room to walk into */
+      setTimeout(function(){ try{
+        if((typeof prvKm==='function')&&prvKm()){
+          const b=document.getElementById('pfCommand'); if(b)b.click();
+        }
+      }catch(e){} },380);
+    }
+  }catch(e){}
+}
+window.alertGo=alertGo;
+try{
+  if(navigator.serviceWorker&&navigator.serviceWorker.addEventListener)
+    navigator.serviceWorker.addEventListener('message',function(e){
+      try{ const d=e&&e.data; if(d&&d.type==='ALERT_TAP')alertGo(d); }catch(_){}
+    });
+}catch(e){}
+/* cold start: the destination rode in on the hash */
+try{
+  const h=String(location.hash||'');
+  const mr=h.match(/[#&]room=([^&]+)/), mg=h.match(/[#&]go=([^&]+)/);
+  if(mr||mg){
+    try{ history.replaceState(null,'',location.pathname+location.search); }catch(_){}
+    setTimeout(function(){ alertGo({room:mr?decodeURIComponent(mr[1]):null,
+                                    go: mg?decodeURIComponent(mg[1]):null}); },1400);
+  }
+}catch(e){}
 
 /* ── the switches ──────────────────────────────────────────────────────── */
 function alPaint(){
