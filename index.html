@@ -2689,132 +2689,113 @@ window.DEVLOG=(function(){
     </div>
   </div>
 
-  <div class="sheet" id="tillSheet">
-    <div class="sheet-card" style="text-align:left">
-      <div class="big" style="font-size:20px;letter-spacing:.06em;text-align:center">⚓ THE TILL</div>
-      <p class="sub" style="margin:8px 0 4px;text-align:center">Card checkout runs on <b style="color:var(--bone)">Stripe</b> — the Order never touches your number. Shipping address is taken on the pay page.</p>
-      <div style="font-size:11px;letter-spacing:.2em;color:var(--steel);font-weight:600;margin:12px 0 6px">NAME</div>
-      <input class="field" id="tillName" autocomplete="name" placeholder="Who's it for">
-      <div style="font-size:11px;letter-spacing:.2em;color:var(--steel);font-weight:600;margin:12px 0 6px">EMAIL — THE RECEIPT LANDS HERE</div>
-      <input class="field" id="tillEmail" type="email" autocomplete="email" placeholder="you@dock.com">
-      <div class="field-msg" id="tillMsg"></div>
-      <button class="btn" id="tillPay" type="button" style="width:100%;margin-top:12px">PAY <span id="tillTotal" class="mono"></span></button>
-      <button class="btn-ghost" style="width:100%;margin-top:10px" onclick="document.getElementById('tillSheet').classList.remove('on')">Not yet</button>
-    </div>
-  </div>
-
   <style>
-  .jackpot{position:fixed;inset:0;z-index:100000;display:none;align-items:center;justify-content:center;
-    background:radial-gradient(circle at 50% 42%,rgba(64,38,13,.94),rgba(6,7,9,.97))}
-  .jackpot.on{display:flex;animation:jpFade .28s ease}
-  @keyframes jpFade{from{opacity:0}to{opacity:1}}
-  .jp-rays{position:absolute;left:50%;top:42%;width:560px;height:560px;transform:translate(-50%,-50%);
-    background:conic-gradient(from 0deg,rgba(238,180,107,0) 0 7deg,rgba(238,180,107,.17) 7deg 15deg,rgba(238,180,107,0) 15deg 22deg);
-    border-radius:50%;animation:jpSpin 16s linear infinite;pointer-events:none;opacity:.7}
-  @keyframes jpSpin{to{transform:translate(-50%,-50%) rotate(360deg)}}
-  .jp-stage{position:relative;text-align:center;width:min(360px,88vw);animation:jpPop .5s cubic-bezier(.16,1.2,.3,1)}
-  @keyframes jpPop{from{transform:scale(.7);opacity:0}to{transform:scale(1);opacity:1}}
-  .jp-kicker{font-family:'Cinzel',serif;font-weight:700;font-size:15px;letter-spacing:.34em;color:#eeb46b;
-    text-shadow:0 0 20px rgba(238,180,107,.7);animation:jpPulse 1.1s ease-in-out infinite}
-  @keyframes jpPulse{0%,100%{transform:scale(1);opacity:.92}50%{transform:scale(1.05);opacity:1}}
-  .jp-amount{font-family:'IBM Plex Mono',monospace;font-weight:800;font-size:64px;line-height:1;margin:12px 0 2px;
-    color:#f9ecc9;text-shadow:0 0 28px rgba(238,180,107,.9),0 0 9px rgba(255,224,158,.95)}
-  .jp-lbl{font-size:11px;letter-spacing:.32em;color:#c88a4a;font-weight:800}
-  .jp-reason{font-size:12.5px;color:var(--steel);margin-top:9px}
-  .jp-coin{position:fixed;font-size:26px;pointer-events:none;z-index:100001;will-change:transform,opacity;
-    filter:drop-shadow(0 0 7px rgba(238,180,107,.85))}
-  </style>
+    /* #till2 — one page, everything visible, every line changeable in place.
+       Same anatomy every big shop uses, because it's the one people already
+       know how to read: total up top, then who / where / how, then the gear. */
+    #tillSheet .sheet-card{max-width:540px}
+    .tl-blk{background:var(--plate);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
+    .tl-blk h4{margin:0 0 3px;font-size:15px;letter-spacing:.03em;font-weight:700;color:var(--bone)}
+    .tl-chg{float:right;font-size:12px;letter-spacing:.09em;color:var(--copper-hi);background:none;border:0;padding:0;cursor:pointer;font-family:inherit}
+    .tl-sub{font-size:13px;color:var(--steel);line-height:1.6}
+    .tl-lnk{display:inline-block;margin-top:8px;font-size:12.5px;color:var(--copper-hi);background:none;border:0;padding:0;cursor:pointer;font-family:inherit}
+    .tl-row{display:flex;justify-content:space-between;gap:12px;font-size:13.5px;padding:3px 0;color:var(--steel)}
+    .tl-row span:last-child{font-family:'IBM Plex Mono',monospace;color:var(--bone)}
+    .tl-row.tot{border-top:1px solid var(--line);margin-top:8px;padding-top:10px;font-size:17px}
+    .tl-row.tot span{color:var(--bone);font-weight:700}
+    .tl-seal{width:100%;padding:14px;border:0;border-radius:999px;background:linear-gradient(135deg,var(--copper),var(--ember));color:#140d04;font-weight:800;font-size:15px;letter-spacing:.08em;cursor:pointer;font-family:inherit}
+    .tl-seal:disabled{opacity:.55}
+    .tl-pnl{display:none;margin-top:10px;border-top:1px solid var(--line);padding-top:10px}
+    .tl-pnl.on{display:block}
+    .tl-pick{display:block;width:100%;text-align:left;border:1px solid var(--line);border-radius:11px;padding:11px 12px;background:rgba(255,255,255,.02);color:inherit;font:inherit;cursor:pointer;margin-top:7px;position:relative}
+    .tl-pick.on{border-color:var(--copper-hi);background:rgba(77,226,255,.07)}
+    .tl-pick b{display:block;font-size:13.5px}
+    .tl-pick i{display:block;font-style:normal;font-size:12.5px;color:var(--steel);margin-top:2px;line-height:1.5}
+    .tl-pick .tk{position:absolute;right:11px;top:11px;color:var(--copper-hi);display:none}
+    .tl-pick.on .tk{display:block}
+    .tl-item{display:flex;gap:11px;padding:11px 0;border-top:1px solid var(--line-soft)}
+    .tl-item:first-child{border-top:0}
+    .tl-item .th{width:62px;height:62px;border-radius:9px;flex:none;background:linear-gradient(150deg,var(--plate-3),var(--plate-2));display:grid;place-items:center;font-size:23px;border:1px solid var(--line);overflow:hidden}
+    .tl-item .th img{width:100%;height:100%;object-fit:cover}
+    .tl-item .m{flex:1;min-width:0}
+    .tl-item .m b{display:block;font-size:13.5px;line-height:1.4}
+    .tl-item .m i{display:block;font-style:normal;font-size:12px;color:var(--steel);margin-top:2px}
+    .tl-item .pr{font-family:'IBM Plex Mono',monospace;font-size:14.5px;color:var(--copper-hi);margin-top:4px;display:block}
+    .tl-q{display:inline-flex;align-items:center;border:1px solid var(--copper-hi);border-radius:999px;overflow:hidden;margin-top:7px}
+    .tl-q button{background:none;border:0;color:var(--bone);width:30px;height:27px;font-size:14px;cursor:pointer;font-family:inherit}
+    .tl-q span{min-width:24px;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:13px}
+    .tl-note{font-size:11.5px;color:var(--steel);line-height:1.65}
+    .tl-gift{display:flex;align-items:center;gap:9px;margin-top:11px;font-size:13px;cursor:pointer}
+    .tl-gift input{width:17px;height:17px;accent-color:#4de2ff}
+    </style>
 
-  <!-- casino jackpot celebration -->
-  <div class="jackpot" id="jackpot">
-    <div class="jp-rays"></div>
-    <div class="jp-stage">
-      <div class="jp-kicker">&#9733; JACKPOT &#9733;</div>
-      <div class="jp-amount" id="jpAmount">+0 &#11041;</div>
-      <div class="jp-lbl">PORT BUCKS WON</div>
-      <div class="jp-reason" id="jpReason">&mdash;</div>
-      <button class="btn" id="jpClaim" style="max-width:220px;margin:26px auto 0">Collect</button>
-    </div>
-  </div>
+    <div class="sheet" id="tillSheet">
+      <div class="sheet-card" style="text-align:left">
+        <div class="big" style="font-size:19px;letter-spacing:.06em;text-align:center;margin-bottom:12px">⚓ SEAL THE ORDER</div>
 
-  <!-- earn toast -->
-  <div class="toast" id="toast"></div>
+        <div class="tl-blk">
+          <button class="tl-seal" id="tillSeal" type="button">⚓ SEAL THE ORDER</button>
+          <div class="field-msg" id="tillMsg" style="margin-top:8px"></div>
+        </div>
 
-  <!-- GIF picker (GIPHY) — themed to match the Order; layered above the chat room -->
-  <style id="gifPickerCSS">
-  /* the picker sits above the full-screen chat room (z-80); the funds sheet rides above the picker */
-  .gifsheet{position:fixed;inset:0;z-index:84;background:rgba(5,6,7,.72);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);display:flex;align-items:flex-end;justify-content:center;opacity:0;visibility:hidden;transition:.25s;padding-bottom:var(--kb,0px)}   /* #ioskb — the GIF search field clears the keyboard */
-  .gifsheet.on{opacity:1;visibility:visible}
-  .gifcard{width:100%;max-width:460px;height:76vh;max-height:640px;display:flex;flex-direction:column;background:linear-gradient(184deg,var(--plate-3),var(--plate));border:1px solid var(--line);border-radius:22px 22px 0 0;padding:14px 14px calc(12px + env(safe-area-inset-bottom));transform:translateY(26px);transition:.25s}
-  .gifsheet.on .gifcard{transform:none}
-  .gif-h{display:flex;align-items:center;gap:9px;margin-bottom:11px;flex:none}
-  .gif-h b{font-family:'Anton',sans-serif;font-size:18px;letter-spacing:.08em;text-transform:uppercase;color:var(--bone)}
-  .gif-h .pw{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.12em;color:var(--steel);text-transform:uppercase}
-  .gif-x{margin-left:auto;width:34px;height:34px;flex:none;border-radius:50%;border:1px solid var(--line);background:var(--plate);color:var(--bone);font-size:14px;cursor:pointer}
-  .gif-x:active{background:var(--plate-3)}
-  /* the two swappable views fill the middle of the card (display is set from JS) */
-  #gifSearchView,#gifSetupView{flex:1;min-height:0;flex-direction:column}
-  /* — search view — */
-  .gif-search{position:relative;margin-bottom:10px;flex:none}
-  .gif-search input{width:100%;background:var(--well);border:1px solid var(--line);border-radius:99px;padding:11px 38px 11px 15px;font-family:'IBM Plex Mono',monospace;font-size:14px;color:var(--bone);outline:none}
-  .gif-search input:focus{border-color:rgba(201,128,63,.55)}
-  .gif-search .mag{position:absolute;right:14px;top:50%;transform:translateY(-50%);color:var(--steel);font-size:13px;pointer-events:none}
-  .gif-grid{flex:1;min-height:0;overflow-y:auto;column-count:2;column-gap:8px;-webkit-overflow-scrolling:touch}
-  .gif-grid img{width:100%;margin:0 0 8px;border-radius:10px;display:block;cursor:pointer;background:var(--plate-2);border:1px solid var(--line-soft);break-inside:avoid}
-  .gif-grid img:active{opacity:.6}
-  .gif-note{padding:22px 12px;text-align:center;color:var(--steel);font-size:12.5px;line-height:1.6;font-family:'IBM Plex Mono',monospace;column-span:all}
-  .gif-note a{color:var(--copper-hi)}
-  /* — setup view (no key yet) — */
-  #gifSetupView{align-items:center;justify-content:center;text-align:center;padding:6px 4px 2px;overflow-y:auto}
-  .gif-setup{width:100%;max-width:344px}
-  .gif-setup-ico{font-size:38px;line-height:1;opacity:.92;margin-bottom:8px}
-  .gif-setup-t{display:block;font-family:'Anton',sans-serif;font-size:21px;letter-spacing:.06em;text-transform:uppercase;color:var(--bone);margin-bottom:9px}
-  .gif-setup-p{font-family:'IBM Plex Mono',monospace;font-size:12.5px;line-height:1.6;color:var(--steel);margin-bottom:15px}
-  .gif-key-in{display:flex;gap:8px}
-  .gif-key-in input{flex:1;min-width:0;background:var(--well);border:1px solid var(--line);border-radius:9px;padding:11px 12px;font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--bone);outline:none}
-  .gif-key-in input:focus{border-color:rgba(201,128,63,.55)}
-  .gif-key-in .save{flex:none;padding:11px 17px;border-radius:9px;border:1px solid rgba(238,180,107,.5);background:linear-gradient(184deg,var(--btn-hi),var(--btn-lo));color:var(--copper-hi);font-family:'Anton',sans-serif;font-size:14px;letter-spacing:.08em;cursor:pointer}
-  .gif-msg{font-family:'IBM Plex Mono',monospace;font-size:11.5px;line-height:1.5;color:var(--steel);margin-top:9px;min-height:15px}
-  .gif-msg.err{color:var(--ember)}
-  .gif-msg.ok{color:var(--ok)}
-  .gif-how-toggle{background:none;border:0;color:var(--copper-hi);font-family:'IBM Plex Mono',monospace;font-size:11.5px;cursor:pointer;margin-top:14px;letter-spacing:.03em}
-  .gif-how{display:none;margin-top:11px;text-align:left;background:var(--well);border:1px solid var(--line);border-radius:11px;padding:12px 15px 14px}
-  .gif-how.on{display:block}
-  .gif-how ol{margin:0;padding-left:18px}
-  .gif-how li{font-family:'IBM Plex Mono',monospace;font-size:12px;line-height:1.75;color:var(--bone)}
-  .gif-how b{color:var(--copper-hi)}
-  .gif-open{display:inline-block;margin-top:11px;color:var(--copper-hi);font-family:'IBM Plex Mono',monospace;font-size:12px;text-decoration:underline;text-underline-offset:3px}
-  /* — shared footer (change key + paste-a-link) — */
-  .gif-foot{margin-top:10px;flex:none}
-  .gif-foot-row{display:flex;gap:16px;justify-content:center;margin-bottom:8px;flex-wrap:wrap}
-  .gif-tinybtn{background:none;border:0;color:var(--steel);font-family:'IBM Plex Mono',monospace;font-size:11px;cursor:pointer;letter-spacing:.02em}
-  .gif-tinybtn:active{color:var(--copper-hi)}
-  .gif-link{display:none;gap:8px;align-items:center}
-  .gif-link.on{display:flex}
-  .gif-link input{flex:1;min-width:0;background:var(--well);border:1px solid var(--line);border-radius:99px;padding:10px 14px;font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--bone);outline:none}
-  .gif-link input:focus{border-color:rgba(201,128,63,.55)}
-  .gif-link .go{flex:none;width:40px;height:40px;border-radius:50%;border:1px solid rgba(238,180,107,.5);background:linear-gradient(184deg,var(--btn-hi),var(--btn-lo));color:var(--copper-hi);font-size:15px;cursor:pointer}
-  /* #fix — the insufficient-funds sheet must ride above the chat room (z-80), the GIF
-     picker (z-84) and the header-spawned profile/pay sheets (z-92/93, #hdr2) */
-  #brokeSheet{z-index:94}
-  </style>
+        <div class="tl-blk">
+          <div class="tl-row"><span>Gear</span><span id="tillSub">$0</span></div>
+          <div class="tl-row"><span>Shipping &amp; handling</span><span id="tillShip">$0</span></div>
+          <div class="tl-row tot"><span>Order total</span><span id="tillTot">$0</span></div>
+        </div>
 
-  <!-- full-screen chat room -->
-  <!-- #hall — the fullscreen #socialHub overlay is RETIRED: the Hall feed renders
-       inline on the Social tab now (see #hallView in scr-order) -->
+        <div class="tl-blk">
+          <button class="tl-chg" type="button" id="tillAddrChg">Change</button>
+          <h4 id="tillAddrH">Delivering to —</h4>
+          <div class="tl-sub" id="tillAddrTxt">no address yet</div>
+          <button class="tl-lnk" type="button" id="tillNoteBtn">Add delivery instructions</button>
+          <div class="tl-pnl" id="tillNotePnl"><input class="field" id="tillNote" maxlength="140" placeholder="Gate code, side door, leave it with the neighbour…"></div>
+          <div class="tl-pnl" id="tillAddrPnl">
+            <div id="tillAddrList"></div>
+            <button class="tl-pick" type="button" id="tillAddrNew" style="border-style:dashed"><b>＋ Ship somewhere else</b><i>A friend, a second place, a gift</i></button>
+            <div class="tl-pnl" id="tillNewPnl">
+              <input class="field" id="naName"  maxlength="120" placeholder="Who receives it"      style="margin-bottom:7px">
+              <input class="field" id="naLine1" maxlength="200" placeholder="Street"               style="margin-bottom:7px">
+              <input class="field" id="naLine2" maxlength="200" placeholder="Apt, unit — optional" style="margin-bottom:7px">
+              <div style="display:flex;gap:7px">
+                <input class="field" id="naCity"  maxlength="100" placeholder="City"  style="flex:2">
+                <input class="field" id="naState" maxlength="2"   placeholder="CA"    style="flex:1;text-transform:uppercase">
+                <input class="field" id="naZip"   maxlength="10"  placeholder="90731" style="flex:1">
+              </div>
+              <input class="field" id="naLabel" maxlength="40" placeholder="Call it — Home, The hall, Mom's" style="margin-top:7px">
+              <div class="field-msg" id="naMsg"></div>
+              <button class="btn-line gold" type="button" id="naSave" style="width:100%;margin-top:9px">USE THIS ADDRESS</button>
+            </div>
+          </div>
+          <label class="tl-gift"><input type="checkbox" id="tillGift"> <span>🎁 It's a gift — keep the prices off the slip</span></label>
+        </div>
 
-  <!-- #hub — TikTok-style STORY VIEWER: swipe up/down through the wall -->
-  <div id="storyViewer" aria-hidden="true">
-    <div class="sv-top"><button class="sv-x" id="svClose" aria-label="Close">✕</button><span class="sv-title">📣 STORIES</span><button class="sv-x sv-snd" id="svSound" aria-label="Sound on/off" style="margin-left:auto;font-size:15px">🔊</button><span class="sv-ix" id="svIx"></span></div>
-    <div id="svTrack"></div>
-    <!-- #stories5 — THE TALK: comments ride a drawer; the clip shrinks to make room,
-         and the drawer grows when the keyboard lands -->
-    <div class="sv-cpanel" id="svComments">
-      <div class="svc-head"><b>💬 THE TALK</b><span class="svc-n" id="svcCount"></span><button class="svc-close" id="svcClose" aria-label="Close comments">✕</button></div>
-      <div class="svc-list" id="svcList"></div>
-      <div class="svc-bar">
-        <input id="svcInput" placeholder="Say your piece… masked, 1 ⬡" maxlength="300" autocomplete="off">
-        <button id="svcSend" aria-label="Send comment">➤</button>
+        <div class="tl-blk">
+          <button class="tl-chg" type="button" id="tillPayChg">Change</button>
+          <h4 id="tillPayH">Paying by card</h4>
+          <div class="tl-sub" id="tillPaySub">Stripe takes the card — the Order never sees the number</div>
+          <div class="tl-pnl" id="tillPayPnl"><div id="tillCards"></div></div>
+        </div>
+
+        <div class="tl-blk">
+          <button class="tl-chg" type="button" id="tillMailChg">Change</button>
+          <h4 id="tillMailH">Receipt to —</h4>
+          <div class="tl-pnl" id="tillMailPnl">
+            <input class="field" id="tillEmail" type="email" autocomplete="email" inputmode="email" placeholder="you@yourmail.com">
+            <div class="field-msg" id="tillEmMsg"></div>
+            <input class="field" id="tillName" autocomplete="name" placeholder="Your name" style="margin-top:8px">
+          </div>
+        </div>
+
+        <div class="tl-blk" id="tillItems"></div>
+
+        <div class="tl-blk" style="text-align:center">
+          <button class="tl-seal" id="tillSeal2" type="button">⚓ SEAL THE ORDER</button>
+          <div class="tl-row tot" style="border:0;padding-top:9px;justify-content:center;gap:8px"><span>Order total</span><span id="tillTot2">$0</span></div>
+        </div>
+
+        <p class="tl-note">Gear is made to order on a maker's bench — nothing sits in a warehouse. Word comes when it's on the bench, and again when it's posted with its tracking number.</p>
+        <button class="btn-ghost" style="width:100%;margin-top:10px" onclick="document.getElementById('tillSheet').classList.remove('on')">Not yet</button>
       </div>
     </div>
   </div>
@@ -19427,37 +19408,246 @@ window.shareCall=shareCall;
   function openCart(){ renderCart(); var s=document.getElementById('cartSheet'); if(s)s.classList.add('on'); }
 
   /* ---- the till ---- */
-  function openTill(){
+  /* ═══════ #till2 — THE TILL ═══════
+     What changed and why:
+
+     THE EMAIL. The old till prefilled the signed-in user's auth address. For
+     a casual that is <dispatch#>@shadowhook.com — the gate's own comment calls
+     it "a fiction: it receives no mail and the member has never seen it." So
+     every receipt a casual was ever sent went into a void, and nothing said
+     so. Now that address is refused outright and the real one is remembered
+     on profiles.contact_email.
+
+     THE ADDRESS. Stripe used to ask for it on its own page. It's asked here
+     now, from a saved address book, so a hand who buys twice types it once —
+     and so gear can go to a friend without retyping anything.
+
+     THE CARD. Still Stripe's, always. What's held here is the brand and the
+     last four that Stripe reports back. Nothing that could charge anybody. */
+  var TILL={addrs:[],addr:null,cards:[],pm:null,busy:false};
+  var ADDR_KEY='shadowhook_addrs';
+  function tillUid(){ try{ return window.__shkUid||null; }catch(e){ return null; } }
+  function tMoney(n){ return '$'+(Math.round(n*100)/100).toFixed(2); }
+  function tEsc(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function tShow(id,on){ var e=document.getElementById(id); if(e)e.classList.toggle('on', on===undefined?!e.classList.contains('on'):!!on); }
+
+  /* freight, mirrored from the till function so the number here is the number
+     charged: one package per vendor, that group's dearest S&H once. */
+  function tShip(){
+    var byV={};
+    liveLines().forEach(function(l){
+      var p=prod(l.id); if(!p)return;
+      var k=p.vendor_id||'__house__', v=num(p.ship_usd)||0;
+      if(!(k in byV)||v>byV[k])byV[k]=v;
+    });
+    var t=0; for(var k in byV)t+=byV[k];
+    return Math.round(t*100)/100;
+  }
+
+  /* ---- the address book ---- */
+  function tAddrLine(a){
+    return [a.line1,a.line2,[a.city,a.state,a.postal_code].filter(Boolean).join(', ')].filter(Boolean).join('<br>');
+  }
+  function tAddrOk(a){ return !!(a&&a.name&&a.line1&&a.city&&a.state&&a.postal_code); }
+  async function tLoadAddrs(){
+    var uid=tillUid();
+    if(uid&&window.SB){
+      try{
+        var r=await window.SB.from('ship_addresses').select('*')
+               .order('is_default',{ascending:false}).order('created_at');
+        if(!r.error){ TILL.addrs=r.data||[]; return; }
+      }catch(e){}
+    }
+    /* not signed in, or the table isn't built yet — the book still works,
+       it just lives on this device only */
+    try{ TILL.addrs=JSON.parse(localStorage.getItem(ADDR_KEY)||'[]')||[]; }catch(e){ TILL.addrs=[]; }
+  }
+  async function tSaveAddr(a){
+    var uid=tillUid();
+    if(uid&&window.SB){
+      try{
+        var row=Object.assign({user_id:uid,is_default:!TILL.addrs.length},a);
+        var r=await window.SB.from('ship_addresses').insert(row).select().single();
+        if(!r.error&&r.data){ TILL.addrs.push(r.data); return r.data; }
+      }catch(e){}
+    }
+    a.id='local-'+Date.now(); TILL.addrs.push(a);
+    try{ localStorage.setItem(ADDR_KEY,JSON.stringify(TILL.addrs)); }catch(e){}
+    return a;
+  }
+  function tPaintAddrs(){
+    var host=document.getElementById('tillAddrList'); if(!host)return;
+    host.innerHTML=TILL.addrs.map(function(a,i){
+      var on=TILL.addr&&String(TILL.addr.id)===String(a.id);
+      return '<button class="tl-pick'+(on?' on':'')+'" type="button" data-ad="'+i+'"><span class="tk">✔</span>'
+        +'<b>'+tEsc(a.label||a.name)+'</b><i>'+tAddrLine(a)+'</i></button>';
+    }).join('')||'<p class="tl-sub" style="padding:6px 0">No address on file yet.</p>';
+    host.querySelectorAll('[data-ad]').forEach(function(b){
+      b.addEventListener('click',function(){ TILL.addr=TILL.addrs[+b.dataset.ad]; tPaint(); tShow('tillAddrPnl',false); });
+    });
+  }
+
+  /* ---- the cards Stripe is holding ---- */
+  async function tLoadCards(){
+    TILL.cards=[]; TILL.pm=null;
+    if(!tillUid()||!window.SUPABASE_URL||!window.SB)return;
+    try{
+      var tok=window.SUPABASE_ANON_KEY||'';
+      var ss=await window.SB.auth.getSession();
+      if(ss&&ss.data&&ss.data.session&&ss.data.session.access_token)tok=ss.data.session.access_token;
+      var r=await fetch(String(window.SUPABASE_URL).replace(/\/+$/,'')+'/functions/v1/armory-cards',{
+        method:'POST',headers:{'Content-Type':'application/json','apikey':window.SUPABASE_ANON_KEY||'','Authorization':'Bearer '+tok}});
+      var j=await r.json().catch(function(){return null});
+      if(j&&Array.isArray(j.cards)){ TILL.cards=j.cards; TILL.pm=j.cards[0]||null; }
+    }catch(e){}   /* a card list is decoration — never let it block the sale */
+  }
+  function tPaintCards(){
+    var host=document.getElementById('tillCards'); if(!host)return;
+    var rows=TILL.cards.map(function(c,i){
+      var on=TILL.pm&&TILL.pm.id===c.id;
+      return '<button class="tl-pick'+(on?' on':'')+'" type="button" data-pm="'+i+'"><span class="tk">✔</span>'
+        +'<b>'+tEsc((c.brand||'card').toUpperCase())+' ···· '+tEsc(c.last4)+'</b>'
+        +'<i>'+(c.exp_month?('Expires '+String(c.exp_month).padStart(2,'0')+'/'+String(c.exp_year).slice(-2)):'on file at Stripe')+'</i></button>';
+    }).join('');
+    host.innerHTML=rows
+      +'<button class="tl-pick" type="button" data-pm="-1" style="border-style:dashed"><b>＋ Use a new card</b><i>Opens Stripe\'s secure page — the Order never sees the number</i></button>'
+      +'<p class="tl-sub" style="margin-top:9px">🔒 Cards live at Stripe. All that is kept on the docks is the brand and the last four.</p>';
+    host.querySelectorAll('[data-pm]').forEach(function(b){
+      b.addEventListener('click',function(){
+        var k=+b.dataset.pm; TILL.pm=k<0?null:TILL.cards[k]; tPaint(); tShow('tillPayPnl',false);
+      });
+    });
+  }
+
+  /* ---- the gear on the page ---- */
+  function tPaintItems(){
+    var host=document.getElementById('tillItems'); if(!host)return;
+    var ls=liveLines();
+    host.innerHTML=ls.map(function(l,i){
+      var p=prod(l.id)||{}, img=p.img||p.image||'';
+      var bits=[l.color,l.size].filter(Boolean).join(' · ');
+      return '<div class="tl-item"><div class="th">'+(img?'<img src="'+tEsc(img)+'" alt="">':'🛡')+'</div>'
+        +'<div class="m"><b>'+tEsc(p.name||l.id)+'</b>'
+        +(bits?'<i>'+tEsc(bits)+'</i>':'')
+        +(p.brand?'<i style="color:var(--copper-hi)">Off the bench at '+tEsc(p.brand)+'</i>':'')
+        +'<span class="pr">'+tMoney((num(p.usd)||0)*l.qty)+'</span>'
+        +'<span class="tl-q"><button type="button" data-dn="'+i+'">'+(l.qty>1?'−':'🗑')+'</button>'
+        +'<span>'+l.qty+'</span><button type="button" data-up="'+i+'">+</button></span>'
+        +'</div></div>';
+    }).join('')||'<p class="tl-sub">Nothing priced in the cart.</p>';
+    host.querySelectorAll('[data-up]').forEach(function(b){ b.addEventListener('click',function(){
+      var l=liveLines()[+b.dataset.up]; if(l){ l.qty=Math.min(20,l.qty+1); csave(); tPaint(); renderFab(); } }); });
+    host.querySelectorAll('[data-dn]').forEach(function(b){ b.addEventListener('click',function(){
+      var l=liveLines()[+b.dataset.dn]; if(!l)return;
+      if(l.qty>1){ l.qty--; }
+      else { var k=cart.indexOf(l); if(k>=0)cart.splice(k,1); }
+      csave(); tPaint(); renderFab(); }); });
+  }
+
+  /* ---- one paint for the whole page ---- */
+  function tPaint(){
+    var sub=totalCents()/100, ship=tShip(), tot=sub+ship;
+    var el;
+    (el=document.getElementById('tillSub'))&&(el.textContent=tMoney(sub));
+    (el=document.getElementById('tillShip'))&&(el.textContent=ship?tMoney(ship):'—');
+    (el=document.getElementById('tillTot'))&&(el.textContent=tMoney(tot));
+    (el=document.getElementById('tillTot2'))&&(el.textContent=tMoney(tot));
+
+    var a=TILL.addr;
+    (el=document.getElementById('tillAddrH'))&&(el.textContent='Delivering to '+((a&&a.name)||'—'));
+    (el=document.getElementById('tillAddrTxt'))&&(el.innerHTML=a?tAddrLine(a):'no address yet — hit Change');
+
+    var c=TILL.pm;
+    (el=document.getElementById('tillPayH'))&&(el.textContent=c?('Paying with '+(c.brand||'card').toUpperCase()+' ···· '+c.last4):'Paying by card');
+    (el=document.getElementById('tillPaySub'))&&(el.textContent=c?'Saved at Stripe from last time':'Stripe takes the card — the Order never sees the number');
+
+    var em=(document.getElementById('tillEmail')||{}).value||'';
+    (el=document.getElementById('tillMailH'))&&(el.textContent='Receipt to '+(em||'—'));
+
+    tPaintAddrs(); tPaintCards(); tPaintItems();
+    var ok=!!(liveLines().length && tAddrOk(TILL.addr) && tMailOk());
+    ['tillSeal','tillSeal2'].forEach(function(id){ var b=document.getElementById(id); if(b)b.disabled=!ok||TILL.busy; });
+  }
+
+  function tMailOk(){
+    var v=((document.getElementById('tillEmail')||{}).value||'').trim();
+    return /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/.test(v) && !/@shadowhook\.com$/i.test(v);
+  }
+  function tMailCheck(){
+    var i=document.getElementById('tillEmail'), m=document.getElementById('tillEmMsg'); if(!i||!m)return;
+    var v=(i.value||'').trim();
+    if(/@shadowhook\.com$/i.test(v)){ m.textContent='⚠ That is your dispatch-card address — it receives no mail. Put a real one in.'; m.style.color='var(--warn)'; }
+    else if(!v){ m.textContent='> the receipt lands here'; m.style.color='var(--steel)'; }
+    else if(!tMailOk()){ m.textContent='> a real email'; m.style.color='var(--steel)'; }
+    else { m.textContent='✔ Saved for next time'; m.style.color='var(--ok)'; }
+    tPaint();
+  }
+
+  /* ---- opening it ---- */
+  async function openTill(){
     if(!liveLines().length){ say('Nothing priced in the cart'); return; }
     var cs=document.getElementById('cartSheet'); if(cs)cs.classList.remove('on');
     var t=document.getElementById('tillSheet'); if(!t)return;
-    var el; (el=document.getElementById('tillTotal'))&&(el.textContent=fmt(totalCents())+' + shipping');
-    (el=document.getElementById('tillMsg'))&&(el.textContent='');
+    var msg=document.getElementById('tillMsg'); if(msg)msg.textContent='';
+    ['tillAddrPnl','tillPayPnl','tillMailPnl','tillNewPnl','tillNotePnl'].forEach(function(id){ tShow(id,false); });
+
     var saved={}; try{ saved=JSON.parse(localStorage.getItem(BUYER_KEY)||'{}')||{}; }catch(e){}
-    var nameI=document.getElementById('tillName'), mailI=document.getElementById('tillEmail');
-    if(nameI&&!nameI.value)nameI.value=saved.n||'';
-    if(mailI&&!mailI.value)mailI.value=saved.e||'';
-    if(mailI&&!mailI.value&&window.SB){ window.SB.auth.getUser().then(function(u){
-      try{ if(!mailI.value&&u&&u.data&&u.data.user&&u.data.user.email)mailI.value=u.data.user.email; }catch(e){} }).catch(function(){}); }
+    var nm=document.getElementById('tillName'); if(nm&&!nm.value)nm.value=saved.n||'';
+    var em=document.getElementById('tillEmail');
+    if(em&&!em.value){
+      /* NEVER the auth address — see the note at the top of this block */
+      var e0=(saved.e&&!/@shadowhook\.com$/i.test(saved.e))?saved.e:'';
+      em.value=e0;
+      if(!e0&&window.SB&&tillUid()){
+        try{ var pr=await window.SB.from('profiles').select('contact_email').eq('id',tillUid()).maybeSingle();
+          var pe=(pr&&pr.data&&pr.data.contact_email)||'';
+          if(pe&&!/@shadowhook\.com$/i.test(pe))em.value=pe; }catch(e){}
+      }
+    }
     t.classList.add('on');
+    tPaint(); tMailCheck();
+    await tLoadAddrs();
+    TILL.addr=TILL.addrs.filter(function(a){return a.is_default})[0]||TILL.addrs[0]||null;
+    tPaint();
+    if(!TILL.addr) tShow('tillAddrPnl',true);
+    await tLoadCards();
+    tPaint();
   }
+
+  /* ---- sealing it ---- */
   async function pay(){
-    var btn=document.getElementById('tillPay'), msg=document.getElementById('tillMsg');
-    var name=(document.getElementById('tillName')||{}).value||'', email=((document.getElementById('tillEmail')||{}).value||'').trim();
-    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ if(msg)msg.textContent='> a real email is needed — the receipt lands there'; return; }
-    if(!window.SUPABASE_URL){ if(msg)msg.textContent='> the till isn’t wired — backend not configured'; return; }
+    if(TILL.busy)return;
+    var msg=document.getElementById('tillMsg');
+    var name=((document.getElementById('tillName')||{}).value||'').trim();
+    var email=((document.getElementById('tillEmail')||{}).value||'').trim();
+    if(!tMailOk()){ if(msg)msg.textContent='> a real email is needed — the receipt lands there'; tShow('tillMailPnl',true); return; }
+    if(!tAddrOk(TILL.addr)){ if(msg)msg.textContent='> pick where it lands first'; tShow('tillAddrPnl',true); return; }
+    if(!window.SUPABASE_URL){ if(msg)msg.textContent='> the till isn\'t wired — backend not configured'; return; }
     var lines=liveLines().map(function(l){return {id:l.id,color:l.color,size:l.size,qty:l.qty}});
     if(!lines.length){ if(msg)msg.textContent='> nothing priced in the cart'; return; }
+
     try{ localStorage.setItem(BUYER_KEY,JSON.stringify({n:name,e:email})); }catch(e){}
-    var was=btn?btn.innerHTML:''; if(btn){ btn.disabled=true; btn.textContent='OPENING THE TILL…'; }
+    /* the real address, on the account, so no till ever asks again */
+    if(window.SB&&tillUid()){ try{ await window.SB.from('profiles').update({contact_email:email}).eq('id',tillUid()); }catch(e){} }
+
+    TILL.busy=true; tPaint();
+    var seals=['tillSeal','tillSeal2'].map(function(id){return document.getElementById(id)});
+    seals.forEach(function(b){ if(b){ b.disabled=true; b.textContent='OPENING THE TILL…'; } });
+    if(msg)msg.textContent='';
     try{
       var token=window.SUPABASE_ANON_KEY||'';
-      try{ if(window.SB){ var s=await window.SB.auth.getSession();
-        if(s&&s.data&&s.data.session&&s.data.session.access_token)token=s.data.session.access_token; } }catch(e){}
+      try{ if(window.SB){ var ss=await window.SB.auth.getSession();
+        if(ss&&ss.data&&ss.data.session&&ss.data.session.access_token)token=ss.data.session.access_token; } }catch(e){}
+      var note=((document.getElementById('tillNote')||{}).value||'').trim();
+      var gift=!!(document.getElementById('tillGift')||{}).checked;
       var r=await fetch(String(window.SUPABASE_URL).replace(/\/+$/,'')+'/functions/v1/armory-checkout',{
         method:'POST',
         headers:{'Content-Type':'application/json','apikey':window.SUPABASE_ANON_KEY||'','Authorization':'Bearer '+token},
         body:JSON.stringify({items:lines,buyer:{name:name,email:email},
+          ship_to:{name:TILL.addr.name,line1:TILL.addr.line1,line2:TILL.addr.line2||'',
+                   city:TILL.addr.city,state:TILL.addr.state,postal_code:TILL.addr.postal_code,
+                   country:TILL.addr.country||'US'},
+          note:note||null, gift:gift,
           return_url:location.origin+location.pathname})
       });
       var j=null; try{ j=await r.json(); }catch(e){}
@@ -19465,8 +19655,34 @@ window.shareCall=shareCall;
       if(msg)msg.textContent='> '+((j&&j.error)||('the till jammed ('+r.status+') — try again'));
       try{ if(window.shkAlert)shkAlert('checkout',(j&&j.error)||('till jammed '+r.status)); }catch(e){}   /* #alarms */
     }catch(e){ if(msg)msg.textContent='> no wire to the till — check your signal and try again'; try{ if(window.shkAlert)shkAlert('checkout',e); }catch(e2){} }
-    if(btn){ btn.disabled=false; btn.innerHTML=was; }
+    TILL.busy=false;
+    seals.forEach(function(b){ if(b){ b.disabled=false; b.textContent='⚓ SEAL THE ORDER'; } });
+    tPaint();
   }
+
+  /* ---- wiring, once ---- */
+  (function(){
+    var on=function(id,ev,fn){ var e=document.getElementById(id); if(e)e.addEventListener(ev,fn); };
+    on('tillSeal','click',pay); on('tillSeal2','click',pay);
+    on('tillAddrChg','click',function(){ tShow('tillAddrPnl'); });
+    on('tillPayChg','click',function(){ tShow('tillPayPnl'); });
+    on('tillMailChg','click',function(){ tShow('tillMailPnl'); });
+    on('tillNoteBtn','click',function(){ tShow('tillNotePnl'); });
+    on('tillAddrNew','click',function(){ tShow('tillNewPnl'); });
+    on('tillEmail','input',tMailCheck);
+    on('naSave','click',async function(){
+      var g=function(id){ return ((document.getElementById(id)||{}).value||'').trim(); };
+      var a={name:g('naName'),line1:g('naLine1'),line2:g('naLine2'),city:g('naCity'),
+             state:g('naState').toUpperCase(),postal_code:g('naZip'),country:'US',label:g('naLabel')||null};
+      var m=document.getElementById('naMsg');
+      if(!tAddrOk(a)){ if(m){ m.textContent='> name, street, city, state and ZIP'; m.style.color='var(--warn)'; } return; }
+      if(m)m.textContent='';
+      TILL.addr=await tSaveAddr(a);
+      ['naName','naLine1','naLine2','naCity','naState','naZip','naLabel'].forEach(function(id){
+        var e=document.getElementById(id); if(e)e.value=''; });
+      tShow('tillNewPnl',false); tShow('tillAddrPnl',false); tPaint();
+    });
+  })();
 
   /* ---- the walk back from Stripe ---- */
   function handleReturn(){
