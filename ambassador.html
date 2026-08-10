@@ -101,6 +101,26 @@ select.field{appearance:none;-webkit-appearance:none}
 .chips button{flex:none;padding:7px 13px;border:1px solid var(--line);border-radius:999px;background:none;color:var(--steel);font-weight:600;font-size:11.5px;letter-spacing:.08em}
 .chips button.on{border-color:rgba(238,180,107,.5);color:var(--copper-hi);background:#1c1409}
 .chips button:disabled{opacity:.4}
+/* #wire2 — the wire was a horizontal strip of name-chips above one column.
+   On a phone that's fine. On a desk it put ten names in a scrolling ribbon and
+   left two thirds of the screen empty. Same information, read as a column. */
+.wire2{display:grid;grid-template-columns:min(310px,34%) 1fr;gap:12px;align-items:start}
+.wrail{border:1px solid var(--line);border-radius:14px;padding:6px;max-height:64vh;overflow-y:auto;background:rgba(255,255,255,.012)}
+.wrail .hd{font-size:10.5px;letter-spacing:.16em;color:var(--steel);padding:8px 10px 7px}
+.wrow{display:flex;gap:10px;align-items:center;width:100%;padding:9px 10px;border:1px solid transparent;border-radius:11px;background:none;text-align:left;color:inherit;font:inherit;cursor:pointer}
+.wrow+.wrow{margin-top:2px}
+.wrow:hover{background:rgba(255,255,255,.045)}
+.wrow.on{border-color:rgba(238,180,107,.45);background:#1c1409}
+.wrow .av{flex:none;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:13.5px;color:#0b0a12;background:linear-gradient(150deg,#c9803f,#eeb46b)}
+.wrow.amb .av{background:linear-gradient(150deg,#8a6bff,#4de2ff)}
+.wrow .n{flex:1;min-width:0}
+.wrow .n b{display:block;font-size:13.5px;color:var(--bone);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wrow .n i{display:block;font-style:normal;font-size:11.5px;color:var(--steel);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.wrow .rt{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:5px;min-width:34px}
+.wrow .rt em{font-style:normal;font-size:10.5px;color:var(--steel)}
+.wrow .dot{width:8px;height:8px;border-radius:50%;background:var(--ember)}
+.wire2 .msgs{max-height:54vh}
+@media(max-width:880px){.wire2{grid-template-columns:1fr}.wrail{max-height:36vh}}
 
 .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
 .tile{background:linear-gradient(184deg,var(--plate-2),var(--plate));border:1px solid var(--line);border-radius:14px;padding:12px 12px 10px;text-align:center}
@@ -1038,15 +1058,19 @@ async function loadProducts(){
 async function loadLastMsgs(){
   try{
     LASTMSG={};
-    const note=(kind,id,fromKm,at)=>{ const k=kind+':'+id;
+    /* #wire2 — `top` is the newest word on that line, whoever said it. Rows
+       arrive newest-first, so the first one seen for a key is the one. It feeds
+       the preview under each name in the rail. */
+    const note=(kind,id,fromKm,at,body)=>{ const k=kind+':'+id;
       if(!LASTMSG[k]) LASTMSG[k]={};
       const side=fromKm?'km':'them';
-      if(!LASTMSG[k][side]) LASTMSG[k][side]=at; };
-    const r = await SB.from('vendor_msgs').select('vendor_id,from_km,created_at').order('created_at',{ascending:false}).limit(250);
-    (r.data||[]).forEach(m=>note('v',m.vendor_id,m.from_km,m.created_at));
+      if(!LASTMSG[k][side]) LASTMSG[k][side]=at;
+      if(!LASTMSG[k].top) LASTMSG[k].top={at:at,body:body||'',km:!!fromKm}; };
+    const r = await SB.from('vendor_msgs').select('vendor_id,from_km,created_at,body').order('created_at',{ascending:false}).limit(250);
+    (r.data||[]).forEach(m=>note('v',m.vendor_id,m.from_km,m.created_at,m.body));
     try{
-      const r2 = await SB.from('amb_msgs').select('ambassador_id,from_km,created_at').order('created_at',{ascending:false}).limit(250);
-      (r2.data||[]).forEach(m=>note('a',m.ambassador_id,m.from_km,m.created_at));
+      const r2 = await SB.from('amb_msgs').select('ambassador_id,from_km,created_at,body').order('created_at',{ascending:false}).limit(250);
+      (r2.data||[]).forEach(m=>note('a',m.ambassador_id,m.from_km,m.created_at,m.body));
     }catch(e){}
     paintUnreadDot();
   }catch(e){}
@@ -1822,18 +1846,51 @@ function currentWireVendor(){
 function currentWireKind(){ return ME.km ? WIRE_KIND : (ME.amb ? 'a' : 'v'); }
 function wireTable(){ return currentWireKind()==='a' ? 'amb_msgs' : 'vendor_msgs'; }
 function wireCol(){ return currentWireKind()==='a' ? 'ambassador_id' : 'vendor_id'; }
+/* #wire2 — one list of everybody on the wire, newest word first. */
+function wireShortTime(ts){
+  try{ const d=new Date(ts), n=new Date();
+    return d.toDateString()===n.toDateString()
+      ? d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})
+      : d.toLocaleDateString([],{month:'short',day:'numeric'});
+  }catch(e){ return ''; }
+}
+function wirePeople(){
+  const rows=[];
+  VENDORS.forEach(v=>rows.push({kind:'v',id:v.id,name:v.name,amb:false}));
+  AMBS.forEach(a=>rows.push({kind:'a',id:a.id,name:a.name,amb:true}));
+  rows.forEach(r=>{ const lm=LASTMSG[r.kind+':'+r.id]||{};
+    r.top=lm.top||null; r.at=r.top?r.top.at:null; r.unread=hasUnread(r.kind,r.id); });
+  /* anyone who has actually said something floats up, newest first; the rest
+     fall in alphabetically underneath. Same order your phone uses. */
+  rows.sort((x,y)=>{
+    if(!!x.at!==!!y.at) return x.at?-1:1;
+    if(x.at&&y.at) return new Date(y.at)-new Date(x.at);
+    return String(x.name||'').localeCompare(String(y.name||''));
+  });
+  return rows;
+}
+function wireRail(){
+  const rows=wirePeople();
+  if(!rows.length)return '';
+  return '<div class="wrail"><div class="hd">ON THE WIRE · '+rows.length+'</div>'
+    +rows.map(function(r){
+      const on = (WIRE_KIND===r.kind && r.id===WIRE_VENDOR);
+      const prev = r.top
+        ? (r.top.km?'You: ':'')+String(r.top.body||'').replace(/\s+/g,' ').slice(0,64)
+        : 'no word yet';
+      const initial = String(r.name||'?').trim().charAt(0).toUpperCase()||'?';
+      return '<button class="wrow'+(r.amb?' amb':'')+(on?' on':'')+'" data-w'+(r.kind==='a'?'a':'v')+'="'+esc(r.id)+'">'
+        +'<span class="av">'+esc(initial)+'</span>'
+        +'<span class="n"><b>'+(r.amb?'🎖 ':'')+esc(r.name)+'</b><i>'+esc(prev)+'</i></span>'
+        +'<span class="rt">'+(r.at?'<em>'+esc(wireShortTime(r.at))+'</em>':'')
+        +(r.unread?'<span class="dot"></span>':'')+'</span></button>';
+    }).join('')+'</div>';
+}
 function renderWire(){
   const host=$('panel');
-  let head='';
-  if(ME.km){
-    if(!WIRE_VENDOR){ if(VENDORS.length){WIRE_VENDOR=VENDORS[0].id;WIRE_KIND='v';} else if(AMBS.length){WIRE_VENDOR=AMBS[0].id;WIRE_KIND='a';} }
-    head='<div class="chips">'
-      +VENDORS.map(v=>'<button data-wv="'+esc(v.id)+'"'+(WIRE_KIND==='v'&&v.id===WIRE_VENDOR?' class="on"':'')+'>'
-        +(hasUnread('v',v.id)?'<span style="color:var(--ember)">●</span> ':'')+esc(v.name)+'</button>').join('')
-      +AMBS.map(a=>'<button data-wa="'+esc(a.id)+'"'+(WIRE_KIND==='a'&&a.id===WIRE_VENDOR?' class="on"':'')+'>'
-        +(hasUnread('a',a.id)?'<span style="color:var(--ember)">●</span> ':'')+'🎖 '+esc(a.name)+'</button>').join('')
-      +'</div>';
-    if(!VENDORS.length&&!AMBS.length)head='<p class="sub" style="padding:12px 2px">No vendors yet — the wire hums once one’s on the rolls.</p>';
+  if(ME.km && !WIRE_VENDOR){
+    if(VENDORS.length){WIRE_VENDOR=VENDORS[0].id;WIRE_KIND='v';}
+    else if(AMBS.length){WIRE_VENDOR=AMBS[0].id;WIRE_KIND='a';}
   }
   let redphone='';
   if(ME.km){
@@ -1850,13 +1907,21 @@ function renderWire(){
       +'<a class="btn-line red" style="flex:none;text-decoration:none" href="'+esc(telHref(GATE.kmPhone))+'">☎ CALL THE KEYMASTER</a>'
       +'</div></div>';
   }
-  host.innerHTML=head
-    +redphone
-    +'<div class="card"><div class="card-h">📻 THE WIRE'
-    +'<span class="tag">'+(ME.km?esc((WIRE_KIND==='a'?'🎖 '+ambName(WIRE_VENDOR):vName(WIRE_VENDOR))||'—'):'straight line to the Keymaster')+'</span></div>'
+  const who = ME.km ? esc((WIRE_KIND==='a'?'🎖 '+ambName(WIRE_VENDOR):vName(WIRE_VENDOR))||'—')
+                    : 'straight line to the Keymaster';
+  const card='<div class="card" style="margin:0"><div class="card-h">📻 THE WIRE<span class="tag">'+who+'</span></div>'
     +'<div class="card-b"><div class="msgs" id="wireMsgs"><p class="sub">Raising the mast…</p></div>'
     +'<div class="sendrow"><input class="field" id="wireIn" placeholder="Say the word…" maxlength="2000">'
     +'<button class="btn-line gold" id="wireGo">SEND</button></div></div></div>';
+
+  if(ME.km && !VENDORS.length && !AMBS.length){
+    host.innerHTML=redphone+'<p class="sub" style="padding:12px 2px">No vendors yet — the wire hums once one’s on the rolls.</p>'+card;
+  } else if(ME.km){
+    host.innerHTML=redphone+'<div class="wire2">'+wireRail()+card+'</div>';
+  } else {
+    host.innerHTML=redphone+card;
+  }
+
   host.querySelectorAll('[data-wv]').forEach(b=>b.addEventListener('click',()=>{WIRE_KIND='v';WIRE_VENDOR=b.dataset.wv;renderWire();}));
   host.querySelectorAll('[data-wa]').forEach(b=>b.addEventListener('click',()=>{WIRE_KIND='a';WIRE_VENDOR=b.dataset.wa;renderWire();}));
   const send=async()=>{
@@ -1866,7 +1931,20 @@ function renderWire(){
     const row={user_id:ME.uid,from_km:ME.km,body:body}; row[wireCol()]=vid;
     const r=await SB.from(wireTable()).insert(row).select().single();
     if(r.error){ toast('⚠ '+r.error.message); inp.value=body; return; }
-    if(r.data&&!MSGS.some(m=>m.id===r.data.id)){ MSGS.push(r.data); paintMsgs(); }
+    if(r.data&&!MSGS.some(m=>m.id===r.data.id)){
+      MSGS.push(r.data); paintMsgs();
+      /* keep the rail honest without a round trip — your own word is the
+         newest thing on that line the moment you send it */
+      const k=currentWireKind()+':'+vid;
+      LASTMSG[k]=LASTMSG[k]||{}; LASTMSG[k].top={at:r.data.created_at,body:body,km:!!ME.km};
+      if(ME.km) LASTMSG[k].km=r.data.created_at; else LASTMSG[k].them=r.data.created_at;
+      const rail=document.querySelector('.wrail');
+      if(rail){ const fresh=document.createElement('div'); fresh.innerHTML=wireRail();
+        rail.replaceWith(fresh.firstChild);
+        document.querySelectorAll('.wrail [data-wv]').forEach(b=>b.addEventListener('click',()=>{WIRE_KIND='v';WIRE_VENDOR=b.dataset.wv;renderWire();}));
+        document.querySelectorAll('.wrail [data-wa]').forEach(b=>b.addEventListener('click',()=>{WIRE_KIND='a';WIRE_VENDOR=b.dataset.wa;renderWire();}));
+      }
+    }
   };
   const kps=$('kmPhoneSave');
   if(kps)kps.addEventListener('click',async()=>{
