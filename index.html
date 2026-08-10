@@ -355,8 +355,26 @@ html.daylight .dayBtn{box-shadow:0 5px 14px rgba(70,56,30,.2)}
    profile → rename/pay → insufficient-funds keep their stacking order on top of it all */
 #profileSheet{z-index:92}
 #paySheet{z-index:93}
-.sheet-card{width:100%;max-width:460px;background:linear-gradient(184deg,var(--plate-3),var(--plate));border:1px solid var(--line);border-radius:22px 22px 0 0;padding:22px 20px calc(22px + env(safe-area-inset-bottom));text-align:center;transform:translateY(24px);transition:.25s}
+/* #sheetscroll(aug10) — EVERY sheet card scrolls itself now.
+   Two bugs lived here. (1) Cards without an inline max-height (the PROFILE
+   sheet above all) grew taller than the phone; because .sheet is align-items:
+   flex-end the spill goes off the TOP, out of reach, and a drag on the card
+   found nothing scrollable so it fell through to the page behind — "it only
+   moves the background." (2) Cards that DID scroll were capped in `vh`, and on
+   iOS Safari 1vh is the LARGE viewport (toolbars hidden), so an 82vh card is
+   taller than what you can actually see with the toolbars up — the tail end
+   (the Command Center's Close row) sat under the chrome, cut off.
+   Fix: bound + scroll on the BASE rule so no card can ever miss it, measured in
+   dvh (the live viewport) with a vh fallback for iOS 15.0–15.3, minus --kb so a
+   raised keyboard shrinks the card instead of pushing its bottom off-screen.
+   overscroll-behavior:contain stops the scroll chaining out to the page. */
+.sheet-card{width:100%;max-width:460px;background:linear-gradient(184deg,var(--plate-3),var(--plate));border:1px solid var(--line);border-radius:22px 22px 0 0;padding:22px 20px calc(22px + env(safe-area-inset-bottom));text-align:center;transform:translateY(24px);transition:.25s;
+  max-height:calc(88vh - var(--kb,0px));max-height:calc(88dvh - var(--kb,0px));   /* #ios — vh first: iOS 15.0–15.3 has no dvh */
+  overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
 .sheet.on .sheet-card{transform:none}
+/* #sheetscroll — and the page behind holds still while a sheet is open, so a
+   drag on the dimmed backdrop can't scroll the app out from under the sheet. */
+html:has(.sheet.on),html.sheet-open{overflow:hidden}
 /* modern dialog — replaces the browser's stock alert()/confirm() popups app-wide */
 .dlg{position:fixed;inset:0;z-index:80;background:rgba(5,6,7,.72);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);display:flex;align-items:center;justify-content:center;padding:26px;padding-bottom:calc(26px + var(--kb,0px));opacity:0;visibility:hidden;transition:.22s}   /* #ioskb */
 .dlg.on{opacity:1;visibility:visible}
@@ -2647,7 +2665,7 @@ window.DEVLOG=(function(){
        and the member's statement (bucks_book — run BUCKS-BANK.sql once). Earned
        bucks still flow exactly as before; this adds the paid road in. -->
   <div class="sheet" id="bankSheet">
-    <div class="sheet-card" style="text-align:left;max-height:86vh;overflow-y:auto">
+    <div class="sheet-card" style="text-align:left">
       <div class="big" style="font-size:20px;letter-spacing:.07em;text-align:center">⬡ THE BANK</div>
       <div style="text-align:center;margin:10px 0 2px"><span class="big copper-txt mono" id="bankBal" style="font-size:38px">0</span></div>
       <p class="sub" style="text-align:center;margin:0 0 12px">Port Bucks — the Order’s coin. Chat rooms, raffles, special gear, discounts at the till.</p>
@@ -3249,7 +3267,7 @@ window.DEVLOG=(function(){
          card docks in from the page, and the slip's photo rides sticky on top so you
          can read it while you fix what didn't scan right. -->
     <div class="sheet" id="manualSheet">
-    <div class="sheet-card" style="text-align:left;max-height:88vh;overflow-y:auto;padding:14px 14px calc(16px + env(safe-area-inset-bottom))">
+    <div class="sheet-card" style="text-align:left;padding:14px 14px calc(16px + env(safe-area-inset-bottom))">
     <div class="nj-photo" id="njPhotoWrap" style="display:none"><img id="njPhotoImg" alt="docket photo"></div>
     <div id="manualDock"></div>
     <button class="btn-ghost" type="button" style="width:100%;margin-top:10px" id="manualCancel">Close</button>
@@ -18902,6 +18920,43 @@ html.season-xmas.daylight{}
   vv.addEventListener('scroll',kb);
   kb();
 })();
+
+/* #sheetscroll(aug10) — two small jobs the CSS can't finish on its own.
+   (1) Freezing the page behind an open sheet is done in CSS with
+       html:has(.sheet.on); this mirrors it onto html.sheet-open for browsers
+       without :has(), so an old phone still can't scroll the app out from
+       under the sheet.
+   (2) Every sheet now scrolls, which means a sheet closed halfway down would
+       REOPEN halfway down. Sheets get opened from ~30 different call sites, so
+       rather than patch each one this watches for the .on class and lands the
+       card at its top once per opening. */
+(function(){
+  var root=document.documentElement, queued=false, hasHas=false;
+  try{ hasHas=!!(window.CSS&&CSS.supports&&CSS.supports('selector(:has(*))')); }catch(e){}
+  function sync(){
+    queued=false;
+    var any=false;
+    var sheets=document.querySelectorAll('.sheet');
+    for(var i=0;i<sheets.length;i++){
+      var s=sheets[i], on=s.classList.contains('on');
+      if(on){
+        any=true;
+        if(s.dataset.sTop!=='1'){                       /* first frame of this opening */
+          var c=s.querySelector('.sheet-card');
+          if(c)c.scrollTop=0;
+          s.dataset.sTop='1';
+        }
+      }else if(s.dataset.sTop==='1'){ delete s.dataset.sTop; }
+    }
+    if(!hasHas)root.classList.toggle('sheet-open',any);
+  }
+  function nudge(){ if(queued)return; queued=true; requestAnimationFrame(sync); }
+  try{
+    new MutationObserver(nudge).observe(document.documentElement,
+      {subtree:true,childList:true,attributes:true,attributeFilter:['class']});
+  }catch(e){}
+  nudge();
+})();
 </script>
 
 
@@ -18911,7 +18966,7 @@ html.season-xmas.daylight{}
      overrides + six-month rule, obeyed by EVERY phone via km_flags) ·
      BULLETIN (broadcast to every member's screen). -->
 <div class="sheet" id="kmSheet" role="dialog" aria-modal="true" aria-label="Command center">
-  <div class="sheet-card" style="text-align:left;max-height:82vh;overflow-y:auto">
+  <div class="sheet-card" style="text-align:left">
     <div class="big" style="font-size:20px;letter-spacing:.08em;text-align:center;color:var(--ember)">☠ COMMAND CENTER</div>
     <p class="sub" style="margin:6px 0 14px;text-align:center">The Keymaster sees all. Every switch here rides to every phone.</p>
 
@@ -18980,7 +19035,7 @@ html.season-xmas.daylight{}
      run MEMBER-WIRE.sql once). Sits UNDER the crowning/spyglass sheets in the
      stack so those open on top of it. -->
 <div class="sheet" id="kmMemberSheet" role="dialog" aria-modal="true" aria-label="Member page">
-  <div class="sheet-card" style="text-align:left;max-height:88vh;overflow-y:auto">
+  <div class="sheet-card" style="text-align:left">
     <div id="kmMemBody"><p class="sub">—</p></div>
     <button class="btn-ghost" style="width:100%;margin-top:12px" onclick="document.getElementById('kmMemberSheet').classList.remove('on')">‹ Back to the roster</button>
   </div>
@@ -18992,7 +19047,7 @@ html.season-xmas.daylight{}
      rules on it in the Command Center, and live posts show here for any hand
      to browse. Contact is direct — CALL/TEXT — the Order takes no cut. -->
 <div class="sheet" id="tradesSheet" role="dialog" aria-modal="true" aria-label="The trades board">
-  <div class="sheet-card" style="text-align:left;max-height:86vh;overflow-y:auto">
+  <div class="sheet-card" style="text-align:left">
     <div class="big" style="font-size:20px;letter-spacing:.07em;text-align:center">🛠 THE TRADES</div>
     <p class="sub" style="margin:6px 0 10px;text-align:center;line-height:1.7">Side work and side hustles — by casuals, for casuals. Deal direct; the Order takes nothing.</p>
     <div id="tradesMine" style="margin-bottom:10px"><p class="sub">—</p></div>
@@ -19004,7 +19059,7 @@ html.season-xmas.daylight{}
 </div>
 
 <div class="sheet" id="tradePostSheet" role="dialog" aria-modal="true" aria-label="Offer your services">
-  <div class="sheet-card" style="text-align:left;max-height:86vh;overflow-y:auto">
+  <div class="sheet-card" style="text-align:left">
     <div class="big" style="font-size:19px;letter-spacing:.06em;text-align:center">🛠 OFFER YOUR SERVICES</div>
     <p class="sub" style="margin:6px 0 10px;text-align:center;line-height:1.7">Put your side work on the board. Every post gets read before it goes up — edits ride back through approval too.</p>
     <div class="sub" style="margin:8px 0 2px">The trade</div>
@@ -19053,7 +19108,7 @@ html.season-xmas.daylight{}
 
 <!-- #amb — the spyglass: their dashboard through their eyes, read-only -->
 <div class="sheet" id="ambViewSheet" role="dialog" aria-modal="true" aria-label="Ambassador dashboard preview">
-  <div class="sheet-card" style="text-align:left;max-height:86vh;overflow-y:auto">
+  <div class="sheet-card" style="text-align:left">
     <div class="sub" style="text-align:center;letter-spacing:.16em;color:var(--warn);margin-bottom:6px">👁 SPYGLASS — SEEING IT AS THEY DO</div>
     <div class="big" style="font-size:18px;letter-spacing:.08em;text-align:center">THE DOCK OFFICE</div>
     <p class="sub" id="avWho" style="margin:4px 0 10px;text-align:center;line-height:1.6">—</p>
