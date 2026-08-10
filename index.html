@@ -11659,6 +11659,41 @@ let MY_ROOMS=[],MY_GATHS=[];   // legacy device-local creations — carried up b
 try{MY_ROOMS=JSON.parse(localStorage.getItem(K('myrooms'))||'[]')}catch(e){}
 try{MY_GATHS=JSON.parse(localStorage.getItem(K('mygaths'))||'[]')}catch(e){}
 function saveSocial(){try{localStorage.setItem(K('myrooms'),JSON.stringify(MY_ROOMS));localStorage.setItem(K('mygaths'),JSON.stringify(MY_GATHS))}catch(e){}}
+/* ═══ #ghostroom(aug10) — THE ROOM THAT WOULDN'T DIE ═══
+   A room made on this phone BEFORE the backend existed lives in MY_ROOMS, in
+   localStorage. It paints on the floor like any other room, but it has no
+   server row and therefore no `id` — and the ✕ only renders on `r.mine && r.id`.
+   So a legacy room showed "★ yours" and offered no way to strike it: the
+   member is looking at their own room, holding a delete button that isn't
+   there, concluding the app is broken. It wasn't broken. It was looking past
+   the cache at a row that no longer existed.
+
+   TWO THINGS GO WRONG IF WE ONLY ADD THE BUTTON.
+   1. K('myrooms') is a K() key, so the cloud mirror carries it between the
+      member's own devices. Delete it on the phone, open the tablet, and the
+      tablet's copy syncs it straight back.
+   2. sbMigrateSocial() exists to carry legacy locals UP to the server. After a
+      deliberate server wipe it would happily re-upload the very rooms that
+      wipe was meant to remove — the reset undoing itself at next sign-in.
+
+   So a strike writes a TOMBSTONE, not just a deletion. The name goes on a list
+   that both the paint and the migration read, and it stays struck on every
+   device and through every sync. */
+let SOC_STRUCK=[];
+try{SOC_STRUCK=JSON.parse(localStorage.getItem(K('socialstruck'))||'[]')||[];}catch(e){SOC_STRUCK=[];}
+/* the key carries the KIND. Keyed on name alone, striking the room "Test"
+   would also bury a gathering called "Test" — two different things a member
+   made, one of them vanishing for a reason they'd never work out. */
+const socKey=(kind,n)=>String(kind==='gath'?'gath:':'room:')+String(n==null?'':n).trim().toLowerCase();
+function socIsStruck(kind,n){ return SOC_STRUCK.indexOf(socKey(kind,n))>=0; }
+function socStrikeLocal(kind,name){
+  const k=socKey(kind,name); if(!String(name||'').trim())return;
+  if(SOC_STRUCK.indexOf(k)<0)SOC_STRUCK.push(k);
+  try{localStorage.setItem(K('socialstruck'),JSON.stringify(SOC_STRUCK))}catch(e){}
+  if(kind==='room')MY_ROOMS=MY_ROOMS.filter(r=>socKey('room',r.n)!==k);
+  else MY_GATHS=MY_GATHS.filter(g=>socKey('gath',g.n)!==k);
+  saveSocial();
+}
 
 let ALL_ROOMS=[],ALL_GATHS=[],RSVP_N={},RSVP_NAMES={},MY_RSVPS={};
 /* shared cache — deliberately NOT a K() key: the directory belongs to the whole
@@ -11684,13 +11719,19 @@ async function sbMigrateSocial(){
   _migRun=true;
   const uid=window.__shkUid,h=chatMyHandle();
   try{
-    if(MY_ROOMS.length){
-      const rows=MY_ROOMS.map(r=>({name:r.n,ico:'🗣',owner:uid,by_id:ACCT_ID,by_handle:h,is_private:false}));
+    /* #ghostroom(aug10) — a struck local NEVER rides up. Without this filter a
+       server-side wipe is temporary: the migration carries the deleted rooms
+       back onto the wire at the next sign-in and the reset quietly undoes
+       itself. The tombstone list is what makes a strike mean it. */
+    const liveRooms=MY_ROOMS.filter(r=>!socIsStruck('room',r.n));
+    const liveGaths=MY_GATHS.filter(g=>!socIsStruck('gath',g.n));
+    if(liveRooms.length){
+      const rows=liveRooms.map(r=>({name:r.n,ico:'🗣',owner:uid,by_id:ACCT_ID,by_handle:h,is_private:false}));
       const r=await window.SB.from('rooms').upsert(rows,{onConflict:'name',ignoreDuplicates:true});
       if(r.error)throw r.error;
     }
-    if(MY_GATHS.length){
-      const rows=MY_GATHS.map(g=>({name:g.n,ico:'🕯',when_txt:g.w||'',where_txt:g.p||'',owner:uid,by_id:ACCT_ID,by_handle:g.by||h,is_private:false}));
+    if(liveGaths.length){
+      const rows=liveGaths.map(g=>({name:g.n,ico:'🕯',when_txt:g.w||'',where_txt:g.p||'',owner:uid,by_id:ACCT_ID,by_handle:g.by||h,is_private:false}));
       const r=await window.SB.from('gatherings').insert(rows);
       if(r.error)throw r.error;
     }
@@ -12987,8 +13028,11 @@ function renderSocialFeed(){
     tagline:(r.is_private?'🗝 invite-only · ':'')+(isMineRow(r)?'your room · yours for good':'opened by '+(r.by_handle||'a hand'))}));
   const jn=joinedRooms().filter(j=>!svr.some(s=>s.id===j.id)).map(j=>({n:j.n,ico:j.ico||'🗣',id:j.id,priv:!!j.priv,mine:false,
     who:j.by?('by '+j.by):'invited crew',tagline:'🗝 invite-only · you hold the key'}));
-  const legacyR=MY_ROOMS.filter(r=>!svr.some(s=>s.n===r.n)&&!jn.some(s=>s.n===r.n)).map(r=>({n:r.n,ico:'🗣',who:'your room',
-    tagline:'this phone only · goes Order-wide next sign-in',mine:true,local:true}));
+  /* #ghostroom(aug10) — struck locals are gone for good; the old tagline read
+     like a promise ("goes Order-wide next sign-in") to a member who just wanted
+     rid of it, so it now says plainly that this one only exists on this phone. */
+  const legacyR=MY_ROOMS.filter(r=>!socIsStruck('room',r.n)&&!svr.some(s=>s.n===r.n)&&!jn.some(s=>s.n===r.n)).map(r=>({n:r.n,ico:'🗣',who:'your room',
+    tagline:'⚠ on this phone only — not on the wire · ✕ to clear it',mine:true,local:true}));
   const rooms=BUILTIN_ROOMS.concat(svr,jn,legacyR);
   const hero=rooms.find(r=>r.hero)||rooms[0];
   const rest=rooms.filter(r=>r!==hero);
@@ -13092,7 +13136,11 @@ function renderSocialFeed(){
       +'</div>'
       +'<div class="chan-r"><span class="chan-time" data-time="'+esc(r.n)+'"></span><span class="chan-unread" data-unread="'+esc(r.n)+'" style="display:none"></span></div>'
       +((r.mine||r.priv)?'<button class="feed-inv" data-inv="room" data-name="'+esc(r.n)+'"'+(r.id?' data-rid="'+esc(r.id)+'"':'')+' aria-label="Invite to '+esc(r.n)+'">⤴</button>':'')
-      +(r.mine&&r.id?'<button class="feed-inv feed-del" data-del="room" data-id="'+esc(r.id)+'" aria-label="Strike '+esc(r.n)+'">✕</button>':'')
+      /* #ghostroom(aug10) — the ✕ used to need `r.id`, which a phone-only room
+         has never had. That is the whole bug: your own room, no way to strike
+         it. A local strike clears the cache instead of calling the wire. */
+      +(r.mine&&r.id?'<button class="feed-inv feed-del" data-del="room" data-id="'+esc(r.id)+'" aria-label="Strike '+esc(r.n)+'">✕</button>'
+        :(r.local?'<button class="feed-inv feed-del" data-del="localroom" data-name="'+esc(r.n)+'" aria-label="Clear '+esc(r.n)+' from this phone">✕</button>':''))
       +'</div>';
   });
   html+='<div class="chan create feedIn"'+step()+' data-new="room"><div class="chan-av">🗝</div>'
@@ -13105,7 +13153,7 @@ function renderSocialFeed(){
 
   /* ---------- GATHERINGS ---------- */
   const svrG=ALL_GATHS.map(g=>({n:g.name,ico:g.ico||'🕯',w:g.when_txt||'',p:g.where_txt||'',by:isMineRow(g)?'you':(g.by_handle||'the Order'),mine:isMineRow(g),id:g.id,priv:!!g.is_private}));
-  const legacyG=MY_GATHS.filter(g=>!svrG.some(s=>s.n===g.n)).map(g=>({n:g.n,ico:'🕯',w:g.w,p:g.p,by:g.by||'you',mine:true,local:true}));
+  const legacyG=MY_GATHS.filter(g=>!socIsStruck('gath',g.n)&&!svrG.some(s=>s.n===g.n)).map(g=>({n:g.n,ico:'🕯',w:g.w,p:g.p,by:g.by||'you',mine:true,local:true}));
   const gaths=BUILTIN_GATHS.concat(svrG,legacyG);
   html+='<div class="fsec">'
     +'<div class="fsec-h"><span class="ttl">Gatherings</span><span class="more">what’s on</span></div>';
@@ -13131,7 +13179,10 @@ function renderSocialFeed(){
           +'<div class="evt-cta">'
             +'<button class="rsvp'+(going?' on':'')+'" data-rsvp="'+esc(g.n)+'"'+(sv?' data-gid="'+esc(g.id)+'"':'')+'>'+(going?'✓ Going':'＋ RSVP')+'</button>'
             +'<button class="feed-inv" data-inv="gath" data-name="'+esc(g.n)+'" data-detail="'+esc((g.w||'')+' · '+(g.p||''))+'" aria-label="Invite to '+esc(g.n)+'">⤴</button>'
-            +(g.mine&&sv?'<button class="feed-inv feed-del" data-del="gath" data-id="'+esc(g.id)+'" aria-label="Strike '+esc(g.n)+'">✕</button>':'')
+            /* #ghostroom(aug10) — same fix on the gathering side: a phone-only
+               gathering had no server row, so `sv` was false and its ✕ never drew. */
+            +(g.mine&&sv?'<button class="feed-inv feed-del" data-del="gath" data-id="'+esc(g.id)+'" aria-label="Strike '+esc(g.n)+'">✕</button>'
+              :(g.local?'<button class="feed-inv feed-del" data-del="localgath" data-name="'+esc(g.n)+'" aria-label="Clear '+esc(g.n)+' from this phone">✕</button>':''))
           +'</div>'
         +'</div>'
       +'</div></div>';
@@ -13202,6 +13253,17 @@ function bindFeed(host){
     }
     b.disabled=true;
     const dk=b.getAttribute('data-del');
+    /* #ghostroom(aug10) — a phone-only room has nothing on the wire to delete;
+       calling socialDelete with no id is exactly the silent no-op that made
+       this look broken. Clear the cache and tombstone the name instead. */
+    if(dk==='localroom'||dk==='localgath'){
+      const nm=b.getAttribute('data-name');
+      socStrikeLocal(dk==='localroom'?'room':'gath',nm);
+      try{toast('✕ cleared off this phone — it was never on the wire');}catch(e){}
+      try{renderSocialFeed();}catch(e){}
+      try{renderHallStats();}catch(e){}
+      return;
+    }
     if(dk==='story') await deleteStory(b.getAttribute('data-id'));
     else await socialDelete(dk,b.getAttribute('data-id'));
   }));
