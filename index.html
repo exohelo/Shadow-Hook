@@ -1571,6 +1571,36 @@ html.so-open #bankStrip,html.so-open .dayBtn{display:none!important}
    review block brings its own (same read as the service board's) */
 .prv-msg{color:var(--ember);font-family:'IBM Plex Mono',monospace;font-size:11.5px;margin-top:8px;min-height:16px;line-height:1.5}
 
+/* ---- #verified(aug10) — THE WORD BELONGS TO THE HANDS WHO CARRIED IT ----
+   Reading stays open to everybody. Writing is for buyers. The real lock is a
+   row-level policy in the database (run VERIFIED-REVIEWS.sql once) — these are
+   only the faces it wears: the line a non-buyer meets where the form used to
+   be, the ⚓ mark on a review with a paid order behind it, and the card that
+   comes asking a week after the gear lands. */
+.prv-gate{display:flex;gap:9px;align-items:flex-start;border:1px dashed var(--line-soft);border-radius:11px;
+  padding:11px 13px;margin:14px 0 2px;font-size:13px;line-height:1.6;color:var(--steel)}
+.prv-gate .ic{flex:none;font-size:15px;opacity:.85;line-height:1.35}
+.prv-gate b{color:var(--bone)}
+.prv-vf{display:inline-flex;align-items:center;gap:3px;font-family:'IBM Plex Mono',monospace;font-size:9.5px;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--copper-hi);border:1px solid rgba(238,180,107,.42);
+  border-radius:999px;padding:1px 6px;margin-left:5px;vertical-align:1px;white-space:nowrap}
+/* the week-later nudge — one card on the floor, one row per thing they carried */
+.rvn{border:1px solid rgba(238,180,107,.42);border-radius:13px;padding:12px 13px;margin:0 0 16px;
+  background:linear-gradient(184deg,var(--btn-hi),var(--btn-lo))}
+.rvn h4{margin:0 0 2px;font-family:'Anton',sans-serif;font-size:14.5px;letter-spacing:.05em;color:var(--copper-hi)}
+.rvn .why{margin:0 0 9px;font-size:12px;line-height:1.55;color:var(--steel)}
+.rvn-row{display:flex;gap:10px;align-items:center;padding:7px 0;border-top:1px solid var(--line-soft)}
+.rvn-row .th{flex:none;width:42px;height:42px;border-radius:9px;overflow:hidden;border:1px solid var(--line-soft);
+  background:rgba(0,0,0,.18);display:flex;align-items:center;justify-content:center;font-size:17px}
+.rvn-row .th img{width:100%;height:100%;object-fit:cover;display:block}
+.rvn-row .m{flex:1;min-width:0}
+.rvn-row .m b{display:block;font-size:13px;color:var(--bone);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rvn-row .m i{font-style:normal;font-size:11px;color:var(--steel)}
+.rvn-row .go{flex:none;cursor:pointer;border:1px solid rgba(238,180,107,.5);border-radius:9px;background:transparent;
+  padding:6px 11px;font-size:11.5px;color:var(--copper-hi);font-family:'IBM Plex Mono',monospace}
+.rvn-x{margin-top:9px;width:100%;cursor:pointer;background:transparent;border:0;padding:5px;
+  font-size:11px;color:var(--steel);font-family:'IBM Plex Mono',monospace}
+
 /* ---- #swipeback — the gesture replaces the arrow, but only on a real finger.
         html.swipeback is set by the script at the end of this file, so if that
         script never runs every arrow stays exactly where it was. ---- */
@@ -2508,6 +2538,9 @@ window.DEVLOG=(function(){
       <button id="shopQX" type="button" aria-label="clear">✕</button>
     </div>
     <div class="shop-rail" id="shopRail"></div>
+    <!-- #verified(aug10) — the week-later ask. Empty and hidden until a hand has
+         gear that's been with them long enough to have an opinion worth having. -->
+    <div id="revNudge" style="display:none"></div>
     <div id="recWrap" style="display:none">
       <div class="rechd"><h3>Recommended for you</h3></div>
       <p class="recwhy" id="recWhy"></p>
@@ -9634,6 +9667,7 @@ function renderShop(){
                  .slice().sort((a,b)=>((a.sort==null?500:+a.sort||0)-(b.sort==null?500:+b.sort||0)));
 
   paintRecs();
+  try{ renderRevNudge(); }catch(e){}   /* #verified(aug10) — the week-later ask rides the floor */
   const note=document.getElementById('shopNote'); if(note)note.style.display=words.length?'none':'';
 
   if(!list.length){
@@ -9750,6 +9784,9 @@ function closeGear(){
   const v=document.getElementById('gearView'), s=document.getElementById('gearShop');
   if(v)v.style.display="none";
   if(s)s.style.display="block";
+  /* #verified(aug10) — walking back onto the floor re-asks the question: the
+     word they just left has to drop off the ask, right now, not next boot */
+  try{ renderRevNudge(); }catch(e){}
   try{document.getElementById('armoryHead').style.display="";}catch(e){}
   try{window.scrollTo(0,0);}catch(e){}
 }
@@ -9835,7 +9872,42 @@ function gearNotify(p,c){
    Supabase. Everything degrades soft: if the book is missing (PRV.ok=false)
    the floor paints exactly as before, no stars, no block, no errors. Every
    field here is UNTRUSTED REMOTE DATA — shEsc everything, same as the shop. */
-let PRV={ok:false,by:{}}, _prvStars=0, _prvDraft='', _prvDirty=false;
+let PRV={ok:false,by:{},bought:null}, _prvStars=0, _prvDraft='', _prvDirty=false;
+/* ═══ #verified(aug10) — ONLY THE HANDS WHO CARRIED IT LEAVE THE WORD ═══
+   The book used to take anybody's word on anything. That is how a shelf fills
+   with one-star notes from people who never held the gear, and once that
+   starts nobody trusts the ratings on the honest products either.
+   THE REAL GATE IS NOT HERE. It is a row-level policy in the database — run
+   VERIFIED-REVIEWS.sql once — that refuses any insert with no PAID order
+   behind it. Hiding a form is a courtesy; a console gets straight past it.
+   What lives here is the courtesy: PRV.bought is this member's own paid lines
+   (the `my_purchases` view, which only ever shows you yours), so the page can
+   say plainly who the form is for instead of letting a hand type out their
+   word and then eat a database error.
+   PRV.bought === null means the question can't be asked — signed out, offline,
+   or the SQL hasn't been run yet. In that case the floor paints exactly as it
+   did before and the database stays the only thing standing guard. */
+async function sbLoadMyPurchases(){
+  if(!window.SB||!window.__shkUid){ PRV.bought=null; return; }
+  try{
+    const r=await window.SB.from('my_purchases').select('*');
+    if(r.error)throw r.error;
+    const o=Object.create(null);
+    (r.data||[]).forEach(x=>{
+      if(!x||x.product_id==null)return;
+      const id=String(x.product_id);
+      if(id==='__proto__'||id==='constructor'||id==='prototype')return;   // same guard the catalog merge uses
+      o[id]={first:Date.parse(x.first_bought_at||'')||0,
+             last:Date.parse(x.last_bought_at||'')||0,
+             n:+x.times_bought||1};
+    });
+    PRV.bought=o;
+  }catch(e){ PRV.bought=null; }        // no view, no session, no wire — hold the old behaviour
+}
+window.sbLoadMyPurchases=sbLoadMyPurchases;
+/* can this device answer "did you buy it?" at all */
+function prvGateOn(){ return !!PRV.bought; }
+function prvBought(pid){ return !!(PRV.bought&&PRV.bought[String(pid)]); }
 const prvStars=n=>{n=Math.max(0,Math.min(5,Math.round(n)));return '★'.repeat(n)+'☆'.repeat(5-n);};
 function prvStats(pid){const l=PRV.by[String(pid)]||[];if(!l.length)return{n:0,avg:0};return{n:l.length,avg:l.reduce((s,r)=>s+(+r.stars||0),0)/l.length};}
 function prvMine(pid){const uid=window.__shkUid;if(!uid)return null;return (PRV.by[String(pid)]||[]).find(r=>r.reviewer_id===uid)||null;}
@@ -9846,6 +9918,18 @@ function gearRevBlock(p){
   let mineUi='';
   if(!window.__shkUid){
     mineUi='<p class="sub" style="margin:10px 0 2px">Browsing’s open to every hand — <b style="color:var(--bone)">claim your card</b> to leave your word.</p>';
+  }else if(prvGateOn()&&!prvBought(p.id)){
+    /* #verified(aug10) — a hand who hasn't carried this one reads every word on
+       it and writes none. No greyed-out form to fight with: the form is simply
+       not theirs yet, and the line says why and what changes it.
+       A standing review from before the gate went up is left ALONE — it stays
+       on the record and its ✕ stays live below, because taking away a member's
+       ability to withdraw their own word would be the wrong kind of strict. */
+    mineUi='<div class="prv-gate"><span class="ic">⚓</span><span>'
+      +(mine
+        ? 'Your word’s already on the record below — you can strike it any time. Fresh words on this one are for the hands who carried it.'
+        : 'The word on this one belongs to the hands who carried it. <b>Buy it and it’s yours to leave</b> — we’ll come asking about a week after it lands.')
+      +'</span></div>';
   }else{
     mineUi='<div class="pdp-lbl" style="margin:14px 0 2px">Your rating</div>'
       +'<div class="prv-pick" id="prvPick">'+[1,2,3,4,5].map(i=>'<span data-s="'+i+'">'+(i<=_prvStars?'★':'☆')+'</span>').join('')+'</div>'
@@ -9856,6 +9940,11 @@ function gearRevBlock(p){
   }
   const rows=list.length?list.map(r=>'<div class="prv-row"><span class="n">'
       +'<b class="st">'+prvStars(+r.stars||0)+'</b> <b>'+shEsc(r.reviewer_handle||'a hand')+'</b>'
+      /* #verified(aug10) — the mark is only claimed when the column SAYS so.
+         Before VERIFIED-REVIEWS.sql runs there is no `verified` column, every
+         row reads undefined, and nothing gets a badge — an unearned "verified"
+         on every review would be a worse lie than no badge at all. */
+      +(r.verified===true?'<span class="prv-vf">⚓ carried it</span>':'')
       +'<i>'+(r.body?shEsc(r.body):'<span style="opacity:.6">rating only</span>')+' · '+(function(){try{const d=new Date(r.created_at);return d.toLocaleDateString([],{month:'short',day:'numeric'});}catch(e){return'';}})()+'</i></span>'
       +((km||r.reviewer_id===window.__shkUid)?'<button class="prv-del" type="button" data-rid="'+shEsc(r.id)+'" title="strike this review">✕</button>':'')
       +'</div>').join('')
@@ -9882,6 +9971,9 @@ async function prvPost(){
   const p=gearProd; if(!p)return;
   const m=document.getElementById('prvMsg'), go=document.getElementById('prvGo');
   if(!window.SB||!window.__shkUid){ if(m)m.textContent='> claim your card first — the book has to know whose word it is'; return; }
+  /* #verified(aug10) — the same question the database is about to ask, asked
+     here first so a hand who can't post finds out BEFORE typing, not after. */
+  if(prvGateOn()&&!prvBought(p.id)){ if(m)m.textContent='> this one isn’t on your orders — the word here is for the hands who carried it'; return; }
   if(!(_prvStars>=1&&_prvStars<=5)){ if(m)m.textContent='> tap the stars first — 1 to 5'; return; }
   if(go)go.disabled=true; if(m)m.textContent='';
   try{
@@ -9891,11 +9983,23 @@ async function prvPost(){
       body:String(_prvDraft==null?'':_prvDraft).trim()||null},{onConflict:'product_id,reviewer_id'});
     if(r.error)throw r.error;
     _prvDirty=false;
+    /* #verified(aug10) — their word landed, so this one drops off the ask list */
+    try{ rvnClear(p.id); }catch(e2){}
     try{toast('⚓ Your word is on the record');}catch(e2){}
     await sbLoadProductReviews();               // repaints the grid and the open page
   }catch(e){
     const m2=document.getElementById('prvMsg');
-    if(m2)m2.textContent=/does not exist|relation|schema/i.test(e.message||'')?'> the review book isn’t open yet — check back soon':('> '+e.message);
+    const em=String((e&&e.message)||'');
+    /* #verified(aug10) — the row-level policy speaks in Postgres. Translate it:
+       a hand refused by the gate should read the reason, not "42501". This is
+       the branch that catches a real buyer whose orders columns don't match
+       VERIFIED-REVIEWS.sql — if honest buyers land here, check has_bought(). */
+    if(m2)m2.textContent=
+      /violates row-level security|row-level security policy|42501/i.test(em)
+        ? '> the book only takes the word of hands who bought this one'
+      : /does not exist|relation|schema/i.test(em)
+        ? '> the review book isn’t open yet — check back soon'
+        : ('> '+em);
     try{ if(window.shkAlert)shkAlert('gear review',e); }catch(e2){}
   }
   const g2=document.getElementById('prvGo'); if(g2)g2.disabled=false;
@@ -9915,8 +10019,114 @@ async function prvDel(rid){
     try{ if(window.shkAlert)shkAlert('gear review strike',e); }catch(e2){}
   }
 }
+/* ═══ #verified(aug10) — THE WEEK-LATER ASK ═══
+   A gate that only takes buyers' words is worth little if buyers never come
+   back to leave one — the shelf just stays empty and the loudest voice on it
+   is still whoever cared enough to complain. So the app goes and asks.
+   About a week after the gear landed the Armory floor carries a card naming
+   what they bought, and a tap drops them straight into that product's form
+   with the box already focused. One ask, snoozeable, and it clears itself the
+   moment their word is on the record. */
+const RVN_WAIT=7*24*60*60*1000;              // a week with the gear before we ask
+const RVN_SNOOZE=14*24*60*60*1000;           // "not right now" means a fortnight
+function rvnState(){try{return JSON.parse(localStorage.getItem(K('revnudge'))||'{}')||{}}catch(e){return{}}}
+function rvnSave(o){try{localStorage.setItem(K('revnudge'),JSON.stringify(o))}catch(e){}}
+/* their word landed (or they struck the ask) — this one stops asking for good */
+function rvnClear(pid){const st=rvnState();st.done=st.done||{};st.done[String(pid)]=Date.now();rvnSave(st);}
+function rvnDue(){
+  if(!PRV.bought||!window.__shkUid)return [];
+  const st=rvnState(), now=Date.now();
+  if(st.snoozeUntil&&now<st.snoozeUntil)return [];
+  const done=st.done||{};
+  const gear=(typeof GEAR!=='undefined'&&Array.isArray(GEAR))?GEAR:[];
+  return Object.keys(PRV.bought).map(id=>{
+    const b=PRV.bought[id]||{}, when=b.last||b.first||0;
+    if(!when||now-when<RVN_WAIT)return null;      // not long enough to have an opinion
+    if(done[id])return null;                      // asked and answered
+    if(prvMine(id))return null;                   // their word is already on it
+    const p=gear.find(x=>String(x.id)===id);
+    if(!p||p.status==='retired')return null;      // gone from the floor — nothing to open
+    return {id:id,p:p,when:when};
+  }).filter(Boolean).sort((a,b)=>a.when-b.when).slice(0,4);
+}
+function renderRevNudge(){
+  const host=document.getElementById('revNudge'); if(!host)return;
+  /* the card belongs on the shelves, not over a product page */
+  const onProduct=(function(){try{return !!(typeof gearProd!=='undefined'&&gearProd);}catch(e){return false;}})();
+  const due=onProduct?[]:rvnDue();
+  if(!due.length){ host.innerHTML=''; host.style.display='none'; return; }
+  host.style.display='';
+  const now=Date.now();
+  host.innerHTML='<div class="rvn"><h4>⚓ HOW’D IT HOLD UP?</h4>'
+    +'<p class="why">'+(due.length===1?'You’ve had this a while now.':'You’ve had these a while now.')
+    +' The next hand buys off what you say — and only hands who actually carried it get to say it.</p>'
+    +due.map(d=>{
+        let shot=''; try{ shot=gearShot(d.p,0); }catch(e){}
+        const days=Math.floor((now-d.when)/86400000);
+        return '<div class="rvn-row">'
+          +'<span class="th">'+(shot?'<img loading="lazy" alt="" src="'+shEsc(shot)+'">':'🛡')+'</span>'
+          +'<span class="m"><b>'+shEsc(d.p.name||d.id)+'</b><i>'+days+' day'+(days===1?'':'s')+' since it landed</i></span>'
+          +'<button class="go" type="button" data-rvn="'+shEsc(d.id)+'">Leave the word</button>'
+          +'</div>';
+      }).join('')
+    +'<button class="rvn-x" type="button" id="rvnOff">not right now</button></div>';
+  host.querySelectorAll('[data-rvn]').forEach(b=>b.addEventListener('click',()=>rvnOpen(b.dataset.rvn)));
+  const x=host.querySelector('#rvnOff');
+  if(x)x.addEventListener('click',()=>{
+    const st=rvnState(); st.snoozeUntil=Date.now()+RVN_SNOOZE; rvnSave(st);
+    renderRevNudge();
+    try{toast('Put away — your gear’s still on your orders when you’re ready');}catch(e){}
+  });
+}
+/* straight into the form, box focused — the ask should cost one tap, not four */
+function rvnOpen(id){
+  try{ if(typeof openGear==='function')openGear(id); }catch(e){}
+  /* the block can repaint a beat after the page opens — the book and the
+     member's orders both land async — so don't fire one shot into the dark.
+     Scroll as soon as the section exists, then keep looking for the box for
+     about two seconds and give it up quietly if it never shows. */
+  let tries=0, scrolled=false;
+  (function land(){
+    if(++tries>12)return;
+    try{
+      const el=document.getElementById('gearRev');
+      if(el&&!scrolled&&el.scrollIntoView){ el.scrollIntoView({behavior:'smooth',block:'start'}); scrolled=true; }
+      const ta=document.getElementById('prvBody');
+      if(ta){ try{ ta.focus({preventScroll:true}); }catch(e2){} return; }
+    }catch(e){}
+    setTimeout(land,160);
+  })();
+}
+/* the phone ping. Rides the SAME permission and the SAME bell the board alerts
+   use, on purpose: a hand who turned the bell off is telling us not to buzz
+   them, and gear is not the thing to make an exception for. One ping per item,
+   ever — the card on the floor does the remembering after that. */
+function rvnPing(){
+  try{
+    if(typeof notifyPrefOn!=='function'||!notifyPrefOn())return;
+    if(typeof Notification==='undefined'||Notification.permission!=='granted')return;
+    const due=rvnDue(); if(!due.length)return;
+    const st=rvnState(); st.pinged=st.pinged||{};
+    const fresh=due.filter(d=>!st.pinged[d.id]); if(!fresh.length)return;
+    const first=fresh[0].p.name||'Your gear';
+    const title='⚓ How’d it hold up?';
+    const body=(fresh.length>1)
+      ? first+' and '+(fresh.length-1)+' more have been with you a week. The next hand reads what you say.'
+      : first+' has been with you a week. Leave the next hand the word.';
+    if(typeof SW_REG!=='undefined'&&SW_REG&&SW_REG.showNotification)
+      SW_REG.showNotification(title,{body:body,tag:'shadowhook-review',vibrate:[90,50,90]});
+    else{try{new Notification(title,{body:body,tag:'shadowhook-review'});}catch(e){}}
+    fresh.forEach(f=>{st.pinged[f.id]=Date.now();});
+    rvnSave(st);
+  }catch(e){}
+}
+window.renderRevNudge=renderRevNudge;
 async function sbLoadProductReviews(){
   if(!window.SB)return;
+  /* #verified(aug10) — the buyer's own orders ride along with the book. They
+     have to land together: painting the word without knowing who bought what
+     would flash the form at a hand who can't use it, then snatch it back. */
+  try{ await sbLoadMyPurchases(); }catch(e){}
   try{
     const r=await window.SB.from('product_reviews').select('*').order('created_at',{ascending:false}).limit(2000);
     if(r.error)throw r.error;
@@ -9929,6 +10139,11 @@ async function sbLoadProductReviews(){
   if(typing)return;
   try{ renderShop(); }catch(e){}
   if(gearProd){ try{ paintGear(); }catch(e){} }
+  /* #verified(aug10) — the ask waits for the book: an item they already
+     reviewed must never be asked about, and that is only knowable once the
+     reviews are in. Ping comes a beat later so a cold boot isn't a buzz. */
+  try{ renderRevNudge(); }catch(e){}
+  setTimeout(function(){ try{ rvnPing(); }catch(e){} },4000);
 }
 /* ---- the catalog off the server; the seed holds the floor until it answers ---- */
 async function sbLoadProducts(){
