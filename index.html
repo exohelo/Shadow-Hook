@@ -2460,7 +2460,59 @@ window.DEVLOG=(function(){
             </div>
           </div>
         </div>
-        <div class="shop-rail" id="shopRail"></div>
+        <style>
+    /* #shop2 — THE TILE IS LIGHT, the room stays dark.
+       A cut-out product shot needs something pale directly behind it or it
+       reads as a sticker floating in the harbour. The product page already
+       does this (the PDP hero is cream); the grid never did. This is that
+       same cream, everywhere gear is shown. */
+    .gcard .shot, .rec .shot{background:#f4f1ea;border-color:rgba(0,0,0,.10);box-shadow:0 1px 3px rgba(0,0,0,.32)}
+
+    /* the heart — a light chip so it stays readable on the cream */
+    .gheart{position:absolute;right:6px;top:6px;width:31px;height:31px;border:0;border-radius:50%;
+      background:rgba(255,255,255,.84);color:#3c3c3c;font-size:15px;line-height:1;display:grid;
+      place-items:center;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.28);z-index:2;
+      transition:transform .16s ease;padding:0}
+    .gheart:active{transform:scale(.85)}
+    .gheart.on{color:var(--ember)}
+    .gheart.pop{animation:ghpop .34s ease}
+    @keyframes ghpop{0%{transform:scale(1)}42%{transform:scale(1.34)}100%{transform:scale(1)}}
+
+    /* the search bar */
+    .shopfind{display:flex;align-items:center;gap:9px;background:var(--plate-2);border:1px solid var(--line);
+      border-radius:999px;padding:10px 15px;margin:0 0 12px}
+    .shopfind:focus-within{border-color:var(--copper-hi)}
+    .shopfind svg{flex:none;opacity:.7}
+    .shopfind input{flex:1;background:none;border:0;color:var(--bone);font:inherit;font-size:15px;outline:none;min-width:0}
+    .shopfind input::placeholder{color:var(--steel)}
+    .shopfind button{background:none;border:0;color:var(--steel);font-size:16px;cursor:pointer;display:none;padding:0 2px}
+    .shopfind button.on{display:block}
+
+    /* the recommended rail */
+    .rechd{display:flex;align-items:baseline;justify-content:space-between;margin:2px 0 3px}
+    .rechd h3{margin:0;font-size:16px;letter-spacing:.02em;color:var(--bone);font-family:'Anton',sans-serif;font-weight:400}
+    .recwhy{font-size:11.5px;color:var(--steel);line-height:1.55;margin:0 0 9px}
+    .recrail{display:flex;gap:11px;overflow-x:auto;padding:0 0 14px;scrollbar-width:none}
+    .recrail::-webkit-scrollbar{display:none}
+    .rec{flex:none;width:132px;cursor:pointer}
+    .rec .shot{position:relative;aspect-ratio:1/1.06;border-radius:11px;overflow:hidden;border:1px solid var(--line-soft)}
+    .rec .shot img{width:100%;height:100%;object-fit:cover;display:block}
+    .rec .nm{font-size:12px;line-height:1.35;margin-top:6px;color:var(--bone);
+      display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+    .rec .px{font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--copper-hi);margin-top:2px}
+    </style>
+
+    <div class="shopfind">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.2-3.2"/></svg>
+      <input id="shopQ" placeholder="Search the Armory" autocomplete="off" spellcheck="false">
+      <button id="shopQX" type="button" aria-label="clear">✕</button>
+    </div>
+    <div class="shop-rail" id="shopRail"></div>
+    <div id="recWrap" style="display:none">
+      <div class="rechd"><h3>Recommended for you</h3></div>
+      <p class="recwhy" id="recWhy"></p>
+      <div class="recrail" id="recRail"></div>
+    </div>
         <div class="shop-grid" id="shopGrid"></div>
         <p class="sub" id="shopNote" style="margin-top:14px">Prices post on opening day. <b style="color:var(--copper-hi)">⚑ Gear you want that's not here? Send word.</b></p>
       </div>
@@ -2684,7 +2736,7 @@ window.DEVLOG=(function(){
       <div class="big" style="font-size:20px;letter-spacing:.06em;text-align:center">🛡 THE CART</div>
       <div id="cartLines" style="margin-top:8px"></div>
       <div class="cart-sum"><span>Subtotal — shipping shows at the till</span><b id="cartSub">$0</b></div>
-      <button class="btn" id="cartGo" type="button" style="width:100%;margin-top:14px">⚓ TO THE TILL</button>
+      <button class="btn" id="cartGo" type="button" style="width:100%;margin-top:14px">⚓ Proceed to Checkout</button>
       <button class="btn-ghost" style="width:100%;margin-top:10px" onclick="document.getElementById('cartSheet').classList.remove('on')">Keep browsing</button>
     </div>
   </div>
@@ -2727,6 +2779,31 @@ window.DEVLOG=(function(){
     .tl-note{font-size:11.5px;color:var(--steel);line-height:1.65}
     .tl-gift{display:flex;align-items:center;gap:9px;margin-top:11px;font-size:13px;cursor:pointer}
     .tl-gift input{width:17px;height:17px;accent-color:#4de2ff}
+
+    /* #cart2 — the cart line, same anatomy as the till's so the two pages read
+       as one shop: a picture, the maker, the price, and the two things anyone
+       ever wants to do with a line they're not sure about. */
+    .cl2{display:flex;gap:11px;padding:12px 0;border-top:1px solid var(--line-soft)}
+    .cl2:first-child{border-top:0}
+    .cl2.dead{opacity:.55}
+    .cl2 .th{width:66px;height:66px;border-radius:10px;flex:none;background:#f4f1ea;border:1px solid rgba(0,0,0,.10);
+      display:grid;place-items:center;font-size:25px;overflow:hidden;cursor:pointer;padding:0;transition:border-color .15s ease}
+    .cl2 .th:hover{border-color:var(--copper-hi)}
+    .cl2 .th img{width:100%;height:100%;object-fit:cover;display:block}
+    .cl2 .m{flex:1;min-width:0}
+    .cl2 .m b{display:block;font-size:13.5px;line-height:1.4;color:var(--bone)}
+    .cl2 .m b.link{cursor:pointer}
+    .cl2 .m b.link:hover{color:var(--copper-hi);text-decoration:underline}
+    .cl2 .m i{display:block;font-style:normal;font-size:12px;color:var(--steel);margin-top:2px}
+    .cl2 .m i.vend{color:var(--copper-hi)}
+    .cl2 .pr{font-family:'IBM Plex Mono',monospace;font-size:14.5px;color:var(--copper-hi);margin-top:4px;display:block}
+    .cl2 .acts{display:flex;gap:12px;align-items:center;margin-top:7px;flex-wrap:wrap}
+    .q2{display:inline-flex;align-items:center;border:1px solid var(--copper-hi);border-radius:999px;overflow:hidden}
+    .q2 button{background:none;border:0;color:var(--bone);width:30px;height:27px;font-size:14px;cursor:pointer;font-family:inherit}
+    .q2 span{min-width:24px;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:13px}
+    .cl2 .mini{background:none;border:0;color:var(--copper-hi);font:inherit;font-size:12px;cursor:pointer;padding:0}
+    .cl2 .mini:hover{text-decoration:underline}
+    .cl2 .mini.warn{color:var(--steel)}
     </style>
 
     <div class="sheet" id="tillSheet">
@@ -9451,19 +9528,116 @@ function gearMoney(n){ const v=gearNum(n); if(v==null)return null;
   return (v<0?"-$":"$")+(Math.round(Math.abs(v)*100)/100).toFixed(2).replace(/\.00$/,""); }
 
 /* ---- the grid ---- */
+/* ═══════ #shop2 — THE HEART ═══════
+   One shelf, two doors: the heart on a card and "Save for later" in the cart
+   write the same row. That is what a buyer already believes, so it is what the
+   code does.
+
+   It never waits on the network. The tap paints instantly off localStorage and
+   the table write goes out behind it — a heart that hangs for a second reads
+   as broken, and nobody taps it twice. Signed out it still works; it just
+   lives on that device until they claim a card, and merges up when they do. */
+var FAV={}, FAV_KEY='shadowhook_favs';
+window.FAV=FAV;
+function favUid(){ try{ return window.__shkUid||null; }catch(e){ return null; } }
+function favLocalSave(){ try{ localStorage.setItem(FAV_KEY,JSON.stringify(FAV)); }catch(e){} }
+function favHas(id){ return Object.prototype.hasOwnProperty.call(FAV,String(id)); }
+function favCount(){ return Object.keys(FAV).length; }
+
+async function favLoad(){
+  try{ var o=JSON.parse(localStorage.getItem(FAV_KEY)||'{}'); if(o&&typeof o==='object')FAV=o; }catch(e){ FAV={}; }
+  window.FAV=FAV;
+  var uid=favUid();
+  if(!uid||!window.SB)return;
+  try{
+    var r=await window.SB.from('favorites').select('product_id,saved_usd');
+    if(r.error)return;                                  /* table not built yet — local still works */
+    var server={};
+    (r.data||[]).forEach(function(x){ server[String(x.product_id)] = x.saved_usd==null?null:Number(x.saved_usd); });
+    /* anything hearted on this device before they signed in goes up */
+    var up=Object.keys(FAV).filter(function(k){ return !(k in server); });
+    if(up.length){
+      try{ await window.SB.from('favorites').upsert(up.map(function(k){
+        return {user_id:uid, product_id:k, saved_usd:FAV[k]}; }),{onConflict:'user_id,product_id'}); }catch(e){}
+    }
+    Object.keys(server).forEach(function(k){ FAV[k]=server[k]; });
+    favLocalSave(); window.FAV=FAV;
+  }catch(e){}
+}
+
+function favToggle(id){
+  id=String(id);
+  var on=!favHas(id);
+  if(on){
+    var p=(typeof GEAR!=='undefined')?GEAR.filter(function(x){return String(x.id)===id})[0]:null;
+    var usd=p?Number(p.usd):NaN;
+    FAV[id]=isFinite(usd)&&usd>0?Math.round(usd*100)/100:null;   /* the price the day they saved it */
+  } else { delete FAV[id]; }
+  favLocalSave(); window.FAV=FAV;
+  var uid=favUid();
+  if(uid&&window.SB){
+    try{
+      if(on) window.SB.from('favorites').upsert({user_id:uid,product_id:id,saved_usd:FAV[id]},{onConflict:'user_id,product_id'}).then(function(){},function(){});
+      else   window.SB.from('favorites').delete().eq('user_id',uid).eq('product_id',id).then(function(){},function(){});
+    }catch(e){}
+  }
+  return on;
+}
+window.favToggle=favToggle; window.favHas=favHas; window.favCount=favCount;
+
+/* the shelf a saved thing came off, so "why this" can be honest */
+function recFor(){
+  if(!favCount())return null;
+  var ids=Object.keys(FAV);
+  var seed=null;
+  for(var i=ids.length-1;i>=0&&!seed;i--) seed=GEAR.filter(function(x){return String(x.id)===ids[i]})[0]||null;
+  if(!seed)return null;
+  var out=[], seen={};
+  var push=function(list){ list.forEach(function(p){
+    var k=String(p.id);
+    if(favHas(k)||seen[k]||p.status==='retired')return;
+    seen[k]=1; out.push(p); }); };
+  push(GEAR.filter(function(p){ return (p.brand||'')===(seed.brand||'') ; }));   /* same bench first */
+  push(GEAR.filter(function(p){ return p.cat===seed.cat; }));                     /* then same shelf */
+  push(GEAR);                                                                     /* then anything */
+  return { seed:seed, list:out.slice(0,8) };
+}
+
+var shopQ='';
 function renderShop(){
   const rail=document.getElementById('shopRail'), grid=document.getElementById('shopGrid');
   if(!rail||!grid)return;
-  rail.innerHTML=GEAR_CATS.map(c=>'<button type="button" data-c="'+shEsc(c[0])+'"'+(c[0]===gearCat?' class="on"':'')+'>'+shEsc(c[1])+'</button>').join('');
+  /* #shop2 — SAVED rides at the front of the shelves. It only appears once
+     there is something on it, so an empty shelf never taunts anybody. */
+  const cats = favCount() ? [['saved','♥ SAVED ('+favCount()+')']].concat(GEAR_CATS) : GEAR_CATS.slice();
+  if(gearCat==='saved'&&!favCount())gearCat='all';
+  rail.innerHTML=cats.map(c=>'<button type="button" data-c="'+shEsc(c[0])+'"'+(c[0]===gearCat?' class="on"':'')+'>'+shEsc(c[1])+'</button>').join('');
   rail.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{gearCat=b.dataset.c;renderShop();}));
-  /* five rows don't fit the width, so the chip you just tapped could sit off the
-     right edge with nothing looking selected. Pull it back into view. */
   try{ const on=rail.querySelector('button.on');
        if(on&&on.scrollIntoView)on.scrollIntoView({block:'nearest',inline:'center'}); }catch(e){}
-  const list=GEAR.filter(p=>p.status!=='retired')   /* #vendor — RETIRED gear leaves the floor (set from the Dock Office workbench) */
-                 .filter(p=>gearCat==="all"||p.cat===gearCat)
+
+  /* #shop2 — the search reads the name, the maker and the shelf, because a
+     hand who half-remembers "that thing Good Guy made" has to find it. */
+  const words=shopQ.toLowerCase().split(/\s+/).filter(Boolean);
+  const hits=p=>{ if(!words.length)return true;
+    const hay=((p.name||'')+' '+(p.brand||'')+' '+(p.cat||'')+' '+(p.blurb||'')).toLowerCase();
+    return words.every(w=>hay.indexOf(w)>=0); };
+
+  const list=GEAR.filter(p=>p.status!=='retired')
+                 .filter(p=>gearCat==='saved'?favHas(p.id):(gearCat==="all"||p.cat===gearCat))
+                 .filter(hits)
                  .slice().sort((a,b)=>((a.sort==null?500:+a.sort||0)-(b.sort==null?500:+b.sort||0)));
-  if(!list.length){ grid.innerHTML='<p class="sub" style="grid-column:1/-1">Nothing in this row yet.</p>'; return; }
+
+  paintRecs();
+  const note=document.getElementById('shopNote'); if(note)note.style.display=words.length?'none':'';
+
+  if(!list.length){
+    grid.innerHTML='<p class="sub" style="grid-column:1/-1;text-align:center;padding:26px 8px;line-height:1.7">'
+      +(words.length?('Nothing on the shelf for “'+shEsc(shopQ)+'”.<br>Try a maker’s name, or a shelf above.')
+        :gearCat==='saved'?'Nothing saved yet. Tap the heart on anything worth coming back to.'
+        :'Nothing in this row yet.')+'</p>';
+    return;
+  }
   grid.innerHTML=list.map(p=>{
     const cols=gearArr(p.colors), extra=cols.length>4?('+'+(cols.length-4)):'';
     const badge=p.deal?'<span class="gbadge deal">'+shEsc(p.deal)+'</span>'
@@ -9474,21 +9648,86 @@ function renderShop(){
       :(usd!=null)
         ?'<div class="gprice">'+shEsc(usd)+(was!=null?'<span class="was">'+shEsc(was)+'</span>':'')+'</div>'
         :'<div class="gprice" style="color:var(--steel)">Price soon</div>';
-    const bucks=(GEAR_SHOW_PRICES&&bk!=null)?'<div class="gbucks">or '+bk.toLocaleString()+' ⬡</div>':'';
+    const bucks=(GEAR_SHOW_PRICES&&bk!=null)?'<div class="gbucks">or '+bk.toLocaleString()+' ⧡</div>':'';
+    const fav=favHas(p.id);
     return '<div class="gcard" role="button" tabindex="0" data-p="'+shEsc(p.id)+'">'
-      +'<div class="shot"><img loading="lazy" alt="'+shEsc(p.name)+'" src="'+shEsc(gearShot(p,0))+'">'+badge+'</div>'
+      +'<div class="shot"><img loading="lazy" alt="'+shEsc(p.name)+'" src="'+shEsc(gearShot(p,0))+'">'+badge
+      +'<button class="gheart'+(fav?' on':'')+'" type="button" data-fav="'+shEsc(p.id)+'" aria-pressed="'+(fav?'true':'false')+'" aria-label="Save for later">'+(fav?'♥':'♡')+'</button>'
+      +'</div>'
       +'<div class="gbrand">'+shEsc(p.brand||"The Shadow Hook")+'</div>'
       +'<div class="gname">'+shEsc(p.name)+'</div>'+price+bucks
-      +(function(){const s=prvStats(p.id);return s.n?'<div class="grev"><span class="st">'+prvStars(s.avg)+'</span>'+s.avg.toFixed(1)+' ('+s.n+')</div>':'';})()   /* #reviews — the word rides the card */
+      +(function(){const s=prvStats(p.id);return s.n?'<div class="grev"><span class="st">'+prvStars(s.avg)+'</span>'+s.avg.toFixed(1)+' ('+s.n+')</div>':'';})()
       +(cols.length?'<div class="gsw">'+cols.slice(0,4).map(c=>'<i style="background:'+gearHex(c&&c.hex)+'"></i>').join('')+(extra?'<span>'+extra+'</span>':'')+'</div>':'')
       +'</div>';
   }).join('');
+  wireHearts(grid);
   grid.querySelectorAll('.gcard').forEach(el=>{
     const go=()=>openGear(el.dataset.p);
     el.addEventListener('click',go);
     el.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); go(); } });
   });
 }
+
+/* the heart must never open the product page underneath it */
+function wireHearts(host){
+  if(!host)return;
+  host.querySelectorAll('[data-fav]').forEach(function(b){
+    b.addEventListener('click',function(e){
+      e.stopPropagation(); e.preventDefault();
+      var on=favToggle(b.dataset.fav);
+      b.classList.toggle('on',on);
+      b.textContent=on?'♥':'♡';
+      b.setAttribute('aria-pressed',on?'true':'false');
+      b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop');
+      try{ toast(on?'♥ Saved for later':'Taken off the list'); }catch(e2){}
+      /* the shelves and the rail both move with it — after the animation, so
+         the heart the thumb is still on doesn't vanish mid-tap */
+      clearTimeout(window.__favRepaint);
+      window.__favRepaint=setTimeout(function(){ try{ renderShop(); }catch(e3){} },380);
+    });
+  });
+}
+
+function paintRecs(){
+  const wrap=document.getElementById('recWrap'), railEl=document.getElementById('recRail'), why=document.getElementById('recWhy');
+  if(!wrap||!railEl)return;
+  const r=recFor();
+  /* #shop2 — no history, no guessing. This says WHY, or it doesn't show.
+     A rail called "recommended" that is really shuffled stock gets clocked
+     immediately and costs more trust than it earns. */
+  if(!r||!r.list.length||shopQ){ wrap.style.display='none'; return; }
+  wrap.style.display='';
+  const same=r.list.filter(p=>(p.brand||'')===(r.seed.brand||'')).length;
+  /* split only on a SPACED dash — "The Hook Tee — Bone on Black" loses its
+     colourway, but "Full-Brim Hard Hat" keeps its hyphen and its dignity */
+  if(why)why.textContent='Because you saved the '+String(r.seed.name||'').split(/\s+[\u2014\u2013-]\s+/)[0].trim()
+    +(same?' — more off the same bench.':' — more from the same shelf.');
+  railEl.innerHTML=r.list.map(p=>{
+    const usd=gearMoney(p.usd);
+    return '<div class="rec" role="button" tabindex="0" data-p="'+shEsc(p.id)+'">'
+      +'<div class="shot"><img loading="lazy" alt="'+shEsc(p.name)+'" src="'+shEsc(gearShot(p,0))+'">'
+      +'<button class="gheart" type="button" data-fav="'+shEsc(p.id)+'" aria-label="Save for later">♡</button></div>'
+      +'<div class="nm">'+shEsc(p.name)+'</div>'
+      +'<div class="px">'+(GEAR_SHOW_PRICES&&usd!=null?shEsc(usd):'—')+'</div></div>';
+  }).join('');
+  wireHearts(railEl);
+  railEl.querySelectorAll('.rec').forEach(el=>el.addEventListener('click',()=>openGear(el.dataset.p)));
+}
+
+/* the search box, wired once */
+(function(){
+  var qi=document.getElementById('shopQ'), qx=document.getElementById('shopQX');
+  if(!qi)return;
+  qi.addEventListener('input',function(){
+    shopQ=(qi.value||'').trim();
+    if(qx)qx.classList.toggle('on',!!shopQ);
+    renderShop();
+  });
+  if(qx)qx.addEventListener('click',function(){ qi.value=''; shopQ=''; qx.classList.remove('on'); qi.focus(); renderShop(); });
+})();
+
+/* the list follows the hand once they claim a card */
+try{ favLoad().then(function(){ try{ renderShop(); }catch(e){} }); }catch(e){}
 
 /* ---- one product ---- */
 function openGear(id){
@@ -19387,23 +19626,58 @@ window.shareCall=shareCall;
   /* ---- the cart sheet ---- */
   function renderCart(){
     var host=document.getElementById('cartLines'); if(!host)return;
-    if(!cart.length){ host.innerHTML='<p class="sub" style="padding:14px 0">Nothing aboard yet. The Armory’s a tap away.</p>'; }
+    if(!cart.length){
+      host.innerHTML='<div style="text-align:center;padding:34px 10px;color:var(--steel);font-size:13.5px;line-height:1.7">'
+        +'<div style="font-size:36px;margin-bottom:8px">\u{1F6E1}</div>Nothing aboard yet.<br>The Armory’s a tap away.</div>';
+    }
     else host.innerHTML=cart.map(function(l,i){
       var p=alive(l), full=prod(l.id);
       var nm=full?(full.name||l.id):l.id;
       var variant=[l.color,l.size].filter(Boolean).join(' · ');
-      if(!p) return '<div class="cart-line" style="opacity:.55"><div class="nm"><b>'+hEsc(nm)+'</b><span>'
-        +(variant?hEsc(variant)+' · ':'')+'left the floor — not charged</span></div>'
-        +'<button class="cart-x" data-x="'+i+'" aria-label="remove">✕</button></div>';
-      return '<div class="cart-line"><div class="nm"><b>'+hEsc(nm)+'</b><span>'+hEsc(variant||'—')+'</span></div>'
-        +'<div class="cart-qty"><button data-dn="'+i+'" aria-label="less">−</button><b>'+l.qty+'</b><button data-up="'+i+'" aria-label="more">+</button></div>'
-        +'<div class="px">'+fmt(centsOf(l))+'</div>'
-        +'<button class="cart-x" data-x="'+i+'" aria-label="remove">✕</button></div>';
+      /* a line whose product left the floor: say so plainly, charge nothing */
+      if(!p) return '<div class="cl2 dead"><div class="th">⚠</div><div class="m">'
+        +'<b>'+hEsc(nm)+'</b><i>'+(variant?hEsc(variant)+' · ':'')+'left the floor — not charged</i>'
+        +'<div class="acts"><button class="mini warn" data-x="'+i+'">Remove</button></div></div></div>';
+      var shot=''; try{ shot=full?gearShot(full,0):''; }catch(e){}
+      return '<div class="cl2">'
+        +'<button class="th" type="button" data-open="'+hEsc(l.id)+'" aria-label="Open '+hEsc(nm)+'">'
+        +(shot?'<img loading="lazy" alt="" src="'+hEsc(shot)+'">':'\u{1F6E1}')+'</button>'
+        +'<div class="m">'
+        +'<b class="link" data-open="'+hEsc(l.id)+'">'+hEsc(nm)+'</b>'
+        +'<i>'+hEsc(variant||'—')+'</i>'
+        +(full&&full.brand?'<i class="vend">Off the bench at '+hEsc(full.brand)+'</i>':'')
+        +'<span class="pr">'+fmt(centsOf(l))+'</span>'
+        +'<div class="acts">'
+        +'<span class="q2"><button data-dn="'+i+'" aria-label="less">'+(l.qty>1?'−':'\u{1F5D1}')+'</button>'
+        +'<span>'+l.qty+'</span><button data-up="'+i+'" aria-label="more">+</button></span>'
+        +'<button class="mini" data-sv="'+i+'">♡ Save for later</button>'
+        +'<button class="mini warn" data-x="'+i+'">Remove</button>'
+        +'</div></div></div>';
     }).join('');
     var el; (el=document.getElementById('cartSub'))&&(el.textContent=fmt(totalCents()));
-    host.querySelectorAll('[data-up]').forEach(function(b){b.addEventListener('click',function(){var l=cart[+b.dataset.up];if(l){l.qty=Math.min(20,l.qty+1);csave();renderCart();renderFab();}});});
-    host.querySelectorAll('[data-dn]').forEach(function(b){b.addEventListener('click',function(){var l=cart[+b.dataset.dn];if(l&&l.qty>1){l.qty--;csave();renderCart();renderFab();}});});
-    host.querySelectorAll('[data-x]').forEach(function(b){b.addEventListener('click',function(){cart.splice(+b.dataset.x,1);csave();renderCart();renderFab();});});
+
+    host.querySelectorAll('[data-up]').forEach(function(b){b.addEventListener('click',function(){
+      var l=cart[+b.dataset.up]; if(l){ l.qty=Math.min(20,l.qty+1); csave(); renderCart(); renderFab(); } });});
+    /* one below one is a bin, not a minus — the same move every shop uses */
+    host.querySelectorAll('[data-dn]').forEach(function(b){b.addEventListener('click',function(){
+      var k=+b.dataset.dn, l=cart[k]; if(!l)return;
+      if(l.qty>1){ l.qty--; } else { cart.splice(k,1); }
+      csave(); renderCart(); renderFab(); });});
+    host.querySelectorAll('[data-x]').forEach(function(b){b.addEventListener('click',function(){
+      cart.splice(+b.dataset.x,1); csave(); renderCart(); renderFab(); });});
+    /* #cart2 — save for later moves it onto the SAME shelf the heart writes to.
+       Two doors, one list: that is what a buyer already assumes. */
+    host.querySelectorAll('[data-sv]').forEach(function(b){b.addEventListener('click',function(){
+      var k=+b.dataset.sv, l=cart[k]; if(!l)return;
+      try{ if(window.favToggle&&!window.favHas(l.id))window.favToggle(l.id); }catch(e){}
+      cart.splice(k,1); csave(); renderCart(); renderFab();
+      try{ toast('♡ Saved for later'); }catch(e){}
+      try{ renderShop(); }catch(e){} });});
+    /* the picture and the name are the way back to the product page */
+    host.querySelectorAll('[data-open]').forEach(function(b){b.addEventListener('click',function(e){
+      e.stopPropagation();
+      var sh=document.getElementById('cartSheet'); if(sh)sh.classList.remove('on');
+      try{ openGear(b.dataset.open); }catch(e2){} });});
   }
   function openCart(){ renderCart(); var s=document.getElementById('cartSheet'); if(s)s.classList.add('on'); }
 
@@ -19577,7 +19851,7 @@ window.shareCall=shareCall;
     var i=document.getElementById('tillEmail'), m=document.getElementById('tillEmMsg'); if(!i||!m)return;
     var v=(i.value||'').trim();
     if(/@shadowhook\.com$/i.test(v)){ m.textContent='⚠ That is your dispatch-card address — it receives no mail. Put a real one in.'; m.style.color='var(--warn)'; }
-    else if(!v){ m.textContent='> the receipt lands here'; m.style.color='var(--steel)'; }
+    else if(!v){ m.textContent='> your email — this is where the receipt lands'; m.style.color='var(--steel)'; }
     else if(!tMailOk()){ m.textContent='> a real email'; m.style.color='var(--steel)'; }
     else { m.textContent='✔ Saved for next time'; m.style.color='var(--ok)'; }
     tPaint();
@@ -19595,7 +19869,11 @@ window.shareCall=shareCall;
     var nm=document.getElementById('tillName'); if(nm&&!nm.value)nm.value=saved.n||'';
     var em=document.getElementById('tillEmail');
     if(em&&!em.value){
-      /* NEVER the auth address — see the note at the top of this block */
+      /* NEVER the auth address. Not seeded and then flagged for the buyer to
+         correct either — a filled field reads as already answered, and a casual
+         would post it straight through and never see a receipt. It opens blank
+         and they type a real one. Only an address we KNOW receives mail gets
+         filled in for them. */
       var e0=(saved.e&&!/@shadowhook\.com$/i.test(saved.e))?saved.e:'';
       em.value=e0;
       if(!e0&&window.SB&&tillUid()){
@@ -19609,7 +19887,13 @@ window.shareCall=shareCall;
     await tLoadAddrs();
     TILL.addr=TILL.addrs.filter(function(a){return a.is_default})[0]||TILL.addrs[0]||null;
     tPaint();
-    if(!TILL.addr) tShow('tillAddrPnl',true);
+    /* an empty email opens its own panel first — it is the one thing that
+       cannot be guessed for them, and a collapsed summary line is easy to
+       scroll straight past on the way to the seal button */
+    if(!tMailOk()){
+      tShow('tillMailPnl',true);
+      try{ var e2=document.getElementById('tillEmail'); if(e2)e2.focus(); }catch(e){}
+    } else if(!TILL.addr){ tShow('tillAddrPnl',true); }
     await tLoadCards();
     tPaint();
   }
