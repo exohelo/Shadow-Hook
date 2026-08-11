@@ -6420,11 +6420,25 @@ if('serviceWorker' in navigator){
   var _hadController = !!navigator.serviceWorker.controller;   // false on a first-ever visit
   navigator.serviceWorker.register('sw.js').then(function(reg){
     SW_REG=reg;
-    try{ reg.update(); }catch(e){}
+    /* #swcatch(aug10) — reg.update() returns a PROMISE. try/catch does not catch
+       a rejected promise, so every failed update — dead signal, sw.js 404, a
+       browser quirk mid-swap — escaped as an UNHANDLED REJECTION, and the alarm
+       book dutifully filed it as a Shadow Hook crash. That is where the
+       "Failed to update a ServiceWorker for scope (…/sw.js)" alarm came from.
+       An update that doesn't land is a network condition, not a fault: the old
+       worker keeps serving and we try again on the next foreground. Swallow it.
+       Throttled, too — visibilitychange fires every single time the app comes
+       forward, and it was re-fetching sw.js each time. */
+    var _updAt=0;
+    var _upd=function(){
+      if(Date.now()-_updAt<30000)return; _updAt=Date.now();
+      try{ var p=reg.update(); if(p&&p.catch)p.catch(function(){}); }catch(e){}
+    };
+    _upd();
     /* reopening the app from the home screen fires visibilitychange, not a full
        load — so re-check for a new version then, too. */
     document.addEventListener('visibilitychange',function(){
-      if(!document.hidden){ try{ reg.update(); }catch(e){} }
+      if(!document.hidden) _upd();
     });
     /* a newer sw.js was found → once it's installed and ready, tell it to take over */
     reg.addEventListener('updatefound',function(){
@@ -19711,17 +19725,51 @@ html.season-xmas.daylight{}
      drops a row in error_log — run ERROR-LOG.sql once. THE ALARMS sits at
      the top of the Command Center: what broke, for whom, where, when, with
      a ✓ seen toggle. Capped per session so a broken loop can't flood it. */
-  window.shkAlert=function(where,err){
+  /* #alarmnoise(aug10) — THE ALARM BOOK ONLY TAKES OUR OWN JAMS.
+     window.onerror / unhandledrejection are the whole page's, not just ours:
+     a member's BROWSER EXTENSION throwing inside its injected content script
+     lands on the same window and was filing itself as a Shadow Hook alarm.
+     Two of those were sitting unseen in the book, neither one ours:
+       · "Invalid call to runtime.sendMessage(). Tab not found."  ← runtime.*
+         is the extension messaging API. A web page CANNOT call it; this is
+         somebody's password manager / blocker losing its tab.
+       · "newestWorker is null"  ← Firefox's wording for a null TypeError
+         (Chrome says "Cannot read properties of null"), out of service-worker
+         update plumbing. No such name exists in this file or in sw.js.
+     Nothing to fix in either case, and the Keymaster can't act on them — they
+     only bury the real ones. These get dropped here, but they still ride into
+     the DEV LOG, so nothing actually disappears.
+     NOTE the order: noise is judged BEFORE the per-session counter, or six
+     extension throws would spend the whole budget and a real crash after them
+     would never be filed. */
+  const _NOISE=[
+    /runtime\.sendMessage|runtime\.connect|Extension context invalidated|message port closed/i,
+    /(chrome|moz|safari(-web)?)-extension:\/\//i,   /* thrown from an extension's own file */
+    /^Script error\.?$/i,                            /* cross-origin, message stripped by the browser — zero to act on */
+    /ResizeObserver loop (limit exceeded|completed)/i,   /* benign browser chatter, never a real fault */
+    /Failed to (update|register) a ServiceWorker|newestWorker is null/i   /* bad signal mid-update, not a code fault */
+  ];
+  window.shkAlert=function(where,err,src){
     try{
+      const msg=String((err&&err.message)||err||'?').slice(0,300);
+      const at=String(src||(err&&err.fileName)||'');
+      if(_NOISE.some(function(rx){return rx.test(msg)||rx.test(at);})){
+        try{DEVLOG.err('[not ours] '+msg,at);}catch(_){}   /* still visible in the black box */
+        return;
+      }
       if(!window.SB||!window.__shkUid)return;
       window.__errN=(window.__errN||0)+1; if(window.__errN>6)return;
-      const msg=String((err&&err.message)||err||'?').slice(0,300);
       const acct=(typeof loadAcct==='function'?(loadAcct()||{}):{});
-      window.SB.from('error_log').insert({where_at:where,message:msg,handle:((acct.handle||'').toUpperCase())||null,page:location.pathname}).then(()=>{},()=>{});
+      /* #alarmwhere — carry the file:line. "Cannot set properties of null" tells
+         the Keymaster nothing on its own; with the line it's a five-minute fix. */
+      const full=(at?(msg+'  @ '+at.replace(/^.*\//,'')):msg).slice(0,300);
+      window.SB.from('error_log').insert({where_at:where,message:full,handle:((acct.handle||'').toUpperCase())||null,page:location.pathname}).then(()=>{},()=>{});
     }catch(e){}
   };
-  window.addEventListener('error',function(e){ try{shkAlert('uncaught',(e&&(e.message||e.error))||'?');}catch(_){}});
-  window.addEventListener('unhandledrejection',function(e){ try{shkAlert('promise',(e&&e.reason)||'?');}catch(_){}});
+  window.addEventListener('error',function(e){
+    try{shkAlert('uncaught',(e&&(e.message||e.error))||'?',e&&e.filename?(e.filename+(e.lineno?':'+e.lineno:'')):'');}catch(_){}});
+  window.addEventListener('unhandledrejection',function(e){
+    try{const r=e&&e.reason;shkAlert('promise',r||'?',(r&&r.stack)?String(r.stack).split('\n')[1]:'');}catch(_){}});
   let _alarms=[];
   window.kmAlarms=async function(){
     const out=$('kmAlarms');if(!out)return;
