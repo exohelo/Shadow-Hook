@@ -3,7 +3,6 @@
    TO PUSH AN UPDATE, CHANGE ONE THING: the version number on the CACHE line just
    below (v4 → v5 → v6 …). Then re-upload the files you changed (index.html and,
    because you bumped it, this sw.js). That's the whole workflow.
-
    Why this makes old versions go away:
      • The app is served NETWORK-FIRST (see the fetch handler). Every time a phone
        opens the app online it pulls the latest index.html straight from the server,
@@ -14,11 +13,14 @@
      • Bumping the number below also wipes every old cache on activate, so nothing
        stale can survive.
    ──────────────────────────────────────────────────────────────────────────── */
-const CACHE = 'shadowhook-v33';  // ← bump this each time you deploy an update  (v33: the bells — alerts for chat replies, sales, approvals and vendor word)
+const CACHE = 'shadowhook-v34';  // ← bump this each time you deploy an update  (v34: the cache only takes a real app — a host hiccup can no longer overwrite index.html with an error page)
 
-const SHELL = [
-  '.',
-  'index.html',
+/* #swdupe(aug10) — '.' and 'index.html' ARE THE SAME 2.1 MB DOCUMENT.
+   They both sat in the shell list, so every version bump pulled the whole app
+   down TWICE on a member's phone — often on cell data, in a yard, on one bar.
+   The document is fetched once below and filed under both keys from that single
+   response; the offline fallback still checks both, exactly as before. */
+const ASSETS = [
   'manifest.webmanifest',
   'icon-192.png',
   'icon-512.png',
@@ -26,15 +28,29 @@ const SHELL = [
   'apple-touch-icon.png'
 ];
 
+/* Only a REAL app document is ever worth filing. See #swpoison in the fetch
+   handler below for what happens when this check isn't made. */
+const isGoodDoc = (res) => !!(res && res.ok && !res.redirected);
+
 self.addEventListener('install', (e) => {
   e.waitUntil(
-    caches.open(CACHE).then((c) =>
-      Promise.all(SHELL.map((u) =>
+    caches.open(CACHE).then((c) => {
+      const doc = fetch(new Request('index.html', { cache: 'reload' }))
+        .then((res) => isGoodDoc(res)
+          ? Promise.all([c.put('index.html', res.clone()), c.put('.', res.clone())])
+          : null)
+        .catch(() => null);
+      const rest = Promise.all(ASSETS.map((u) =>
         fetch(new Request(u, { cache: 'reload' }))
           .then((res) => (res && res.ok) ? c.put(u, res) : null)
           .catch(() => null)
-      ))
-    ).then(() => self.skipWaiting())
+      ));
+      return Promise.all([doc, rest]);
+    })
+    /* take over either way — network-first means the app still runs with an empty
+       cache, and a worker stuck in "waiting" would strand the member on the old
+       build until they killed the app. */
+    .then(() => self.skipWaiting(), () => self.skipWaiting())
   );
 });
 
@@ -43,6 +59,7 @@ self.addEventListener('activate', (e) => {
     caches.keys()
       .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
+      .catch(() => self.clients.claim())
   );
 });
 
@@ -58,28 +75,37 @@ self.addEventListener('message', (e) => {
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
-
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
-
   const isDoc = req.mode === 'navigate' ||
                 (req.headers.get('accept') || '').includes('text/html');
-
   // The app document: NETWORK-FIRST. Always try the server (cache:'reload' bypasses
   // the browser's HTTP cache) so the newest deploy wins; fall back to cache offline.
   if (isDoc) {
     e.respondWith(
       fetch(url.href, { cache: 'reload', credentials: 'same-origin' })
         .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put('index.html', copy)).catch(() => {});
-          return res;
+          /* #swpoison(aug10) — THE CACHE ONLY EVER TAKES A REAL APP.
+             This used to file whatever came back, and Cache.put() does NOT reject
+             a 404 or a 502 — verified, it stores them happily. So one hiccup at
+             the host (a deploy mid-swap, a Cloudflare error page, a cold origin)
+             on a single navigation overwrote the good index.html with that error
+             page. The member then lost signal, the fallback below handed them the
+             cached copy, and they were looking at "502 Bad Gateway" AS the app —
+             stuck there until they cleared site data. Only a real 200 gets filed. */
+          if (isGoodDoc(res)) {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put('index.html', copy)).catch(() => {});
+            return res;
+          }
+          /* Server answered, but not with the app. Prefer the last known-good
+             build over showing a member the host's error page. */
+          return caches.match('index.html').then((r) => r || res);
         })
         .catch(() => caches.match('index.html').then((r) => r || caches.match('.')))
     );
     return;
   }
-
   // Everything else (icons, manifest): serve fast from cache, refresh in background.
   e.respondWith(
     caches.match(req).then((cached) => {
@@ -107,7 +133,7 @@ self.addEventListener('push', (e) => {
     badge: 'icon-192.png',
     tag: data.tag || 'shadowhook',
     vibrate: [120, 60, 120],
-    data: { url: data.url || '.' }
+    data: { url: data.url || '.', room: data.room || null, go: data.go || null }
   };
   e.waitUntil(self.registration.showNotification(title, opts));
 });
