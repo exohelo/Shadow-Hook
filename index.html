@@ -2535,7 +2535,12 @@ window.DEVLOG=(function(){
       <!-- #armtabs — one Armory, two shelves: the gear (PRODUCTS) and the hands (SERVICES).
            Services render inline off the same trade_posts book the /service page reads. -->
       <div class="race-board-tabs" id="armMode" style="margin:0 0 12px">
-        <button data-v="products" class="on">🛡 PRODUCTS</button><button data-v="services">🛠 SERVICES</button>
+        <button data-v="products" class="on">🛡 PRODUCTS</button><button data-v="services">🛠 SERVICES</button><button data-v="orders">📦 MY ORDERS</button>
+      </div>
+      <!-- #myorders — the buyer's own orders + live carrier tracking (loadMyOrders) -->
+      <div id="armOrders" style="display:none">
+        <div class="card-h" style="margin:2px 2px 14px">📦 YOUR ORDERS <span class="sl">//</span> track every delivery</div>
+        <div id="moBody"></div>
       </div>
       <div id="armProducts">
         <!-- #amb — the recruiting poster leads the products shelf -->
@@ -20133,17 +20138,96 @@ html.season-xmas.daylight{}
         +'</div>';
     }).join('');
   }
+  /* ---- #myorders — the buyer's own orders + live carrier tracking ----
+     Reads the member's OWN orders (RLS: user_id = auth.uid() — run ORDERS-READ.sql),
+     shows status, and turns the tracking a vendor logged in the Dock Office into a
+     one-tap "Track ↗" deep link to USPS/UPS/FedEx/DHL. Refreshes each time the
+     MY ORDERS shelf is opened. */
+  window.loadMyOrders=async function(){
+    const host=document.getElementById('moBody'); if(!host)return;
+    const esc=s=>(s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    if(!window.SB||!window.__shkUid){
+      host.innerHTML='<p class="sub" style="text-align:center;padding:26px 10px;line-height:1.7">Claim your card and sign in to see your orders and delivery tracking.</p>';
+      return;
+    }
+    host.innerHTML='<p class="sub" style="text-align:center;padding:22px">opening your orders…</p>';
+    const _dt=s=>{try{return new Date(s).toLocaleDateString([],{month:'short',day:'numeric'});}catch(e){return'';}};
+    const _money=n=>'$'+(Math.round((+n||0)*100)/100).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+    const trackUrl=(carrier,code)=>{
+      const c=String(carrier||'').toUpperCase(), t=encodeURIComponent(String(code||'').replace(/\s+/g,''));
+      if(!t) return null;
+      if(c.indexOf('USPS')>=0) return 'https://tools.usps.com/go/TrackConfirmAction?tLabels='+t;
+      if(c.indexOf('UPS')>=0)  return 'https://www.ups.com/track?tracknum='+t;
+      if(c.indexOf('FEDEX')>=0)return 'https://www.fedex.com/fedextrack/?trknbr='+t;
+      if(c.indexOf('DHL')>=0)  return 'https://www.dhl.com/us-en/home/tracking.html?tracking-id='+t;
+      return null;   // hand delivery / other — show the note, no external link
+    };
+    const statusOf=items=>{
+      const live=items.filter(i=>i.status!=='cancelled');
+      if(!live.length) return {k:'red',t:'Cancelled'};
+      if(live.every(i=>i.status==='delivered')) return {k:'grn',t:'Delivered'};
+      if(live.some(i=>i.status==='shipped'||i.status==='delivered')) return {k:'grn',t:'Shipped'};
+      if(live.some(i=>i.status==='working')) return {k:'gold',t:'In the works'};
+      return {k:'gold',t:'Ordered'};
+    };
+    try{
+      const r=await window.SB.from('orders')
+        .select('id,code,created_at,payment_status,total_usd,order_items(name,brand,qty,color,size,status,carrier,tracking)')
+        .eq('user_id',window.__shkUid).order('created_at',{ascending:false}).limit(40);
+      if(r.error)throw r.error;
+      const orders=(r.data||[]).filter(o=>o.payment_status==='paid'||o.payment_status==='refunded');
+      if(!orders.length){ host.innerHTML='<p class="sub" style="text-align:center;padding:26px 10px;line-height:1.7">No orders yet. When you buy from the Armory, it lands here with live delivery tracking.</p>'; return; }
+      host.innerHTML=orders.map(o=>{
+        const items=(o.order_items||[]);
+        const st=statusOf(items);
+        const refunded=o.payment_status==='refunded';
+        const lines=items.filter(i=>i.status!=='cancelled').map(i=>
+          '<div style="display:flex;gap:8px;font-size:12.5px;padding:2px 0"><span style="flex:1;color:var(--bone)">'
+          +esc(i.name)+((i.color||i.size)?' <span class="sub">('+esc([i.color,i.size].filter(Boolean).join(' · '))+')</span>':'')
+          +'</span><span class="sub mono">×'+(+i.qty||1)+'</span></div>').join('');
+        const seen={}, pkgs=[];
+        items.forEach(i=>{ if(i.tracking){ const k=(i.carrier||'')+'|'+i.tracking; if(!seen[k]){seen[k]=1;pkgs.push({carrier:i.carrier||'',code:i.tracking});} } });
+        let ship='';
+        if(pkgs.length){
+          ship=pkgs.map(p=>{
+            const url=trackUrl(p.carrier,p.code);
+            const codeHtml='<span class="mono" style="color:var(--copper-hi)">'+esc(p.carrier)+' '+esc(p.code)+'</span>';
+            return '<div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;padding-top:8px;border-top:1px solid var(--line-soft)">📦 '+codeHtml
+              +(url?' <a href="'+esc(url)+'" target="_blank" rel="noopener" class="btn-line gold" style="padding:3px 12px;font-size:11px;text-decoration:none">Track ↗</a>':' <span class="sub">(hand delivery)</span>')
+              +'</div>';
+          }).join('');
+        } else if(!refunded){
+          ship='<div class="sub" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line-soft);line-height:1.6">Made to order on a maker’s bench — your tracking number posts here the moment it ships.</div>';
+        }
+        return '<div class="card" style="margin-bottom:12px"><div class="card-b">'
+          +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">'
+            +'<b class="mono" style="color:var(--copper-hi)">#'+esc(o.code||'')+'</b>'
+            +'<span class="pill '+(refunded?'red':st.k)+'">'+esc(refunded?'Refunded':st.t)+'</span>'
+            +'<span class="sub" style="margin-left:auto">'+_dt(o.created_at)+' · '+_money(o.total_usd)+'</span></div>'
+          +lines+ship
+          +'</div></div>';
+      }).join('');
+    }catch(e){
+      const m=String((e&&e.message)||'');
+      host.innerHTML=/does not exist|relation|permission|policy|rls|recursion/i.test(m)
+        ? '<p class="sub" style="color:var(--ember);text-align:center;padding:22px;line-height:1.7">Orders can’t load yet — run <b>ORDERS-READ.sql</b> once so members can read their own orders.</p>'
+        : ('<p class="sub" style="color:var(--ember)">couldn’t load your orders: '+esc(m)+'</p>');
+      try{ if(window.shkAlert)shkAlert('my orders',e); }catch(_){}
+    }
+  };
   (function(){
     const am=document.getElementById('armMode');
     if(!am)return;
     am.addEventListener('click',function(e){
       const b=e.target.closest('button'); if(!b)return;
       am.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
-      const svc=b.dataset.v==='services';
-      const gp=document.getElementById('armProducts'), sv=document.getElementById('svcBoard');
-      if(gp)gp.style.display=svc?'none':'';
-      if(sv)sv.style.display=svc?'':'none';
-      if(svc)try{armServices();}catch(e2){}
+      const v=b.dataset.v;
+      const gp=document.getElementById('armProducts'), sv=document.getElementById('svcBoard'), od=document.getElementById('armOrders');
+      if(gp)gp.style.display=v==='products'?'':'none';
+      if(sv)sv.style.display=v==='services'?'':'none';
+      if(od)od.style.display=v==='orders'?'':'none';
+      if(v==='services')try{armServices();}catch(e2){}
+      if(v==='orders')try{loadMyOrders();}catch(e2){}
     });
   })();
 
