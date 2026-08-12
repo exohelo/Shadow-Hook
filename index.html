@@ -2732,8 +2732,19 @@ window.DEVLOG=(function(){
       if(!window.SB||!window.__shkUid){m.textContent='✗ claim your card and sign in first — the mint has to know whose stack to fill';return;}
       m.textContent='opening the mint…';
       try{
-        let tok=window.SUPABASE_ANON_KEY||'';
-        try{const s=await window.SB.auth.getSession();if(s&&s.data&&s.data.session&&s.data.session.access_token)tok=s.data.session.access_token;}catch(e){}
+        /* #mintauth(aug12) — THE MINT IS ONLY EVER CALLED WITH A REAL SESSION.
+           The button can be hit while the session is still being restored (cold
+           open, token mid-refresh): getSession() comes back empty, the call used
+           to ride out on the ANON key, and the till answered "sign in first —
+           the mint needs to know whose stack to fill" — a bogus alarm for a
+           signed-in member (that's the 'bucks mint' pair in the alarm book).
+           Now: wait out the restore (up to ~5s); no token, no server call. */
+        let tok='';
+        for(let i=0;i<10&&!tok;i++){
+          try{const s=await window.SB.auth.getSession();if(s&&s.data&&s.data.session&&s.data.session.access_token)tok=s.data.session.access_token;}catch(e){}
+          if(!tok)await new Promise(r2=>setTimeout(r2,500));
+        }
+        if(!tok){m.textContent='✗ claim your card and sign in first — the mint has to know whose stack to fill';return;}
         const r=await fetch(String(window.SUPABASE_URL).replace(/\/+$/,'')+'/functions/v1/bucks-till',{method:'POST',
           headers:{'Content-Type':'application/json','apikey':window.SUPABASE_ANON_KEY||'','Authorization':'Bearer '+tok},
           body:JSON.stringify({action:'create',pack:id,return_url:location.origin+location.pathname})});
@@ -2776,7 +2787,14 @@ window.DEVLOG=(function(){
           try{
             let tok=window.SUPABASE_ANON_KEY||'';
             for(let i=0;i<20&&!(window.SB&&window.__shkUid);i++)await new Promise(r=>setTimeout(r,500)); /* wait out the session boot */
-            try{const s=await window.SB.auth.getSession();if(s&&s.data&&s.data.session&&s.data.session.access_token)tok=s.data.session.access_token;}catch(e){}
+            /* #mintauth(aug12) — same patience on the walk back: the redirect from
+               Stripe lands on a cold page, and one early getSession() used to hand
+               this call the anon key while the session was still thawing. */
+            for(let i=0;i<10;i++){
+              try{const s=await window.SB.auth.getSession();
+                if(s&&s.data&&s.data.session&&s.data.session.access_token){tok=s.data.session.access_token;break;}}catch(e){}
+              await new Promise(r2=>setTimeout(r2,500));
+            }
             const r=await fetch(String(window.SUPABASE_URL).replace(/\/+$/,'')+'/functions/v1/bucks-till',{method:'POST',
               headers:{'Content-Type':'application/json','apikey':window.SUPABASE_ANON_KEY||'','Authorization':'Bearer '+tok},
               body:JSON.stringify({action:'confirm',session:sid})});
@@ -10163,7 +10181,7 @@ function paintGear(){
     +'<div class="pdp-brand">'+shEsc(p.brand||"The Shadow Hook")+'</div>'
     +'<div class="pdp-name">'+shEsc(p.name)+'</div>'
     +(function(){const s=prvStats(p.id);   /* #reviews — the word, right under the name */
-        return (PRV.ok&&s.n)?'<div class="pdp-revline" id="gearRevTop" role="button" tabindex="0" title="read the reviews"><span class="st">'+prvStars(s.avg)+'</span><b>'+s.avg.toFixed(1)+'</b>· '+s.n+' review'+(s.n===1?'':'s')+' ▾</div>':'';})()
+        return (window.PRV&&PRV.ok&&s.n)?'<div class="pdp-revline" id="gearRevTop" role="button" tabindex="0" title="read the reviews"><span class="st">'+prvStars(s.avg)+'</span><b>'+s.avg.toFixed(1)+'</b>· '+s.n+' review'+(s.n===1?'':'s')+' ▾</div>':'';})()
     +'<div style="margin-top:10px">'+badge+'</div>'
     +(!GEAR_SHOW_PRICES
         ?'<div class="pdp-soon">Coming soon</div>'
@@ -10224,7 +10242,16 @@ function gearNotify(p,c){
    Supabase. Everything degrades soft: if the book is missing (PRV.ok=false)
    the floor paints exactly as before, no stars, no block, no errors. Every
    field here is UNTRUSTED REMOTE DATA — shEsc everything, same as the shop. */
-let PRV={ok:false,by:{},bought:null}, _prvStars=0, _prvDraft='', _prvDirty=false;
+/* #prvsafe(aug12) — `var`, NOT `let`, AND EVERY READER CHECKS THE SHELF FIRST.
+   If any earlier line of this (very long) script block dies on one phone, a
+   `let` here is left permanently half-born: every later callback that touches
+   it throws "Cannot access 'PRV' before initialization" — that's the trio of
+   promise alarms RED_READ_68 filed at one second past boot on Aug 9. Those
+   alarms are only ECHOES of an earlier killer; they buried it instead of
+   pointing at it. `var` + window.PRV guards below turn the echoes off: the
+   shop still paints (no stars, no block), and #bootbox now files the actual
+   killer with its line number. */
+var PRV={ok:false,by:{},bought:null}, _prvStars=0, _prvDraft='', _prvDirty=false;
 /* ═══ #verified(aug10) — ONLY THE HANDS WHO CARRIED IT LEAVE THE WORD ═══
    The book used to take anybody's word on anything. That is how a shelf fills
    with one-star notes from people who never held the gear, and once that
@@ -10240,6 +10267,7 @@ let PRV={ok:false,by:{},bought:null}, _prvStars=0, _prvDraft='', _prvDirty=false
    or the SQL hasn't been run yet. In that case the floor paints exactly as it
    did before and the database stays the only thing standing guard. */
 async function sbLoadMyPurchases(){
+  if(!window.PRV)return;   /* #prvsafe — half-booted page: hold the old behaviour, no throw */
   if(!window.SB||!window.__shkUid){ PRV.bought=null; return; }
   try{
     const r=await window.SB.from('my_purchases').select('*');
@@ -10258,15 +10286,15 @@ async function sbLoadMyPurchases(){
 }
 window.sbLoadMyPurchases=sbLoadMyPurchases;
 /* can this device answer "did you buy it?" at all */
-function prvGateOn(){ return !!PRV.bought; }
-function prvBought(pid){ return !!(PRV.bought&&PRV.bought[String(pid)]); }
+function prvGateOn(){ return !!(window.PRV&&PRV.bought); }
+function prvBought(pid){ return !!(window.PRV&&PRV.bought&&PRV.bought[String(pid)]); }
 const prvStars=n=>{n=Math.max(0,Math.min(5,Math.round(n)));return '★'.repeat(n)+'☆'.repeat(5-n);};
-function prvStats(pid){const l=PRV.by[String(pid)]||[];if(!l.length)return{n:0,avg:0};return{n:l.length,avg:l.reduce((s,r)=>s+(+r.stars||0),0)/l.length};}
-function prvMine(pid){const uid=window.__shkUid;if(!uid)return null;return (PRV.by[String(pid)]||[]).find(r=>r.reviewer_id===uid)||null;}
+function prvStats(pid){const l=(window.PRV&&PRV.by[String(pid)])||[];if(!l.length)return{n:0,avg:0};return{n:l.length,avg:l.reduce((s,r)=>s+(+r.stars||0),0)/l.length};}
+function prvMine(pid){const uid=window.__shkUid;if(!uid)return null;return ((window.PRV&&PRV.by[String(pid)])||[]).find(r=>r.reviewer_id===uid)||null;}
 function prvKm(){try{if(window.__isKM)return true;return localStorage.getItem(K('km'))==='1';}catch(e){return false;}}
 function gearRevBlock(p){
-  if(!PRV.ok)return '';                       // the book isn't open — the page holds its tongue
-  const s=prvStats(p.id), list=PRV.by[String(p.id)]||[], mine=prvMine(p.id), km=prvKm();
+  if(!window.PRV||!PRV.ok)return '';          // the book isn't open — the page holds its tongue
+  const s=prvStats(p.id), list=(window.PRV&&PRV.by[String(p.id)])||[], mine=prvMine(p.id), km=prvKm();
   let mineUi='';
   if(!window.__shkUid){
     mineUi='<p class="sub" style="margin:10px 0 2px">Browsing’s open to every hand — <b style="color:var(--bone)">claim your card</b> to leave your word.</p>';
@@ -10386,7 +10414,7 @@ function rvnSave(o){try{localStorage.setItem(K('revnudge'),JSON.stringify(o))}ca
 /* their word landed (or they struck the ask) — this one stops asking for good */
 function rvnClear(pid){const st=rvnState();st.done=st.done||{};st.done[String(pid)]=Date.now();rvnSave(st);}
 function rvnDue(){
-  if(!PRV.bought||!window.__shkUid)return [];
+  if(!window.PRV||!PRV.bought||!window.__shkUid)return [];
   const st=rvnState(), now=Date.now();
   if(st.snoozeUntil&&now<st.snoozeUntil)return [];
   const done=st.done||{};
@@ -10474,7 +10502,7 @@ function rvnPing(){
 }
 window.renderRevNudge=renderRevNudge;
 async function sbLoadProductReviews(){
-  if(!window.SB)return;
+  if(!window.SB||!window.PRV)return;   /* #prvsafe — a half-booted page reads nothing, throws nothing */
   /* #verified(aug10) — the buyer's own orders ride along with the book. They
      have to land together: painting the word without knowing who bought what
      would flash the form at a hand who can't use it, then snatch it back. */
@@ -19770,6 +19798,34 @@ html.season-xmas.daylight{}
     try{shkAlert('uncaught',(e&&(e.message||e.error))||'?',e&&e.filename?(e.filename+(e.lineno?':'+e.lineno:'')):'');}catch(_){}});
   window.addEventListener('unhandledrejection',function(e){
     try{const r=e&&e.reason;shkAlert('promise',r||'?',(r&&r.stack)?String(r.stack).split('\n')[1]:'');}catch(_){}});
+  /* #bootbox(aug12) — CRASHES FROM BEFORE THIS LINE GET FILED TOO.
+     The two listeners above only exist from HERE — near the end of the page.
+     A crash during boot (the 1MB script block dying halfway) happened BEFORE
+     they attached, so the killer never reached error_log; only its echoes did
+     (see #prvsafe). The black box (part 1, very top of the page) has been
+     recording since the first script block — so the moment the wire and the
+     session are both up, everything it caught pre-wire is shipped, WITH its
+     :line. Snapshot is taken NOW: entries recorded after this line are the
+     live listeners' business, never filed twice. Noise-filtered + capped. */
+  (function(){
+    let boot=[];
+    try{ boot=((window.DEVLOG&&DEVLOG._s&&DEVLOG._s.errs)||[]).slice(0,10); }catch(_){}
+    let tries=0;
+    function ship(){
+      tries++;
+      if(!window.SB||!window.__shkUid){ if(tries<10)setTimeout(ship,4000); return; }
+      try{
+        boot.slice().reverse().forEach(function(x){          /* oldest first — the killer leads */
+          if(!x||!x.msg)return;
+          let m=String(x.msg);
+          if(/^\[not ours\]|^failed to load:/i.test(m))return;   /* devlog bookkeeping, not a jam */
+          const isP=/^promise: /.test(m); m=m.replace(/^promise: /,'');
+          shkAlert(isP?'boot·promise':'boot',{message:m},x.at||'');
+        });
+      }catch(_){}
+    }
+    if(boot.length)setTimeout(ship,3000);
+  })();
   let _alarms=[];
   window.kmAlarms=async function(){
     const out=$('kmAlarms');if(!out)return;
