@@ -13,7 +13,7 @@
      • Bumping the number below also wipes every old cache on activate, so nothing
        stale can survive.
    ──────────────────────────────────────────────────────────────────────────── */
-const CACHE = 'shadowhook-v34';  // ← bump this each time you deploy an update  (v34: the cache only takes a real app — a host hiccup can no longer overwrite index.html with an error page)
+const CACHE = 'shadowhook-v35';  // ← bump this each time you deploy an update  (v35: each page keeps its own cache shelf — a visit to vendor/dockoffice/service/ambassador can no longer overwrite the app's offline copy)
 
 /* #swdupe(aug10) — '.' and 'index.html' ARE THE SAME 2.1 MB DOCUMENT.
    They both sat in the shell list, so every version bump pulled the whole app
@@ -82,27 +82,41 @@ self.addEventListener('fetch', (e) => {
   // The app document: NETWORK-FIRST. Always try the server (cache:'reload' bypasses
   // the browser's HTTP cache) so the newest deploy wins; fall back to cache offline.
   if (isDoc) {
+    /* #swpages(aug12) — THE SHELL KEY ONLY EVER TAKES THE APP ITSELF.
+       This SW scopes the whole origin, and every HTML navigation used to be
+       filed under 'index.html' — so one visit to vendor.html / dockoffice.html /
+       service.html / ambassador.html OVERWROTE the app's offline copy with that
+       page. Next no-signal open, the "app" WAS the Dock Office gate, and only
+       clearing site data brought the real one back. Now the app document keeps
+       the shell keys and every other page is filed under its own URL; offline
+       falls back to that page's own copy first, then to the app shell. */
+    const isShell = url.pathname === '/' || /\/index\.html$/.test(url.pathname);
+    const cacheKey = isShell ? 'index.html' : req;
     e.respondWith(
       fetch(url.href, { cache: 'reload', credentials: 'same-origin' })
         .then((res) => {
-          /* #swpoison(aug10) — THE CACHE ONLY EVER TAKES A REAL APP.
+          /* #swpoison(aug10) — THE CACHE ONLY EVER TAKES A REAL PAGE.
              This used to file whatever came back, and Cache.put() does NOT reject
              a 404 or a 502 — verified, it stores them happily. So one hiccup at
              the host (a deploy mid-swap, a Cloudflare error page, a cold origin)
-             on a single navigation overwrote the good index.html with that error
+             on a single navigation overwrote the good copy with that error
              page. The member then lost signal, the fallback below handed them the
              cached copy, and they were looking at "502 Bad Gateway" AS the app —
              stuck there until they cleared site data. Only a real 200 gets filed. */
           if (isGoodDoc(res)) {
             const copy = res.clone();
-            caches.open(CACHE).then((c) => c.put('index.html', copy)).catch(() => {});
+            caches.open(CACHE).then((c) => c.put(cacheKey, copy)).catch(() => {});
             return res;
           }
-          /* Server answered, but not with the app. Prefer the last known-good
-             build over showing a member the host's error page. */
-          return caches.match('index.html').then((r) => r || res);
+          /* Server answered, but not with the page. Prefer the last known-good
+             copy over showing a member the host's error page. */
+          return caches.match(cacheKey)
+            .then((r) => r || (isShell ? null : caches.match('index.html')))
+            .then((r) => r || res);
         })
-        .catch(() => caches.match('index.html').then((r) => r || caches.match('.')))
+        .catch(() => caches.match(cacheKey)
+          .then((r) => r || caches.match('index.html'))
+          .then((r) => r || caches.match('.')))
     );
     return;
   }
@@ -154,11 +168,15 @@ self.addEventListener('notificationclick', (e) => {
   const target = (d.url || '.') + hash;
   e.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
-      for (const c of list) {
-        if ('focus' in c) {
-          try { c.postMessage({ type: 'ALERT_TAP', room: d.room || null, go: d.go || null }); } catch (_) {}
-          return c.focus();
-        }
+      /* #alerts2(aug12) — LAND ON THE APP, NOT JUST ANY WINDOW. The first window
+         in the list can be vendor.html / dockoffice.html (same origin, same SW),
+         which has no alertGo — the tap would focus the Dock Office and go
+         nowhere. Prefer a window that is actually the app; only then settle. */
+      const isApp = (c) => { try { const p = new URL(c.url).pathname; return p === '/' || /\/index\.html$/.test(p); } catch (_) { return false; } };
+      const pick = list.find((c) => isApp(c) && 'focus' in c) || list.find((c) => 'focus' in c);
+      if (pick) {
+        try { pick.postMessage({ type: 'ALERT_TAP', room: d.room || null, go: d.go || null }); } catch (_) {}
+        return pick.focus();
       }
       if (self.clients.openWindow) return self.clients.openWindow(target);
     })
