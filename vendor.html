@@ -1256,17 +1256,26 @@ function openPayout(vid){
 $('abGo').addEventListener('click', saveAmb);
 $('ssGo').addEventListener('click', saveSvc);   /* #svcadd */
 $('poGo').addEventListener('click', async()=>{
+  /* #aug12 — NO DOUBLE-RECORD. Every other write in the Dock Office (crown,
+     invite, assign, service, ship, gate) disables its button while the insert
+     is in flight — this one, the money one, didn't. On a slow wire the KM taps
+     "Record" again because nothing has happened yet, and a SECOND payout row
+     lands: `paid` double-counts, `owed` reads too low, and a vendor/ambassador
+     shows square (or overpaid) when they aren't. Guard it like the rest. */
+  const g=$('poGo'); if(g.disabled) return;
   const amt=parseFloat($('poAmt').value);
   if(!(amt>0)){ $('poMsg').textContent='> a real amount'; return; }
+  g.disabled=true;
   const r = payoutKind==='amb'
     ? await SB.from('amb_payouts').insert({ambassador_id:payoutVendorId, amount_usd:Math.round(amt*100)/100,
         method:$('poMethod').value, ref:($('poRef').value||'').trim()||null, note:($('poNote').value||'').trim()||null, created_by:ME.uid})
     : await SB.from('vendor_payouts').insert({vendor_id:payoutVendorId, amount_usd:Math.round(amt*100)/100,
         method:$('poMethod').value, ref:($('poRef').value||'').trim()||null, note:($('poNote').value||'').trim()||null, created_by:ME.uid});
-  if(r.error){ $('poMsg').textContent='> '+r.error.message; shkAlert('payout record',r.error); return; }
+  if(r.error){ $('poMsg').textContent='> '+r.error.message; shkAlert('payout record',r.error); g.disabled=false; return; }
   sheet('payoutSheet',false); toast('💰 Recorded — the ledger squares');
   await Promise.all([loadLedger(), loadAmbStuff()]);
   if(TAB==='ledger')renderLedger(); if(TAB==='vendors')renderVendors(); if(TAB==='ambs')renderAmbs();
+  g.disabled=false;
 });
 
 /* ════════ MY GEAR (vendor) ════════ */
