@@ -13,7 +13,7 @@
      • Bumping the number below also wipes every old cache on activate, so nothing
        stale can survive.
    ──────────────────────────────────────────────────────────────────────────── */
-const CACHE = 'shadowhook-v35';  // ← bump this each time you deploy an update  (v35: each page keeps its own cache shelf — a visit to vendor/dockoffice/service/ambassador can no longer overwrite the app's offline copy)
+const CACHE = 'shadowhook-v36';  // ← bump this each time you deploy an update  (v36: side-swipe closes the chat room instead of the whole app; a clip that won't play shows a tap-to-open card instead of a black box)
 
 /* #swdupe(aug10) — '.' and 'index.html' ARE THE SAME 2.1 MB DOCUMENT.
    They both sat in the shell list, so every version bump pulled the whole app
