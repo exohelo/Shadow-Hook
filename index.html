@@ -6550,6 +6550,32 @@ if('serviceWorker' in navigator){
     if(_hadController){ try{ location.reload(); }catch(e){} }
   });
 }
+/* #netstate(aug12) — Facebook-style offline handling. The app now OPENS from cache on a
+   weak/dead signal (see sw.js #swfast); this layer tells the member what's happening: a
+   slim banner while offline, a quiet "back online" when the signal returns, and a re-pull
+   of the live feeds the moment it does. navigator.onLine can read TRUE on a dead wi-fi with
+   no route out, so we trust the online/offline EVENTS and use onLine only as the boot hint. */
+(function(){
+  try{
+    var s=document.createElement('style');
+    s.textContent='#netBanner{position:fixed;left:50%;top:calc(var(--tbH,0px) + 8px);transform:translate(-50%,-160%);z-index:95;background:linear-gradient(184deg,#3a2a12,#241a0e);border:1px solid rgba(238,180,107,.5);color:#eeb46b;font:600 12.5px/1.35 system-ui,-apple-system,sans-serif;letter-spacing:.02em;padding:9px 16px;border-radius:99px;box-shadow:0 10px 26px rgba(0,0,0,.55);opacity:0;transition:transform .3s cubic-bezier(.4,0,.2,1),opacity .3s;pointer-events:none;white-space:nowrap;max-width:92vw;text-align:center}'
+      +'#netBanner.on{transform:translate(-50%,0);opacity:1}';
+    document.head.appendChild(s);
+  }catch(e){}
+  function banner(){var b=document.getElementById('netBanner');if(!b){b=document.createElement('div');b.id='netBanner';try{document.body.appendChild(b);}catch(e){}}return b;}
+  function setOffline(off){var b=banner();if(off){b.textContent='⚠ Offline — showing your last update';b.classList.add('on');}else{b.classList.remove('on');}}
+  var wasOffline=false;
+  window.addEventListener('offline',function(){wasOffline=true;setOffline(true);});
+  window.addEventListener('online',function(){
+    setOffline(false);
+    if(!wasOffline)return; wasOffline=false;
+    try{if(typeof toast==='function')toast('✓ Back online');}catch(e){}
+    try{if(typeof floorJoin==='function')floorJoin();}catch(e){}          // presence roster
+    try{if(typeof sbLoadStories==='function')sbLoadStories();}catch(e){}  // the wall
+    try{if(typeof CURRENT_ROOM!=='undefined'&&CURRENT_ROOM&&typeof chatJoin==='function')chatJoin(CURRENT_ROOM);}catch(e){}  // rejoin the open room
+  });
+  try{ if(navigator.onLine===false){wasOffline=true;setOffline(true);} }catch(e){}   // reflect the state we booted in
+})();
 
 /* ── #45 — INSTALL THE APP (no more address bar) ─────────────────────────────
    manifest.webmanifest + icons make the app installable. Installed, it opens
