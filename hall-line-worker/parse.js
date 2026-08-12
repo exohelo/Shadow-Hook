@@ -133,8 +133,11 @@ function readLetter(tokens, i){
   // stuttered / doubled letter: "letter B, B …" — treat as one callout
   while (tokens[next] && /^[a-z]$/.test(tokens[next]) && tokens[next].toUpperCase() === L) next++;
   // "... W as in William 4912" / "... B is in Baker 4704" / "B like Baker" — skip the exemplar
+  // #aug12 — "Y like in yellow, 4905" too: 'like in' used to leave 'in' as the
+  // exemplar, the number read failed on 'yellow', and the whole callout was lost
+  // (that phrasing is why the jul30 fallback in leftoff.js had to exist).
   let exemplar = null;
-  if ((tokens[next] === 'as' || tokens[next] === 'is') && tokens[next+1] === 'in' && tokens[next+2]) { exemplar = tokens[next+2]; next += 3; }
+  if ((tokens[next] === 'as' || tokens[next] === 'is' || tokens[next] === 'like') && tokens[next+1] === 'in' && tokens[next+2]) { exemplar = tokens[next+2]; next += 3; }
   else if (tokens[next] === 'like' && tokens[next+1]) { exemplar = tokens[next+1]; next += 2; }
   if (exemplar){
     if (exemplar[0].toUpperCase() === L) confirmed = true;                       // Baker→B, yellow→Y
