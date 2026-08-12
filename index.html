@@ -11731,6 +11731,19 @@ async function chatOutbound(msg){ // {kind, body, url, cost}
     toast('Message didn’t send — check your connection');
   }
 }
+/* #vidmime(aug12) — a clip MUST be stored with a real Content-Type or the browser
+   won't play it back. supabase-js defaults a MISSING contentType to text/plain, and
+   many phones hand us a video File whose .type is EMPTY — so the upload succeeded but
+   the file came back as text/plain and no <video> would touch it. (Images slipped
+   through: the picker tags them image/jpeg.) Derive a real type from the File, then
+   the extension, then the kind — never undefined. */
+function mediaMime(file, ext, kind){
+  const t=(file&&file.type)||'';
+  if(/^(video|image|audio)\//i.test(t)) return t;
+  const MAP={mp4:'video/mp4',m4v:'video/x-m4v',mov:'video/quicktime',webm:'video/webm',ogg:'video/ogg','3gp':'video/3gpp',
+             jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',gif:'image/gif',webp:'image/webp',heic:'image/heic',heif:'image/heif'};
+  return MAP[String(ext||'').toLowerCase()] || ((kind==='video'||kind==='vid') ? 'video/mp4' : 'image/jpeg');
+}
 async function chatSendMedia(file,kind,cost){
   const room=CURRENT_ROOM;
   const cid=chatUUID(); chatRememberSent(cid);
@@ -11742,7 +11755,7 @@ async function chatSendMedia(file,kind,cost){
   try{
     const ext=((file.name||'').split('.').pop()||(kind==='video'?'mp4':'jpg')).toLowerCase().replace(/[^a-z0-9]/g,'')||'bin';
     const path=String(room).replace(/[^a-zA-Z0-9_-]/g,'_')+'/'+cid+'.'+ext;
-    const up=await window.SB.storage.from('chat-media').upload(path,file,{contentType:file.type||undefined,upsert:true});
+    const up=await window.SB.storage.from('chat-media').upload(path,file,{contentType:mediaMime(file,ext,kind),upsert:true});
     if(up.error)throw up.error;
     const pub=window.SB.storage.from('chat-media').getPublicUrl(path);
     const url=pub&&pub.data&&pub.data.publicUrl; if(!url)throw new Error('no public url');
@@ -12726,7 +12739,7 @@ async function postMediaStory(){
     try{
       const ext=((file.name||'').split('.').pop()||(_styKind==='vid'?'mp4':'jpg')).toLowerCase().replace(/[^a-z0-9]/g,'')||'bin';
       const path='stories/'+chatUUID()+'.'+ext;
-      const up=await window.SB.storage.from('chat-media').upload(path,file,{contentType:file.type||undefined,upsert:true});
+      const up=await window.SB.storage.from('chat-media').upload(path,file,{contentType:mediaMime(file,ext,_styKind),upsert:true});
       if(up.error)throw up.error;
       const pub=window.SB.storage.from('chat-media').getPublicUrl(path);
       const url=pub&&pub.data&&pub.data.publicUrl; if(!url)throw new Error('no public url');
