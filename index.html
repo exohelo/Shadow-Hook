@@ -11869,8 +11869,12 @@ async function chatSaveEdit(v){
   chatCancelEdit();
   if(!window.SB)return;
   try{
-    const {error}=await window.SB.from('messages').update({body:v,edited_at:new Date().toISOString()}).eq('id',id);
+    /* #chatedit — .select so we KNOW it landed; a legacy (ownerless) row updates
+       0 rows with no error, and we must revert the optimistic text, not leave a
+       fake edit that reverts on reload. */
+    const {data,error}=await window.SB.from('messages').update({body:v,edited_at:new Date().toISOString()}).eq('id',id).select('id');
     if(error)throw error;
+    if(!data||!data.length){ if(txt)txt.innerHTML=prev; try{toast('Can’t edit that one — it predates the update');}catch(_){} return; }
     if(row&&!row.querySelector('.msg-ed')){ const w=row.querySelector('.who'); if(w)w.insertAdjacentHTML('beforeend',' <span class="msg-ed">· edited</span>'); }
   }catch(e){
     if(txt)txt.innerHTML=prev;
@@ -11882,8 +11886,13 @@ async function chatDeleteMsg(id){
   const row=_msgRow(id); if(row)row.style.opacity='.4';
   if(!window.SB){ if(row)row.remove(); return; }
   try{
-    const {error}=await window.SB.from('messages').delete().eq('id',id);
+    /* #chatedit — ask for the deleted rows back (.select). RLS filters silently —
+       0 rows, no error — when a message isn't yours (e.g. legacy messages sent
+       before the owner stamp existed). Without this the row vanished from view
+       but survived in the DB and came back on reload. */
+    const {data,error}=await window.SB.from('messages').delete().eq('id',id).select('id');
     if(error)throw error;
+    if(!data||!data.length){ if(row)row.style.opacity=''; try{toast('Can’t delete that one — it predates the update');}catch(_){} return; }
     if(row)row.remove(); _chatSeen.delete(String(id));
   }catch(e){
     if(row)row.style.opacity='';
