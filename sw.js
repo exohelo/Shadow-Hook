@@ -13,7 +13,7 @@
      • Bumping the number below also wipes every old cache on activate, so nothing
        stale can survive.
    ──────────────────────────────────────────────────────────────────────────── */
-const CACHE = 'shadowhook-v37';  // ← bump this each time you deploy an update  (v37: chat redesigned to a modern phone-messenger feel — grouped bubbles, avatars, day/night; emoji strip removed; GIF picker fixed; camera/gallery via a ＋ menu; rooms open on the newest message)
+const CACHE = 'shadowhook-v38';  // ← bump this each time you deploy an update  (v38: instant opens even on a weak signal — the app serves its cached copy fast instead of hanging on the network; offline/online banner added in the app)
 
 /* #swdupe(aug10) — '.' and 'index.html' ARE THE SAME 2.1 MB DOCUMENT.
    They both sat in the shell list, so every version bump pulled the whole app
@@ -92,32 +92,39 @@ self.addEventListener('fetch', (e) => {
        falls back to that page's own copy first, then to the app shell. */
     const isShell = url.pathname === '/' || /\/index\.html$/.test(url.pathname);
     const cacheKey = isShell ? 'index.html' : req;
-    e.respondWith(
-      fetch(url.href, { cache: 'reload', credentials: 'same-origin' })
+    /* #swfast(aug12) — INSTANT OPENS, EVEN ON A BAD SIGNAL.
+       This used to be pure network-first: every open WAITED for the whole ~2 MB app
+       to come down the wire before it showed anything, and only fell back to the
+       cached copy if the network outright FAILED. A slow-but-alive signal (one bar in
+       a yard) isn't a failure — it just hangs, which is why the app "took forever".
+       Now: we still ask the network first, so a good signal always lands the newest
+       build; but if it hasn't answered within 2s we hand over the last good copy and
+       let the fresh one finish downloading in the background for next time. No signal
+       at all → the cached copy shows at once. A first-ever visit (nothing cached yet)
+       still waits, because there's nothing else to show. The version-bump reload flow
+       is untouched, so a real deploy still takes over the moment its worker installs. */
+    e.respondWith((async () => {
+      const cached = await caches.match(cacheKey);
+      const network = fetch(url.href, { cache: 'reload', credentials: 'same-origin' })
         .then((res) => {
-          /* #swpoison(aug10) — THE CACHE ONLY EVER TAKES A REAL PAGE.
-             This used to file whatever came back, and Cache.put() does NOT reject
-             a 404 or a 502 — verified, it stores them happily. So one hiccup at
-             the host (a deploy mid-swap, a Cloudflare error page, a cold origin)
-             on a single navigation overwrote the good copy with that error
-             page. The member then lost signal, the fallback below handed them the
-             cached copy, and they were looking at "502 Bad Gateway" AS the app —
-             stuck there until they cleared site data. Only a real 200 gets filed. */
+          /* #swpoison(aug10) — only a REAL 200 is ever filed. Cache.put() will happily
+             store a 404 / 502 error page, and a poisoned cache once left members staring
+             at "502 Bad Gateway" AS the app until they cleared site data. */
           if (isGoodDoc(res)) {
             const copy = res.clone();
             caches.open(CACHE).then((c) => c.put(cacheKey, copy)).catch(() => {});
             return res;
           }
-          /* Server answered, but not with the page. Prefer the last known-good
-             copy over showing a member the host's error page. */
+          /* server answered, but with an error page — prefer the last known-good copy */
           return caches.match(cacheKey)
             .then((r) => r || (isShell ? null : caches.match('index.html')))
             .then((r) => r || res);
         })
-        .catch(() => caches.match(cacheKey)
-          .then((r) => r || caches.match('index.html'))
-          .then((r) => r || caches.match('.')))
-    );
+        .catch(() => cached || caches.match('index.html').then((r) => r || caches.match('.')));
+      if (!cached) return network;                       // first-ever visit: nothing to fall back to
+      const softTimeout = new Promise((resolve) => setTimeout(() => resolve(cached), 2000));
+      return Promise.race([network, softTimeout]);       // fresh if the signal is quick, cache if it's slow
+    })());
     return;
   }
   // Everything else (icons, manifest): serve fast from cache, refresh in background.
