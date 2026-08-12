@@ -13,7 +13,7 @@
      • Bumping the number below also wipes every old cache on activate, so nothing
        stale can survive.
    ──────────────────────────────────────────────────────────────────────────── */
-const CACHE = 'shadowhook-v36';  // ← bump this each time you deploy an update  (v36: side-swipe closes the chat room instead of the whole app; a clip that won't play shows a tap-to-open card instead of a black box)
+const CACHE = 'shadowhook-v37';  // ← bump this each time you deploy an update  (v37: chat redesigned to a modern phone-messenger feel — grouped bubbles, avatars, day/night; emoji strip removed; GIF picker fixed; camera/gallery via a ＋ menu; rooms open on the newest message)
 
 /* #swdupe(aug10) — '.' and 'index.html' ARE THE SAME 2.1 MB DOCUMENT.
    They both sat in the shell list, so every version bump pulled the whole app
