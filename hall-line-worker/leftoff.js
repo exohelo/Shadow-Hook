@@ -108,7 +108,9 @@ function prevBoardKey(t) {
   const iso = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   return iso + '_' + DOW[d.getDay()] + '_PM';
 }
-function nextCard(id) { const m = /^([A-Z])(\d+)$/.exec(id || ''); return m ? m[1] + (parseInt(m[2], 10) + 1) : id; }
+/* #aug12 — keep the digit width: prevCardId pads (B0705→B0704) but this one
+   didn't (B0704→B705), so one low-numbered card could de-pad the whole chain. */
+function nextCard(id) { const m = /^([A-Z])(\d+)$/.exec(id || ''); return m ? m[1] + String(parseInt(m[2], 10) + 1).padStart(m[2].length, '0') : id; }
 function letterDist(a, b) { return ((AZ.indexOf(b[0]) - AZ.indexOf(a[0])) % 26 + 26) % 26; }
 /* which board a heard COUNT belongs to:
    Early + Night final talk about TONIGHT's board; Day final about the next
