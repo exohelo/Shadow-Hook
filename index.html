@@ -3008,6 +3008,17 @@ window.DEVLOG=(function(){
       <div class="msg keymaster"><div class="bd"><div class="txt">Welcome to The Hall Floor. Masked and among your own. Talk the boards, the gates, the work — help each other stay out the bite. Snitches get stitches.</div></div></div>
     </div>
     <div class="emoji-row" id="emojiRow"></div>
+    <style>
+      /* #chatedit — edit/delete controls on your own messages */
+      .msg.owned .msg-acts{display:flex;gap:5px;margin-top:5px;justify-content:flex-end}
+      .msg .ma-btn{background:rgba(255,255,255,.05);border:1px solid var(--line-soft);color:var(--steel);border-radius:6px;font-size:11px;padding:2px 8px;cursor:pointer;line-height:1.5}
+      .msg .ma-btn:active{transform:scale(.94)}
+      .msg .ma-del.arm{color:#fff;background:var(--ember,#e0492e);border-color:var(--ember,#e0492e)}
+      .msg .msg-ed{color:var(--steel);font-size:10px;font-style:italic;opacity:.85}
+      .chat-editbar{display:none;align-items:center;gap:8px;padding:8px 12px;background:rgba(238,180,107,.12);border-top:1px solid var(--line-soft);color:var(--copper-hi,#eeb46b);font-size:12px}
+      .chat-editbar button{margin-left:auto;background:none;border:1px solid var(--line-soft);color:var(--steel);border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer}
+    </style>
+    <div class="chat-editbar" id="chatEditBar">✎ Editing your message<button type="button" id="chatEditCancel">Cancel</button></div>
     <div class="sendbar">
       <label class="attach" title="Photo or video">📷<input type="file" id="chatFile" accept="image/*,video/*" hidden></label>
       <button class="attach" id="gifBtn" type="button" title="GIF">GIF</button>
@@ -11637,8 +11648,14 @@ function renderChatRow(row){
   const d=row.created_at?new Date(row.created_at):null;
   const t=(d&&!isNaN(d.getTime()))?d.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}):nowT();
   const who=esc(self?chatMyHandle():(row.by_handle||'a hand'));
+  /* #chatedit — a row is yours to edit/delete if this device sent it OR the DB
+     says you own it (owner = your uid, populated by a trigger). Controls only
+     render on owned rows; the real gate is RLS. Edit is text-only. */
+  const owned=self||!!(row.owner&&window.__shkUid&&row.owner===window.__shkUid);
+  const edTag=row.edited_at?' <span class="msg-ed">· edited</span>':'';
+  const acts=owned?('<div class="msg-acts">'+((kind==='text')?'<button type="button" class="ma-btn ma-edit" title="Edit">✎</button>':'')+'<button type="button" class="ma-btn ma-del" title="Delete">🗑</button></div>'):'';
   feed.insertAdjacentHTML('beforeend',
-    '<div class="msg'+(self?' self':'')+'" data-cid="'+esc(String(row.id))+'"><div class="bd"><div class="who">'+who+' <time>'+t+'</time></div>'+inner+'</div></div>');
+    '<div class="msg'+(self?' self':'')+(owned?' owned':'')+'" data-cid="'+esc(String(row.id))+'"><div class="bd"><div class="who">'+who+' <time>'+t+'</time>'+edTag+'</div>'+inner+acts+'</div></div>');
   /* #chatpos — scroll only when it's YOUR message or you're already riding the
      bottom; a hand reading the backlog doesn't get yanked down by new arrivals */
   if(!_chatHydrating){
@@ -11683,7 +11700,11 @@ async function chatJoin(room){
   try{
     const chan=window.SB.channel('chat-'+Date.now())
       .on('postgres_changes',{event:'INSERT',schema:'public',table:'messages'},   // no server-side filter (room names have spaces); match in the handler
-          p=>{ if(p&&p.new&&p.new.room===CURRENT_ROOM){ try{console.log('[chat] recv',p.new.kind,'from',p.new.by_handle);}catch(_){}; renderChatRow(p.new);} });
+          p=>{ if(p&&p.new&&p.new.room===CURRENT_ROOM){ try{console.log('[chat] recv',p.new.kind,'from',p.new.by_handle);}catch(_){}; renderChatRow(p.new);} })
+      .on('postgres_changes',{event:'UPDATE',schema:'public',table:'messages'},   // #chatedit — an edit lands live for everyone in the room
+          p=>{ if(p&&p.new&&p.new.room===CURRENT_ROOM){ try{chatApplyEdit(p.new);}catch(_){} } })
+      .on('postgres_changes',{event:'DELETE',schema:'public',table:'messages'},   // #chatedit — a delete lands live (the old row carries the id)
+          p=>{ if(p&&p.old&&p.old.id){ try{chatApplyDelete(p.old.id);}catch(_){} } });
     _chatChan=chan;
     chan.subscribe(s=>{
         try{console.log('[chat] realtime status:',s);}catch(_){}
@@ -11824,8 +11845,81 @@ function payCredits(n,reason,quiet){
   return true;
 }
 window.payCredits=payCredits;
+/* ═══ #chatedit(aug12) — edit & delete your OWN messages ═══
+   Ownership is enforced in the DB (RLS: owner = auth.uid(); a trigger stamps it —
+   run CHAT-EDIT-SETUP.sql once). The controls only render on rows you own, an edit
+   is text-only, and both ride realtime to everyone in the room. */
+let _chatEditId=null, _delArm=null, _delArmT=null;
+function _msgRow(id){ try{ return document.querySelector('#chatFeed [data-cid="'+String(id).replace(/"/g,'')+'"]'); }catch(e){ return null; } }
+function chatCancelEdit(){
+  _chatEditId=null;
+  const b=document.getElementById('chatEditBar'); if(b)b.style.display='none';
+  const i=document.getElementById('chatInput'); if(i){ i.value=''; }
+}
+function chatStartEdit(id){
+  const row=_msgRow(id), txt=row?row.querySelector('.txt'):null; if(!txt)return;
+  _chatEditId=id;
+  const i=document.getElementById('chatInput');
+  if(i){ i.value=(txt.innerText||txt.textContent||'').trim(); i.focus(); try{i.setSelectionRange(i.value.length,i.value.length);}catch(_){}}
+  const b=document.getElementById('chatEditBar'); if(b)b.style.display='flex';
+}
+async function chatSaveEdit(v){
+  const id=_chatEditId; if(!id){return;}
+  const row=_msgRow(id), txt=row?row.querySelector('.txt'):null;
+  const prev=txt?txt.innerHTML:'';
+  if(txt)txt.innerHTML=esc(v).replace(/\n/g,'<br>');           // optimistic
+  chatCancelEdit();
+  if(!window.SB)return;
+  try{
+    const {error}=await window.SB.from('messages').update({body:v,edited_at:new Date().toISOString()}).eq('id',id);
+    if(error)throw error;
+    if(row&&!row.querySelector('.msg-ed')){ const w=row.querySelector('.who'); if(w)w.insertAdjacentHTML('beforeend',' <span class="msg-ed">· edited</span>'); }
+  }catch(e){
+    if(txt)txt.innerHTML=prev;
+    try{toast('Couldn’t save the edit — '+((e&&e.message)||'try again'));}catch(_){}
+    try{if(window.shkAlert)shkAlert('chat edit',e);}catch(_){}
+  }
+}
+async function chatDeleteMsg(id){
+  const row=_msgRow(id); if(row)row.style.opacity='.4';
+  if(!window.SB){ if(row)row.remove(); return; }
+  try{
+    const {error}=await window.SB.from('messages').delete().eq('id',id);
+    if(error)throw error;
+    if(row)row.remove(); _chatSeen.delete(String(id));
+  }catch(e){
+    if(row)row.style.opacity='';
+    try{toast('Couldn’t delete — '+((e&&e.message)||'try again'));}catch(_){}
+    try{if(window.shkAlert)shkAlert('chat delete',e);}catch(_){}
+  }
+}
+function chatApplyEdit(nw){   // realtime: an edit from another device/member
+  if(!nw||!nw.id)return; const row=_msgRow(nw.id); if(!row)return;
+  const txt=row.querySelector('.txt'); if(txt)txt.innerHTML=esc(nw.body||'').replace(/\n/g,'<br>');
+  if(nw.edited_at&&!row.querySelector('.msg-ed')){ const w=row.querySelector('.who'); if(w)w.insertAdjacentHTML('beforeend',' <span class="msg-ed">· edited</span>'); }
+}
+function chatApplyDelete(id){ const row=_msgRow(id); if(row)row.remove(); _chatSeen.delete(String(id)); }
+(function(){
+  const feed=document.getElementById('chatFeed'); if(!feed)return;
+  feed.addEventListener('click',function(e){
+    const del=e.target.closest('.ma-del'), ed=e.target.closest('.ma-edit');
+    if(!del&&!ed)return;
+    const bubble=e.target.closest('.msg[data-cid]'); if(!bubble)return;
+    const id=bubble.getAttribute('data-cid');
+    if(ed){ chatStartEdit(id); return; }
+    /* delete = two taps: first arms (turns red "delete?"), second within 3s confirms */
+    if(_delArm===del){ clearTimeout(_delArmT); _delArm=null; chatDeleteMsg(id); return; }
+    if(_delArm){ try{_delArm.classList.remove('arm');_delArm.textContent='🗑';}catch(_){}; clearTimeout(_delArmT); }
+    _delArm=del; del.classList.add('arm'); del.textContent='delete?';
+    _delArmT=setTimeout(function(){ try{del.classList.remove('arm');del.textContent='🗑';}catch(_){}; _delArm=null; },3000);
+  });
+})();
+{ const _cec=document.getElementById('chatEditCancel'); if(_cec)_cec.addEventListener('click',chatCancelEdit); }
+document.addEventListener('keydown',function(e){ if(e.key==='Escape'&&_chatEditId)chatCancelEdit(); });
+
 document.getElementById('chatSend').addEventListener('click',()=>{
   const i=document.getElementById('chatInput');const v=i.value.trim();if(!v)return;
+  if(_chatEditId){ chatSaveEdit(v); return; }                           // #chatedit — saving an edit, not a new send (no fare)
   if(!payCredits(MSG_COST,"message",true))return;                       // #61
   if(isLink(v)) chatOutbound({kind:'link',url:v,body:'',cost:MSG_COST}); // #hub — a pasted link rides as a branded card
   else chatOutbound({kind:'text',body:v,cost:MSG_COST});i.value="";     // #chat-live — send to the room
