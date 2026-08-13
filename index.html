@@ -463,6 +463,7 @@ html.daylight .dayBtn{box-shadow:0 5px 14px rgba(70,56,30,.2)}
   max-height:calc(88vh - var(--kb,0px));max-height:calc(88dvh - var(--kb,0px));   /* #ios — vh first: iOS 15.0–15.3 has no dvh */
   overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
 .sheet.on .sheet-card{transform:none}
+.sheet .sheet-card.drag{transition:none}   /* #profpull — a finger owns the card; the transition stands down */
 /* #sheetscroll — and the page behind holds still while a sheet is open, so a
    drag on the dimmed backdrop can't scroll the app out from under the sheet. */
 html:has(.sheet.on),html.sheet-open{overflow:hidden}
@@ -17488,6 +17489,54 @@ window.addEventListener('resize',()=>{if($w('wbw').classList.contains('on'))wbFi
   function openSheet(){ fill(); sheet.classList.add('on'); }
   function closeSheet(){ sheet.classList.remove('on'); }
   window.openProfileSheet=openSheet;
+  /* #profpull(aug13) — HARD PULL-DOWN CLOSES THE PROFILE, same finger-following feel
+     as THE BANK. One adaptation: the bank has a fixed head to pull on, but this whole
+     card IS the scroller — so the pull only arms when the card sits at its very top
+     (scrollTop 0). Anywhere lower, a downward drag is just scrolling back up. Same
+     hard-pull commit (~200px or a flick), same snap home under it. Taps on toggles
+     and buttons are untouched: nothing engages until a decisive downward move. */
+  (function(){
+    const sh=document.getElementById('profileSheet');
+    const card=sh&&sh.querySelector('.sheet-card');
+    if(!sh||!card)return;
+    const EASE='transform .22s cubic-bezier(.4,0,.2,1)';
+    let y0=null,x0=null,dy=0,active=false,armed=false,live=false,t0=0,H=1;
+    card.addEventListener('touchstart',e=>{
+      if(e.touches.length!==1)return;
+      const t=e.touches[0];
+      y0=t.clientY;x0=t.clientX;dy=0;active=true;live=false;t0=Date.now();
+      armed=card.scrollTop<=0;                 // only the very top arms the pull
+      H=card.clientHeight||500;
+    },{passive:true});
+    card.addEventListener('touchmove',e=>{
+      if(!active||y0==null)return;
+      const t=e.touches[0];dy=t.clientY-y0;const dx=t.clientX-x0;
+      if(!live){
+        if(Math.abs(dy)<9&&Math.abs(dx)<9)return;
+        if(!armed||dy<=0||Math.abs(dx)>Math.abs(dy)){active=false;return;}   // scrolling, sideways, or not at top — not ours
+        live=true;card.classList.add('drag');
+      }
+      card.style.transform='translateY('+Math.max(0,dy)+'px)';
+      if(e.cancelable)e.preventDefault();
+    },{passive:false});
+    function up(){
+      if(!active)return;active=false;
+      if(!live){y0=null;return;}
+      const far=Math.max(0,dy),dt=Math.max(1,Date.now()-t0),flick=far/dt>0.5;
+      card.classList.remove('drag');
+      if(far>Math.max(180,H*0.28)||(flick&&far>90)){
+        card.style.transition=EASE;card.style.transform='translateY('+(H*1.1)+'px)';
+        setTimeout(()=>{sh.classList.remove('on');
+          setTimeout(()=>{card.style.transition='';card.style.transform='';},260);},180);
+      }else{
+        card.style.transition=EASE;card.style.transform='';
+        setTimeout(()=>{card.style.transition='';},260);
+      }
+      y0=null;dy=0;live=false;
+    }
+    card.addEventListener('touchend',up,{passive:true});
+    card.addEventListener('touchcancel',up,{passive:true});
+  })();
   window.closeProfileSheet=closeSheet;
 
   /* close: button, backdrop tap, Escape */
