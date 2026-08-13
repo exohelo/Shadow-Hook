@@ -9504,6 +9504,45 @@ function myBoardId(){return (typeof ACCT_ID==="string"&&/^[A-Z]\d{3,5}$/.test(AC
         • Day today    → next day, any  : allowed
    Returns null if allowed, else a reason string so the seal is refused. */
 function shiftSlot(shift){ return shift==="Day" ? "Day" : "Night"; }  // hoot & night → Night
+/* ═══ #antifraud(aug13) — THE SEAL PAYS LIKE A BANK, NOT A PIÑATA. Requested by the
+   Keymaster, thinking like a criminal. The docket LOG stays wide open — hours, the
+   record, the Race take every honest board at any age. What tightens is the ⬡ FAUCET,
+   against the two hustles he named:
+     · THE BACK-DATER — hand-type a stack of old boards, +10 each. One-per-date
+       (restViolation) caps the density, but the calendar is long. Now a HAND-TYPED
+       docket older than 7 days seals for the record at 0 ⬡. A docket with its slip
+       PHOTOGRAPHED pays at any age — the slip is the receipt, stored on the entry
+       where an audit can see it (j.src/'at' stamp entry provenance from here on).
+     · THE DISPATCH GHOST / BULK RUN — log boards that never hit, or thirty in one
+       sitting with the dates spread. One-per-date, no-future and the rest rules
+       bound the shape; paid seals now ALSO cap at 3 per calendar day OF ENTRY (a
+       hand works at most two boards a day; the third slot absorbs an honest
+       catch-up). Past the cap, boards log free.
+   Every paid seal's book line carries the BOARD DATE it paid for — the bank
+   statement itself exposes a back-dating pattern to an audit. And said plainly:
+   client checks are curtains, not walls. The wall is server-side — run
+   BUCKS-GUARD.sql (ships with this build) so the bank refuses oversized or
+   over-frequent earns no matter what a tampered client asks for. */
+const SEAL_PAY_CAP=3, SEAL_STALE_DAYS=7;
+function sealPaidToday(){try{return +localStorage.getItem(K('sealpaid_'+todayISO()))||0}catch(e){return 0}}
+function sealBucks(j){
+  let age=Infinity;
+  try{age=(Date.parse(todayISO()+"T12:00")-Date.parse(j.date+"T12:00"))/864e5;}catch(e){}
+  if(!j.photo&&isFinite(age)&&age>SEAL_STALE_DAYS){
+    j.earned=0;
+    toast("✓ Logged for the record — a board older than a week pays no ⬡ without its slip");
+    return;
+  }
+  if(sealPaidToday()>=SEAL_PAY_CAP){
+    j.earned=0;
+    toast("✓ Logged — ⬡ pay caps at "+SEAL_PAY_CAP+" seals a day; the record still counts");
+    return;
+  }
+  try{localStorage.setItem(K('sealpaid_'+todayISO()),String(sealPaidToday()+1));}catch(e){}
+  j.earned=10;
+  addCredits(10,"docket sealed · board "+j.date,true);
+  toast("✓ Log Successful · +10 ⬡");
+}
 function restViolation(j, ignoreId){
   const jSlot=shiftSlot(j.shift);
   const jD=new Date(j.date+"T12:00"); const jDay=Math.round(jD.getTime()/86400000);
@@ -9677,7 +9716,8 @@ document.getElementById('njAdd').onclick=()=>{
   if(shift==="HootOwl"&&hours>0)setLearnedHoot(hours); // learn the real hoot length
   if(hours>0){ learnJob(category, null, hours, null); renderJobDatalist(); } // remember this job's hours
   else if(!jobEntry(category)){ learnJob(category, 0, 0, null); renderJobDatalist(); } // register a brand-new code
-  j.earned=10;                              // tag what this seal paid, so a strike claws it back
+  j.src=j.photo?'photo':'hand'; j.at=Date.now();   /* #antifraud — provenance rides the docket for the audit */
+  sealBucks(j);                             /* #antifraud — decides the ⬡ (sets j.earned) and speaks the toast */
   DOCKETS.push(j);saveDK();renderDockets();
   // a sealed hand-log means the member worked — feed the live board off their own ID, silently.
   const id=myBoardId();
@@ -9687,8 +9727,6 @@ document.getElementById('njAdd').onclick=()=>{
   njClearForm();
   checkMarks();
   drawWG();
-  addCredits(10,"docket sealed",true);   // #46 — no OK-button alert on success
-  toast("✓ Log Successful · +10 ⬡");     // #46 — quick flash, fades on its own
 };
 /* #dock2 — the form LIVES ON THE PAGE now; the popup is for CORRECTIONS only.
    manualOpen(photo) docks the one form card into the sheet — with the slip's
@@ -15388,13 +15426,12 @@ function sealScan(p){
   const scanRest=restViolation(j,null);
   if(scanRest){alert("Docket read: "+p.pos+". But — "+scanRest);window.scanThumb=null;return;}
   window.scanThumb=null;
-  j.earned=10;                              // tag what this seal paid, so a strike claws it back
+  j.src='photo'; j.at=Date.now();          /* #antifraud — a scanned slip is its own receipt */
+  sealBucks(j);                             /* #antifraud — same faucet rules as the hand seal (sets j.earned) */
   DOCKETS.push(j);saveDK();renderDockets();drawWG();checkMarks();
   // feed the live board off the member's own dispatch number; silent when dispatch isn't running.
   const id=myBoardId()||p.pos;
   if(w&&id&&j.date===todayISO())submitLiveCall(id);   /* #lof — an old slip scanned late says nothing about where today's board is */
-  addCredits(10,"docket sealed",true);   // #46 — no OK-button alert on success
-  toast("✓ Log Successful · +10 ⬡");     // #46 — quick flash, fades on its own
 }
 function scanHandOff(p){
   gotoTab('dockets');
