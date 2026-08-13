@@ -13,7 +13,7 @@
      • Bumping the number below also wipes every old cache on activate, so nothing
        stale can survive.
    ──────────────────────────────────────────────────────────────────────────── */
-const CACHE = 'shadowhook-v45';  // ← bump this each time you deploy an update  (v45: Marks Earned moved above The Race; the wall is now a 4×4 grid (16 a page, 7 pages))
+const CACHE = 'shadowhook-v46';  // ← bump this each time you deploy an update  (v46: Marks wall turns like a page — drag and the wall follows your finger, the next page slides in beside it and settles on release; the ‹ › arrows animate the same way)
 
 /* #swdupe(aug10) — '.' and 'index.html' ARE THE SAME 2.1 MB DOCUMENT.
    They both sat in the shell list, so every version bump pulled the whole app
