@@ -11074,9 +11074,10 @@ function chime(){ // little payout arpeggio
       const t=C.currentTime+i*.09;g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.16,t+.02);g.gain.exponentialRampToValueAtTime(.001,t+.5);
       o.start(t);o.stop(t+.55)});}catch(e){}
 }
+let _marksSilent=false;   // #marksfix(aug13) — true while the load-time catch-up awards a backlog, so it doesn't blast a flurry of popups + chimes
 function unlockBadge(ix){ // fire the casino moment for a genuinely new mark
   if(ix<0||!BADGES[ix]||BADGES[ix][2])return;
-  BADGES[ix][2]=1;renderBadges();chime();
+  BADGES[ix][2]=1;renderBadges();if(!_marksSilent)chime();
   /* #fix3(bucks) — pay NOW, not on a 600 ms timer. The mark hits disk two lines below
      and unlockBadge hard-returns on the restored flag, so anything that tore the page
      down inside that window forfeited the 50 ⬡ permanently, with no toast and no way
@@ -11087,7 +11088,7 @@ function unlockBadge(ix){ // fire the casino moment for a genuinely new mark
   if(typeof addCredits==="function"&&!/Port Bucks|High Roller|True North/.test(BADGES[ix][1])){try{addCredits(50,"new mark earned",true)}catch(e){}}
   try{const s=JSON.parse(localStorage.getItem(K('badges')))||[];if(!s.includes(ix)){s.push(ix);localStorage.setItem(K('badges'),JSON.stringify(s))}}catch(e){}
   const [ic,nm]=BADGES[ix];const parts=nm.split(' · ');
-  bpopShow(ic,parts[0],parts[1]||'',true,true,BADGES[ix][3]||0);
+  if(!_marksSilent)bpopShow(ic,parts[0],parts[1]||'',true,true,BADGES[ix][3]||0);
   /* #8 — meta-marks: the wall rewards the wall */
   setTimeout(()=>{const earned=BADGES.filter(b=>b[2]).length;
     if(earned>=50)unlockBadge(bixLate("Full House"));
@@ -11314,7 +11315,9 @@ function bucksSpin(tiers){
 
 const TOWN_CRIER=BADGES.findIndex(b=>b[1].startsWith('Town Crier'));
 const bix=p=>BADGES.findIndex(b=>b[1].startsWith(p));
-function checkMarks(){ // real rules on real data — marks are earned, never given
+function checkMarks(silent){ // real rules on real data — marks are earned, never given
+  _marksSilent=!!silent;   // #marksfix — a load-time catch-up runs silent; a fresh docket-save animates
+  const _before=BADGES.filter(b=>b[2]).length;
   const byDate={};DOCKETS.forEach(j=>{(byDate[j.date]=byDate[j.date]||[]).push(j)});
   // back-to-back nights (allowed under the rest rule) — two night boards on consecutive days
   const nightDays=[...new Set(DOCKETS.filter(j=>j.shift!=="Day").map(j=>Math.round(new Date(j.date+"T12:00").getTime()/86400000)))].sort((a,b)=>a-b);
@@ -11364,7 +11367,47 @@ function checkMarks(){ // real rules on real data — marks are earned, never gi
     if(yrs>=3)unlockBadge(bix("Three-Year Salt"));
     if(yrs>=5)unlockBadge(bix("Five-Year Salt"));
   }}catch(e){}
+  /* #marksfix(aug13) — THE BACKLOG. Every mark below had NO rule wired anywhere, so a
+     hand who plainly earned it (joined, logged a docket, crossed 100 hrs, hit a tier,
+     worked a clerk/UTR/lash job, ran a 20-hr week…) never got it. That is the "I know
+     I have more" — the wall simply wasn't checking these. All read the same real data. */
+  try{ if(loadAcct())unlockBadge(bix("New Blood")); }catch(e){}            // a member of the Order
+  if(DOCKETS.length>=1)unlockBadge(bix("First Blood"));                    // first docket logged
+  if(nights>=1)unlockBadge(bix("Night Owl"));                              // first night board
+  if(DOCKETS.some(j=>j.shift==="HootOwl"))unlockBadge(bix("Hoot Owl"));    // a graveyard run
+  if(hrsTot>=100)unlockBadge(bix("Century Club"));
+  if(hrsTot>=1000)unlockBadge(bix("Tier 1"));
+  if(hrsTot>=2000)unlockBadge(bix("Tier 2"));
+  if(hrsTot>=4001)unlockBadge(bix("Tier 3"));
+  if(hrsTot>=6000)unlockBadge(bix("Tier 4"));
+  if(hrsTot>=8000)unlockBadge(bix("The Vault"));
+  if(nCat("CLERK")>=1)unlockBadge(bix("Clerk's Quill"));
+  if(nCat("UTR")>=25)unlockBadge(bix("UTR Ace"));
+  if(nCat("LASH")+nCat("SL")>=10)unlockBadge(bix("Lash Master"));
+  if(Object.values(byDock).some(n=>n>=5))unlockBadge(bix("The Regular"));
+  if(Object.values(byWeek).some(n=>n>=3))unlockBadge(bix("Triple Threat"));
+  /* per-week hours → Marathon (20-hr week) / Iron Marathon (30-hr week) */
+  const byWeekHrs={};DOCKETS.forEach(j=>{const d=new Date((j.date||'')+"T12:00");if(isNaN(d))return;
+    const wk=new Date(d);wk.setDate(d.getDate()-((d.getDay()+6)%7));const key=wk.toDateString();
+    byWeekHrs[key]=(byWeekHrs[key]||0)+(jobHours(j)||0);});
+  const maxWeekHrs=Object.values(byWeekHrs).reduce((m,v)=>v>m?v:m,0);
+  if(maxWeekHrs>=20)unlockBadge(bix("Marathon"));
+  if(maxWeekHrs>=30)unlockBadge(bix("Iron Marathon"));
+  /* consecutive-week streak → Iron Streak (4) / Half-Year Streak (26) / The Unbroken (52) */
+  const weekIx=[...new Set(DOCKETS.map(j=>{const d=new Date((j.date||'')+"T12:00");if(isNaN(d))return null;
+    const wk=new Date(d);wk.setDate(d.getDate()-((d.getDay()+6)%7));return Math.round(wk.getTime()/604800000);}).filter(v=>v!=null))].sort((a,b)=>a-b);
+  let run=weekIx.length?1:0,best=run;
+  for(let i=1;i<weekIx.length;i++){if(weekIx[i]-weekIx[i-1]===1){run++;if(run>best)best=run;}else run=1;}
+  if(best>=4)unlockBadge(bix("Iron Streak"));
+  if(best>=26)unlockBadge(bix("Half-Year Streak"));
+  if(best>=52)unlockBadge(bix("The Unbroken"));
+  _marksSilent=false;
+  return BADGES.filter(b=>b[2]).length-_before;
 }
+/* #marksfix — run the wall against the member's real data ON OPEN too, not only when a
+   docket is saved. Silent, so it doesn't blast a flurry of popups; if it caught anything
+   up, one quiet line says so. Everything it awards is a mark genuinely already earned. */
+try{ const _mn=checkMarks(true); if(_mn>0){ try{toast('⚑ '+_mn+' mark'+(_mn>1?'s':'')+' caught up — check your wall');}catch(e){} } }catch(e){}
 /* ═══ #5 + #9 + #boards2(aug10) — THE BOARDS: Port Bucks, this week ═══
    One metric, one period, two lists: the whole Record, or your own letter.
 
