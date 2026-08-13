@@ -11032,6 +11032,22 @@ function renderBadges(){
 }
 document.getElementById('bPrev').addEventListener('click',()=>{badgePage--;renderBadges()});
 document.getElementById('bNext').addEventListener('click',()=>{badgePage++;renderBadges()});
+/* #markswipe(aug13) — swipe the wall left/right to flip pages, same as the ‹ › buttons.
+   Dominantly-horizontal only, so scrolling the page up/down never flips a page. An
+   edge-swipe that used to close the app is now caught by the global Back guard. */
+(function(){
+  const bw=document.getElementById('badgeWall'); if(!bw)return;
+  let x0=null,y0=null;
+  bw.addEventListener('touchstart',e=>{const t=e.touches[0];x0=t.clientX;y0=t.clientY;},{passive:true});
+  bw.addEventListener('touchend',e=>{
+    if(x0==null)return;const t=e.changedTouches[0];const dx=t.clientX-x0,dy=t.clientY-y0;x0=null;
+    if(Math.abs(dx)>55&&Math.abs(dx)>Math.abs(dy)*1.4){
+      const nx=document.getElementById('bNext'), pv=document.getElementById('bPrev');
+      if(dx<0){ if(nx&&!nx.disabled)nx.click(); }   // swipe left → next page
+      else    { if(pv&&!pv.disabled)pv.click(); }    // swipe right → previous page
+    }
+  },{passive:true});
+})();
 renderBadges();
 /* ---- the celebration ---- */
 const bpop=document.getElementById('bpop');
@@ -11726,7 +11742,6 @@ function renderDayReport(){
 }
 window.renderDayReport=renderDayReport;
 renderDayReport();
-let _roomHistOpen=false;   /* #roomhist — is there a browser-history back-stop live for the open room? */
 function openRoom(name,ico,who){
   const rv=document.getElementById('roomView');
   if(name){document.getElementById('roomTitle').textContent=name;
@@ -11734,32 +11749,38 @@ function openRoom(name,ico,who){
     document.getElementById('roomSubc').textContent=(who||'')+' · stay masked, the hall has ears · 1 ⬡ a message';
     document.getElementById('chatInput').placeholder="Message "+name+"… (1 ⬡)";}
   rv.classList.add('on'); document.body.style.overflow="hidden";
-  /* #roomhist — drop a back-stop into browser history so a side-swipe or back
-     gesture (which the browser reads as "go back") closes THIS ROOM instead of
-     navigating the whole PWA away. Exactly one back-stop per open room. */
-  try{ if(!_roomHistOpen){ history.pushState({shkRoom:1},''); _roomHistOpen=true; } }catch(e){}
   chatJoin(name||document.getElementById('roomTitle').textContent);   // #chat-live — load history + go realtime
 }
-/* #roomhist — tear the room UI down only. Never touches history; the caller decides that. */
+/* #backguard — teardown only; the global Back guard (below) is what turns a swipe / back
+   gesture into "close the room". */
 function closeRoomUI(){document.getElementById('roomView').classList.remove('on');document.body.style.overflow="";chatLeave();
   document.querySelectorAll('#chatFeed video').forEach(v=>{try{if(!v.paused)v.pause();}catch(e){}});}   /* #stories7 — a hidden room says nothing */
-/* #roomhist — a user-driven close (tap ‹ or swipe): go back through history so the
-   back-stop is consumed cleanly. The popstate handler below does the real teardown.
-   Guarded by _roomHistOpen so we pop at most once. */
-function closeRoom(){
-  const rv=document.getElementById('roomView');
-  if(!rv||!rv.classList.contains('on'))return;          // already closing / closed
-  if(_roomHistOpen){ _roomHistOpen=false; try{history.back();return;}catch(e){} }
-  closeRoomUI();                                          // fallback: no back-stop to consume
-}
-/* Back-nav from ANY source — desktop trackpad swipe, mobile edge-swipe, the browser/OS
-   back button — lands here. If a room is open, swallow the nav by closing the room
-   instead of letting the PWA exit. */
-window.addEventListener('popstate',function(){
-  const rv=document.getElementById('roomView');
-  if(rv&&rv.classList.contains('on')){ _roomHistOpen=false; closeRoomUI(); }
-});
+function closeRoom(){ closeRoomUI(); }
 document.getElementById('roomBack').addEventListener('click',closeRoom);
+/* ═══ #backguard(aug13) — ONE owner of the Back gesture (Android edge-swipe · the phone /
+   browser Back button) for the WHOLE app. A single sentinel history entry is kept on top
+   at all times; when Back eats it we close whatever overlay is open (room, story, a
+   sheet…) or, on a normal page, do nothing — then immediately re-seat the sentinel. So
+   Back closes what you're in and NEVER closes the whole app by accident. Overlays don't
+   push their own history entries, so nothing piles up. This replaces the old room-only
+   back-stop, and it protects the Marks wall (and every other page) the exact same way. */
+(function(){
+  function seat(){ try{ history.pushState({shkGuard:1},''); }catch(e){} }
+  function closeTop(){
+    try{
+      if(document.querySelector('.gifsheet.on')){ if(typeof closeGifPicker==='function')closeGifPicker(); else document.querySelectorAll('.gifsheet.on').forEach(s=>s.classList.remove('on')); return true; }
+      const sv=document.getElementById('storyViewer'); if(sv&&sv.classList.contains('on')){ if(typeof closeStoryViewer==='function')closeStoryViewer(); else sv.classList.remove('on'); return true; }
+      const rv=document.getElementById('roomView'); if(rv&&rv.classList.contains('on')){ closeRoomUI(); return true; }
+      const ym=document.getElementById('yardMapView'); if(ym&&ym.classList.contains('on')){ ym.classList.remove('on'); document.body.style.overflow=''; return true; }
+      const dlg=document.querySelector('.dlg.on'); if(dlg){ dlg.classList.remove('on'); return true; }
+      const sht=document.querySelector('.sheet.on'); if(sht){ sht.classList.remove('on'); return true; }
+      const bp=document.getElementById('bpop'); if(bp&&bp.classList.contains('on')){ bp.classList.remove('on'); return true; }
+    }catch(e){}
+    return false;
+  }
+  window.addEventListener('popstate',function(){ closeTop(); seat(); });
+  seat();   // plant the first sentinel
+})();
 /* ===== #12 — invite each other to rooms & gatherings =====
    The ⤴ in a room's header and on every room/gathering you created hands the
    invite to the phone's share sheet (text, WhatsApp, whatever's on the phone).
