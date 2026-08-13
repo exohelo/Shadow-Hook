@@ -2848,19 +2848,38 @@ window.DEVLOG=(function(){
        real money (the bucks-till edge function + Stripe — deploy bucks-till once),
        and the member's statement (bucks_book — run BUCKS-BANK.sql once). Earned
        bucks still flow exactly as before; this adds the paid road in. -->
+  <!-- #bankfix2(aug13) — FIXED FRAME, SCROLLING BOOK. The card is a column now: the
+       head (title · balance · packs) and the foot (rules · close) hold still; only
+       THE BOOK scrolls between them. Two gestures close it, both finger-following:
+       a decisive LEFT/RIGHT swipe anywhere on the card slides it out sideways, and
+       a HARD PULL-DOWN that starts on the head (NOT the book — the book's downward
+       drag is its scroll) drags it off the bottom. -->
+  <style>
+    #bankSheet .sheet-card{display:flex;flex-direction:column;overflow:hidden;height:calc(88vh - var(--kb,0px));height:calc(88dvh - var(--kb,0px));will-change:transform}
+    #bankSheet .sheet-card.drag{transition:none}
+    #bankHead,#bankFoot{flex:none}
+    #bankScroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;margin-top:6px}
+    #bankFoot{padding-top:10px;border-top:1px solid var(--line-soft);margin-top:8px}
+  </style>
   <div class="sheet" id="bankSheet">
-    <div class="sheet-card" style="text-align:left">
-      <div class="big" style="font-size:20px;letter-spacing:.07em;text-align:center">⬡ THE BANK</div>
-      <div style="text-align:center;margin:10px 0 2px"><span class="big copper-txt mono" id="bankBal" style="font-size:38px">0</span></div>
-      <p class="sub" style="text-align:center;margin:0 0 12px">Port Bucks — the Order’s coin. Chat rooms, raffles, special gear, discounts at the till.</p>
-      <div class="card-h">Get more ⬡</div>
-      <div id="bankPacks" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px"></div>
-      <div class="sub" id="bankBuyMsg" style="margin:8px 0 2px;line-height:1.6"></div>
-      <div class="card-h" style="margin-top:14px">The book</div>
-      <div id="bankBook" class="sub" style="line-height:1.6;margin-top:6px">—</div>
-      <button class="btn-ghost" id="bankRulesBtn" type="button" style="width:100%;margin-top:12px">⚓ How they’re earned — the rules ▾</button>
-      <div id="bankRules" style="display:none;margin-top:8px;border:1px solid var(--line-soft);border-radius:10px;padding:10px"></div>
-      <button class="btn-ghost" style="width:100%;margin-top:8px" onclick="document.getElementById('bankSheet').classList.remove('on')">Close</button>
+    <div class="sheet-card" id="bankCard" style="text-align:left">
+      <div id="bankHead">
+        <div class="big" style="font-size:20px;letter-spacing:.07em;text-align:center">⬡ THE BANK</div>
+        <div style="text-align:center;margin:10px 0 2px"><span class="big copper-txt mono" id="bankBal" style="font-size:38px">0</span></div>
+        <p class="sub" style="text-align:center;margin:0 0 12px">Port Bucks — the Order’s coin. Chat rooms, raffles, special gear, discounts at the till.</p>
+        <div class="card-h">Get more ⬡</div>
+        <div id="bankPacks" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px"></div>
+        <div class="sub" id="bankBuyMsg" style="margin:8px 0 2px;line-height:1.6"></div>
+        <div class="card-h" style="margin-top:14px">The book</div>
+      </div>
+      <div id="bankScroll">
+        <div id="bankBook" class="sub" style="line-height:1.6">—</div>
+        <div id="bankRules" style="display:none;margin-top:8px;border:1px solid var(--line-soft);border-radius:10px;padding:10px"></div>
+      </div>
+      <div id="bankFoot">
+        <button class="btn-ghost" id="bankRulesBtn" type="button" style="width:100%">⚓ How they’re earned — the rules ▾</button>
+        <button class="btn-ghost" style="width:100%;margin-top:8px" onclick="document.getElementById('bankSheet').classList.remove('on')">Close</button>
+      </div>
     </div>
   </div>
   <script>
@@ -2900,8 +2919,12 @@ window.DEVLOG=(function(){
         host.innerHTML=rows.map(x=>{
           const d=+x.delta||0;
           const dt=(function(){try{const t=new Date(x.created_at);return t.toLocaleDateString([],{month:'short',day:'numeric'})+' · '+t.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});}catch(e){return'';}})();
+          /* #armlog — a 0-⬡ line is informational (an Armory card order): quiet steel
+             glyph, no bogus green "+0" */
+          const amt=d===0?'<b class="mono" style="flex:none;color:var(--steel)">⬡</b>'
+            :'<b class="mono" style="flex:none;color:'+(d>0?'var(--ok)':'var(--ember)')+'">'+(d>0?'+':'')+d.toLocaleString()+' ⬡</b>';
           return '<div style="display:flex;gap:8px;align-items:center;border-bottom:1px solid var(--line-soft);padding:5px 0">'
-            +'<b class="mono" style="flex:none;color:'+(d>=0?'var(--ok)':'var(--ember)')+'">'+(d>=0?'+':'')+d.toLocaleString()+' ⬡</b>'
+            +amt
             +'<span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+String(x.reason||'—').replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</span>'
             +'<span style="flex:none;color:var(--steel);font-size:10.5px">'+dt+'</span></div>';
         }).join('');
@@ -2947,6 +2970,65 @@ window.DEVLOG=(function(){
     if(strip)strip.addEventListener('click',()=>bankOpen());
     const bs=$('bankSheet');
     if(bs)bs.addEventListener('click',e=>{if(e.target===bs)bs.classList.remove('on');});
+    /* #bankfix2(aug13) — THE CLOSE GESTURES, finger-following like everything else:
+         · LEFT/RIGHT from anywhere on the card (the book included — its own scroll is
+           vertical, so the axis lock keeps them apart): the card tracks the finger,
+           past ~⅓ width or a flick it slides out and the sheet closes, else it snaps.
+         · A HARD PULL-DOWN that STARTS on the head or foot (never the book — a
+           downward drag there is scrolling the statement): same follow, and it takes
+           a real pull — ~200px — before it commits, else it snaps home. */
+    (function(){
+      const card=$('bankCard'); if(!card||!bs)return;
+      const EASE='transform .22s cubic-bezier(.4,0,.2,1)';
+      let x0=null,y0=null,dx=0,dy=0,axis=0,active=false,fromBook=false,t0=0,W=1,H=1;
+      function leave(tx,ty){
+        card.classList.remove('drag');
+        card.style.transition=EASE;card.style.transform='translate('+tx+'px,'+ty+'px)';
+        setTimeout(()=>{bs.classList.remove('on');
+          setTimeout(()=>{card.style.transition='';card.style.transform='';},260);},180);
+      }
+      function snap(){
+        card.classList.remove('drag');
+        card.style.transition=EASE;card.style.transform='';
+        setTimeout(()=>{card.style.transition='';},260);
+      }
+      card.addEventListener('touchstart',e=>{
+        if(e.touches.length!==1)return;
+        const t=e.touches[0];
+        x0=t.clientX;y0=t.clientY;dx=0;dy=0;axis=0;active=true;t0=Date.now();
+        fromBook=!!(e.target.closest&&e.target.closest('#bankScroll'));
+        W=card.clientWidth||320;H=card.clientHeight||500;
+      },{passive:true});
+      card.addEventListener('touchmove',e=>{
+        if(!active||x0==null)return;
+        const t=e.touches[0];dx=t.clientX-x0;dy=t.clientY-y0;
+        if(axis===0){
+          if(Math.abs(dx)<9&&Math.abs(dy)<9)return;
+          if(Math.abs(dx)>Math.abs(dy)*1.2)axis=1;                   // sideways — allowed from anywhere
+          else if(dy>0&&!fromBook)axis=2;                            // pull-down — head/foot only
+          else{active=false;return;}                                 // book scroll / upward — not ours
+          card.classList.add('drag');
+        }
+        if(axis===1)card.style.transform='translateX('+dx+'px)';
+        else card.style.transform='translateY('+Math.max(0,dy)+'px)';
+        if(e.cancelable)e.preventDefault();
+      },{passive:false});
+      function up(){
+        if(!active)return;active=false;
+        if(axis===0){x0=null;return;}
+        const dt=Math.max(1,Date.now()-t0);
+        if(axis===1){
+          const far=Math.abs(dx),flick=far/dt>0.45;
+          if(far>Math.min(120,W/3)||flick)leave(dx>0?W*1.1:-W*1.1,0); else snap();
+        }else{
+          const far=Math.max(0,dy),flick=far/dt>0.5;
+          if(far>Math.max(180,H*0.28)||flick&&far>90)leave(0,H*1.1); else snap();
+        }
+        x0=null;axis=0;
+      }
+      card.addEventListener('touchend',up,{passive:true});
+      card.addEventListener('touchcancel',up,{passive:true});
+    })();
     /* the rules unfold RIGHT HERE — borrowed live from the rules sheet so the
        two never drift apart; no second overlay, no jump */
     const rb=$('bankRulesBtn'), rc=$('bankRules');
@@ -2961,6 +3043,9 @@ window.DEVLOG=(function(){
       }
       rc.style.display=open?'none':'';
       rb.innerHTML='⚓ How they’re earned — the rules '+(open?'▾':'▴');
+      /* #bankfix2 — the button sits in the fixed foot; the rules live in the scroll.
+         Opening them walks the book down so they're actually in view. */
+      if(!open)try{rc.scrollIntoView({block:'nearest',behavior:'smooth'});}catch(e){}
     });
     /* the walk back from the mint — verify with the till, credit, celebrate */
     (function(){
@@ -2986,6 +3071,10 @@ window.DEVLOG=(function(){
             if(r.ok&&j&&j.ok){
               if(typeof j.balance==='number'){try{CREDITS=j.balance;localStorage.setItem(K('credits'),CREDITS);}catch(e){}}
               try{renderCredits();}catch(e){}
+              /* #armlog(aug13) — a minted pack prints in THE BOOK like any earn. The
+                 bucks-till function credits the balance server-side and writes no
+                 statement line of its own; if it ever grows one, drop this. */
+              try{if(+j.credited)sbBookWrite(+j.credited,'minted at the bank — ⬡ pack');}catch(e){}
               try{jackpot(+j.credited||0,'the mint — ⬡ pack');}catch(e){try{toast('⬡ +'+(+j.credited||0)+' — minted');}catch(e2){}}
             }else{
               try{toast('⚠ the mint needs a minute — your ⬡ land as soon as it clears');}catch(e){}
@@ -4684,9 +4773,12 @@ function sbRefreshBucks(){
       }).catch(function(e){ console.warn('bucks refresh', e); });
   }catch(e){}
 }
-function sbBookWrite(delta,reason){ /* #bank — mirror every earn/spend into bucks_book so THE BANK reads like a statement (silent no-op if signed out or the book isn't built) */
+function sbBookWrite(delta,reason,allowZero){ /* #bank — mirror every earn/spend into bucks_book so THE BANK reads like a statement (silent no-op if signed out or the book isn't built)
+  #armlog(aug13) — allowZero lets a REAL-MONEY event (an Armory card order) print an
+  informational 0-⬡ line, so the book tells the whole story of money moving — not
+  just the bucks side of it. Plain zero-deltas without the flag still no-op. */
   try{
-    if(!window.SB||!window.__shkUid||!delta)return;
+    if(!window.SB||!window.__shkUid||(!delta&&!allowZero))return;
     window.SB.from('bucks_book').insert({user_id:window.__shkUid,delta:Math.round(delta),reason:String(reason||'').slice(0,140)}).then(()=>{},()=>{});
   }catch(e){}
 }
@@ -12416,6 +12508,13 @@ function payCredits(n,reason,quiet){
      (see mine() — "port bucks excluded: own atomic path"), so apply_bucks is the
      ONLY way a spend can ever reach the server. */
   try{sbApplyBucks(-n,reason);}catch(e){}
+  /* #bookfix(aug13) — THE MISSING STATEMENT LINES. This function moved the balance
+     but never wrote THE BOOK — addCredits/spendCredits both mirror into bucks_book,
+     and this one (chat messages, GIFs, media, rooms, gatherings, rings — every real
+     purchase) didn't. So the bank showed the stack going DOWN with no line saying
+     why, while a failed send's refund (addCredits) DID print — a book with credits
+     for reversals and no sign of what was reversed. Every spend writes its line now. */
+  try{sbBookWrite(-n,reason);}catch(e){}
   return true;
 }
 window.payCredits=payCredits;
@@ -22095,6 +22194,10 @@ window.shareCall=shareCall;
       var code=(q.get('code')||'').replace(/[^A-Z0-9-]/gi,'');
       cart=[]; csave(); renderFab();
       try{ history.replaceState(null,'',location.pathname); }catch(e){}
+      /* #armlog(aug13) — an Armory order lands in THE BOOK too: a 0-⬡ informational
+         line (the charge was real money by card, not bucks), so the statement reads
+         as the one record of money moving through the Order. */
+      try{ if(typeof sbBookWrite==='function')sbBookWrite(0,'armory order '+(code||'received')+' — paid by card',true); }catch(e){}
       setTimeout(function(){ try{ if(typeof gotoTab==='function')gotoTab('armory'); }catch(e){}
         say('⚓ PAID — order '+(code||'received')+' is in. The Keymaster and the supplier have it; the receipt’s in your email.'); },600);
     } else if(q.get('armory_cancel')){
