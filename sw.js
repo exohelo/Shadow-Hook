@@ -13,7 +13,7 @@
      • Bumping the number below also wipes every old cache on activate, so nothing
        stale can survive.
    ──────────────────────────────────────────────────────────────────────────── */
-const CACHE = 'shadowhook-v38';  // ← bump this each time you deploy an update  (v38: instant opens even on a weak signal — the app serves its cached copy fast instead of hanging on the network; offline/online banner added in the app)
+const CACHE = 'shadowhook-v39';  // ← bump this each time you deploy an update  (v39: video story tiles open on tap again; the send row lifts clear of the keyboard's clipboard strip while typing)
 
 /* #swdupe(aug10) — '.' and 'index.html' ARE THE SAME 2.1 MB DOCUMENT.
    They both sat in the shell list, so every version bump pulled the whole app
