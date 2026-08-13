@@ -99,3 +99,20 @@ jobs:
           else
             node hall-line-worker/leftoff.js $ARGS
           fi
+
+      # ═══ #lookout — the board's movement reaches closed phones ═══
+      # Runs after every sweep; push_sent dedupes so each board announces once.
+      # Needs VAPID_PUBLIC (repo variable) + VAPID_PRIVATE (secret) — generate
+      # once with `npx web-push generate-vapid-keys`. Missing keys = stands down.
+      - name: The Lookout — push the board to subscribed phones
+        if: ${{ always() }}
+        env:
+          SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          VAPID_PUBLIC:         ${{ vars.VAPID_PUBLIC || 'BOIf-N1g5af_QuVRTc9AbScS5YWjUMAX8wSFjfbC4Y6KPVJvLGxzvWrgPSBb38yYvCAuKCJqAGWisb8d-vZpbss' }}
+          VAPID_PRIVATE:        ${{ secrets.VAPID_PRIVATE }}
+          VAPID_SUBJECT:        ${{ vars.VAPID_SUBJECT || 'mailto:keymaster@theshadowhook.com' }}
+          PUSH_AHEAD:           ${{ vars.PUSH_AHEAD || '3' }}
+        run: |
+          npm install --no-save --silent web-push
+          node hall-line-worker/push-board.js
