@@ -13,7 +13,7 @@
      • Bumping the number below also wipes every old cache on activate, so nothing
        stale can survive.
    ──────────────────────────────────────────────────────────────────────────── */
-const CACHE = 'shadowhook-v53';  // ← bump this each time you deploy an update  (v53: v52's standalone GIF button + three night fixes — the phone's Back gesture on an open item closes the item instead of doing nothing (or worse, walking out of the app), the item page drags back from anywhere with the view following your finger, and the Armory search loses the browser-painted dark bar inside it.)
+const CACHE = 'shadowhook-v54';  // ← bump this each time you deploy an update  (v54: the GIF sheet grows up — opens at HALF page and drags to FULL like FB's, grab bar, finger-following detents, drag down to dismiss; also fixes the sheet's broken side-by-side layout so the grid fills the card. Rides on v53's back-gesture + search fixes and v52's GIF button.)
 
 /* #swdupe(aug10) — '.' and 'index.html' ARE THE SAME 2.1 MB DOCUMENT.
    They both sat in the shell list, so every version bump pulled the whole app
