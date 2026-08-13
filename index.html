@@ -709,7 +709,11 @@ html.daylight .heist{background:rgba(64,54,38,.6)}
 .chat-newmark::before,.chat-newmark::after{content:"";flex:1;height:1px}
 .chat-newmark::before{background:linear-gradient(90deg,transparent,rgba(238,180,107,.55))}
 .chat-newmark::after{background:linear-gradient(90deg,rgba(238,180,107,.55),transparent)}
-.roomscreen .sendbar{flex:none;padding-bottom:calc(10px + env(safe-area-inset-bottom))}
+.roomscreen .sendbar{flex:none;padding-bottom:calc(10px + env(safe-area-inset-bottom));transition:padding-bottom .18s}
+/* #kbclear(aug12) — while you're typing, lift the send row so the phone keyboard's
+   clipboard / suggestion strip can't cover the camera, chat, and send buttons. Driven
+   by focus (not --kb) because Android resizes the layout, leaving --kb ≈ 0 there. */
+.roomscreen.kbup .sendbar{padding-bottom:calc(30px + env(safe-area-inset-bottom))}
 
 /* ===== #hall — the fullscreen #socialHub overlay + its door are RETIRED: the Hall
    feed renders inline on the Social tab (styles: .hall-head/.hall-stats in socialCSS) ===== */
@@ -755,6 +759,11 @@ html.daylight .heist{background:rgba(64,54,38,.6)}
 #socialFeed .sty-tile{scroll-snap-align:start;position:relative;flex:none;width:118px;height:206px;border-radius:14px;overflow:hidden;cursor:pointer;
   border:1px solid var(--line);background:#0a0b0d;box-shadow:0 6px 16px rgba(0,0,0,.35)}
 #socialFeed .sty-tile:active{transform:scale(.98)}
+/* #stytap(aug12) — a VIDEO story's cover is a real <video> element, and on mobile a
+   <video> swallows the tap so the tile's open-click never fired — that's why video
+   stories wouldn't open while photo/link ones did. Make every child transparent to
+   taps so the gesture always lands on the tile itself (which handles tap + long-press). */
+#socialFeed .sty-tile > *{pointer-events:none}
 /* placeholder cover — the crest on a warm, per-card accent wash */
 #socialFeed .sty-tile .sty-cover{position:absolute;inset:0;
   background:radial-gradient(120% 78% at 50% 30%,color-mix(in srgb,var(--pc,#EEB46B) 34%,#14110b),#080909 78%)}
@@ -12082,7 +12091,10 @@ document.getElementById('chatSend').addEventListener('click',()=>{
 document.getElementById('chatInput').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('chatSend').click()});
 /* #hdrlock — the phone keyboard makes the browser scroll the window under the fixed
    chat layer; pin it straight back so the header never slides away mid-chat */
-['focus','blur'].forEach(ev=>document.getElementById('chatInput').addEventListener(ev,()=>setTimeout(()=>{try{window.scrollTo(0,0)}catch(e){}},60)));
+['focus','blur'].forEach(ev=>document.getElementById('chatInput').addEventListener(ev,()=>{
+  try{document.getElementById('roomView').classList.toggle('kbup',ev==='focus');}catch(_){}   // #kbclear — lift the send row clear of the keyboard's clipboard strip
+  setTimeout(()=>{try{window.scrollTo(0,0)}catch(e){}},60);
+}));
 /* #chatface — one handler for BOTH the camera (capture) input and the gallery input,
    so "📷 Camera" and "🖼 Photo or Video" both send a photo OR a clip. */
 function chatMediaPicked(e){
