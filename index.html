@@ -137,7 +137,7 @@ button{font-family:inherit;-webkit-tap-highlight-color:transparent;-webkit-touch
 .msg.keymaster .txt{display:block;max-width:none;border:1px solid rgba(179,85,42,.5);background:linear-gradient(135deg,#221510,#140e0b);border-radius:16px;font-size:13.5px;color:#e6cdb2;padding:12px 15px;font-family:'Barlow Condensed',sans-serif}
 .msg.keymaster .txt::before{content:"☠ THE KEYMASTER";display:block;letter-spacing:.2em;font-size:10px;color:var(--ember);margin-bottom:6px}
 /* sendbar — clean phone-style: one ＋ that opens Camera / Photo / GIF */
-.sendbar{display:flex;gap:8px;margin-top:8px;align-items:center}
+.sendbar{display:flex;gap:8px;margin-top:8px;align-items:center;padding-left:10px;padding-right:10px}   /* #gifout — side air: the ＋ / GIF and ➤ stand off the screen edges */
 .sendbar .field{flex:1;border-radius:99px;padding:11px 16px}
 /* #kbgif2 — the contenteditable send box: wears the input's exact skin, shows its
    placeholder off data-ph while :empty, grows a few lines then scrolls. NOT
@@ -150,7 +150,10 @@ button{font-family:inherit;-webkit-tap-highlight-color:transparent;-webkit-touch
 .sendbar button{flex:none;width:44px;height:44px;border-radius:50%;border:1px solid rgba(238,180,107,.5);background:linear-gradient(184deg,var(--btn-hi),var(--btn-lo));color:var(--copper-hi);font-size:17px;cursor:pointer}
 .attach{flex:none;width:42px;height:42px;border-radius:50%;border:1px solid var(--line);background:var(--plate);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--copper-hi);font-size:24px;line-height:1;font-weight:400}
 .attach:active{transform:scale(.94)}
-/* the ＋ menu (Camera / Photo or Video / GIF) */
+/* #gifout(aug13) — GIF stands on its own: a round button beside the ＋, same chrome,
+   the word instead of an icon. One tap → the picker sheet. */
+.gifbtn{font-family:'IBM Plex Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.05em;color:var(--copper-hi)}
+/* the ＋ menu (Camera / Photo or Video) */
 .attach-menu{position:absolute;left:12px;bottom:calc(64px + env(safe-area-inset-bottom));z-index:9;width:214px;background:linear-gradient(184deg,var(--plate-3),var(--plate));border:1px solid var(--line);border-radius:15px;box-shadow:0 16px 40px rgba(0,0,0,.5);padding:6px;display:none}
 .attach-menu.on{display:block;animation:attachIn .16s ease-out both}
 @keyframes attachIn{from{opacity:0;transform:translateY(8px) scale(.97)}to{opacity:1;transform:none}}
@@ -159,7 +162,11 @@ button{font-family:inherit;-webkit-tap-highlight-color:transparent;-webkit-touch
 .attach-menu button .ic{font-size:19px;width:24px;text-align:center;flex:none}
 /* ===== GIF picker (#gifcss aug12 — the base styles were MISSING, so the sheet opened
    unstyled behind the room overlay and the button looked dead. This restores it as a
-   proper bottom sheet above the room, day/night aware) ===== */
+   proper bottom sheet above the room, day/night aware)
+   #gifout(aug13) — briefly retired in the unshipped v51, back by request: the phone
+   keyboard's GIF button can't reach the page on every keyboard (SwiftKey shares to
+   the browser instead), so THIS sheet is the app's dependable GIF system — now on
+   its own button beside the ＋. ===== */
 .gifsheet{position:fixed;inset:0;z-index:88;background:rgba(5,6,7,.72);-webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px);display:flex;align-items:flex-end;justify-content:center;opacity:0;visibility:hidden;transition:.22s}
 .gifsheet.on{opacity:1;visibility:visible}
 .gifcard{width:100%;max-width:460px;max-height:74vh;display:flex;flex-direction:column;background:linear-gradient(184deg,var(--plate-2),var(--plate));border:1px solid var(--line);border-radius:20px 20px 0 0;padding:14px 14px calc(14px + env(safe-area-inset-bottom));transform:translateY(22px);transition:.24s}
@@ -3143,14 +3150,16 @@ window.DEVLOG=(function(){
       .chat-editbar button{margin-left:auto;background:none;border:1px solid var(--line-soft);color:var(--steel);border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer}
     </style>
     <div class="chat-editbar" id="chatEditBar">✎ Editing your message<button type="button" id="chatEditCancel">Cancel</button></div>
-    <!-- #chatface — one ＋ opens Camera / Photo or Video / GIF, like a modern phone messenger -->
+    <!-- #chatface — one ＋ opens Camera / Photo or Video, like a modern phone messenger.
+         #gifout(aug13) — GIF left the menu FOR THE SEND BAR: it lives on its own button
+         beside the ＋ now (one tap, no menu hop), so the ＋ carries just the camera roll. -->
     <div class="attach-menu" id="attachMenu">
       <button type="button" data-att="cam"><span class="ic">📷</span> Camera</button>
       <button type="button" data-att="lib"><span class="ic">🖼</span> Photo or Video</button>
-      <button type="button" data-att="gif"><span class="ic">🎞</span> GIF</button>
     </div>
     <div class="sendbar">
-      <button class="attach" id="attachBtn" type="button" aria-label="Add photo, video, or GIF">＋</button>
+      <button class="attach" id="attachBtn" type="button" aria-label="Add photo or video">＋</button>
+      <button class="attach gifbtn" id="gifBtn" type="button" aria-label="Send a GIF">GIF</button><!-- #gifout — one tap to the picker -->
       <input type="file" id="chatCam" accept="image/*,video/*" capture="environment" hidden>
       <input type="file" id="chatFile" accept="image/*,video/*" hidden>
       <!-- #kbgif2(aug13) — the send box is a RICHLY-EDITABLE div now, not an <input>.
@@ -12413,11 +12422,10 @@ function chatMediaPicked(e){
   e.target.value="";
 }
 ['chatFile','chatCam'].forEach(id=>{const el=document.getElementById(id);if(el)el.addEventListener('change',chatMediaPicked);});
-/* ===== #GIF — GIPHY-powered picker (full-library search + trending), Messenger/IG style.
-   Ships with a built-in GIPHY API key (GIPHY_KEY below), so GIFs work for every user
-   with no setup. Anyone can paste their own key via ⚙ Change key (stored on-device,
-   overrides the default) — handy if the shared key ever hits its daily cap. Tap to
-   send at 1 ⬡ (see #61). A pasted GIF link always works, key or not. */
+/* ===== #GIF — two doors, one fare. The GIPHY picker sheet (its own GIF button in the
+   send bar — #gifout below) is the dependable door on every device; the keyboard
+   plumbing from here to GIF_COST catches the phones whose keyboards CAN hand a GIF
+   to the page (Gboard's typed links, copied GIFs pasted in, real file commits). */
 /* #kbgif(aug13) — GIFs FROM THE PHONE KEYBOARD. Gboard / SwiftKey can't hand a web
    input the image itself, so the keyboard's GIF button TYPES A LINK into the box —
    a tenor.com view page (Gboard) or a giphy.com page (SwiftKey). That used to ride
@@ -12469,15 +12477,37 @@ window._gifFall=function(img){
    same media path — so a pasted GIF plays inline instead of pasting nothing. */
 (function(){
   const ci=document.getElementById('chatInput'); if(!ci)return;
+  /* #kbgif3(aug13) — ONE INTAKE, EVERY DOOR. Different keyboards hand the picked GIF
+     to the page through different events: Chromium's IME commit arrives as a PASTE
+     carrying the file; some IMEs commit through BEFOREINPUT with a dataTransfer;
+     a desktop hand can DROP a file straight onto the box. All three land here and
+     ride the same fare + upload as the old picker did. (A keyboard that instead
+     INSERTS an <img> node is caught by the #kbgif2 sweep below, and one that types
+     a tenor/giphy LINK is resolved at send — #kbgif. Five doors, one room.) */
+  function takeImg(f){
+    if(!f||!/^image\//i.test(f.type||''))return false;
+    const isGif=/gif|webp/i.test(f.type||'');
+    const mc=isGif?GIF_COST:((typeof CIRCLE_LVL!=='undefined'&&CIRCLE_LVL>=3)?3:MEDIA_COST);
+    if(!payCredits(mc,isGif?'GIF':'photo / video',true))return true;   // handled — stopped at the till
+    chatSendMedia(f,isGif?'gif':'image',mc);
+    return true;
+  }
   ci.addEventListener('paste',e=>{
     try{
       const f=e.clipboardData&&e.clipboardData.files&&e.clipboardData.files[0];
-      if(!f||!/^image\//i.test(f.type||''))return;
-      e.preventDefault();
-      const isGif=/gif|webp/i.test(f.type||'');
-      const mc=isGif?GIF_COST:((typeof CIRCLE_LVL!=='undefined'&&CIRCLE_LVL>=3)?3:MEDIA_COST);
-      if(!payCredits(mc,isGif?'GIF':'photo / video',true))return;
-      chatSendMedia(f,isGif?'gif':'image',mc);
+      if(f&&/^image\//i.test(f.type||'')){ e.preventDefault(); takeImg(f); }
+    }catch(err){}
+  });
+  ci.addEventListener('beforeinput',e=>{
+    try{
+      const dt=e.dataTransfer, f=dt&&dt.files&&dt.files[0];
+      if(f&&/^image\//i.test(f.type||'')){ e.preventDefault(); takeImg(f); }
+    }catch(err){}
+  });
+  ci.addEventListener('drop',e=>{
+    try{
+      const f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0];
+      if(f&&/^image\//i.test(f.type||'')){ e.preventDefault(); takeImg(f); }
     }catch(err){}
   });
 })();
@@ -12549,6 +12579,13 @@ window._gifFall=function(img){
   });
 })();
 const GIF_COST=1;
+/* #gifout(aug13) — THE PICKER IS BACK, ON ITS OWN BUTTON. The unshipped v51 retired
+   this sheet betting the phone keyboard could carry GIFs alone — it can't on every
+   keyboard (SwiftKey SHARES the pick to the browser: "Send to Edge Drop"; the page
+   never sees it). So the GIPHY sheet returns as the dependable system, promoted out
+   of the ＋ menu onto its own GIF button in the send bar — one tap, no menu hop.
+   The keyboard doors above all stay: Gboard's typed links resolve inline, a copied
+   GIF pastes straight in, and any keyboard that CAN commit the file is caught. */
 let GIPHY_KEY="XiipLFs9jYdXKYzheyzwt8abEyanYYrC";   // built-in GIPHY API (beta) key — GIFs work out of the box for all users
 try{const _gk=localStorage.getItem(K('giphykey'));if(_gk)GIPHY_KEY=_gk;}catch(e){}   // a user's own saved key overrides the built-in default
 let _gifSheet=null,_gifDeb=null,_gifSeq=0,_gifKeyBusy=false;
@@ -12682,8 +12719,12 @@ function openGifPicker(){
   else{const ki=sh.querySelector('#gifKeyIn');if(ki){ki.value=GIPHY_KEY;setTimeout(()=>{try{ki.focus()}catch(e){}},60);}}
 }
 function closeGifPicker(){if(_gifSheet)_gifSheet.classList.remove('on');}
+/* #gifout — the standalone GIF button in the send bar IS the picker's door now */
+(function(){ const b=document.getElementById('gifBtn'); if(b)b.addEventListener('click',()=>{try{openGifPicker();}catch(e){}}); })();
 /* #chatface — the ＋ attach menu opens Camera / Photo or Video / GIF (replaces the old
-   separate 📷 and GIF buttons crowding the send bar). */
+   separate 📷 and GIF buttons crowding the send bar).
+   #gifout(aug13) — GIF promoted back OUT of the menu onto its own button beside the
+   ＋, by request: one tap beats a menu hop, and the two-item menu stays tidy. */
 (function(){
   const btn=document.getElementById('attachBtn'), menu=document.getElementById('attachMenu');
   if(!btn||!menu)return;
@@ -12695,7 +12736,7 @@ function closeGifPicker(){if(_gifSheet)_gifSheet.classList.remove('on');}
     const a=b.getAttribute('data-att');
     if(a==='cam'){const el=document.getElementById('chatCam');if(el){el.value='';el.click();}}
     else if(a==='lib'){const el=document.getElementById('chatFile');if(el){el.value='';el.click();}}
-    else if(a==='gif'){openGifPicker();}
+    /* #gifout — no GIF branch here: the standalone GIF button beside the ＋ owns the picker */
   });
   document.addEventListener('click',e=>{if(menu.classList.contains('on')&&!menu.contains(e.target)&&e.target!==btn)close();});
 })();
