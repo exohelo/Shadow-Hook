@@ -7418,13 +7418,59 @@ function renderBell(){
 }
 async function toggleOddsAlerts(){
   if(typeof Notification==="undefined"){alert("This browser can't send phone alerts. Open the app in Chrome (Android) or add it to your home screen (iPhone, iOS 16.4+).");return;}
-  if(notifyPrefOn() && Notification.permission==="granted"){ setNotifyPref(false); renderBell(); return; }
+  if(notifyPrefOn() && Notification.permission==="granted"){ setNotifyPref(false); renderBell(); try{lookoutDrop();}catch(e){} return; }
   const perm = await Notification.requestPermission();
   if(perm!=="granted"){alert("Alerts blocked. Enable notifications for this site in your phone settings to get board-night alerts.");return;}
   setNotifyPref(true); renderBell();
   pushOddsAlert(true);   // fire tonight's immediately so they see it work
+  try{lookoutPost();}catch(e){}   /* #lookout — and stand a REAL watch: closed-app push */
 }
 window.toggleOddsAlerts=toggleOddsAlerts;
+/* ═══ #lookout(aug13) — THE LOOKOUT: the phone buzzes even with the app CLOSED ═══
+   Until now every "alert" here was a LOCAL notification — real, but only while a
+   service-worker'd tab was alive. The Lookout is true Web Push: the bell above,
+   once granted, also registers a push subscription and files it (push_subs —
+   run PUSH-SETUP.sql) with the member's card riding along. Two senders use it:
+     · the hall-line worker (push-board.js) — the moment a board's end posts,
+       every hand within PUSH_AHEAD letters of the next opening card gets
+       "board ended at W4912 — next opens W4913, you're 2 letters out";
+     · the push-order function — the Keymaster's phones ping when a paid
+       Armory order lands (the km flag on the sub marks whose phones).
+   VAPID_PUB is the public half of the push keypair. Generate once:
+       npx web-push generate-vapid-keys
+   → paste the PUBLIC key below; the PRIVATE key goes to GitHub secrets
+   (VAPID_PRIVATE, for the worker) and Supabase function secrets. Empty key =
+   the Lookout quietly stands down and local alerts behave exactly as before. */
+const VAPID_PUB="BOIf-N1g5af_QuVRTc9AbScS5YWjUMAX8wSFjfbC4Y6KPVJvLGxzvWrgPSBb38yYvCAuKCJqAGWisb8d-vZpbss";   /* #lookout — the Order's push identity (public half; the private half signs from GitHub + Supabase) */
+function _b64u8(b){const p='='.repeat((4-b.length%4)%4);const r=atob((b+p).replace(/-/g,'+').replace(/_/g,'/'));const a=new Uint8Array(r.length);for(let i=0;i<r.length;i++)a[i]=r.charCodeAt(i);return a;}
+async function lookoutPost(){
+  try{
+    if(!VAPID_PUB||!window.SB||!SW_REG||!SW_REG.pushManager)return;
+    const sub=await SW_REG.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:_b64u8(VAPID_PUB)});
+    const j=sub.toJSON();
+    await window.SB.from('push_subs').upsert({
+      endpoint:sub.endpoint,p256dh:(j.keys&&j.keys.p256dh)||'',auth:(j.keys&&j.keys.auth)||'',
+      card:(typeof ACCT_ID==='string'&&/^[A-Z]\d{3,5}$/.test(ACCT_ID))?ACCT_ID:null,
+      handle:(loadAcct()||{}).handle||null,
+      km:!!window.__isKM, uid:window.__shkUid||null, updated_at:new Date().toISOString()
+    },{onConflict:'endpoint'});
+    try{DEVLOG.data('lookout',{ok:true,latest:'watch posted — closed-app pushes armed'});}catch(e){}
+  }catch(e){ try{DEVLOG.data('lookout',{ok:false,err:e.message});}catch(_){} }
+}
+async function lookoutDrop(){
+  try{
+    if(!SW_REG||!SW_REG.pushManager)return;
+    const sub=await SW_REG.pushManager.getSubscription();
+    if(!sub)return;
+    try{ if(window.SB)await window.SB.from('push_subs').delete().eq('endpoint',sub.endpoint); }catch(e){}
+    await sub.unsubscribe();
+  }catch(e){}
+}
+/* the watch re-posts on every boot while the bell is on — endpoints rotate, cards
+   change hands, the Keymaster crown lands after restore; the row stays current */
+setTimeout(function(){try{
+  if(notifyPrefOn()&&typeof Notification!=='undefined'&&Notification.permission==='granted')lookoutPost();
+}catch(e){}},12000);
 /* #earlygate(aug7) — gate 2 for the phone alert: tonight's count has to be IN.
    True only when the published call is riding a real sheet (EARLY or FINAL) —
    an EST/AM guess doesn't buzz anybody's pocket. */
