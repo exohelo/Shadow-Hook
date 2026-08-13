@@ -13,7 +13,7 @@
      • Bumping the number below also wipes every old cache on activate, so nothing
        stale can survive.
    ──────────────────────────────────────────────────────────────────────────── */
-const CACHE = 'shadowhook-v61';  // ← bump this each time you deploy an update  (v61: the ARMORY prints in THE BOOK — a card order lands as a 0-⬡ informational line and a minted ⬡ pack prints like any earn; plus v60's fixed-frame Bank with swipe/pull-down close and the payCredits statement fix.)
+const CACHE = 'shadowhook-v62';  // ← bump this each time you deploy an update  (v62: ANTIFRAUD — hand-typed dockets older than a week seal for the record at 0 ⬡ (a photographed slip pays at any age), paid seals cap at 3 per day of entry, book lines carry the board date they paid for, dockets carry provenance stamps — and BUCKS-GUARD.sql (run it once!) puts the same ceilings in the bank itself where DevTools can't reach. Rides on v61's armory book lines.)
 
 /* #swdupe(aug10) — '.' and 'index.html' ARE THE SAME 2.1 MB DOCUMENT.
    They both sat in the shell list, so every version bump pulled the whole app
