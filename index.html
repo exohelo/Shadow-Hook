@@ -623,6 +623,11 @@ html.daylight .heist{background:rgba(64,54,38,.6)}
 .circ .t b{display:block;font-size:15px}
 .circ .t span{font-size:12.5px;color:var(--steel)}
 .badges{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+/* #markswipe2 — the drag-to-turn window: clips the pages sliding through it. touch-action
+   pan-y lets the page still scroll up/down while WE own the horizontal drag. */
+.badge-view{position:relative;overflow:hidden;touch-action:pan-y}
+.badge-view>#badgeWall{will-change:transform;backface-visibility:hidden}
+.badge-drag{position:absolute;top:0;left:0;right:0;will-change:transform;backface-visibility:hidden}
 .badge{text-align:center;padding:10px 4px;border:1px solid var(--line-soft);border-radius:10px;background:var(--well)}
 .badge .i{font-size:22px;filter:grayscale(1);opacity:.35}
 .badge.earned .i{filter:none;opacity:1}
@@ -2494,7 +2499,7 @@ window.DEVLOG=(function(){
     <!-- #markstop(aug13) — Marks Earned laid ABOVE The Race, by request -->
     <div class="card">
       <div class="card-h">Marks Earned <span class="tag" id="badgeCount">—</span></div>
-      <div class="card-b"><div class="badges" id="badgeWall"></div>
+      <div class="card-b"><div class="badge-view" id="badgeView"><div class="badges" id="badgeWall"></div></div>
         <div class="bpager"><button id="bPrev" type="button">‹</button><span class="mono" id="bPageTxt">—</span><button id="bNext" type="button">›</button></div>
       </div>
     </div>
@@ -11011,43 +11016,84 @@ const BADGES=[
 /* earned marks persist on the device */
 try{(JSON.parse(localStorage.getItem(K('badges')))||[]).forEach(ix=>{if(BADGES[ix])BADGES[ix][2]=1})}catch(e){}
 const B_PER_PAGE=16;let badgePage=0;   /* #grid4x4(aug13) — 4 across × 4 down (was 20 = 4×5) */
+/* #markswipe2(aug13) — one page's worth of badge tiles as HTML, so both the live wall
+   AND the drag-in "next page" pane are built the same way. */
+function badgesPageHTML(page){
+  let h='';
+  BADGES.slice(page*B_PER_PAGE,(page+1)*B_PER_PAGE).forEach((b,k)=>{
+    const ix=page*B_PER_PAGE+k, i=b[0], n=b[1], e=b[2], r=b[3]||0;
+    h+='<div class="badge'+(e?' earned':'')+' r'+r+'" data-ix="'+ix+'"><div class="i">'+i+'</div><div class="n">'+n+'</div><div class="rr" style="color:'+RARITY[r][1]+'">'+RARITY[r][0]+'</div></div>';
+  });
+  return h;
+}
 function renderBadges(){
   const bw=document.getElementById('badgeWall');
   const pages=Math.max(1,Math.ceil(BADGES.length/B_PER_PAGE));
-  if(badgePage>=pages)badgePage=pages-1;
-  bw.innerHTML="";let earned=0;
-  BADGES.forEach(b=>{if(b[2])earned++});
-  BADGES.slice(badgePage*B_PER_PAGE,(badgePage+1)*B_PER_PAGE).forEach((b,k)=>{
-    const ix=badgePage*B_PER_PAGE+k, [i,n,e]=b, r=b[3]||0;
-    bw.insertAdjacentHTML('beforeend','<div class="badge'+(e?' earned':'')+' r'+r+'" data-ix="'+ix+'"><div class="i">'+i+'</div><div class="n">'+n+'</div><div class="rr" style="color:'+RARITY[r][1]+'">'+RARITY[r][0]+'</div></div>');
-  });
+  if(badgePage>=pages)badgePage=pages-1; if(badgePage<0)badgePage=0;
+  let earned=0; BADGES.forEach(b=>{if(b[2])earned++});
+  bw.innerHTML=badgesPageHTML(badgePage);
   document.getElementById('badgeCount').textContent=earned+" of "+BADGES.length;
   document.getElementById('bPageTxt').textContent=(badgePage+1)+" / "+pages;
   document.getElementById('bPrev').disabled=badgePage===0;
   document.getElementById('bNext').disabled=badgePage>=pages-1;
   bw.querySelectorAll('.badge').forEach(b=>b.addEventListener('click',()=>{
-    const bd=BADGES[+b.dataset.ix],[ic,nm,e]=bd;
+    const bd=BADGES[+b.dataset.ix], ic=bd[0], nm=bd[1], e=bd[2];
     const parts=nm.split(' · ');
     bpopShow(ic,parts[0],parts[1]||'',!!e,false,bd[3]||0);
   }));
 }
-document.getElementById('bPrev').addEventListener('click',()=>{badgePage--;renderBadges()});
-document.getElementById('bNext').addEventListener('click',()=>{badgePage++;renderBadges()});
-/* #markswipe(aug13) — swipe the wall left/right to flip pages, same as the ‹ › buttons.
-   Dominantly-horizontal only, so scrolling the page up/down never flips a page. An
-   edge-swipe that used to close the app is now caught by the global Back guard. */
+document.getElementById('bPrev').addEventListener('click',()=>{ if(window._flipBadgePage)_flipBadgePage(-1); else {badgePage--;renderBadges();} });
+document.getElementById('bNext').addEventListener('click',()=>{ if(window._flipBadgePage)_flipBadgePage(1); else {badgePage++;renderBadges();} });
+/* #markswipe2(aug13) — DRAG-TO-TURN. The wall follows your finger; the next page slides
+   in beside it; on release it settles (past ~¼ width = turn, else snaps back). The ‹ ›
+   arrows animate the same way. Horizontal-only, so vertical scrolling is untouched, and
+   an edge-swipe is still caught by the global Back guard (it never reaches here). */
 (function(){
-  const bw=document.getElementById('badgeWall'); if(!bw)return;
-  let x0=null,y0=null;
-  bw.addEventListener('touchstart',e=>{const t=e.touches[0];x0=t.clientX;y0=t.clientY;},{passive:true});
-  bw.addEventListener('touchend',e=>{
-    if(x0==null)return;const t=e.changedTouches[0];const dx=t.clientX-x0,dy=t.clientY-y0;x0=null;
-    if(Math.abs(dx)>55&&Math.abs(dx)>Math.abs(dy)*1.4){
-      const nx=document.getElementById('bNext'), pv=document.getElementById('bPrev');
-      if(dx<0){ if(nx&&!nx.disabled)nx.click(); }   // swipe left → next page
-      else    { if(pv&&!pv.disabled)pv.click(); }    // swipe right → previous page
+  const view=document.getElementById('badgeView'), bw=document.getElementById('badgeWall');
+  if(!view||!bw)return;
+  const PAGES=()=>Math.max(1,Math.ceil(BADGES.length/B_PER_PAGE));
+  const EASE='transform .27s cubic-bezier(.22,.61,.36,1)';
+  let pane=null, dir=0, x0=null,y0=null,dx=0,active=false,axis=0,W=1,busy=false;
+  const w=()=>view.clientWidth||bw.clientWidth||320;
+  function killPane(){ if(pane){try{pane.remove()}catch(e){} pane=null;} }
+  function makePane(tp,d){ const p=document.createElement('div'); p.className='badges badge-drag'; p.innerHTML=badgesPageHTML(tp); p.style.transform='translateX('+(d===1?w():-w())+'px)'; view.appendChild(p); return p; }
+  function settle(commit){
+    const W2=w(), d=dir, p=pane; pane=null;
+    if(commit && d!==0 && badgePage+d>=0 && badgePage+d<PAGES()){
+      busy=true;
+      bw.style.transition=EASE; if(p)p.style.transition=EASE;
+      bw.style.transform='translateX('+(d===1?-W2:W2)+'px)'; if(p)p.style.transform='translateX(0px)';
+      let done=false; const fin=()=>{ if(done)return;done=true; bw.removeEventListener('transitionend',fin);
+        badgePage+=d; renderBadges();
+        bw.style.transition=''; bw.style.transform='';       // new page snaps to home
+        if(p&&p.parentNode)p.remove(); dir=0; busy=false; };
+      bw.addEventListener('transitionend',fin); setTimeout(fin,380);
+    }else{
+      bw.style.transition=EASE; bw.style.transform='translateX(0px)';
+      if(p){ p.style.transition=EASE; p.style.transform='translateX('+(d===1?W2:-W2)+'px)'; }
+      setTimeout(()=>{ if(p&&p.parentNode)p.remove(); dir=0; bw.style.transition=''; bw.style.transform=''; },300);
     }
-  },{passive:true});
+  }
+  /* arrows / programmatic turn — same slide as a completed drag */
+  window._flipBadgePage=function(d){
+    if(busy)return; const tp=badgePage+d; if(tp<0||tp>=PAGES())return;
+    killPane(); dir=d; pane=makePane(tp,d); void pane.offsetWidth; settle(true);
+  };
+  view.addEventListener('touchstart',e=>{ if(busy||e.touches.length!==1)return; const t=e.touches[0]; x0=t.clientX;y0=t.clientY;dx=0;active=true;axis=0;dir=0;W=w(); bw.style.transition=''; killPane(); },{passive:true});
+  view.addEventListener('touchmove',e=>{
+    if(!active||x0==null)return; const t=e.touches[0]; const mx=t.clientX-x0, my=t.clientY-y0;
+    if(axis===0){ if(Math.abs(mx)<8&&Math.abs(my)<8)return; axis=(Math.abs(mx)>Math.abs(my)*1.2)?1:-1; if(axis!==1){active=false;return;} }
+    const want=mx<0?1:-1, tp=badgePage+want;
+    if(tp<0||tp>=PAGES()){ killPane();dir=0; dx=mx*0.3; bw.style.transform='translateX('+dx+'px)'; if(e.cancelable)e.preventDefault(); return; }   // rubber-band at the ends
+    if(dir!==want){ killPane(); dir=want; pane=makePane(tp,want); }
+    dx=mx; bw.style.transform='translateX('+dx+'px)';
+    if(pane)pane.style.transform='translateX('+((dir===1?W:-W)+dx)+'px)';
+    if(e.cancelable)e.preventDefault();
+  },{passive:false});
+  function up(){ if(!active)return; active=false; if(axis!==1){ x0=null; killPane(); dir=0; return; }
+    settle(Math.abs(dx)>Math.min(80,W*0.25)&&dir!==0); x0=null;dx=0;axis=0; }
+  view.addEventListener('touchend',up,{passive:true});
+  view.addEventListener('touchcancel',up,{passive:true});
 })();
 renderBadges();
 /* ---- the celebration ---- */
