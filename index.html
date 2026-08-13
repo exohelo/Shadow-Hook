@@ -12655,6 +12655,36 @@ setInterval(function(){try{pushMyHours()}catch(e){} try{pushMyLetter()}catch(e){
   /* #floorwho2 — re-assert the presence meta every pass: a device that joined the
      floor before its identity settled (or missed a paint) heals itself within 5 min */
   try{if(typeof floorTrack==='function')floorTrack((typeof CURRENT_ROOM!=='undefined'&&CURRENT_ROOM)||null);}catch(e){}},300000);
+/* ═══ #pulse2(aug13) — THE FOOTFALL BEACON: one anonymous ping per device per LA day ═══
+   This is what feeds THE TRAFFIC in the Command Center. One row: the day, a random
+   device token (no name, no card), and — when signed in — the uid so the signed-in
+   share can be told from the door count. Once per day per device, deduped locally
+   AND by the table's primary key, so reloads and multi-tab days never double-count.
+   Backend off → silent no-op, exactly like every other wire. */
+(function(){
+  function devId(){try{let d=localStorage.getItem('shadowhook_dev');
+    if(!d){d='d'+Math.random().toString(36).slice(2,10)+Date.now().toString(36);localStorage.setItem('shadowhook_dev',d);}
+    return d;}catch(e){return null;}}
+  function ping(){
+    try{
+      if(!window.SB)return;
+      const day=todayISO(), key='shadowhook_pulse_'+day, dev=devId();
+      if(!dev||localStorage.getItem(key))return;
+      window.SB.from('app_pulse').upsert({d:day,dev:dev,uid:window.__shkUid||null},{onConflict:'d,dev',ignoreDuplicates:true})
+        .then(function(r){ if(!r||!r.error||/duplicate|unique/i.test(String(r.error.message||''))){
+          try{
+            localStorage.setItem(key,'1');
+            /* keep the ledger tidy: yesterday's flag is the only other one worth keeping */
+            Object.keys(localStorage).forEach(function(k2){
+              if(/^shadowhook_pulse_\d{4}-/.test(k2)&&k2!==key)localStorage.removeItem(k2);});
+          }catch(e){}
+        }},function(){});
+    }catch(e){}
+  }
+  setTimeout(ping,5000);        // first try once the wire settles
+  setTimeout(ping,45000);       // second, in case the session landed late
+  setInterval(ping,3600000);    // a phone left open past midnight still counts the new day
+})();
 /* #83 — openBucksBoard removed with the Armory's Top Earners card */
 /* ===== #26 — THE DAY COUNT: nightly participation report =====
    Backend posts DAY_REPORT after each night board closes. Shape:
@@ -21376,6 +21406,16 @@ html.season-xmas.daylight{}
     <div class="card-h" style="margin-top:4px">The Alarms <span class="pill red" id="kmAlarmN" style="display:none">0</span></div>
     <div id="kmAlarms" class="sub" style="line-height:1.7;margin-bottom:14px">—</div>
 
+    <!-- #mailbag(aug13) — every Send Word submission (numbers · terminals · maps · bad data · ideas)
+         in ONE inbox, newest first, with a ✓ handled toggle. Same member_wire table the
+         member sheets read — this is the cross-member view the Keymaster never had. -->
+    <div class="card-h" style="margin-top:4px">The Mailbag <span class="pill gold" id="kmMailN" style="display:none">0</span></div>
+    <div id="kmMail" class="sub" style="line-height:1.7;margin-bottom:14px">—</div>
+
+    <!-- #pulse2(aug13) — FOOTFALL: devices through the door, by day. Run PULSE.sql once. -->
+    <div class="card-h" style="margin-top:4px">The Traffic</div>
+    <div id="kmTraffic" class="sub" style="line-height:1.8;margin-bottom:14px">counting footsteps…</div>
+
     <div class="card-h" style="margin-top:4px">The Pulse</div>
     <div id="kmPulse" class="sub" style="line-height:1.8;margin-bottom:14px">reading the wire…</div>
 
@@ -21590,6 +21630,8 @@ html.season-xmas.daylight{}
     if($('kmBull'))$('kmBull').value=f.bulletin||'';
     kmPulse();
     try{kmAlarms();}catch(e){}   /* #alarms — what jammed, first thing you see */
+    try{kmMail();}catch(e){}     /* #mailbag — what the hands sent in */
+    try{kmTraffic();}catch(e){}  /* #pulse2 — who's coming through the door */
     try{kmRoster();}catch(e){}
     try{kmApps();}catch(e){}     /* #amb — pending crown requests ride along */
     try{kmTrades();}catch(e){}   /* #trades — pending board posts too */
@@ -21663,7 +21705,7 @@ html.season-xmas.daylight{}
     const c=document.getElementById('devLogBtn'); if(c)c.click();   /* the chip's own handler opens the pane */
   });
   const rf=$('kmRefresh');
-  if(rf)rf.addEventListener('click',function(){try{liveRefreshAll();}catch(e){}try{repredict();}catch(e){}try{toast('↻ every wire re-pulled');}catch(e){}kmPulse();});
+  if(rf)rf.addEventListener('click',function(){try{liveRefreshAll();}catch(e){}try{repredict();}catch(e){}try{toast('↻ every wire re-pulled');}catch(e){}kmPulse();try{kmMail();}catch(e){}try{kmTraffic();}catch(e){}});
   const cl=$('kmClose');
   if(cl)cl.addEventListener('click',function(){$('kmSheet').classList.remove('on');});
   const sh=$('kmSheet');
@@ -22224,6 +22266,107 @@ html.season-xmas.daylight{}
     try{const r=await window.SB.from('error_log').update({seen:true}).eq('id',b.dataset.aid);if(r.error)throw r.error;kmAlarms();}
     catch(err){try{toast('✗ '+err.message);}catch(e2){} b.disabled=false;}
   });
+
+  /* ═══════════ #mailbag(aug13) — THE MAILBAG: what the hands send in ═══════════
+     Send Word reports land in member_wire (MEMBER-WIRE.sql) tagged with their kind —
+     a wrong number, a missing terminal, a map, bad data, an idea. Until now they were
+     only visible one member at a time, buried in each member's sheet; the coverage
+     line begs for gate photos and the Keymaster had no single place to see what came
+     back. This is that place: every unhandled submission, newest first, kind-chipped,
+     with the same ✓ handled state the member sheet writes. (Photos still ride the
+     share/email path — the note at the bottom says so, so nothing feels missing.) */
+  const _MAILKIND=[
+    [/phone|number/i,  '☎ NUMBER',  'var(--ok)'],
+    [/terminal|gate/i, '⚓ TERMINAL','var(--copper-hi)'],
+    [/map/i,           '🗺 MAP',    'var(--warn)'],
+    [/bad data/i,      '⚠ BAD DATA','var(--ember)'],
+    [/idea|improve/i,  '💡 IDEA',   'var(--bone)'],
+  ];
+  function _mailChip(kind){
+    for(const [rx,label,col] of _MAILKIND) if(rx.test(String(kind||''))) return {label,col};
+    return {label:'✉ WORD',col:'var(--steel)'};
+  }
+  window.kmMail=async function(){
+    const out=$('kmMail');if(!out)return;
+    if(!window.SB){out.textContent='backend off';return;}
+    try{
+      const r=await window.SB.from('member_wire').select('*').eq('handled',false).order('created_at',{ascending:false}).limit(50);
+      if(r.error)throw r.error;
+      const rows=r.data||[];
+      const n=$('kmMailN');if(n){n.textContent=rows.length;n.style.display=rows.length?'':'none';}
+      if(!rows.length){out.innerHTML='<span style="color:var(--steel)">quiet — numbers, terminals, maps and ideas the hands send in land here. (Map & gate PHOTOS ride the email path — check the Keymaster inbox.)</span>';return;}
+      out.innerHTML=rows.map(w=>{const c=_mailChip(w.kind);
+        return '<div style="border:1px solid var(--line-soft);border-radius:10px;padding:8px 10px;margin-bottom:6px">'
+        +'<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="pill" style="color:'+c.col+';border-color:currentColor">'+c.label+'</span>'
+        +(w.handle?'<span class="mono" style="color:var(--copper-hi)">'+esc(w.handle)+'</span>':'<span style="color:var(--steel)">a hand</span>')
+        +'<span style="margin-left:auto;color:var(--steel);font-size:10.5px">'+_dt(w.created_at)+'</span></div>'
+        +'<div class="sub" style="margin-top:4px;line-height:1.55;color:var(--bone);white-space:pre-wrap">'+esc(w.body||'')+'</div>'
+        +'<button class="btn-ghost km-mail" data-wid="'+esc(w.id)+'" style="margin-top:6px;padding:3px 10px;font-size:10.5px;color:var(--ok)">✓ handled</button>'
+        +'</div>';}).join('')
+        +(rows.length>2?'<button class="btn-ghost" id="kmMailAll" style="width:100%;padding:5px 0;font-size:11px;color:var(--steel)">✓ mark all handled</button>':'')
+        +'<div style="margin-top:4px;color:var(--steel);font-size:10.5px">photos (maps · gate signs) arrive by email — this board carries the typed word</div>';
+      const all=$('kmMailAll');
+      if(all)all.addEventListener('click',async()=>{
+        all.disabled=true;
+        try{const r2=await window.SB.from('member_wire').update({handled:true}).eq('handled',false);if(r2.error)throw r2.error;kmMail();}
+        catch(err){try{toast('✗ '+err.message);}catch(e2){} all.disabled=false;}
+      });
+    }catch(e){
+      out.innerHTML=/does not exist|relation|schema/i.test(e.message||'')
+        ?'<span style="color:var(--ember)">the word book isn’t built yet — run MEMBER-WIRE.sql in Supabase</span>'
+        :('mailbag failed: '+esc(e.message));
+    }
+  };
+  const kml=$('kmMail');
+  if(kml)kml.addEventListener('click',async function(e){
+    const b=e.target.closest('button.km-mail');if(!b)return;
+    b.disabled=true;
+    try{const r=await window.SB.from('member_wire').update({handled:true}).eq('id',b.dataset.wid);if(r.error)throw r.error;kmMail();}
+    catch(err){try{toast('✗ '+err.message);}catch(e2){} b.disabled=false;}
+  });
+
+  /* ═══════════ #pulse2(aug13) — THE TRAFFIC: footfall through the door ═══════════
+     Every device pings app_pulse once per LA day (see the beacon by the boot timers);
+     PULSE.sql builds the table + the daily rollup view, readable by the Keymaster and
+     the crowned ambassadors (the Dock Office can read the same view). This draws the
+     last 14 days: devices through the door, signed-in share, live-now off the presence
+     roster, and the week-over-week move. Devices, not identities — the beacon carries
+     no name, and a signed-out phone counts the same as a signed-in one. */
+  window.kmTraffic=async function(){
+    const out=$('kmTraffic');if(!out)return;
+    if(!window.SB){out.textContent='backend off';return;}
+    try{
+      const r=await window.SB.from('app_pulse_daily').select('*').order('d',{ascending:false}).limit(14);
+      if(r.error)throw r.error;
+      const rows=(r.data||[]).slice().sort((a,b)=>String(a.d).localeCompare(String(b.d)));
+      if(!rows.length){out.innerHTML='<span style="color:var(--steel)">no footsteps on the book yet — the beacon starts counting the day this build ships.</span>';return;}
+      const today=todayISO();
+      const byD={};rows.forEach(x=>{byD[String(x.d)]=x;});
+      /* a full 14-day rail, zero-filled, so quiet days show as quiet instead of vanishing */
+      const days=[];for(let i=13;i>=0;i--){const dt=new Date(nowLA());dt.setDate(dt.getDate()-i);
+        const iso=dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');
+        days.push({iso,n:(byD[iso]&&+byD[iso].n)||0});}
+      const max=Math.max.apply(null,days.map(x=>x.n).concat([1]));
+      const wk1=days.slice(7).reduce((a,x)=>a+x.n,0), wk0=days.slice(0,7).reduce((a,x)=>a+x.n,0);
+      const move=wk0?Math.round((wk1-wk0)/wk0*100):null;
+      const nToday=(byD[today]&&+byD[today].n)||0;
+      let onNow='—';try{if(floorKnown())onNow=String(floorTotal());}catch(e){}
+      const bars=days.map(x=>{const h=Math.max(3,Math.round(x.n/max*34));
+        const hot=x.iso===today;
+        return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px">'
+          +'<div style="width:70%;height:'+h+'px;border-radius:3px 3px 0 0;background:'+(hot?'var(--ok)':'var(--copper-hi)')+';opacity:'+(x.n?1:.25)+'" title="'+x.iso+' · '+x.n+'"></div>'
+          +'<span style="font-size:8px;color:var(--steel);font-family:\'IBM Plex Mono\',monospace">'+x.iso.slice(8)+'</span></div>';}).join('');
+      out.innerHTML='<b>'+nToday.toLocaleString()+'</b> through the door today · <b>'+onNow+'</b> on the floor right now'
+        +'<div style="display:flex;align-items:flex-end;gap:2px;margin:8px 0 4px;height:48px">'+bars+'</div>'
+        +'last 7 days <b>'+wk1.toLocaleString()+'</b> devices'
+        +(move!=null?' · vs the week before <b style="color:'+(move>=0?'var(--ok)':'var(--ember)')+'">'+(move>=0?'+':'')+move+'%</b>':'')
+        +'<br><span style="color:var(--steel);font-size:10.5px">devices, not names — the beacon pings once a day and carries no identity</span>';
+    }catch(e){
+      out.innerHTML=/does not exist|relation|schema/i.test(e.message||'')
+        ?'<span style="color:var(--ember)">the footfall book isn’t built yet — run PULSE.sql in Supabase (one paste)</span>'
+        :('traffic failed: '+esc(e.message));
+    }
+  };
 
   /* ═══════════ #amb — CROWN REQUESTS (Keymaster side) ═══════════
      Applications from the BECOME AN AMBASSADOR poster land in amb_applications
