@@ -13,7 +13,7 @@
      • Bumping the number below also wipes every old cache on activate, so nothing
        stale can survive.
    ──────────────────────────────────────────────────────────────────────────── */
-const CACHE = 'shadowhook-v42';  // ← bump this each time you deploy an update  (v42: TikTok-style text-on-video — type words over your photo/clip and drag them to place; removed the "Watch on YouTube" chip to keep people in the Hall)
+const CACHE = 'shadowhook-v43';  // ← bump this each time you deploy an update  (v43: THE marks fix — ~18 basic/tier marks (First Blood, New Blood, Century Club, Tier 1-4, UTR Ace, Clerk's Quill…) had NO award rule and could never be earned; wired them all to real docket data + the wall now re-checks on every open, so the backlog you earned catches up)
 
 /* #swdupe(aug10) — '.' and 'index.html' ARE THE SAME 2.1 MB DOCUMENT.
    They both sat in the shell list, so every version bump pulled the whole app
