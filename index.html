@@ -6947,8 +6947,73 @@ function publishCall(){
   try{ renderWireStage(o); }catch(e){ console.warn('wire stage',e); }
   /* the pending row on Recent Boards reads this same call */
   window._lastCall={stop:AZ[(base+med)%26], lo:AZ[(base+lo)%26], hi:AZ[(base+hi)%26], pmove:pmove};
+  /* #record(aug13) — SNAPSHOT THE CALL, but only while the board hasn't started:
+     during the live run the call re-figures off real member scans, and scoring
+     THAT against the seal would grade the bot on an open-book exam. The last
+     pre-run call is the one that stands. */
+  try{ if(!liveWindow()) predSnap(key, AZ[(base+med)%26]); }catch(e){}
   renderMyOdds(lastStart, med);   /* #54 — personal odds off the same engine run */
 }
+/* ═══ #record(aug13) — THE BOT'S RECORD: the baby banner earns its retirement ═══
+   "I'M JUST A BABY" was the right banner when the bot had no track record a member
+   could check. The engine's own walk-forward backtests are strong (night boards
+   within ±1 letter ~75%), but a backtest in a comment is a claim, not a receipt —
+   and July 2026 (port changed gear, MAE 3+) proves accuracy is a season, not a
+   badge. So the banner reads the LIVE record now: every published call is
+   snapshotted before its board runs, scored in letters-off when the seal lands,
+   and the banner graduates — or humbles itself — from the numbers alone:
+     · fewer than 10 scored boards → the baby line stands (honest: small sample);
+     · 10+ and ≥70% within ±1      → the record speaks, baby talk retired;
+     · 10+ and under 70%           → the numbers show WITH the humility. */
+function _predLog(){ try{ return JSON.parse(localStorage.getItem('shadowhook_predlog'))||{} }catch(e){ return {} } }
+function _predSave(o){ try{
+  const ks=Object.keys(o).sort(); while(ks.length>120)delete o[ks.shift()];
+  localStorage.setItem('shadowhook_predlog',JSON.stringify(o)); }catch(e){} }
+function predSnap(k,stopLetter){
+  if(!k||!stopLetter)return;
+  const o=_predLog();
+  if(o[k]&&o[k].off!=null)return;             // sealed & scored — the call is history
+  o[k]=Object.assign(o[k]||{},{p:String(stopLetter),ts:Date.now()});
+  _predSave(o);
+}
+function predScore(k,endCard){
+  try{
+    const L=String(endCard||'').charAt(0).toUpperCase();
+    if(!k||AZ.indexOf(L)<0)return;
+    const o=_predLog(), e=o[k];
+    if(!e||e.off!=null||!e.p)return;
+    const d=((AZ.indexOf(L)-AZ.indexOf(e.p))%26+26)%26;
+    e.off=Math.min(d,26-d);                    // wrap-aware letters off
+    _predSave(o);
+    try{ updateBabyNote(); }catch(err){}
+  }catch(e){}
+}
+function updateBabyNote(){
+  const el=document.getElementById('babyNote'); if(!el)return;
+  const o=_predLog();
+  /* self-healing sweep: score any snapshotted board whose seal is already on the record */
+  try{ Object.keys(o).forEach(k=>{ if(o[k].off==null){
+    const r=RECENT.find(x=>x.date+'_'+x.slot===k); if(r&&r.end)predScore(k,r.end); } }); }catch(e){}
+  const scored=Object.keys(_predLog()).filter(k=>_predLog()[k].off!=null).sort().slice(-30);
+  const log=_predLog();
+  const n=scored.length;
+  if(n<10){
+    el.innerHTML='<span class="bottle">🍼</span> <b>I’M JUST A BABY!</b> — the call bot is still learning the port. Every board makes it a little sharper. Love me, but don’t bet the rent on me.'
+      +(n?' <span style="opacity:.75">('+n+' of the 10 boards it needs on the record are scored — then the record talks.)</span>':'')
+      +'<span id="babyFeed"></span>';
+    return;
+  }
+  const offs=scored.map(k=>log[k].off);
+  const hit=offs.filter(v=>v<=1).length, pct=Math.round(hit/n*100);
+  const mae=Math.round(offs.reduce((a,v)=>a+v,0)/n*10)/10;
+  if(pct>=70){
+    el.innerHTML='<span class="bottle">📈</span> <b>THE BOT’S RECORD</b> — last '+n+' boards: called the stop within ±1 letter on <b>'+hit+'</b> ('+pct+'%), avg '+mae+' letters off. The record talks now — still check it against the sheet; the port can change gear overnight.<span id="babyFeed"></span>';
+  } else {
+    el.innerHTML='<span class="bottle">🍼</span> <b>STILL LEARNING THIS REGIME</b> — last '+n+' boards: within ±1 letter on '+hit+' ('+pct+'%), avg '+mae+' letters off. The numbers are the numbers — don’t bet the rent on me yet.<span id="babyFeed"></span>';
+  }
+}
+window.updateBabyNote=updateBabyNote; window.predScore=predScore;
+setTimeout(function(){try{updateBabyNote()}catch(e){}},1500);   // first paint once RECENT has settled
 /* #204 — HYBRID FLOP MODEL ────────────────────────────────────────────────────
    Off the last several COMPLETED boards (start → end + the come-down that was logged):
    walk the board the way dispatch does — the first `down` numbers called CAUGHT a job,
@@ -17017,6 +17082,8 @@ function bwApplyRow(row){
   if(!r){r={date:date,slot:slot,rain:false,hol:false};RECENT.push(r);
     RECENT.sort((a,b)=>{const ka=a.date+(String(a.slot).endsWith('AM')?'_1':'_2'),kb=b.date+(String(b.slot).endsWith('AM')?'_1':'_2');return ka<kb?-1:ka>kb?1:0;});}
   Object.assign(r,row.patch);
+  /* #record(aug13) — a sealed end is the exam answer: score the bot's pre-run call */
+  try{ if(r.end&&typeof predScore==='function')predScore(k,r.end); }catch(e){}
   /* #noflop0 — the wire carries rows logged BEFORE the held rule existed, so a
      stale "V5045 → V5044" start rides back in on every sync and would quietly undo
      the boot repair. Normalize on the way in, and push the fix back to storage so
