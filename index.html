@@ -5511,7 +5511,7 @@ function renderWeek(){
   const wkJobs=DOCKETS.filter(j=>{const d=new Date(j.date+"T12:00");return d>=wkStart&&d<=wkEnd});
   let wg=0;const wj=document.getElementById('weekJobs');
   wj.innerHTML="";
-  wkJobs.sort((a,b)=>b.date.localeCompare(a.date)).forEach(j=>{const p=estPay(j);wg+=p.gross;
+  wkJobs.sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))).forEach(j=>{const p=estPay(j);wg+=p.gross;
     const label=(j.ship&&j.ship!=="\u2014")?j.ship:j.terminal;
     wj.insertAdjacentHTML('beforeend','<div class="jobrow"><div class="d mono">'+j.date.slice(5).replace("-","/")+'</div><div class="n"><b>'+label+'</b><span>'+j.terminal+' · '+j.shift+' · '+p.note+'</span></div><div class="amt">'+fmt$(p.gross)+'</div></div>');
   });
@@ -9494,7 +9494,7 @@ function renderDockets(){
     el.innerHTML='<div class="empty-state"><div class="es-ico">▣</div><p class="sub">Your log is empty. <b style="color:var(--copper-hi)">Scan your first docket</b> after your next job — snap the slip and the system reads it. It lands here, feeds your pay &amp; hours, and earns your first mark.</p></div>';
     return;
   }
-  [...DOCKETS].sort((a,b)=>b.date.localeCompare(a.date)).forEach(j=>{
+  [...DOCKETS].sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))).forEach(j=>{
     const p=estPay(j);const catCls=(j.category||"").startsWith("CLERK")?"CLERK":j.category;
     const t=findTerminal(j.terminal);
     // #48 — board code retired; the spot now opens the terminal's interactive yard map
@@ -12127,15 +12127,25 @@ function bucksSpin(tiers){
 
 const TOWN_CRIER=BADGES.findIndex(b=>b[1].startsWith('Town Crier'));
 const bix=p=>BADGES.findIndex(b=>b[1].startsWith(p));
+/* #marks3(aug13) — DATE MATH THAT SURVIVES A BAD ROW. The old day-number
+   (`Math.round(new Date(date+"T12:00")/86400000)`) turned one malformed date into
+   NaN — and a NaN inside .sort() SCRAMBLES the order, so it could land BETWEEN two
+   genuinely consecutive nights and split the pair the Back-to-Back rule compares.
+   One junk docket anywhere in the log = a mark honestly earned, never lit (the
+   Keymaster's own wall proved it). Parse the digits directly: no Date object, no
+   timezone, malformed rows return null and are dropped instead of poisoning the
+   list. dow: epoch day 0 was a Thursday, so (ix+4)%7 gives 0=Sun … 6=Sat. */
+function dayIxOf(s){const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s||''));return m?Date.UTC(+m[1],+m[2]-1,+m[3])/86400000:null;}
+function dowOf(s){const ix=dayIxOf(s);return ix==null?null:((ix+4)%7);}
 function checkMarks(silent){ // real rules on real data — marks are earned, never given
   _marksSilent=!!silent;   // #marksfix — a load-time catch-up runs silent; a fresh docket-save animates
   const _before=BADGES.filter(b=>b[2]).length;
   const byDate={};DOCKETS.forEach(j=>{(byDate[j.date]=byDate[j.date]||[]).push(j)});
   // back-to-back nights (allowed under the rest rule) — two night boards on consecutive days
-  const nightDays=[...new Set(DOCKETS.filter(j=>j.shift!=="Day").map(j=>Math.round(new Date(j.date+"T12:00").getTime()/86400000)))].sort((a,b)=>a-b);
+  const nightDays=[...new Set(DOCKETS.filter(j=>j.shift!=="Day").map(j=>dayIxOf(j.date)).filter(v=>v!=null))].sort((a,b)=>a-b);   /* #marks3 — NaN-proof */
   if(nightDays.some((d,i)=>i>0&&d-nightDays[i-1]===1))unlockBadge(bix("Back-to-Back"));
   if(DOCKETS.filter(j=>j.shift!=="Day").length>=10)unlockBadge(bix("Night School"));
-  if(DOCKETS.filter(j=>{const d=new Date(j.date+"T12:00").getDay();return d===0||d===6}).length>=10)unlockBadge(bix("Weekend Warrior"));
+  if(DOCKETS.filter(j=>{const d=dowOf(j.date);return d===0||d===6}).length>=10)unlockBadge(bix("Weekend Warrior"));   /* #marks3 */
   const cats=new Set(DOCKETS.map(j=>(j.category||"").startsWith("CLERK")?"CLERK":j.category));
   if(["UTR","S","SL","SD","DA","CLERK"].every(c=>cats.has(c)))unlockBadge(bix("The Collector"));
   const terms=new Set(DOCKETS.map(j=>j.terminal));
@@ -12145,7 +12155,7 @@ function checkMarks(silent){ // real rules on real data — marks are earned, ne
   const nights=DOCKETS.filter(j=>j.shift!=="Day").length;
   if(nights>=50)unlockBadge(bix("Night Shift Legend"));
   if(nights>=100)unlockBadge(bix("Creature of the Night"));
-  if(DOCKETS.filter(j=>{const d=new Date(j.date+"T12:00").getDay();return d===0||d===6}).length>=25)unlockBadge(bix("Weekend Centurion"));
+  if(DOCKETS.filter(j=>{const d=dowOf(j.date);return d===0||d===6}).length>=25)unlockBadge(bix("Weekend Centurion"));   /* #marks3 */
   if(DOCKETS.length>=100)unlockBadge(bix("Vault Keeper"));
   if(DOCKETS.length>=250)unlockBadge(bix("The Chronicler"));
   if(terms.size>=20)unlockBadge(bix("Master Cartographer"));
@@ -12165,7 +12175,7 @@ function checkMarks(silent){ // real rules on real data — marks are earned, ne
   const byDock={};DOCKETS.forEach(j=>{byDock[j.terminal]=(byDock[j.terminal]||0)+1});
   if(Object.values(byDock).some(n=>n>=25))unlockBadge(bix("Dock Fixture"));
   // five jobs in one Mon–Sun week
-  const byWeek={};DOCKETS.forEach(j=>{const d=new Date(j.date+"T12:00");const wk=new Date(d);wk.setDate(d.getDate()-((d.getDay()+6)%7));byWeek[wk.toDateString()]=(byWeek[wk.toDateString()]||0)+1});
+  const byWeek={};DOCKETS.forEach(j=>{const ix=dayIxOf(j.date);if(ix==null)return;const wk=ix-((((ix+4)%7)+6)%7);byWeek[wk]=(byWeek[wk]||0)+1});   /* #marks3 — malformed rows can't pool into a fake "Invalid Date" week */
   if(Object.values(byWeek).some(n=>n>=5))unlockBadge(bix("Five for Five"));
   /* #truehrs(aug13) — THE HOUR MARKS READ THE BOOK, NOT JUST THE APP'S OWN LOG.
      hrsTot here was docket-hours only, so a hand with 3,000+ REAL hours on the
@@ -12297,6 +12307,32 @@ function checkMarks(silent){ // real rules on real data — marks are earned, ne
    docket is saved. Silent, so it doesn't blast a flurry of popups; if it caught anything
    up, one quiet line says so. Everything it awards is a mark genuinely already earned. */
 try{ const _mn=checkMarks(true); if(_mn>0){ try{toast('⚑ '+_mn+' mark'+(_mn>1?'s':'')+' caught up — check your wall');}catch(e){} } }catch(e){}
+/* #marks3(aug13) — whyMark(): SHOW YOUR WORK. When a hand says "I earned that" and
+   the wall says otherwise, this prints exactly what the rules see — night dates and
+   the consecutive pairs found, flex check-ins, weekend shifts, photo'd slips, ports
+   worked, the hours figure — and, crucially, any MALFORMED rows in the log (the
+   NaN-poisoning class that split Back-to-Back). Run whyMark() in the console, or
+   read it in the ⚙ dev log; it returns the facts and never changes anything. */
+window.whyMark=function(){
+  const facts={};
+  try{
+    facts.badDateRows=DOCKETS.filter(j=>dayIxOf(j.date)==null).map(j=>({date:String(j.date),terminal:j.terminal,shift:j.shift,id:j._id}));
+    const nights=DOCKETS.filter(j=>j.shift!=="Day");
+    facts.nightDates=nights.map(j=>j.date+' ('+j.shift+')').sort();
+    const nd=[...new Set(nights.map(j=>dayIxOf(j.date)).filter(v=>v!=null))].sort((a,b)=>a-b);
+    facts.backToBackPairs=[];nd.forEach((d,i)=>{if(i>0&&d-nd[i-1]===1)facts.backToBackPairs.push('day '+nd[i-1]+' → '+d);});
+    facts.flexCheckins=DOCKETS.filter(j=>j.flex).length;
+    facts.weekendShifts=DOCKETS.filter(j=>{const d=dowOf(j.date);return d===0||d===6}).length;
+    facts.photoDockets=DOCKETS.filter(j=>j.src==='photo').length;
+    facts.terminals=[...new Set(DOCKETS.map(j=>j.terminal))].length;
+    facts.ports=[...new Set(DOCKETS.map(j=>portOfTerm(j.terminal)).filter(Boolean))];
+    facts.dockets=DOCKETS.length; facts.nights=nights.length;
+    facts.hoursOnBook=Math.round(totalHoursOnBook()); facts.postedHours=officialPostedHours();
+  }catch(e){facts.error=e.message;}
+  try{DEVLOG.data('whyMark',facts);}catch(e){}
+  try{console.log('[whyMark]',JSON.stringify(facts,null,1));}catch(e){}
+  return facts;
+};
 /* ═══ #5 + #9 + #boards2(aug10) — THE BOARDS: Port Bucks, this week ═══
    One metric, one period, two lists: the whole Record, or your own letter.
 
