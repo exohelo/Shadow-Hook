@@ -13,7 +13,7 @@
      • Bumping the number below also wipes every old cache on activate, so nothing
        stale can survive.
    ──────────────────────────────────────────────────────────────────────────── */
-const CACHE = 'shadowhook-v66';  // ← bump this each time you deploy an update  (v66: DIRECT MESSAGES — ✉ DMs is the third Social pill: your wires + find-a-hand, member cards off the ONLINE roster, full-screen threads at 1 ⬡ a message with realtime delivery, friends & requests, and who-can-reach-you on the PROFILE. Privacy is enforced server-side — run DM-SETUP.sql once or sends/settings will refuse. Rides on v65's Online rename.)
+const CACHE = 'shadowhook-v67';  // ← bump this each time you deploy an update  (v67: EXPRESSIONS on chat — ❤️ 👍 😂 😢 😡 on any message, FB-style, live for the room (run CHAT-REACT.sql once); alerts split three ways (chatrooms · private rooms · DMs, each its own switch); 🕶 APPEAR OFFLINE on the profile's DM card; and the About & Disclaimer now tells the whole truth about the social features. Rides on v66's DMs — DM-SETUP.sql still required.)
 
 /* #swdupe(aug10) — '.' and 'index.html' ARE THE SAME 2.1 MB DOCUMENT.
    They both sat in the shell list, so every version bump pulled the whole app
