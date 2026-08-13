@@ -13,7 +13,7 @@
      • Bumping the number below also wipes every old cache on activate, so nothing
        stale can survive.
    ──────────────────────────────────────────────────────────────────────────── */
-const CACHE = 'shadowhook-v56';  // ← bump this each time you deploy an update  (v56: THE CIRCLES moved to the profile — the CIRCLE tile on your account panel is tappable now and opens the ladder as a sheet; the Order view slims to Marks + the Race arena. Back closes stacked sheets top-down. Rides on v55's Spread-the-Word move and v54's GIF sheet.)
+const CACHE = 'shadowhook-v57';  // ← bump this each time you deploy an update  (v57: Recovery shrunk to one quiet row on the profile — kept as the lifeline for signed-out local-first hands and the escape hatch if a sync ever goes wrong, minus the paragraph and the box. Rides on v56's Circles-on-profile and v55's Hall move.)
 
 /* #swdupe(aug10) — '.' and 'index.html' ARE THE SAME 2.1 MB DOCUMENT.
    They both sat in the shell list, so every version bump pulled the whole app
