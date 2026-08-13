@@ -969,7 +969,11 @@ html.daylight .heist{background:rgba(64,54,38,.6)}
 .lbseg{display:flex;gap:6px;margin:8px 0 10px}
 .lbseg button{flex:1;padding:7px 4px;border:1px solid var(--line);border-radius:9px;background:var(--plate);color:var(--steel);font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.08em;cursor:pointer}
 .lbseg button.on{border-color:rgba(238,180,107,.55);background:var(--sel);color:var(--copper-hi);box-shadow:0 0 10px rgba(238,180,107,.22),inset 0 0 6px rgba(238,180,107,.08)}
-/* ===== #75 — THE BOARDS, arcade edition: podium · medals · glow · XP bars ===== */
+/* ===== #75 — THE BOARDS, arcade edition: podium · medals · glow · XP bars =====
+   #onestyle(aug13) — DORMANT. The bucks boards wear the race-list rows now, so
+   nothing renders .pod / .pod-* / .arc-row any more (see lbBoardHTML). Kept, not
+   deleted: it is the whole podium treatment, intact, if a board ever wants it
+   back — and the daylight/arcade skins below still carry their overrides for it. */
 .pod{display:flex;align-items:flex-end;gap:8px;margin:10px 0 14px}
 .pod-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0;animation:podIn .5s both}
 .pod-col.p2{animation-delay:.1s}.pod-col.p3{animation-delay:.2s}
@@ -11636,22 +11640,27 @@ function lbBoardHTML(scope,L,handle){
   const empty=!rows.length;
   if(empty)rows=[{h:handle,v:mine,you:true}];
   const youOn=rows.some(r=>r.you);
-  /* #fix2(bucks) — `mine` only belongs in the scale when it is actually drawn. Once the
-     member is matched into the server list the trailing YOU row is suppressed, but
-     their local lifetime CREDITS was still setting max — so a 5,000 ⬡ member looking
-     at a board that tops out at 300 pinned every bar to the 4% floor. */
-  const max=Math.max(1,...rows.map(r=>r.v),(youOn?0:mine));
-  const av=h=>(h.replace(/[^A-Za-z0-9]/g,'').slice(0,2).toUpperCase()||'??');
-  const slot=(r,place)=>{
-    if(!r)return '<div class="pod-col p'+place+'"><div class="pod-av open">?</div><div class="pod-h open">OPEN</div><div class="pod-v">—</div><div class="pod-base"><span>'+place+'</span></div></div>';
-    return '<div class="pod-col p'+place+(r.you?' me':'')+'">'+(place===1?'<div class="pod-crown">♛</div>':'')
-      +'<div class="pod-av">'+av(r.h)+'</div><div class="pod-h">'+r.h+(r.you?' · YOU':'')+'</div>'
-      +'<div class="pod-v">'+r.v.toLocaleString()+' '+unit+'</div><div class="pod-base"><span>'+place+'</span></div></div>';
-  };
-  let html='<div class="pod">'+slot(rows[1],2)+slot(rows[0],1)+slot(rows[2],3)+'</div>';
-  rows.slice(3).forEach((r,i)=>{
-    html+='<div class="arc-row'+(r.you?' you':'')+'" style="animation-delay:'+(i*70)+'ms"><i class="fill" style="width:'+Math.max(4,Math.round(r.v/max*100))+'%"></i><div class="r">'+(i+4)+'</div><div class="h">'+r.h+(r.you?' · YOU':'')+'</div><div class="v">'+r.v.toLocaleString()+' '+unit+'</div></div>';
-  });
+  /* #onestyle(aug13) — THE BUCKS BOARDS WEAR THE HOURS BOARDS' ROWS. With all four
+     leaderboards in one swipe deck (#onedeck), the old arcade dress — podium slabs,
+     avatar discs, XP fill bars — made page 3 read like a different app from page 1:
+     the deck turned and the whole visual language changed under it. Same markup as
+     renderRaceBoards now (🥇🥈🥉 medal · name · value, .me highlight, ⋯ gap row), so
+     a swipe changes only WHAT is ranked, never how a rank looks.
+     Two things went with the podium and are not missed: the fill-bar scale (the #75
+     `max`, whose #fix2(bucks) mixed-scale bug was only ever a bar problem) and the
+     two-letter avatar. One thing is new and deliberate: handles are ESCAPED. They
+     come off other members' profile rows and the old podium/row markup dropped them
+     into innerHTML raw — validHandle() guards the gate, but a board is the wrong
+     place to trust that a hostile row never reaches it. */
+  const med=r=>r===1?'🥇':r===2?'🥈':r===3?'🥉':(typeof r==='number'?'#'+r:String(r));
+  const vTx=v=>v.toLocaleString()+' '+unit;
+  const row=(r,name,val,mineRow)=>'<li class="'+(mineRow?'me':((typeof r==='number'&&r<=3)?'podium':''))+'">'
+    +'<span class="rmed">'+med(r)+'</span>'
+    +'<span class="rid">'+esc(name)+(mineRow?'<span class="rtagme">YOU</span>':'')+'</span>'
+    +'<span class="rhrs">'+val+'</span></li>';
+  const gapRow=(n,word)=>'<li class="gap"><span class="rmed">⋯</span><span class="rid" style="font-family:\'IBM Plex Mono\',monospace;font-size:10px;color:var(--steel)">'+n.toLocaleString()+' '+word+' between</span></li>';
+  let html='<ol class="race-list">';
+  rows.forEach((r,i)=>{ html+=row(i+1,r.h,vTx(r.v),r.you); });
   if(!youOn){
     /* the ⋯ marker counts who stands between the last visible rung and them —
        the same read the Race arena gives, so a hand sees one climb, not two
@@ -11660,11 +11669,12 @@ function lbBoardHTML(scope,L,handle){
       const between=myRank-rows.length-1;
       if(between>0){
         const noun=scope==='squad'?(between===1?'squadmate':'squadmates'):(between===1?'hand':'hands');
-        html+='<div class="arc-row gap"><span class="g">⋯ '+between.toLocaleString()+' '+noun+' between</span></div>';
+        html+=gapRow(between,noun);
       }
     }
-    html+='<div class="arc-row you"><i class="fill" style="width:'+Math.max(4,Math.round(mine/max*100))+'%"></i><div class="r">'+(myRank||'—')+'</div><div class="h">'+handle+' · YOU</div><div class="v">'+mine.toLocaleString()+' '+unit+'</div></div>';
+    html+=row(myRank||'—',handle,vTx(mine),true);
   }
+  html+='</ol>';
   /* #boards2(aug10) — the empty note has to match what's actually on the board.
      The old line congratulated the member on holding the crown, which read as
      nonsense on a Monday morning when they were crowned with nothing: the
