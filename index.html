@@ -5056,6 +5056,8 @@ function reloadAcctBucks(){
 
 function localEnter(){
   document.getElementById('meHandle').textContent=savedAcct.handle;
+  /* #floorwho2 — if presence joined before entry, re-broadcast with the real name */
+  try{if(typeof floorTrack==='function')floorTrack(null);}catch(e){}
   if(savedAcct.name)document.getElementById('meName').textContent=prettyName(savedAcct.name);   /* #gateorder — card-proper on screen */
   if(savedAcct.id)document.getElementById('meCircle').textContent="Circle I · "+savedAcct.id;
   document.getElementById('gatePage').style.display="none";
@@ -5098,6 +5100,8 @@ function localEnter(){
             if(_mn>0){ try{toast('⚑ '+_mn+' mark'+(_mn>1?'s':'')+' caught up — check your wall')}catch(e){}
               try{ setTimeout(function(){try{sbRefreshBucks()}catch(e){}},6000);
                    setTimeout(function(){try{sbRefreshBucks()}catch(e){}},20000); }catch(e){} } } }catch(e){}
+          /* #floorwho2 — identity just settled: the ONLINE roster hears the real name now */
+          try{if(typeof floorTrack==='function')floorTrack((typeof CURRENT_ROOM!=='undefined'&&CURRENT_ROOM)||null);}catch(e){}
           /* #note(bucks) — profiles.circle / .badges / .is_keymaster are SELECTed above
              and deliberately NOT applied here. They look like a missing restore, but
              they aren't: the cloud-KV write-through mirrors every K() key through
@@ -5297,6 +5301,8 @@ function finishEnter(handle, pa, balance){
     if(_mn>0){ try{toast('⚑ '+_mn+' mark'+(_mn>1?'s':'')+' caught up — check your wall')}catch(e){}
       try{ setTimeout(function(){try{sbRefreshBucks()}catch(e){}},6000);
            setTimeout(function(){try{sbRefreshBucks()}catch(e){}},20000); }catch(e){} } } }catch(e){}
+  /* #floorwho2 — identity just settled: the ONLINE roster hears the real name now */
+  try{if(typeof floorTrack==='function')floorTrack(null);}catch(e){}
   /* #marks2 — a fresh hand who came in on a crew link credits their voucher: one
      invisible row (room "_vouch", body = the voucher's handle), once per device. */
   try{ const _cw=localStorage.getItem('shadowhook_crew_pending');
@@ -12521,7 +12527,10 @@ window.pushMyHours=pushMyHours;
 /* boot: push first (debounce lands ~4s, after sign-in hydrates), read at 9s;
    then the 5-minute heartbeat keeps rollups fresh across week/month edges */
 [2500,9000].forEach(ms=>setTimeout(function(){try{pushMyHours()}catch(e){} try{pushMyLetter()}catch(e){} try{sbLoadBoards()}catch(e){}},ms));
-setInterval(function(){try{pushMyHours()}catch(e){} try{pushMyLetter()}catch(e){} try{sbLoadBoards()}catch(e){}},300000);
+setInterval(function(){try{pushMyHours()}catch(e){} try{pushMyLetter()}catch(e){} try{sbLoadBoards()}catch(e){}
+  /* #floorwho2 — re-assert the presence meta every pass: a device that joined the
+     floor before its identity settled (or missed a paint) heals itself within 5 min */
+  try{if(typeof floorTrack==='function')floorTrack((typeof CURRENT_ROOM!=='undefined'&&CURRENT_ROOM)||null);}catch(e){}},300000);
 /* #83 — openBucksBoard removed with the Armory's Top Earners card */
 /* ===== #26 — THE DAY COUNT: nightly participation report =====
    Backend posts DAY_REPORT after each night board closes. Shape:
@@ -12729,7 +12738,19 @@ const _chatSent=new Set();   // ids THIS DEVICE sent — so they read as "self" 
 try{JSON.parse(localStorage.getItem(K('chatsent'))||'[]').forEach(id=>_chatSent.add(id));}catch(e){}
 function chatRememberSent(id){_chatSent.add(id);try{localStorage.setItem(K('chatsent'),JSON.stringify([..._chatSent].slice(-600)));}catch(e){}}
 function chatUUID(){try{if(window.crypto&&crypto.randomUUID)return crypto.randomUUID();}catch(e){}return 'm'+Date.now().toString(36)+Math.random().toString(36).slice(2,10);}
-function chatMyHandle(){return ((document.getElementById('meHandle')||{}).textContent||'a hand').trim()||'a hand';}
+/* #floorwho2(aug13) — THE HANDLE COMES FROM THE ACCOUNT, NOT THE PAINT. This used to
+   read #meHandle off the DOM — but presence joins the floor ~2.5s into boot, usually
+   BEFORE the async session restore has painted the header. Every such device tracked
+   itself onto the ONLINE roster as "a hand", and nothing re-broadcast after the name
+   landed (floorTrack only fires on room changes) — so the roster showed hands with no
+   names until they happened to walk into a lobby. Chat sends had the same hole: a
+   message sent before the paint went out signed "a hand". The account record is
+   loaded synchronously at script start and updated by every sign-in and rename —
+   read it first; the DOM stays as fallback for the pre-enrollment gate. */
+function chatMyHandle(){
+  try{const a=loadAcct(); if(a&&a.handle)return String(a.handle);}catch(e){}
+  return ((document.getElementById('meHandle')||{}).textContent||'a hand').trim()||'a hand';
+}
 function chatIsSelf(row){return _chatSent.has(row.id);}   // per-device: the other device (even same account) reads as "them"
 function chatWelcome(room){
   if(room==='The Hall Floor')return 'Welcome to The Hall Floor. Masked and among your own. Talk the boards, the gates, the work — help each other stay out the bite. Snitches get stitches.';
@@ -13982,7 +14003,7 @@ window.floorJoin=floorJoin; window.floorTrack=floorTrack;
    or out — presence is keyed by uid, and a stale key would haunt the hall */
 function floorRekey(){
   try{ if(_flChan){ const c=_flChan; _flChan=null; window.SB.removeChannel(c); } }catch(e){}
-  FLOOR={by:Object.create(null),total:0,ok:false};
+  FLOOR={by:Object.create(null),total:0,ok:false,roster:[]};   /* #floorwho2 — the roster field rides the reset too (it used to vanish until the next sync) */
   floorJoin();
 }
 window.floorRekey=floorRekey;
@@ -16028,6 +16049,8 @@ window.renameFlow=function(){
       document.getElementById('meHandle').textContent=h;
       const a=loadAcct()||{};a.handle=h;saveAcct(a);
       if(!free)try{armoryBuyMark()}catch(e){}   // #fix2 — a paid rename is a purchase
+      /* #floorwho2 — the ONLINE roster hears the new name the moment it's taken */
+      try{floorTrack((typeof CURRENT_ROOM!=='undefined'&&CURRENT_ROOM)||null);}catch(e){}
       toast("⚓ The Order knows you as "+h+" now");
     }});
 };
