@@ -4754,6 +4754,15 @@ document.getElementById('handleRoll').addEventListener('click',()=>{document.get
 /* #104 — reveal/hide the account password so users can check it before locking in */
 (function(){var pe=document.getElementById('passEye'),pp=document.getElementById('passPick');if(!pe||!pp)return;pe.addEventListener('click',function(){var show=pp.type==='password';pp.type=show?'text':'password';pe.classList.toggle('on',show);pe.setAttribute('aria-pressed',show?'true':'false');var lbl=show?'Hide password':'Show password';pe.setAttribute('aria-label',lbl);pe.setAttribute('title',lbl);pe.textContent=show?'🙈':'👁';pp.focus();});})();
 function validHandle(h){return /^[A-Za-z0-9_\-]{3,20}$/.test(h)}
+/* #fix(tdz) — DECLARED WITH THE FUNCTION THAT READS IT, not 11,000 lines below it.
+   gotoTab() reads alertsLoaded on the Mayday tab. Its `let` used to sit down by the
+   Mayday alert loader, which means every gotoTab('mayday') between page start and that
+   line is a temporal-dead-zone throw: "Cannot access 'alertsLoaded' before initialization".
+   In normal running that window closes in milliseconds and nobody sees it — but if
+   ANYTHING above that line throws at top level, the window never closes at all and the
+   Mayday tab is dead for the whole session. A one-line flag has no business being able
+   to do that: it lives here now, above its only reader. */
+let alertsLoaded=false;
 function gotoTab(name){
   /* #shop — a product page is a mode, not a screen. Leaving the Armory with one
      open left gearShop, gearView and armoryHead pinned by inline styles, so
@@ -7605,6 +7614,11 @@ function myBoardStatus(r){
     return (Date.now()<st.getTime()+8*3600000)?V('prog','💪','Working'):V('worked','🤑','Worked');
   }
   if(r.act==null)return '';
+  /* #fix(derivedAM) — same class as the render guard: a partial row (wire patch or
+     old storage) can carry act with NO start card. cardRunPos already answers null
+     for that and its doc says "callers fall back" — but the fallback ladder below
+     reads r.start[0] raw. No start card, no verdict. */
+  if(!r.start)return '';
   if(!(typeof savedAcct!=="undefined"&&savedAcct&&savedAcct.id))return '';
   if(savedAcct.since && r.date < savedAcct.since)return '';
   /* #noflop0 — the window never advanced, so no card was reached. Nobody was "at the
@@ -7990,7 +8004,20 @@ function renderRecentBoards(){
   const prevCard=id=>{const m=/^([A-Z])(\d+)$/.exec(id||"");return m?m[1]+(parseInt(m[2],10)-1):id;};
   const derivedAM={};
   (function(){let prev=null;SHOWN.forEach(r=>{
-    if(r.slot.endsWith("PM")&&!hasAM[r.date]&&prev){const from=prev.end||prev.start;
+    /* #fix(derivedAM) — A ROW CAN REACH HERE WITH NO CARDS ON IT. Partial rows are a
+       normal part of the record: the come-down tally writes {dn:…} under a board key
+       with no start, and the early-sheet hook pushes a bare {date,slot} AM placeholder
+       (see the ingestForecast block). The sweep after the boardresults merge only drops
+       rows missing date/slot, so those land in RECENT — and in SHOWN — carrying no cards.
+       Every helper on the lines below is already null-safe (prevCard/nextCard/handoffCard/
+       heldCard all guard), but the raw r.start[0] / from[0] in the mv figure were not, and
+       threw "Cannot read properties of undefined (reading '0')" — at TOP LEVEL, out of the
+       unguarded renderRecentBoards() call, which killed the rest of the script.
+       Nothing to derive from is not an error: without the night's handoff card or the
+       night board's opening card there is no honest range to infer, so leave derivedAM
+       empty for that date. The card below already renders "no final yet" with no range
+       line when its entry is missing — that IS the designed fallback. */
+    if(r.slot.endsWith("PM")&&!hasAM[r.date]&&prev&&r.start&&(prev.end||prev.start)){const from=prev.end||prev.start;
       /* #noflop0 — the inferred AM opens where the night before actually handed off,
          and closes one card before the night board opened. If those two cross (the
          inferred end lands behind the inferred start), the missing AM board didn't
@@ -8003,7 +8030,11 @@ function renderRecentBoards(){
 
   [...SHOWN].reverse().forEach(r=>{
     items.push({win:winOf(r.date), build:()=>{
-      const endP=r.end||(r.act!=null?AZ[(AZ.indexOf(r.start[0])+r.act)%26]:"pending");
+      /* #fix(derivedAM) — r.start guarded for the same reason as the derived-AM chain:
+         a wire patch or old storage can hand this row act with no start card, and
+         projecting an end off a start that isn't there is the same undefined[0] crash.
+         The range line below already hides itself when r.start is missing. */
+      const endP=r.end||(r.act!=null&&r.start?AZ[(AZ.indexOf(r.start[0])+r.act)%26]:"pending");
       const fl=flopCount(r), sp=boardCalled(r), dn=boardDown(r);   /* #noflop0 */
       const att=(sp&&dn!=null)?Math.round(dn/sp*100):null;
       const key=r.date+'_'+r.slot, dd=DISPATCH_DATA[key];
@@ -8073,7 +8104,16 @@ function renderRecentBoards(){
   /* #93/#95 — exactly one sheet open by default: the newest board's, with ON THE DOCKS folded in */
   try{openPendingSheet();}catch(e){}
 }
-renderRecentBoards();
+/* #fix(boot) — THE RECORD IS NOT ALLOWED TO TAKE THE SCRIPT DOWN WITH IT. This was the
+   one bare renderRecentBoards() call at top level; every other one of the ~18 call sites
+   in this file already wraps it. Bare, a single bad row anywhere in the render threw
+   here and aborted the whole <script> block — so everything below this line never ran:
+   the Mayday alert loader, the board wire, the hotline reader, TONIGHT_BOARD, the
+   minute tick, and the `let` declarations they own. That is what turned one bad card
+   into a second, unrelated-looking
+   error ("Cannot access 'alertsLoaded' before initialization") on the Mayday tab.
+   One board failing to draw is a bad card; it is not the app. */
+try{renderRecentBoards();}catch(e){console.error('renderRecentBoards (boot):',e);}
 try{sbLoadDispatch();}catch(e){}
 
 /* ===================== #23 — THE DISPATCH BOT'S SEARCH SCHEDULE =====================
@@ -16119,7 +16159,7 @@ const el2=document.getElementById('emergencyList');
 EMERGENCY.forEach(([n,s,tel,disp])=>el2.insertAdjacentHTML('beforeend','<div class="contact"><div class="t"><b>'+n+'</b><span>'+disp+(s?' · '+s:'')+'</span></div><a href="tel:'+tel+'">☎ Call</a></div>'));
 
 /* ===== live alerts — NWS active alerts + USGS quakes near the harbor ===== */
-let alertsLoaded=false;
+/* #fix(tdz) — `let alertsLoaded=false;` moved up beside gotoTab(), its only reader. */
 function hav(a,b,c,d){const R=6371,p=Math.PI/180;const x=Math.sin((c-a)*p/2)**2+Math.cos(a*p)*Math.cos(c*p)*Math.sin((d-b)*p/2)**2;return 2*R*Math.asin(Math.sqrt(x))}
 
 /* #88 — TONIGHT'S BOARD · the real board, OCR'd off the hall's dispatch sheet.
