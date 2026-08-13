@@ -2,14 +2,16 @@
 # Calls the hall's recorded dispatch line after each board ends, transcribes it,
 # and posts "left off at ___" to the Order's board wire.
 #
-# #jul30 — RETRIES INSTEAD OF ONE SHOT. The old schedule made exactly one call
-# per board (09:40 / 19:40) — catch the recording mid-update and the day's
-# reading was a conf-0 row until someone fired the workflow by hand. Now each
-# window gets a sweep of attempts; the worker's own gate + MIN_CONF + the
-# human-owns-the-row rule make extra runs harmless, and board_wire only ever
-# carries the freshest confident reading.
-# Night dispatch also ends 19:00 now (was 19:30) — pair this file with the
-# leftoff.js gate change (19:35 → 19:05) or the early night runs will exit.
+# #jul30b — DENSE NET + PRE-CALL SKIP. GitHub's free-tier cron scheduler DROPS
+# scheduled runs under load (it skipped all five night sweeps on Jul 30 while
+# the recording sat there saying S5042). Two-part answer:
+#   1. Many more cron entries — the odds of GitHub dropping ALL of them are low.
+#   2. leftoff.js now checks board_wire BEFORE dialing: once the end card is on
+#      the wire (a hand sealed it, or an earlier sweep read it), every later
+#      sweep exits in ~2 seconds without a Twilio call. Dense schedule, single
+#      call on a normal day. Worst case (unreadable recording all night) is
+#      ~11 calls ≈ fifty cents.
+# Odd minutes on purpose: GitHub's cron queue is most crowded at :00/:15/:30/:45.
 #
 # GitHub cron is UTC and ignores daylight saving, so runs are scheduled at both
 # the PDT and PST offsets — off-window firings exit in under a second, and
@@ -18,21 +20,37 @@ name: hall-line-leftoff
 
 on:
   schedule:
-    # ── morning sweep (day board ends 09:30) ──
-    - cron: '40 16 * * *'   # 09:40 PDT — first read
-    - cron: '5 17 * * *'    # 10:05 PDT retry   (09:05 PST → gate closed, exits)
-    - cron: '40 17 * * *'   # 09:40 PST — first read · 10:40 PDT retry
-    - cron: '5 18 * * *'    # 10:05 PST retry   · 11:05 PDT retry
-    # ── night sweep (night board ends 19:00 now) ──
-    - cron: '10 2 * * *'    # 19:10 PDT — first read, right after the new 7:00 end
-    - cron: '30 2 * * *'    # 19:30 PDT retry
-    - cron: '55 2 * * *'    # 19:55 PDT retry
-    - cron: '10 3 * * *'    # 19:10 PST — first read · 20:10 PDT retry
-    - cron: '30 3 * * *'    # 19:30 PST retry    · 20:30 PDT retry
+    # ── morning sweep (day board ends 09:30; worker gate 09:35–13:00 LA) ──
+    - cron: '37 16 * * *'   # 09:37 PDT — first read
+    - cron: '52 16 * * *'   # 09:52 PDT
+    - cron: '9 17 * * *'    # 10:09 PDT            (09:09 PST → gate closed, exits)
+    - cron: '26 17 * * *'   # 10:26 PDT
+    - cron: '43 17 * * *'   # 10:43 PDT · 09:43 PST — PST first read
+    - cron: '58 17 * * *'   # 10:58 PDT · 09:58 PST
+    - cron: '17 18 * * *'   # 11:17 PDT · 10:17 PST
+    - cron: '41 18 * * *'   # 11:41 PDT · 10:41 PST
+    - cron: '11 19 * * *'   # 12:11 PDT · 11:11 PST
+    - cron: '43 19 * * *'   # 12:43 PDT · 11:43 PST — late net
+    # ── night sweep (night board ends 19:00; worker gate 19:05–23:30 LA) ──
+    - cron: '8 2 * * *'     # 19:08 PDT — first read, right after the 7:00 end
+    - cron: '19 2 * * *'    # 19:19 PDT
+    - cron: '31 2 * * *'    # 19:31 PDT
+    - cron: '44 2 * * *'    # 19:44 PDT
+    - cron: '57 2 * * *'    # 19:57 PDT
+    - cron: '13 3 * * *'    # 20:13 PDT · 19:13 PST — PST first read
+    - cron: '29 3 * * *'    # 20:29 PDT · 19:29 PST
+    - cron: '46 3 * * *'    # 20:46 PDT · 19:46 PST
+    - cron: '4 4 * * *'     # 21:04 PDT · 20:04 PST
+    - cron: '33 4 * * *'    # 21:33 PDT · 20:33 PST
+    - cron: '2 5 * * *'     # 22:02 PDT · 21:02 PST — final net
   workflow_dispatch:
     inputs:
+      early:
+        description: 'Dispatch ended early — run now (all cost protections stay armed)'
+        type: boolean
+        default: false
       force:
-        description: 'Run even outside the fresh-recording window'
+        description: 'Override EVERYTHING incl. the cost skips — always dials'
         type: boolean
         default: false
       dry_run:
@@ -70,8 +88,10 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           SLOT_KEYWORDS:        ${{ vars.SLOT_KEYWORDS }}
           MIN_CONF:             ${{ vars.MIN_CONF || '0.75' }}
+          MAX_CALLS_PER_WINDOW: ${{ vars.MAX_CALLS_PER_WINDOW || '4' }}
         run: |
           ARGS=""
+          [ "${{ inputs.early }}" = "true" ] && ARGS="$ARGS --early"
           [ "${{ inputs.force }}" = "true" ] && ARGS="$ARGS --force"
           [ "${{ inputs.dry_run }}" = "true" ] && ARGS="$ARGS --dry-run"
           if [ -n "${{ inputs.transcript }}" ]; then
@@ -79,3 +99,20 @@ jobs:
           else
             node hall-line-worker/leftoff.js $ARGS
           fi
+
+      # ═══ #lookout — the board's movement reaches closed phones ═══
+      # Runs after every sweep; push_sent dedupes so each board announces once.
+      # Needs VAPID_PUBLIC (repo variable) + VAPID_PRIVATE (secret) — generate
+      # once with `npx web-push generate-vapid-keys`. Missing keys = stands down.
+      - name: The Lookout — push the board to subscribed phones
+        if: ${{ always() }}
+        env:
+          SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          VAPID_PUBLIC:         ${{ vars.VAPID_PUBLIC || 'BOIf-N1g5af_QuVRTc9AbScS5YWjUMAX8wSFjfbC4Y6KPVJvLGxzvWrgPSBb38yYvCAuKCJqAGWisb8d-vZpbss' }}
+          VAPID_PRIVATE:        ${{ secrets.VAPID_PRIVATE }}
+          VAPID_SUBJECT:        ${{ vars.VAPID_SUBJECT || 'mailto:keymaster@theshadowhook.com' }}
+          PUSH_AHEAD:           ${{ vars.PUSH_AHEAD || '3' }}
+        run: |
+          npm install --no-save --silent web-push
+          node hall-line-worker/push-board.js
