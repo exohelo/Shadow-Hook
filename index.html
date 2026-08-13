@@ -438,6 +438,12 @@ html.daylight .dayBtn{box-shadow:0 5px 14px rgba(70,56,30,.2)}
    sheets it can spawn must ride above the fullscreen overlays (chat 80 · story 85 · cam 90):
    profile → rename/pay → insufficient-funds keep their stacking order on top of it all */
 #profileSheet{z-index:92}
+/* #circlemove(aug13) — the ladder opens FROM the profile, so it must stack OVER the
+   profile's z:92; a ring's terms sheet stacks over the ladder in turn. DOM order and
+   z order agree (profile → ladder → terms), so the Back guard's last-.sheet.on-wins
+   pick closes them top-down. */
+#circlesSheet{z-index:93}
+#circSheet{z-index:94}
 #paySheet{z-index:93}
 /* #sheetscroll(aug10) — EVERY sheet card scrolls itself now.
    Two bugs lived here. (1) Cards without an inline max-height (the PROFILE
@@ -2649,11 +2655,9 @@ window.DEVLOG=(function(){
       </details>
     </div>
 
-    <div class="card">
-      <div class="card-h">The Circles <span class="tag">tap a circle for the terms</span></div>
-      <!-- #7 — the climb runs on Port Bucks: tap a circle → price + what it buys -->
-      <div class="card-b"><div class="circles" id="circleList"></div></div>
-    </div>
+    <!-- #circlemove(aug13) — THE CIRCLES card left the Order view: the ladder lives in
+         a sheet off the profile now — tap the CIRCLE tile on your account panel. Your
+         ring is identity, and identity lives on the profile, not between leaderboards. -->
 
     <!-- #onedeck(aug13) — THE BOARDS card retired as a standalone section: the week's
          Port Bucks boards (All Hands + your squad) ride the board deck up in the Race
@@ -3549,7 +3553,11 @@ window.DEVLOG=(function(){
 
       <div class="prof-grid">
         <div class="prof-cell"><div class="prof-k">Dispatch #</div><div class="prof-v gold" id="pfCard">—</div></div>
-        <div class="prof-cell"><div class="prof-k">Circle</div><div class="prof-v" id="pfCircle">—</div></div>
+        <!-- #circlemove(aug13) — the CIRCLE tile is the door to the ladder now -->
+        <div class="prof-cell" id="pfCircleCell" role="button" tabindex="0" style="cursor:pointer">
+          <div class="prof-k">Circle</div><div class="prof-v" id="pfCircle">—</div>
+          <div class="prof-k" style="margin-top:3px;color:var(--copper-hi)">the ladder ▸</div>
+        </div>
         <div class="prof-cell"><div class="prof-k">Hours on the Book</div><div class="prof-v" id="pfHours">—</div></div>
         <div class="prof-cell"><div class="prof-k">Port Bucks</div><div class="prof-v gold" id="pfBucks">—</div></div>
         <div class="prof-cell wide"><div class="prof-k">Member Since</div><div class="prof-v" id="pfSince">—</div></div>
@@ -11985,7 +11993,12 @@ document.getElementById('roomBack').addEventListener('click',closeRoom);
       const rv=document.getElementById('roomView'); if(rv&&rv.classList.contains('on')){ closeRoomUI(); return true; }
       const ym=document.getElementById('yardMapView'); if(ym&&ym.classList.contains('on')){ ym.classList.remove('on'); document.body.style.overflow=''; return true; }
       const dlg=document.querySelector('.dlg.on'); if(dlg){ dlg.classList.remove('on'); return true; }
-      const sht=document.querySelector('.sheet.on'); if(sht){ sht.classList.remove('on'); return true; }
+      /* #circlemove(aug13) — sheets can stack now (profile → the Circles ladder →
+         a ring's terms). querySelector took the FIRST .sheet.on in DOM order — the
+         BOTTOM of the stack — so Back closed the profile under two open sheets.
+         Take the last match: same-z sheets paint in DOM order, so last = topmost. */
+      const _shts=document.querySelectorAll('.sheet.on');
+      if(_shts.length){ _shts[_shts.length-1].classList.remove('on'); return true; }
       const bp=document.getElementById('bpop'); if(bp&&bp.classList.contains('on')){ bp.classList.remove('on'); return true; }
       /* #pdpback(aug13) — the PRODUCT PAGE was missing from this list. The phone's own
          back gesture popped the sentinel, found nothing here it knew how to close, and
@@ -14797,6 +14810,36 @@ function showCircleSheet(i){
   });
   sh.classList.add('on');
 }
+/* #circlemove(aug13) — THE CIRCLES SHEET. The ladder left the Order view; the CIRCLE
+   tile on the profile opens it here. The list keeps its id (#circleList) so
+   renderCircles and every existing caller stay untouched — the list simply lives in
+   a sheet built on first open. Stacking works by construction: this sheet is
+   appended AFTER #profileSheet in the DOM, and the terms sheet (circSheet) is built
+   on first circle tap, after this — so profile → ladder → terms layer correctly,
+   and the Back guard closes them top-down. */
+function openCirclesSheet(){
+  let sh=document.getElementById('circlesSheet');
+  if(!sh){
+    sh=document.createElement('div');sh.className='sheet';sh.id='circlesSheet';
+    sh.setAttribute('role','dialog');sh.setAttribute('aria-label','The Circles');
+    sh.innerHTML='<div class="sheet-card" style="text-align:left">'
+      +'<div class="big" style="font-size:20px;letter-spacing:.06em;text-align:center">THE CIRCLES</div>'
+      +'<p class="sub" style="margin:6px 0 12px;text-align:center">Tap a circle for the terms — the climb runs on Port Bucks.</p>'
+      +'<div class="circles" id="circleList"></div>'
+      +'<button class="btn-ghost" id="circlesX" type="button" style="width:100%;margin-top:12px;border:0;color:#586067">Close</button></div>';
+    document.body.appendChild(sh);
+    sh.addEventListener('click',e=>{if(e.target===sh)sh.classList.remove('on')});
+    sh.querySelector('#circlesX').addEventListener('click',()=>sh.classList.remove('on'));
+  }
+  renderCircles();
+  sh.classList.add('on');
+}
+window.openCirclesSheet=openCirclesSheet;
+(function(){
+  const c=document.getElementById('pfCircleCell'); if(!c)return;
+  c.addEventListener('click',()=>{try{openCirclesSheet()}catch(e){}});
+  c.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();try{openCirclesSheet()}catch(err){}}});
+})();
 renderCircles();circleChip();
 
 /* ===== #32 — THE RENAME DESK: your handle, changed for Port Bucks =====
