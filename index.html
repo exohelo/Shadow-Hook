@@ -2138,11 +2138,11 @@ window.DEVLOG=(function(){
         <div class="stat-grid">
           <div class="stat"><div class="v copper-txt" id="yGross">$0</div><div class="k">Gross YTD</div></div>
           <div class="stat"><div class="v" id="yNet">$0</div><div class="k">Net YTD</div></div>
-          <div class="stat"><div class="v" id="yHrs">0</div><div class="k">Hours paid</div></div>
+          <div class="stat"><div class="v" id="yHrs">0</div><div class="k">Hours logged</div></div>
           <div class="stat"><div class="v" id="yJobs">0</div><div class="k">Jobs logged</div></div>
         </div>
         <hr class="rule">
-        <p class="sub">Sync your YTD pay straight off your latest paystub — the date, hours, gross and net. Typed by you, stays on your device, drives the pay figures below. <b style="color:var(--bone)">Hours on the book ride the official hour list + your sealed dockets</b> — a typed stub can't move marks, the ladder, or the Race. <span class="pill" id="stubStamp">no paystub synced yet</span></p>
+        <p class="sub">Sync your YTD pay straight off your latest paystub — the date, gross and net. Typed by you, stays on your device, drives the pay figures below. <b style="color:var(--bone)">Hours on the book ride the official hour list + your sealed dockets</b> — a typed stub can't move marks, the ladder, or the Race. <span class="pill" id="stubStamp">no paystub synced yet</span></p>
         <input type="file" id="stubFile" accept="image/*" capture="environment" style="display:none">
         <!-- #noscan(aug13) — SCAN/UPLOAD retired, by request: nobody wants to photograph
              a paystub. Enter-by-hand is the one door now (also reachable from the
@@ -3827,7 +3827,10 @@ window.DEVLOG=(function(){
         <div><span class="lbl">YTD Gross</span><input class="field" id="stubGross" type="number" inputmode="decimal" placeholder="$"></div>
         <div><span class="lbl">YTD Net</span><input class="field" id="stubNet" type="number" inputmode="decimal" placeholder="$"></div>
       </div>
-      <div style="margin-bottom:12px"><span class="lbl">Experience hours <small style="text-transform:none;letter-spacing:0">— lifetime paid hours on the stub</small></span><input class="field" id="stubHours" type="number" inputmode="decimal" placeholder="e.g. 1240"></div>
+      <!-- #onehours(aug13) — the Experience-hours field is RETIRED. Two hours figures
+           (the typed stub vs the book) inevitably disagree on screen, and the book is
+           the one with receipts (official posting + sealed dockets). The stub syncs
+           PAY — date, gross, net; hours belong to the book alone. -->
       <!-- #paymove(aug13) — the bite, live: with gross AND net in, the taxes estimate
            themselves right here as you type -->
       <div class="sub" id="stubTax" style="display:none;margin:0 0 14px;text-align:center;line-height:1.5"></div>
@@ -7559,9 +7562,8 @@ function updateRace(){
   const est=totalHoursOnBook();
   try{const sp=document.getElementById('rSplit');
     if(sp){sp.style.display='';
-      const _stubHi=(STUB&&STUB.hours>Math.round(est))?' · stub noted at <b>'+(+STUB.hours).toLocaleString()+'</b> — the book rides the official list + sealed dockets':'';
-      if(onList){sp.innerHTML='posted <b>'+baseHrs.toLocaleString()+'</b> (paid thru 5/22) + <b>'+Math.round(hoursSincePosting()).toLocaleString()+'</b> sealed since ≈ <b>'+Math.round(est).toLocaleString()+'</b> hrs on the book'+_stubHi;}
-      else{sp.innerHTML='not on the 07/13 posting — hours climb by sealed docket: <b>'+Math.round(est).toLocaleString()+'</b> hrs on the book'+_stubHi;}}}catch(e){}
+      if(onList){sp.innerHTML='posted <b>'+baseHrs.toLocaleString()+'</b> (paid thru 5/22) + <b>'+Math.round(hoursSincePosting()).toLocaleString()+'</b> sealed since ≈ <b>'+Math.round(est).toLocaleString()+'</b> hrs on the book';}
+      else{sp.innerHTML='not on the 07/13 posting — hours climb by sealed docket: <b>'+Math.round(est).toLocaleString()+'</b> hrs on the book';}}}catch(e){}   /* #onehours — the stub-noted clause is gone with the stub hours field */
   const live=Math.max(1,Math.min(start,raceRankAt(est)));
   const moved=start-live;
   rk.textContent='#'+live.toLocaleString();
@@ -7735,12 +7737,18 @@ function renderYear(){
   let eG=0, eH=0;
   const yr=String(new Date().getFullYear());
   DOCKETS.filter(j=>(j.date||"").startsWith(yr)).forEach(j=>{const p=estPay(j);eG+=p.gross;eH+=p.hrs;});
-  const S=STUB||{}, sG=+S.gross||0, sN=+S.net||0, sH=+S.hours||0;
+  /* #onehours(aug13) — ONE HOURS FIGURE IN THE APP: the book. The stub's typed
+     experience-hours used to render here as "Hours paid" — a LIFETIME figure inside
+     a YTD card, forever a few hours off the book and impossible to explain at a
+     glance (3,310 vs 3,277.5 — the Keymaster called it). The stub now syncs PAY
+     (gross/net — dollars the book has no opinion on); this tile is HOURS LOGGED,
+     year-scoped off the sealed dockets, the same witness as "jobs logged" beside it. */
+  const S=STUB||{}, sG=+S.gross||0, sN=+S.net||0;
   const gross = sG>0 ? sG : eG;
   const net   = sN>0 ? sN : (sG>0 ? sG*(1-0.218) : eG*(1-0.218));
-  const hrs   = sH>0 ? sH : eH;
-  const fromStub = (sG>0||sN>0||sH>0);
-  const partial  = fromStub && (sG<=0||sN<=0||sH<=0);
+  const hrs   = eH;
+  const fromStub = (sG>0||sN>0);
+  const partial  = fromStub && (sG<=0||sN<=0);
   const g=document.getElementById('yGross'); if(g)g.textContent=fmt$(gross);
   const n=document.getElementById('yNet');   if(n)n.textContent=fmt$(net);
   const h=document.getElementById('yHrs');    if(h)h.textContent=Math.round(hrs).toLocaleString();
@@ -7763,7 +7771,7 @@ function openStubSheet(prefill){
   document.getElementById('stubDate').value=(prefill&&prefill.date)||s.date||todayISO();
   document.getElementById('stubGross').value=(prefill&&prefill.gross)||s.gross||"";
   document.getElementById('stubNet').value=(prefill&&prefill.net)||s.net||"";
-  document.getElementById('stubHours').value=(prefill&&prefill.hours)||s.hours||"";
+  /* #onehours — stub hours field retired; the book owns hours */
   document.getElementById('stubSheetTitle').textContent = prefill&&prefill._read ? "REVIEW THE READ" : "ENTER YOUR PAYSTUB";
   const st=document.getElementById('stubStatus');
   if(prefill&&prefill._read){ st.style.display="block"; st.innerHTML='<span style="color:var(--copper-hi)">Read your stub — check the numbers below and fix anything that looks off.</span>'; }
@@ -7801,10 +7809,10 @@ document.getElementById('stubSheet').addEventListener('click',e=>{if(e.target.id
 document.getElementById('stubSave').addEventListener('click',()=>{
   const gross=parseFloat(document.getElementById('stubGross').value)||0;
   const net=parseFloat(document.getElementById('stubNet').value)||0;
-  const hours=parseFloat(document.getElementById('stubHours').value)||0;
   const date=document.getElementById('stubDate').value||todayISO();
-  if(!(gross>0)&&!(hours>0)){ alert("Enter at least your YTD gross or your experience hours."); return; }
-  STUB={date,gross,net,hours,synced:Date.now()};
+  if(!(gross>0)){ alert("Enter your YTD gross — the stub sheet syncs your pay."); return; }
+  /* #onehours — hours no longer ride the stub record; the book owns them */
+  STUB={date,gross,net,synced:Date.now()};
   saveStub(); renderYear();
   /* #paymove — synced from the profile's HOURS tile? The profile is open right under
      this sheet — re-render it so the tile shows the fresh number, not the stale one. */
@@ -7816,14 +7824,7 @@ document.getElementById('stubSave').addEventListener('click',()=>{
   try{ const sl=JSON.parse(localStorage.getItem(K('stublog'))||'[]');
     if(!sl.includes(date)){ sl.push(date); localStorage.setItem(K('stublog'),JSON.stringify(sl.slice(-40))); }
     if(sl.length>=12)unlockBadge(bixLate("Bookkeeper")); }catch(e){}
-  /* #truehrs(aug13) — say it straight at the moment it matters: a typed hours figure
-     bigger than the book is NOTED (pay card shows it), but the book doesn't move —
-     marks, ladder and Race ride the official list + sealed dockets only. */
-  try{
-    const _v=Math.round(totalHoursOnBook());
-    if(hours>0 && hours>_v){ toast('✓ Stub noted — the book stays at '+_v.toLocaleString()+' hrs (official list + sealed dockets)'); }
-    else toast("✓ Paystub synced");
-  }catch(e){ toast("✓ Paystub synced"); }
+  toast("✓ Paystub synced");   /* #onehours — the stub is pay-only now; no hours claim to answer */
 });
 
 // ---- scan / upload path (camera or file), reads with the same self-hosted OCR ----
