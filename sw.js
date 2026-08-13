@@ -13,7 +13,7 @@
      • Bumping the number below also wipes every old cache on activate, so nothing
        stale can survive.
    ──────────────────────────────────────────────────────────────────────────── */
-const CACHE = 'shadowhook-v39';  // ← bump this each time you deploy an update  (v39: video story tiles open on tap again; the send row lifts clear of the keyboard's clipboard strip while typing)
+const CACHE = 'shadowhook-v41';  // ← bump this each time you deploy an update  (v41: THE story fix — the full-page story viewer markup was missing from the app, so tapping ANY story did nothing; rebuilt it, so stories (YouTube, video, photo) now open and play)
 
 /* #swdupe(aug10) — '.' and 'index.html' ARE THE SAME 2.1 MB DOCUMENT.
    They both sat in the shell list, so every version bump pulled the whole app
