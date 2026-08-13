@@ -2713,8 +2713,19 @@ window.DEVLOG=(function(){
       border-radius:999px;padding:10px 15px;margin:0 0 12px}
     .shopfind:focus-within{border-color:var(--copper-hi)}
     .shopfind svg{flex:none;opacity:.7}
-    .shopfind input{flex:1;background:none;border:0;color:var(--bone);font:inherit;font-size:15px;outline:none;min-width:0}
+    .shopfind input{flex:1;background:transparent;border:0;color:var(--bone);font:inherit;font-size:15px;outline:none;min-width:0;
+      -webkit-appearance:none;appearance:none;border-radius:0}
     .shopfind input::placeholder{color:var(--steel)}
+    /* #shopfind2(aug13) — THE STRAY DARK BAR INSIDE THE SEARCH. The browser paints its
+       own pill in there (Edge/Chrome autofill shading + auto-dark form styling), and it
+       sat inside our copper pill like a second, wrong one. appearance:none above strips
+       the native coat; these repaint the autofill layer in the wrapper's own color so
+       it can never show, whatever the browser decides to remember. */
+    .shopfind input::-webkit-search-decoration,.shopfind input::-webkit-search-cancel-button,.shopfind input::-webkit-search-results-button{display:none}
+    .shopfind input:-webkit-autofill,.shopfind input:-webkit-autofill:hover,.shopfind input:-webkit-autofill:focus{
+      -webkit-text-fill-color:var(--bone);caret-color:var(--bone);
+      -webkit-box-shadow:0 0 0 60px var(--plate-2) inset;box-shadow:0 0 0 60px var(--plate-2) inset;
+      transition:background-color 9999999s ease-out}
     .shopfind button{background:none;border:0;color:var(--steel);font-size:16px;cursor:pointer;display:none;padding:0 2px}
     .shopfind button.on{display:block}
 
@@ -11953,6 +11964,15 @@ document.getElementById('roomBack').addEventListener('click',closeRoom);
       const dlg=document.querySelector('.dlg.on'); if(dlg){ dlg.classList.remove('on'); return true; }
       const sht=document.querySelector('.sheet.on'); if(sht){ sht.classList.remove('on'); return true; }
       const bp=document.getElementById('bpop'); if(bp&&bp.classList.contains('on')){ bp.classList.remove('on'); return true; }
+      /* #pdpback(aug13) — the PRODUCT PAGE was missing from this list. The phone's own
+         back gesture popped the sentinel, found nothing here it knew how to close, and
+         "did nothing" — so the item stayed, hands swiped again harder, and enough rapid
+         re-swipes could walk history out from under the app and close the whole thing.
+         An open item now closes like any overlay: back off a product = back on the
+         shelf. offsetParent gates it to a product actually ON SCREEN — a product left
+         behind on a hidden tab (gotoTab already drops that mode) never eats a Back. */
+      const gv=document.getElementById('gearView');
+      if(gv&&gv.offsetParent!==null){ if(typeof closeGear==='function')closeGear(); else gv.style.display='none'; return true; }
     }catch(e){}
     return false;
   }
@@ -19531,6 +19551,13 @@ html.arcade .field,html.arcade .cwf-in input,html.arcade input,html.arcade selec
   background:rgba(8,6,15,.8);border:1px solid var(--line);border-radius:11px;color:var(--bone)}
 html.arcade .field:focus,html.arcade .cwf-in input:focus,html.arcade input:focus,html.arcade select:focus{
   border-color:var(--neon);box-shadow:0 0 0 3px rgba(77,226,255,.14),0 0 16px rgba(77,226,255,.24);outline:none}
+/* #shopfind2(aug13) — THE DARK BAR IN THE ARMORY SEARCH was this skin's blanket
+   `html.arcade input` coat landing on a deliberately CHROMELESS input: the .shopfind
+   WRAPPER is the pill, so painting its inner input drew a second, wrong box inside it.
+   The wrapper keeps the skin; the input inside goes back to bare. */
+html.arcade .shopfind input{background:transparent;border:0;border-radius:0}
+html.arcade .shopfind input:focus{border:0;box-shadow:none}
+html.arcade .shopfind:focus-within{border-color:var(--neon)}
 
 /* ── race arena: the standings read like a leaderboard screen ────────────── */
 html.arcade .race-arena{border:1px solid var(--line);border-radius:20px;
@@ -22034,10 +22061,17 @@ window.shareCall=shareCall;
     if(!e.touches||e.touches.length!==1) return;       // two fingers = pinch, not us
     var t=e.touches[0], W=window.innerWidth||1;
     var left=t.clientX<=EDGE, right=t.clientX>=W-EDGE;
-    if(!left&&!right) return;
     var v=openView(); if(!v) return;
+    /* #pdpswipe(aug13) — on gesture-nav phones the SYSTEM owns the screen edges, so an
+       edge-start rarely reaches this handler on the product page at all. The item page
+       therefore takes the drag from ANYWHERE in the view — same one-to-one follow, same
+       third-of-the-width commit — with the direction locked from the first decisive
+       move. Rooms/viewers keep edge-start here (they have their own mid-screen habits
+       and the chat feed scrolls); the shelf strips still bow out via onSideScroller. */
+    var anywhere=(v.el.id==='gearView');
+    if(!left&&!right&&!anywhere) return;
     if(onSideScroller(e.target,v.el)) return;
-    g={el:v.el,btn:v.btn,x0:t.clientX,y0:t.clientY,dir:left?1:-1,t0:Date.now(),live:false,W:W};
+    g={el:v.el,btn:v.btn,x0:t.clientX,y0:t.clientY,dir:left?1:(right?-1:0),t0:Date.now(),live:false,W:W};
   },{passive:true});
 
   document.addEventListener('touchmove',function(e){
@@ -22047,7 +22081,8 @@ window.shareCall=shareCall;
     if(!g.live){
       if(Math.abs(dy)>Math.abs(dx)&&Math.abs(dy)>SLOP){ g=null; return; }  // they're scrolling
       if(Math.abs(dx)<SLOP) return;
-      if(g.dir>0?dx<0:dx>0){ g=null; return; }                             // wrong way
+      if(g.dir===0){ g.dir=(dx>0?1:-1); }                                  // #pdpswipe — anywhere-start: first decisive move picks the way out
+      else if(g.dir>0?dx<0:dx>0){ g=null; return; }                        // wrong way
       g.live=true;
       g.el.style.transition='none';
       try{ document.documentElement.classList.add('swipe-live'); g.el.classList.add('swiping'); }catch(e2){}
