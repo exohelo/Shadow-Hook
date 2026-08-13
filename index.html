@@ -139,6 +139,14 @@ button{font-family:inherit;-webkit-tap-highlight-color:transparent;-webkit-touch
 /* sendbar — clean phone-style: one ＋ that opens Camera / Photo / GIF */
 .sendbar{display:flex;gap:8px;margin-top:8px;align-items:center}
 .sendbar .field{flex:1;border-radius:99px;padding:11px 16px}
+/* #kbgif2 — the contenteditable send box: wears the input's exact skin, shows its
+   placeholder off data-ph while :empty, grows a few lines then scrolls. NOT
+   plaintext-only — a plaintext editor refuses the keyboard's image commit, which
+   is the whole point; pasted rich TEXT is flattened by the paste handler instead. */
+.sendbar #chatInput{min-height:19px;max-height:96px;overflow-y:auto;line-height:1.35;white-space:pre-wrap;word-break:break-word;cursor:text}
+.sendbar #chatInput:empty::before{content:attr(data-ph);color:var(--steel);opacity:.8;pointer-events:none;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sendbar #chatInput:focus{border-color:var(--copper)}
+.sendbar #chatInput img{max-width:90px;max-height:60px;border-radius:8px;display:inline-block;vertical-align:middle}
 .sendbar button{flex:none;width:44px;height:44px;border-radius:50%;border:1px solid rgba(238,180,107,.5);background:linear-gradient(184deg,var(--btn-hi),var(--btn-lo));color:var(--copper-hi);font-size:17px;cursor:pointer}
 .attach{flex:none;width:42px;height:42px;border-radius:50%;border:1px solid var(--line);background:var(--plate);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--copper-hi);font-size:24px;line-height:1;font-weight:400}
 .attach:active{transform:scale(.94)}
@@ -3145,7 +3153,17 @@ window.DEVLOG=(function(){
       <button class="attach" id="attachBtn" type="button" aria-label="Add photo, video, or GIF">＋</button>
       <input type="file" id="chatCam" accept="image/*,video/*" capture="environment" hidden>
       <input type="file" id="chatFile" accept="image/*,video/*" hidden>
-      <input class="field" id="chatInput" placeholder="Message the room…">
+      <!-- #kbgif2(aug13) — the send box is a RICHLY-EDITABLE div now, not an <input>.
+           The phone keyboard's GIF button hands the image over through the IME's
+           rich-content channel (commitContent). A plain <input> can't take that, so
+           keyboards fall back to SHARING the picked GIF to the current app — which in
+           Edge lands on "Send to Microsoft Edge Drop" and never reaches the room.
+           A contenteditable IS a rich editor: Chromium advertises image support to the
+           keyboard and delivers the picked GIF as a paste event carrying the file —
+           and the #kbgif paste handler turns that into an inline GIF message. The
+           .value/.placeholder shim beside that handler keeps every existing call
+           site (send, edit, clear, room-name placeholder) working untouched. -->
+      <div class="field" id="chatInput" contenteditable="true" role="textbox" enterkeyhint="send" data-ph="Message the room…"></div>
       <button id="chatSend" aria-label="Send">➤</button>
     </div>
   </div>
@@ -12461,6 +12479,73 @@ window._gifFall=function(img){
       if(!payCredits(mc,isGif?'GIF':'photo / video',true))return;
       chatSendMedia(f,isGif?'gif':'image',mc);
     }catch(err){}
+  });
+})();
+/* #kbgif2(aug13) — THE SEND BOX IS A RICH EDITOR NOW (see the sendbar markup for why:
+   a plain <input> can't take the keyboard's image commit, so picking a GIF fell back
+   to an Android SHARE — "Send to Microsoft Edge Drop" — and never reached the room).
+   This block is the div's plumbing:
+     · a .value / .placeholder shim so every existing call site — send, edit, clear,
+       the per-room placeholder — keeps working with zero changes;
+     · Enter still sends (and never lands a newline in the box);
+     · pasted rich TEXT flattens to plain text (the box is deliberately NOT
+       plaintext-only — a plaintext editor refuses the keyboard's image commit);
+     · a sweep for keyboards that INSERT the image as an <img> node instead of
+       handing us the file: the node comes out of the box and rides the GIF path —
+       http(s) sources through the same resolver as a typed link, blob:/data:
+       sources fetched back into a file and uploaded like a pasted GIF. */
+(function(){
+  const ci=document.getElementById('chatInput');
+  if(!ci||ci.tagName==='INPUT')return;
+  Object.defineProperty(ci,'value',{
+    get(){ return this.textContent||''; },
+    set(v){
+      v=String(v==null?'':v);
+      if(!v){ this.innerHTML=''; return; }
+      this.textContent=v;
+      try{ const r=document.createRange(); r.selectNodeContents(this); r.collapse(false);
+           const s=window.getSelection(); s.removeAllRanges(); s.addRange(r); }catch(e){}   // caret to the end, like an input
+    }
+  });
+  Object.defineProperty(ci,'placeholder',{
+    get(){ return this.getAttribute('data-ph')||''; },
+    set(v){ this.setAttribute('data-ph',String(v==null?'':v)); }
+  });
+  ci.addEventListener('keydown',e=>{ if(e.key==='Enter')e.preventDefault(); });   // the #61 binding sends; this stops the newline
+  ci.addEventListener('paste',e=>{
+    if(e.defaultPrevented)return;                     // an image paste was already taken by #kbgif above
+    const t=(e.clipboardData&&e.clipboardData.getData&&e.clipboardData.getData('text/plain'))||'';
+    e.preventDefault();
+    if(!t)return;
+    /* execCommand DECLINES (returns false, no throw) when the caret isn't seated
+       in the box — append through the shim then, so pasted text never vanishes */
+    let ok=false; try{ ok=document.execCommand('insertText',false,t); }catch(err){}
+    if(!ok){ try{ ci.value=ci.value+t; }catch(_){} }
+  });
+  function sweepImgs(){
+    const imgs=ci.querySelectorAll('img'); if(!imgs.length)return;
+    imgs.forEach(async im=>{
+      const src=im.getAttribute('src')||''; im.remove();
+      try{
+        if(/^https?:\/\//i.test(src)){
+          const gm=(typeof gifMediaUrl==='function'&&gifMediaUrl(src))||src;
+          if(!payCredits(GIF_COST,'GIF',true))return;
+          chatOutbound({kind:'gif',url:gm,body:(gm===src?'':src),cost:GIF_COST});
+        }else if(/^(blob:|data:)/i.test(src)){
+          const rsp=await fetch(src), bl=await rsp.blob();
+          if(!/^image\//i.test(bl.type||''))return;
+          const isGif=/gif|webp/i.test(bl.type||'');
+          const f=new File([bl],'keyboard.'+(isGif?'gif':'png'),{type:bl.type||'image/gif'});
+          const mc=isGif?GIF_COST:((typeof CIRCLE_LVL!=='undefined'&&CIRCLE_LVL>=3)?3:MEDIA_COST);
+          if(!payCredits(mc,isGif?'GIF':'photo / video',true))return;
+          chatSendMedia(f,isGif?'gif':'image',mc);
+        }
+      }catch(err){}
+    });
+  }
+  ci.addEventListener('input',()=>{
+    sweepImgs();
+    if(!ci.textContent&&ci.firstChild)ci.innerHTML='';   // a stray <br> hides the :empty placeholder
   });
 })();
 const GIF_COST=1;
