@@ -659,16 +659,16 @@ html.daylight .heist{background:rgba(64,54,38,.6)}
 .circ.done .num{border-color:rgba(238,180,107,.55);color:var(--copper-hi);background:var(--sel)}
 .circ .t b{display:block;font-size:15px}
 .circ .t span{font-size:12.5px;color:var(--steel)}
-.badges{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.badges{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;grid-auto-rows:1fr}   /* #marks2 — equal rows, no per-page shrink */
 /* #markswipe2 — the drag-to-turn window: clips the pages sliding through it. touch-action
    pan-y lets the page still scroll up/down while WE own the horizontal drag. */
 .badge-view{position:relative;overflow:hidden;touch-action:pan-y}
 .badge-view>#badgeWall{will-change:transform;backface-visibility:hidden}
 .badge-drag{position:absolute;top:0;left:0;right:0;will-change:transform;backface-visibility:hidden}
-.badge{text-align:center;padding:10px 4px;border:1px solid var(--line-soft);border-radius:10px;background:var(--well)}
+.badge{text-align:center;padding:10px 4px;border:1px solid var(--line-soft);border-radius:10px;background:var(--well);height:112px;display:flex;flex-direction:column;align-items:center;justify-content:center}   /* #marks2 — ONE tile height on EVERY page, so the wall never resizes between turns */
 .badge .i{font-size:22px;filter:grayscale(1);opacity:.35}
 .badge.earned .i{filter:none;opacity:1}
-.badge .n{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--steel);margin-top:5px;line-height:1.25}
+.badge .n{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--steel);margin-top:5px;line-height:1.25;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}   /* #marks2 — 3 lines max; the tap-through popup carries the full name */
 .badge.earned{border-color:rgba(238,180,107,.4)}
 .badge.earned .n{color:var(--copper-hi)}
 /* #8 — rarity tiers on the wall */
@@ -3998,6 +3998,15 @@ function wipeAcct(){try{localStorage.removeItem('shadowhook_account')}catch(e){}
 const savedAcct=loadAcct();
 let ACCT_ID=(savedAcct&&savedAcct.id)?savedAcct.id:"anon";
 function K(s){return "shadowhook_"+s+"_"+ACCT_ID;}
+/* #marks2(aug13) — THE CREW LINK. A share link can carry ?crew=<handle>. A hand who
+   lands through one and then verifies at the gate credits their voucher: the enroll
+   writes one row to the messages table under room "_vouch" (every feed loader filters
+   room=in.(The Hall Floor …), so it never appears in chat), and the voucher's own
+   device counts rows carrying their handle. Captured here, before anything can
+   rewrite the URL; spent at the gate, once, on this device's FIRST enrollment. */
+try{ const _cw=new URLSearchParams(location.search).get('crew');
+  if(_cw && /^[A-Za-z0-9_\-]{3,20}$/.test(_cw) && !savedAcct)
+    localStorage.setItem('shadowhook_crew_pending',_cw.toUpperCase()); }catch(e){}
 
 /* ===== FIX · stable docket identity + merge =================================
    A docket's identity used to be its position in the array (_id = index), and
@@ -5182,9 +5191,32 @@ function finishEnter(handle, pa, balance){
   try{ if(typeof renderYear==="function")renderYear(); }catch(e){}
   try{ if(typeof checkMarks==="function"){ const _mn=checkMarks(true);
     if(_mn>0)try{toast('⚑ '+_mn+' mark'+(_mn>1?'s':'')+' caught up — check your wall')}catch(e){} } }catch(e){}
+  /* #marks2 — a fresh hand who came in on a crew link credits their voucher: one
+     invisible row (room "_vouch", body = the voucher's handle), once per device. */
+  try{ const _cw=localStorage.getItem('shadowhook_crew_pending');
+    if(_cw && !localStorage.getItem('shadowhook_vouched') && window.SB && pa && pa.handle && _cw!==String(pa.handle).toUpperCase()){
+      window.SB.from('messages').insert({id:'v'+Date.now(),room:'_vouch',by_id:pa.id||ACCT_ID,by_handle:String(pa.handle).toUpperCase(),kind:'text',body:_cw,url:''})
+        .then(r=>{ if(!r.error){ localStorage.setItem('shadowhook_vouched','1'); localStorage.removeItem('shadowhook_crew_pending'); } });
+    } }catch(e){}
   document.getElementById('gatePage').style.display="none";
   bootScreen(()=>enterApp('dockets'));
 }
+/* #marks2 — the voucher's side: count the hands who verified on your word. Lantern
+   Bearer at 1, Torch Bearer at 5, Beacon at 10 — read from the same invisible room. */
+async function sbLoadVouches(){
+  try{
+    if(!window.SB)return;
+    const h=(loadAcct()||{}).handle; if(!h)return;
+    const r=await window.SB.from('messages').select('by_id').eq('room','_vouch').eq('body',String(h).toUpperCase());
+    if(r.error||!r.data)return;
+    const n=new Set(r.data.map(x=>x.by_id)).size;   // one recruit = one card, however many rows
+    window.__vouches=n;
+    if(n>=1)unlockBadge(bixLate("Lantern Bearer"));
+    if(n>=5)unlockBadge(bixLate("Torch Bearer"));
+    if(n>=10)unlockBadge(bixLate("Beacon"));
+  }catch(e){}
+}
+setTimeout(()=>{try{sbLoadVouches()}catch(e){}},4000);
 
 /* ===== #hdr2 — ONE-ROW PERSISTENT HEADER =====
    The dispatch strip is the whole header now, and it stays on screen everywhere:
@@ -5256,6 +5288,24 @@ const fmtD=iso=>{try{if(!iso||typeof iso!=="string")return "—";const[p]=iso.sp
 const DOW=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 function isWeekend(d){return d.getDay()===0||d.getDay()===6}
 function isHoliday(d){return HOLIDAYS_26.includes(d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"));} /* #201 — local Y-M-D, not UTC toISOString (which flipped the day in the evening) */
+/* ===== #marks2(aug13) — EVENT TALLIES: the wall's memory for acts that leave no store =====
+   Dockets, the count wire, the drop log and the credits balance all persist, so marks
+   built on them recompute from scratch every checkMarks() — that's the backdating.
+   But plenty of real acts flow THROUGH the app without landing anywhere: a live board
+   call, being first on a count question, a carried correction, an Armory purchase, a
+   prize claim. Each such act now bumps a named counter under the member's own K()
+   namespace at the moment it happens, and checkMarks() reads the counters like any
+   other store. Counters only ever increment inside the real action's success branch —
+   same discipline as the docket seals: the act IS the receipt. */
+function tallyGet(k){ try{ return +localStorage.getItem(K('t_'+k))||0 }catch(e){ return 0 } }
+function tallyAdd(k,n){ const v=tallyGet(k)+(n==null?1:n); try{ localStorage.setItem(K('t_'+k),v) }catch(e){} return v; }
+window.tallyGet=tallyGet; window.tallyAdd=tallyAdd;
+/* which side of the bay a logged terminal sits on — off TERMINALS' own berth strings */
+function portOfTerm(op){
+  try{ const t=TERMINALS.find(x=>x.operator===op); if(!t)return null;
+    if(/^LB/.test(t.berths))return 'LB'; if(/^(TI|LA)/.test(t.berths))return 'LA'; }catch(e){}
+  return null;
+}
 /* Hoot owls run irregular hours. We remember the last hoot-owl hours the member logged
    and use it as the default for the next hoot, so the estimate tracks reality over time. */
 let LEARNED_HOOT=(function(){try{return parseFloat(localStorage.getItem(K("hoothrs")))||0}catch(e){return 0}})();
@@ -5488,7 +5538,11 @@ function lofAnchor(){                // where the line of fire is measured from
 }
 function submitLiveCall(pos){ // no identity attached — a position IS a worker's number
   const r=applyLiveCall(pos,Date.now(),'local');
-  if(r===true){ try{lwPush(lastCall.pos);}catch(e){} }   /* #onewire — and every other phone hears it */
+  if(r===true){ try{lwPush(lastCall.pos);}catch(e){}   /* #onewire — and every other phone hears it */
+    /* #marks2 — a call that actually MOVED the board is a board call on the record */
+    try{ const n=tallyAdd('bcalls');
+      if(n>=30)unlockBadge(bixLate("Watchman"));
+      if(n>=100)unlockBadge(bixLate("Oracle")); }catch(e){} }
   else if(r==="far"){                                    /* #lof — the red flag, said out loud */
     try{const p=String(pos||'').toUpperCase().trim(),a=lofAnchor(),d=a?lofJump(a,p):null;
       toast("⚠ HELD — board's at "+(a||"the gate")+(d!=null?" and "+p+" is "+d+" letters out of the line of fire":"")+". It posts only if the board works up close.");}catch(e){}
@@ -6611,16 +6665,31 @@ const V4 = (function(){
   function loadWeather(){
     try{
       const url="https://api.open-meteo.com/v1/forecast?latitude=33.77&longitude=-118.19"
-        +"&hourly=precipitation,precipitation_probability,temperature_2m&timezone=America%2FLos_Angeles&forecast_days=4&past_days=1";
+        +"&hourly=precipitation,precipitation_probability,temperature_2m,windspeed_10m,visibility&timezone=America%2FLos_Angeles&forecast_days=4&past_days=1";
       fetch(url).then(r=>r.json()).then(function(j){
         const H=j&&j.hourly; if(!H||!H.time) return; const wx={};
+        /* #marks2(aug13) — THE WEATHER KEEPS A LOG NOW. The war-story marks (Heat Wave,
+           Fog Cutter, Swell Rider) need yesterday's sky on the record, not just today's
+           forecast: every pass writes each day's high (°C), lowest daytime visibility
+           (m) and top wind (km/h) into shadowhook_wxlog, ~90 days deep. checkMarks
+           matches sealed dockets against it — the sky is the witness, not the member. */
+        const wlog=(function(){try{return JSON.parse(localStorage.getItem('shadowhook_wxlog'))||{}}catch(e){return{}}})();
         for(let i=0;i<H.time.length;i++){
           const t=H.time[i], day=t.slice(0,10), hr=parseInt(t.slice(11,13),10);
           const p=(H.precipitation&&H.precipitation[i])||0, pp=(H.precipitation_probability&&H.precipitation_probability[i])||0;
           const dayShift = (hr>=6&&hr<17);          // AM/day board ≈ 06–17, else night
           const rec = wx[day] || (wx[day]={amP:0,pmP:0,amPP:0,pmPP:0});
           if(dayShift){ rec.amP+=p; rec.amPP=Math.max(rec.amPP,pp); } else { rec.pmP+=p; rec.pmPP=Math.max(rec.pmPP,pp); }
+          try{
+            const tc=(H.temperature_2m&&H.temperature_2m[i]), wd=(H.windspeed_10m&&H.windspeed_10m[i]), vs=(H.visibility&&H.visibility[i]);
+            const w=wlog[day]||(wlog[day]={hi:-99,vis:1e9,wind:0});
+            if(tc!=null&&tc>w.hi)w.hi=tc;
+            if(wd!=null&&wd>w.wind)w.wind=wd;
+            if(vs!=null&&hr>=5&&hr<20&&vs<w.vis)w.vis=vs;   // fog matters on working hours
+          }catch(e){}
         }
+        try{ const days=Object.keys(wlog).sort(); while(days.length>90)delete wlog[days.shift()];
+          localStorage.setItem('shadowhook_wxlog',JSON.stringify(wlog)); }catch(e){}
         const out={};
         for(const day in wx){ const r=wx[day];
           out[day]={ amRain:(r.amP>=0.5||r.amPP>=60), pmRain:(r.pmP>=0.5||r.pmPP>=60),
@@ -7553,6 +7622,11 @@ document.getElementById('stubSave').addEventListener('click',()=>{
   try{if(document.getElementById('profileSheet').classList.contains('on')&&typeof window.openProfileSheet==='function')window.openProfileSheet();}catch(e){}
   document.getElementById('stubSheet').classList.remove('on');
   unlockBadge(bixLate("Paid in Full"));
+  /* #marks2 — Bookkeeper: distinct stub DATES synced, kept in a small log so the
+     count survives the stub being overwritten by the next sync. */
+  try{ const sl=JSON.parse(localStorage.getItem(K('stublog'))||'[]');
+    if(!sl.includes(date)){ sl.push(date); localStorage.setItem(K('stublog'),JSON.stringify(sl.slice(-40))); }
+    if(sl.length>=12)unlockBadge(bixLate("Bookkeeper")); }catch(e){}
   /* #truehrs(aug13) — say it straight at the moment it matters: a typed hours figure
      bigger than the book is NOTED (pay card shows it), but the book doesn't move —
      marks, ladder and Race ride the official list + sealed dockets only. */
@@ -8762,6 +8836,8 @@ document.getElementById('dropAdd').addEventListener('click',()=>{
   try{dwPush(d);}catch(e){}                     // #118 — every member's log hears it
   try{renderRecentBoards();}catch(e){}          // #118 — the entry's count climbs live…
   try{repredict();}catch(e){}                   // …and the predictions follow it
+  /* #marks2 — Flop Watcher: 10 speaker calls logged to the Drop Log, lifetime */
+  try{ if(tallyAdd('drops')>=10)unlockBadge(bixLate("Flop Watcher")); }catch(e){}
   inp.value="";
 });
 document.getElementById('dropList').addEventListener('click',e=>{
@@ -8908,6 +8984,10 @@ function cwSubmit(f){
     addCredits(cwFirstPay(f), f.label+" — first in");
     CWme.n++; CWme.acc=Math.min(1,CWme.acc+0.02);
     unlockBadge(bixLate("Wire Runner"));
+    /* #marks2 — first hand on the question: that's what "First In Line" counts */
+    try{ const fi=tallyAdd('firstin');
+      if(fi>=3)unlockBadge(bixLate("First In Line ×3"));
+      if(fi>=10)unlockBadge(bixLate("First In Line ×10")); }catch(e){}
   }else{
     // someone already posted — a matching report counts as agreement…
     const agree = f.type==="num" ? Math.abs(st.first.v-v)<=f.tol : st.first.v===v;
@@ -8962,7 +9042,9 @@ function cwResolveHeist(f){
     // THE HEIST — the correction carries. The pay walks from the wrong hand to the right one.
     const amt=cwFirstPay(f);
     if(st.iAmFirst){ spendCredits(amt, f.label+" — corrected by the wire, pay lifted"); CWme.acc=Math.max(0,CWme.acc-0.05); }
-    if(st.iAmChal){ addCredits(amt, f.label+" — heist: your correction carried"); CWme.acc=Math.min(1,CWme.acc+0.03); CWme.n++; }
+    if(st.iAmChal){ addCredits(amt, f.label+" — heist: your correction carried"); CWme.acc=Math.min(1,CWme.acc+0.03); CWme.n++;
+     /* #marks2 — a carried challenge is a won lightning challenge */
+     try{ if(tallyAdd('heist')>=5)unlockBadge(bixLate("Lightning Rod")); }catch(e){} }
     heistPop(st.iAmChal, st.iAmFirst, amt, f.label);
     st.first={v:st.chal.v}; st.iAmFirst=st.iAmChal;
     st.chal=null; st.iAmChal=false; st.yes=2; st.live=true;
@@ -9007,9 +9089,12 @@ function cwTallyConfirm(f, agree, fromSubmit){
   }
 }
 function cwAfter(f){
+  if(CWme.n>=5)unlockBadge(bixLate("Tapeline Runner"));      /* #marks2 — 5 updates on the wire */
   if(CWme.n>=10)unlockBadge(bixLate("Gearhead"));
   if(CWme.n>=25)unlockBadge(bixLate("Signal Keeper"));
+  if(CWme.n>=100)unlockBadge(bixLate("Signal Legend"));      /* #marks2 — the 100 cut, same counter */
   if(CWme.n>=5&&CWme.acc>=0.9)unlockBadge(bixLate("True North"));
+  if(CWme.n>=25&&CWme.acc>=0.95)unlockBadge(bixLate("Dead Reckoning"));   /* #marks2 — True North's harder cut */
   if(CWme.bad>=3){
     const steps=[24,72,168,720]; const h=steps[Math.min(steps.length-1,CWme.bad-3)];
     CWme.mutedUntil=Date.now()+h*3600e3; CWme.bad=0;
@@ -11018,6 +11103,7 @@ async function prvPost(){
     _prvDirty=false;
     /* #verified(aug10) — their word landed, so this one drops off the ask list */
     try{ rvnClear(p.id); }catch(e2){}
+    try{ tallyAdd('review'); unlockBadge(bixLate("Dock Critic")); }catch(e2){}   /* #marks2 */
     try{toast('⚓ Your word is on the record');}catch(e2){}
     await sbLoadProductReviews();               // repaints the grid and the open page
   }catch(e){
@@ -11165,6 +11251,8 @@ async function sbLoadProductReviews(){
     if(r.error)throw r.error;
     PRV.ok=true; PRV.by={};
     (r.data||[]).forEach(x=>{ if(!x)return; const k=String(x.product_id); (PRV.by[k]=PRV.by[k]||[]).push(x); });
+    /* #marks2 — retro: a review already in the book counts without re-posting */
+    try{ if(window.__shkUid && (r.data||[]).some(x=>x&&x.reviewer_id===window.__shkUid))unlockBadge(bixLate("Dock Critic")); }catch(e){}
   }catch(e){ PRV.ok=false; PRV.by={}; }        // the floor still paints without the book
   /* a token refresh can land this mid-sentence — never repaint over a hand
      that is literally typing their word (the data is in; the next paint has it) */
@@ -11404,7 +11492,9 @@ renderPorts();
     unlockBadge(bixLate("Messenger"));
     if(hadShots||/map/i.test(cat))unlockBadge(bixLate("Mapmaker"));
     if(/phone number/i.test(cat))unlockBadge(bixLate("Number Runner"));
-    window._fixCount=(window._fixCount||0)+1; if(window._fixCount>=5)unlockBadge(bixLate("The Fixer"));
+    /* #marks2 — the Fixer's count PERSISTS now. window._fixCount reset on every app
+       open, so five corrections across five days never added up to the mark. */
+    if(tallyAdd('fixes')>=5)unlockBadge(bixLate("The Fixer"));
   }
   document.getElementById('wordSend').addEventListener('click',async()=>{
     const w=build();
@@ -11518,11 +11608,17 @@ const B_PER_PAGE=16;let badgePage=0;   /* #grid4x4(aug13) — 4 across × 4 down
 /* #markswipe2(aug13) — one page's worth of badge tiles as HTML, so both the live wall
    AND the drag-in "next page" pane are built the same way. */
 function badgesPageHTML(page){
-  let h='';
+  let h='', count=0;
   BADGES.slice(page*B_PER_PAGE,(page+1)*B_PER_PAGE).forEach((b,k)=>{
     const ix=page*B_PER_PAGE+k, i=b[0], n=b[1], e=b[2], r=b[3]||0;
     h+='<div class="badge'+(e?' earned':'')+' r'+r+'" data-ix="'+ix+'"><div class="i">'+i+'</div><div class="n">'+n+'</div><div class="rr" style="color:'+RARITY[r][1]+'">'+RARITY[r][0]+'</div></div>';
+    count++;
   });
+  /* #marks2(aug13) — A SHORT PAGE HOLDS ITS SHAPE. The wall used to shrink on the last
+     page (fewer tiles → fewer grid rows → the whole card resizes on every turn).
+     Invisible placeholder tiles keep every page exactly B_PER_PAGE cells, so the box
+     never moves — and the drag-in pane (built from this same HTML) matches it. */
+  for(;count<B_PER_PAGE;count++)h+='<div class="badge bpad" style="visibility:hidden" aria-hidden="true"></div>';
   return h;
 }
 function renderBadges(){
@@ -11658,6 +11754,15 @@ function unlockBadge(ix){ // fire the casino moment for a genuinely new mark
     if(earned>=BADGES.length-1)unlockBadge(bixLate("The Keymaster's Own"));
   },1200);
 }
+/* #marks2(aug13) — ONE DOOR FOR EVERY ⬡ PURCHASE MARK. Each place that used to fire
+   Armory Patron directly (rooms, gatherings, rings, the rename desk) calls this
+   instead, so the purchase count and its tier marks can never drift apart. */
+function armoryBuyMark(){
+  unlockBadge(bixLate("Armory Patron"));
+  try{ const b=tallyAdd('buys');
+    if(b>=3)unlockBadge(bixLate("Armory Regular"));
+    if(b>=10)unlockBadge(bixLate("Armory Devotee")); }catch(e){}
+}
 BADGES.push(
  ["📨","Messenger · sent word to the Keymaster",0,0],["📡","Wire Runner · moved the live board",0,0],
  ["🗺","Mapmaker · port map delivered",0,1],["☎","Number Runner · security line verified",0,1],
@@ -11667,7 +11772,8 @@ BADGES.push(
  ["🧭","True North · 90%+ wire accuracy",0,2],["🛰","Signal Keeper · 25 wire reports",0,2]);
 /* #8 — the wall grows to 100. Harder cuts of marks already hung, plus the long-haul
    legends: the port keeps casuals 15 and 25 years deep — the wall should know them.
-   Marks with no auto-rule yet seal by the Keymaster's word when his panel lands. */
+   #marks2(aug13) — "no auto-rule yet" is RETIRED: the audit wired every mark on this
+   wall to real data (see the #marks2 block at the end of checkMarks). */
 BADGES.push(
  // the grind, harder
  ["💯","Double Century · 200 hrs",0,1],["🔱","Five Hundred · 500 hrs",0,2],["🌋","Thousand-Hour Hand · 1,000 hrs of dockets",0,2],
@@ -11696,6 +11802,16 @@ BADGES.push(
  ["⬡","Buck Baron · 5,000 Port Bucks held",0,2],["🏦","Port Tycoon · 10,000 Port Bucks held",0,3],
  ["💍","Ring Bearer · reached Circle V",0,2],
  ["🃏","Full House · 50 marks earned",0,2],["🏆","Wall of Legends · 75 marks earned",0,3],["☠","The Keymaster's Own · every mark on the wall",0,3]);
+/* #marks2(aug13) — THE WALL GROWS TO 112 (7 full pages of 16). The till, the Hall and
+   the prize machinery earn marks now — the Order rewards hands who spend at the store,
+   speak on the floor, and come back to the till. APPEND ONLY, same as ever. */
+BADGES.push(
+ ["🔔","Till Ringer · first card order at the till",0,1],["🛡","Armory Regular · 3 Armory buys",0,1],
+ ["🏹","Armory Devotee · 10 Armory buys",0,2],["💸","Free Spender · 500 ⬡ spent",0,1],
+ ["🤑","Money Mover · 2,500 ⬡ spent",0,2],["🎖","Earned Stripes · 1,000 ⬡ earned",0,1],
+ ["💰","Payday Legend · 5,000 ⬡ earned",0,2],["🎰","Jackpot · hit an Order prize",0,1],
+ ["🎟","Raffle Royalty · 3 prizes hit",0,2],["⭐","Dock Critic · put your word in the review book",0,1],
+ ["💬","First Word · first message on the Hall Floor",0,0],["📸","Storyteller · clip on the Order's wall",0,1]);
 try{(JSON.parse(localStorage.getItem(K('badges')))||[]).forEach(ix=>{if(BADGES[ix])BADGES[ix][2]=1})}catch(e){}
 renderBadges();
 /* ===== Port Bucks — the Order pays for maintenance work ===== */
@@ -11796,6 +11912,12 @@ function addCredits(n,reason,quiet){
   if(CREDITS>=1000)unlockBadge(bixLate("High Roller"));
   if(CREDITS>=5000)unlockBadge(bixLate("Buck Baron"));      // #8
   if(CREDITS>=10000)unlockBadge(bixLate("Port Tycoon"));    // #8
+  /* #marks2 — LIFETIME EARNED. The balance marks above reward holding; these reward
+     the earning itself, so spending your stack never costs you a mark. Refunds are
+     money coming BACK, not earned — they stay out of the tally. */
+  try{ if(n>0 && reason!=='refund'){ const el=tallyAdd('earned',n);
+    if(el>=1000)unlockBadge(bixLate("Earned Stripes"));
+    if(el>=5000)unlockBadge(bixLate("Payday Legend")); } }catch(e){}
   try{sbApplyBucks(n,reason);}catch(e){}                    // persist to the server (no-op if backend off)
   try{sbBookWrite(n,reason);}catch(e){}                     // #bank — a line in their statement
 }
@@ -11860,6 +11982,10 @@ function awardJackpot(amount, reason){
   let paid=false;
   try{addCredits(amount, reason, true); paid=true;}   // quiet — the jackpot IS the celebration
   catch(e){ try{console.warn('awardJackpot: credit failed', e);}catch(_){} }
+  if(paid){ /* #marks2 — a landed jackpot is a PRIZE on the record */
+    try{ const pz=tallyAdd('prize');
+      if(pz>=1)unlockBadge(bixLate("Jackpot"));
+      if(pz>=3)unlockBadge(bixLate("Raffle Royalty")); }catch(e){} }
   if(paid) jackpot(amount, reason);
   else try{toast('⚓ Logged — the payout didn’t land. Try again.');}catch(_){}
 }
@@ -11969,6 +12095,77 @@ function checkMarks(silent){ // real rules on real data — marks are earned, ne
   if(best>=4)unlockBadge(bix("Iron Streak"));
   if(best>=26)unlockBadge(bix("Half-Year Streak"));
   if(best>=52)unlockBadge(bix("The Unbroken"));
+  /* ═══ #marks2(aug13) — THE AUDIT'S PAYOFF. A mechanical sweep of the wall found 31
+     marks with NO rule wired anywhere — hung on the wall, impossible to earn. Every
+     one reads real data now, and because this whole function recomputes from the
+     stores on every pass, each newly wired mark BACKDATES: the moment this build
+     runs, history already on the record (old dockets, the persisted wire tally,
+     server rows) lights what it honestly lights. */
+  // dockets, deeper cuts
+  if(DOCKETS.filter(j=>j.flex).length>=10)unlockBadge(bix("Dawn Patrol"));
+  try{ const ports=new Set(DOCKETS.map(j=>portOfTerm(j.terminal)).filter(Boolean));
+    if(ports.has('LA')&&ports.has('LB'))unlockBadge(bix("Harbor Rat")); }catch(e){}
+  if(DOCKETS.some(j=>/no.?show/i.test(String(j.ship||''))))unlockBadge(bix("Ghost Ship"));   // the slip says it: ship never showed
+  /* weather off the RECORD — RECENT carries a rain flag per board, so a docket dated a
+     rain day is provable; both boards rained = the day that never let up */
+  try{ const rainD={};
+    RECENT.forEach(r=>{ if(r&&r.date&&r.rain)rainD[r.date]=(rainD[r.date]||0)+1; });
+    if(DOCKETS.some(j=>rainD[j.date]))unlockBadge(bix("Rainmaker"));
+    if(DOCKETS.some(j=>rainD[j.date]>=2))unlockBadge(bix("Storm Rider")); }catch(e){}
+  try{ if(DOCKETS.some(j=>isHoliday(new Date(j.date+"T12:00"))))unlockBadge(bix("Holiday Hand")); }catch(e){}
+  // the drought — 82 days between one docket and the next, survived
+  try{ const ds=[...new Set(DOCKETS.map(j=>j.date))].sort();
+    for(let i=1;i<ds.length;i++){ if((new Date(ds[i]+"T12:00")-new Date(ds[i-1]+"T12:00"))/86400000>=82){unlockBadge(bix("The Ghost"));break;} } }catch(e){}
+  if(DOCKETS.filter(j=>j.src==='photo').length>=3)unlockBadge(bix("Rep Runner"));   // 3 tickets caught on camera — the provenance path
+  /* war stories × the weather log (shadowhook_wxlog — see loadWeather): the sky is
+     the witness. 37.8°C = 100°F · 800 m ≈ half-mile fog · 39 km/h = small-craft winds */
+  try{ const wl=JSON.parse(localStorage.getItem('shadowhook_wxlog'))||{};
+    DOCKETS.forEach(j=>{ const w=wl[j.date]; if(!w)return;
+      if(w.hi>=37.8)unlockBadge(bix("Heat Wave"));
+      if(w.vis<=800)unlockBadge(bix("Fog Cutter"));
+      if(w.wind>=39 && j.ship && j.ship!=="—")unlockBadge(bix("Swell Rider")); }); }catch(e){}
+  // paperwork
+  try{ const sl=JSON.parse(localStorage.getItem(K('stublog'))||'[]');
+    if((sl.length||((typeof STUB!=='undefined'&&STUB&&STUB.date)?1:0))>=12)unlockBadge(bix("Bookkeeper")); }catch(e){}
+  // time — the long haul reads the same clock as the Salt marks; masked = no name on the card
+  try{ const a=loadAcct(); if(a&&a.since){
+    const yrs=(Date.now()-new Date(a.since+"T12:00").getTime())/31557600000;
+    if(yrs>=10)unlockBadge(bix("Decade Hand"));
+    if(yrs>=15)unlockBadge(bix("The Long Haul"));
+    if(yrs>=25)unlockBadge(bix("Quarter Century"));
+    if(yrs>=0.5 && !a.name)unlockBadge(bix("Silent Partner"));
+    if(yrs>=1   && !a.name)unlockBadge(bix("Year in the Shadows"));
+  }}catch(e){}
+  // the wire — CWme persists across sessions, so ALL its marks backdate here, not
+  // only when the next report happens to run cwAfter
+  try{ if(typeof CWme==='object'&&CWme){
+    if(CWme.n>=5)unlockBadge(bix("Tapeline Runner"));
+    if(CWme.n>=10)unlockBadge(bix("Gearhead"));
+    if(CWme.n>=25)unlockBadge(bix("Signal Keeper"));
+    if(CWme.n>=100)unlockBadge(bix("Signal Legend"));
+    if(CWme.n>=5&&CWme.acc>=0.9)unlockBadge(bix("True North"));
+    if(CWme.n>=25&&CWme.acc>=0.95)unlockBadge(bix("Dead Reckoning")); }}catch(e){}
+  // the event tallies (see tallyAdd) — every counter a real act incremented
+  try{
+    const fi=tallyGet('firstin'); if(fi>=3)unlockBadge(bix("First In Line ×3")); if(fi>=10)unlockBadge(bix("First In Line ×10"));
+    const bc=tallyGet('bcalls'); if(bc>=30)unlockBadge(bix("Watchman")); if(bc>=100)unlockBadge(bix("Oracle"));
+    if(tallyGet('heist')>=5)unlockBadge(bix("Lightning Rod"));
+    if(tallyGet('fixes')>=5)unlockBadge(bix("The Fixer"));
+    if(tallyGet('drops')>=10)unlockBadge(bix("Flop Watcher"));
+    const b=tallyGet('buys'); if(b>=1)unlockBadge(bix("Armory Patron")); if(b>=3)unlockBadge(bix("Armory Regular")); if(b>=10)unlockBadge(bix("Armory Devotee"));
+    const sp=tallyGet('spent'); if(sp>=500)unlockBadge(bix("Free Spender")); if(sp>=2500)unlockBadge(bix("Money Mover"));
+    const el=tallyGet('earned'); if(el>=1000)unlockBadge(bix("Earned Stripes")); if(el>=5000)unlockBadge(bix("Payday Legend"));
+    const pz=tallyGet('prize'); if(pz>=1)unlockBadge(bix("Jackpot")); if(pz>=3)unlockBadge(bix("Raffle Royalty"));
+    if(tallyGet('review')>=1)unlockBadge(bix("Dock Critic"));
+    if(tallyGet('story')>=1)unlockBadge(bix("Storyteller"));
+    if(tallyGet('rsvp')>=1)unlockBadge(bix("Council Voice"));
+    const co=tallyGet('cardorders'); if(co>=1)unlockBadge(bix("Till Ringer")); if(co>=3)unlockBadge(bix("Keyholder"));
+    if((+localStorage.getItem(K('msgcount'))||0)>=1)unlockBadge(bix("First Word"));
+    const vc=(window.__vouches||0);
+    if(vc>=1)unlockBadge(bix("Lantern Bearer"));
+    if(vc>=5)unlockBadge(bix("Torch Bearer"));
+    if(vc>=10)unlockBadge(bix("Beacon"));
+  }catch(e){}
   _marksSilent=false;
   return BADGES.filter(b=>b[2]).length-_before;
 }
@@ -12800,6 +12997,12 @@ function payCredits(n,reason,quiet){
      why, while a failed send's refund (addCredits) DID print — a book with credits
      for reversals and no sign of what was reversed. Every spend writes its line now. */
   try{sbBookWrite(-n,reason);}catch(e){}
+  /* #marks2 — LIFETIME SPENT. payCredits is the one door every VOLUNTARY spend walks
+     through (chat fares, media, rooms, gatherings, rings, the rename desk) — penalties
+     and claw-backs go through spendCredits and rightly never count as spending. */
+  try{ if(n>0){ const sl=tallyAdd('spent',n);
+    if(sl>=500)unlockBadge(bixLate("Free Spender"));
+    if(sl>=2500)unlockBadge(bixLate("Money Mover")); } }catch(e){}
   return true;
 }
 window.payCredits=payCredits;
@@ -12901,6 +13104,7 @@ document.getElementById('chatSend').addEventListener('click',()=>{
   else chatOutbound({kind:'text',body:v,cost:MSG_COST});i.value="";     // #chat-live — send to the room
   }
   try{const mc=(+localStorage.getItem(K('msgcount'))||0)+1;localStorage.setItem(K('msgcount'),mc);
+    if(mc>=1)unlockBadge(bixLate("First Word"));                         // #marks2
     if(mc>=500)unlockBadge(bixLate("Voice of the Hall"));}catch(e){}     // #8
 });
 document.getElementById('chatInput').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('chatSend').click()});
@@ -13465,6 +13669,8 @@ async function sbLoadSocial(){
       (RSVP_NAMES[v.gathering_id]=RSVP_NAMES[v.gathering_id]||[]).push(v.by_handle||'a hand');
       if(v.owner&&v.owner===window.__shkUid)MY_RSVPS[v.gathering_id]=true;
     });
+    /* #marks2 — retro: an RSVP already standing on the server is a voice already cast */
+    try{ if(Object.keys(MY_RSVPS).length)unlockBadge(bixLate("Council Voice")); }catch(e){}
     RSVP_N={};
     ((cc&&cc.data)||[]).forEach(c=>{RSVP_N[c.gathering_id]=+c.n||0;});
     try{localStorage.setItem('shadowhook_social_v1',JSON.stringify({r:ALL_ROOMS,g:ALL_GATHS,n:RSVP_N,h:RSVP_NAMES}))}catch(e){}
@@ -13490,6 +13696,7 @@ async function rsvpToggle(gid){
       const r=await window.SB.from('gathering_rsvps').insert({gathering_id:gid,owner:window.__shkUid,by_id:ACCT_ID,by_handle:chatMyHandle()});
       if(r.error)throw r.error;
       MY_RSVPS[gid]=true;RSVP_N[gid]=(RSVP_N[gid]||0)+1;
+      try{tallyAdd('rsvp');unlockBadge(bixLate("Council Voice"))}catch(e){}   /* #marks2 — your voice, counted */
     }
     socPullSoon();
     return !on;
@@ -13919,6 +14126,8 @@ async function sbLoadStories(_noMig){
     if(r.error){console.warn('[stories] load:',r.error.message,'— run STORIES-SETUP.sql');return;}
     ALL_STORIES=r.data||[];
     try{localStorage.setItem('shadowhook_stories_v1',JSON.stringify(ALL_STORIES));}catch(e){}
+    /* #marks2 — retro: clips this card already has on the wall count without re-posting */
+    try{ if(ALL_STORIES.some(s=>s.by_id===ACCT_ID))unlockBadge(bixLate("Storyteller")); }catch(e){}
     renderSocialFeed();
     /* #stories3 — stories stranded on this phone ride up now that the wire answers */
     if(!_noMig){try{const n=await sbMigrateStories();if(n>0)return sbLoadStories(true);}catch(e){}}
@@ -13990,6 +14199,7 @@ function newStoryFlow(prefill){
           renderSocialFeed();
           try{sbLoadStories(true);}catch(e){}   // true-up with the server's real row/id
           try{unlockBadge(bixLate("Town Crier"))}catch(e){}
+          try{tallyAdd('story');unlockBadge(bixLate("Storyteller"))}catch(e){}   /* #marks2 */
           toast(p.ico+' Story posted — the wall sees it');
         }catch(e){localSave();toast(storyFailMsg(e));}
         return;
@@ -14110,6 +14320,7 @@ async function postMediaStory(){
       if(r.error)throw r.error;
       ALL_STORIES.unshift({id:'srv'+Date.now(),owner:window.__shkUid,by_id:ACCT_ID,by_handle:chatMyHandle(),url:url,platform:plat,note:note,created_at:new Date().toISOString()});
       if(_styKind==='vid')try{makeVideoThumb(_styBlobUrl,url)}catch(e){}   // #stories6b — poster from the fresh blob, keyed to the public URL
+      try{tallyAdd('story');unlockBadge(bixLate("Storyteller"))}catch(e){}   /* #marks2 */
       if(sh)sh.classList.remove('on');
       renderSocialFeed();
       try{sbLoadStories(true);}catch(e){}   // true-up with the server's real row/id
@@ -15498,7 +15709,7 @@ window.newRoomFlow=function(){
           if(r.data)ALL_ROOMS.push(r.data);
           renderSocialFeed();
           unlockBadge(bixLate("Room Founder"));                   // #8
-          try{unlockBadge(bixLate("Armory Patron"))}catch(e){}   // #fix2 — only once the room actually minted
+          try{armoryBuyMark()}catch(e){}   // #fix2 — only once the room actually minted
           openRoom(v.n,'🗣','your room');
           if(priv)toast('🗝 Private room open — tap its ⤴ to hand out keys');
         }catch(e){
@@ -15509,7 +15720,7 @@ window.newRoomFlow=function(){
       }
       MY_ROOMS.push({n:v.n,d:new Date().toLocaleDateString()});saveSocial();renderSocialFeed();
       unlockBadge(bixLate("Room Founder"));                       // #8
-      try{unlockBadge(bixLate("Armory Patron"))}catch(e){}       // #fix2
+      try{armoryBuyMark()}catch(e){}       // #fix2
       openRoom(v.n,'🗣','your room');
       toast('Offline — the room lives on this phone and rides up next sign-in');}});
 };
@@ -15530,7 +15741,7 @@ window.newGatheringFlow=function(){
           if(r.data)ALL_GATHS.push(r.data);
           renderSocialFeed();
           unlockBadge(bixLate("Rally Caller"));                   // #8
-          try{unlockBadge(bixLate("Armory Patron"))}catch(e){}   // #fix2 — only once the gathering actually posted
+          try{armoryBuyMark()}catch(e){}   // #fix2 — only once the gathering actually posted
           toast("🕯 Gathering called — every hand sees it. Tap its ⤴ to invite directly");
         }catch(e){
           try{addCredits(price,'refund',true)}catch(_){}
@@ -15540,7 +15751,7 @@ window.newGatheringFlow=function(){
       }
       const h=document.getElementById('meHandle');MY_GATHS.push({n:v.n,w:v.w,p:v.p,by:h?h.textContent:'you'});
       saveSocial();renderSocialFeed();unlockBadge(bixLate("Rally Caller"));  // #8
-      try{unlockBadge(bixLate("Armory Patron"))}catch(e){}       // #fix2
+      try{armoryBuyMark()}catch(e){}       // #fix2
       toast("🕯 Gathering called — rides up Order-wide next sign-in");}});
 };
 /* legacy hooks kept so any other caller still works — both refresh the feed */
@@ -15643,7 +15854,7 @@ function showCircleSheet(i){
     if(!payCredits(c.p,"Circle "+ROMAN[i]+" · "+c.n))return;
     _ringBusy=true;
     CIRCLE_LVL=lvl;try{localStorage.setItem(K('circle'),CIRCLE_LVL)}catch(e){}
-    try{unlockBadge(bixLate("Armory Patron"))}catch(e){}
+    try{armoryBuyMark()}catch(e){}
     /* #fix2(bucks) — REMOVED the profiles.update({circle}) write I added here. It was
        redundant (K('circle') already rides user_kv via the cloud-KV write-through —
        mine() excludes only the credits key), it could push a REGRESSED level over a
@@ -15710,7 +15921,7 @@ window.renameFlow=function(){
       const h=v.h.trim().toUpperCase().replace(/\s+/g,"_");
       document.getElementById('meHandle').textContent=h;
       const a=loadAcct()||{};a.handle=h;saveAcct(a);
-      if(!free)try{unlockBadge(bixLate("Armory Patron"))}catch(e){}   // #fix2 — a paid rename is a purchase
+      if(!free)try{armoryBuyMark()}catch(e){}   // #fix2 — a paid rename is a purchase
       toast("⚓ The Order knows you as "+h+" now");
     }});
 };
@@ -16162,10 +16373,21 @@ document.getElementById('galleryPhoto').addEventListener('change',e=>{pickDocket
 /* ---- share the Order ---- */
 const SHARE_URL="https://www.theshadowhook.com";
 const SHARE_TXT="You've been marked. The Order of The Shadow Hook — a private group for casuals. Verify at the gate: ";
-document.getElementById('shareSms').href="sms:?&body="+encodeURIComponent(SHARE_TXT+SHARE_URL);
-document.getElementById('shareMail').href="mailto:?subject="+encodeURIComponent("The Order of The Shadow Hook")+"&body="+encodeURIComponent(SHARE_TXT+SHARE_URL);
+/* #marks2 — the crew link: a signed-in hand's share carries their handle, so a recruit
+   who verifies through it credits them (Lantern Bearer → Torch Bearer → Beacon). */
+function shareCrewURL(){
+  try{ const h=(loadAcct()||{}).handle;
+    if(h&&/^[A-Za-z0-9_\-]{3,20}$/.test(h))return SHARE_URL+"/?crew="+encodeURIComponent(String(h).toUpperCase()); }catch(e){}
+  return SHARE_URL;
+}
+function _shareWire(){
+  const u=shareCrewURL();
+  try{document.getElementById('shareSms').href="sms:?&body="+encodeURIComponent(SHARE_TXT+u);}catch(e){}
+  try{document.getElementById('shareMail').href="mailto:?subject="+encodeURIComponent("The Order of The Shadow Hook")+"&body="+encodeURIComponent(SHARE_TXT+u);}catch(e){}
+}
+_shareWire(); setTimeout(_shareWire,3000);   // re-arm once the account settles at boot
 document.getElementById('shareBtn').addEventListener('click',async()=>{
-  if(navigator.share){try{await navigator.share({title:"The Order of The Shadow Hook",text:SHARE_TXT,url:SHARE_URL});shareReward()}catch(e){}}
+  if(navigator.share){try{await navigator.share({title:"The Order of The Shadow Hook",text:SHARE_TXT,url:shareCrewURL()});shareReward()}catch(e){}}
   else document.getElementById('shareCopy').click();
 });
 /* #fix2(bucks) — the +25 used to hang off shareCopy ALONE, ungated and outside its own
@@ -16187,8 +16409,8 @@ document.getElementById('shareSms').addEventListener('click',()=>setTimeout(shar
 document.getElementById('shareMail').addEventListener('click',()=>setTimeout(shareReward,800));
 document.getElementById('shareCopy').addEventListener('click',async()=>{
   let copied=false;
-  try{await navigator.clipboard.writeText(SHARE_TXT+SHARE_URL);document.getElementById('shareCopy').textContent="✓ Copied";copied=true}
-  catch(e){prompt("Copy the link:",SHARE_URL)}
+  try{await navigator.clipboard.writeText(SHARE_TXT+shareCrewURL());document.getElementById('shareCopy').textContent="✓ Copied";copied=true}
+  catch(e){prompt("Copy the link:",shareCrewURL())}
   if(copied)shareReward();
 });
 /* ===== MAYDAY: verified port emergency lines ===== */
@@ -16665,6 +16887,7 @@ function bwSettleAll(){
     if(row.heist_from&&row.by===me&&!f.heistPaid){
       f.heistPaid=true; bwLSave(L);
       try{ addCredits(BW_HEIST,'⚔ heist — your board correction carried'); }catch(e){}
+      try{ if(tallyAdd('heist')>=5)unlockBadge(bixLate("Lightning Rod")); }catch(e){}   /* #marks2 — board heists count too */
       try{heistPop(true,false,BW_HEIST,'BOARD RECORD');}catch(e){}
     }
   });
@@ -22923,6 +23146,12 @@ window.shareCall=shareCall;
          line (the charge was real money by card, not bucks), so the statement reads
          as the one record of money moving through the Order. */
       try{ if(typeof sbBookWrite==='function')sbBookWrite(0,'armory order '+(code||'received')+' — paid by card',true); }catch(e){}
+      /* #marks2 — a PAID card order is the realest purchase in the app: Till Ringer on
+         the first, and the Patron's Key to hands who keep coming back to the till. */
+      try{ if(typeof tallyAdd==='function'&&typeof unlockBadge==='function'){
+        var _co=tallyAdd('cardorders');
+        unlockBadge(bixLate("Till Ringer"));
+        if(_co>=3)unlockBadge(bixLate("Keyholder")); } }catch(e){}
       setTimeout(function(){ try{ if(typeof gotoTab==='function')gotoTab('armory'); }catch(e){}
         say('⚓ PAID — order '+(code||'received')+' is in. The Keymaster and the supplier have it; the receipt’s in your email.'); },600);
     } else if(q.get('armory_cancel')){
