@@ -45,8 +45,12 @@ on:
     - cron: '2 5 * * *'     # 22:02 PDT · 21:02 PST — final net
   workflow_dispatch:
     inputs:
+      early:
+        description: 'Dispatch ended early — run now (all cost protections stay armed)'
+        type: boolean
+        default: false
       force:
-        description: 'Run even outside the fresh-recording window'
+        description: 'Override EVERYTHING incl. the cost skips — always dials'
         type: boolean
         default: false
       dry_run:
@@ -84,8 +88,10 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           SLOT_KEYWORDS:        ${{ vars.SLOT_KEYWORDS }}
           MIN_CONF:             ${{ vars.MIN_CONF || '0.75' }}
+          MAX_CALLS_PER_WINDOW: ${{ vars.MAX_CALLS_PER_WINDOW || '4' }}
         run: |
           ARGS=""
+          [ "${{ inputs.early }}" = "true" ] && ARGS="$ARGS --early"
           [ "${{ inputs.force }}" = "true" ] && ARGS="$ARGS --force"
           [ "${{ inputs.dry_run }}" = "true" ] && ARGS="$ARGS --dry-run"
           if [ -n "${{ inputs.transcript }}" ]; then
