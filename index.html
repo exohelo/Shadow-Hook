@@ -4556,6 +4556,73 @@ function normName(s){
           .replace(/[.,]/g," ")                              // periods & commas ignored
           .replace(/\s+/g," ").trim();                       // any spacing collapses
 }
+/* ===== #gateorder(aug13) — THE NAME'S ORDER IS PART OF THE NAME =====
+   The stress test that forced this: "Jose E Lanza Gutierrez" walked through the gate
+   that belongs to "Jose E Gutierrez Lanza". The old check sorted the name's words
+   before hashing (that's the flexibility for caps/periods/spacing — those still
+   pass), which also meant EVERY shuffle of the same words matched. Two surnames
+   swapped is a different name; on a two-surname roster it can even be a different
+   PERSON. The sorted ROSTER hashes can't un-shuffle themselves (the order was hashed
+   away when the list was built), so order rides a SECOND set:
+
+     ROSTER_ORD — fnv(normName(name AS PRINTED) + "|" + card), plus the same with
+     initials dropped. Three feeds:
+       · seeded below for cards whose printed order is already on file;
+       · every #105 card scan — the OCR reads the card itself, so the printed order
+         is ground truth and enrolls here automatically (rosterEnroll);
+       · the Keymaster's next posting: run kmBuildOrderedRoster([["Name As Printed",
+         "D4928"], …]) in the console against the source list and paste the output
+         into the seed array. The names themselves never ship — hashes only, same
+         one-way rule as ROSTER itself.
+
+   THE GATE'S RULE: the typed order matching ROSTER_ORD is the clean pass. If only
+   the sorted SET matches, the gate asks the permutations: does ANY arrangement of
+   these words sit in ROSTER_ORD? Yes → the card's printed order is on file and this
+   isn't it — FLAGGED, not granted (the fix is in their pocket; the scan is the
+   fallback, exactly as designed). No → this card predates the ordered list, and the
+   sorted match stands so no legacy hand gets locked out. Strictness turns itself on
+   card by card as the ordered list grows. */
+const ROSTER_ORD=new Set([
+  "d88ec6237929","3ca99a501449"   // cards with printed order on file (grows with the next posting)
+]);
+try{JSON.parse(localStorage.getItem("shadowhook_rosterord_extra")||"[]").forEach(h=>ROSTER_ORD.add(h));}catch(e){}
+function ordHashes(nameKey,cardKey){
+  const t=nameKey.split(" ");
+  return [fnv(t.join(" ")+"|"+cardKey), fnv(t.filter(x=>x.length>1).join(" ")+"|"+cardKey)];
+}
+function ordOnRecord(nameKey,cardKey){   // does ANY arrangement of these words have a printed order on file?
+  const toks=nameKey.split(" ");
+  if(toks.length>7)return false;         // 7! = 5,040 hashes — past that, treat as legacy
+  const perm=a=>a.length<=1?[a]:a.flatMap((x,i)=>perm(a.slice(0,i).concat(a.slice(i+1))).map(p=>[x].concat(p)));
+  return perm(toks).some(p=>{
+    const k=p.join(" ")+"|"+cardKey, s=p.filter(x=>x.length>1).join(" ")+"|"+cardKey;
+    return ROSTER_ORD.has(fnv(k))||ROSTER_ORD.has(fnv(s));
+  });
+}
+/* the Keymaster's list-day tool — feed it [["Name As Printed","D4928"],…], paste the output */
+window.kmBuildOrderedRoster=function(pairs){
+  const out=new Set();
+  (pairs||[]).forEach(([nm,card])=>{ try{
+    const id=String(card||"").trim().toUpperCase(), m=/^([A-Z])(\d{3,5})$/.exec(id); if(!m)return;
+    ordHashes(normName(nm),m[1]+String(parseInt(m[2],10))).forEach(h=>out.add(h));
+  }catch(e){} });
+  return JSON.stringify([...out]);
+};
+/* #gateorder — TYPED SLOPPY, PRINTED PROPER. Entry stays forgiving (jose e gutierrez
+   lanza gets in fine) but the name the profile carries reads like the card: every
+   word capped, single letters take their period, hyphens and apostrophes cap their
+   own segments, roman suffixes stay tall. */
+function prettyName(s){
+  s=String(s||"").replace(/\s+/g," ").trim(); if(!s)return s;
+  const seg=w=>w?w.charAt(0).toUpperCase()+w.slice(1).toLowerCase():w;
+  return s.split(" ").map(t=>{
+    const bare=t.replace(/\./g,"");
+    if(bare.length===1)return bare.toUpperCase()+".";
+    if(/^(ii|iii|iv|v)\.?$/i.test(bare))return bare.toUpperCase();
+    return t.split("-").map(h=>h.split("'").map(seg).join("'")).join("-");
+  }).join(" ");
+}
+window.prettyName=prettyName;
 document.getElementById('joinBtn').addEventListener('click',()=>{
   const nm=document.getElementById('nameMsg'),im=document.getElementById('idMsg');nm.textContent="";im.textContent="";let ok=true;
   const nameKey=normName(nameEl.value);
@@ -4565,20 +4632,36 @@ document.getElementById('joinBtn').addEventListener('click',()=>{
   const id=idEl.value.trim().toUpperCase();
   // real check against the casual roster — one-way hashes only, no names in this file
   const letter=id[0], num=String(parseInt(id.slice(1),10));
+  const cardKey=letter+num;
+  /* #gateorder — the typed ORDER first: a hit here is the clean pass */
+  const [ordF,ordS]=ordHashes(nameKey,cardKey);
+  const ordMatch=ROSTER_ORD.has(ordF)||ROSTER_ORD.has(ordS);
   const toks=nameKey.split(" ").sort();
-  const full=toks.join(" ")+"|"+letter+num;
-  const short=toks.filter(t=>t.length>1).join(" ")+"|"+letter+num;
-  if(!ROSTER.has(fnv(full))&&!ROSTER.has(fnv(short))){
+  const full=toks.join(" ")+"|"+cardKey;
+  const short=toks.filter(t=>t.length>1).join(" ")+"|"+cardKey;
+  const setMatch=ROSTER.has(fnv(full))||ROSTER.has(fnv(short));
+  if(!ordMatch&&!setMatch){
     im.textContent="> Access Denied. Employee could not be verified.";
     /* #105 — the list can be stale: offer the card as the fallback proof */
     const so=document.getElementById('scanOffer');
     if(so&&so.style.display==="none"){so.style.display="block";so.scrollIntoView({block:'nearest',behavior:'smooth'});}
     return;
   }
+  /* #gateorder — right words, wrong order: the words match the card but the printed
+     order on file says they're arranged differently. "Jose E Lanza Gutierrez" is not
+     "Jose E Gutierrez Lanza" — flagged, not granted. Caps, periods and spacing stay
+     forgiving; the ORDER is the card's. The scan stays the fallback proof. */
+  if(!ordMatch && ordOnRecord(nameKey,cardKey)){
+    nm.textContent="> Those are the right names — but not the order printed on your card. Write it exactly as the card reads.";
+    const so=document.getElementById('scanOffer');
+    if(so&&so.style.display==="none"){so.style.display="block";so.scrollIntoView({block:'nearest',behavior:'smooth'});}
+    return;
+  }
   {
     /* #32 — verified. Handle & passcode get chosen on the granted card; nothing
-       saves until they take their place. */
-    window._pendingAcct={id:id,name:nameEl.value.trim(),nameKey:normName(nameEl.value)};
+       saves until they take their place.
+       #gateorder — the stored name reads like the card: proper caps, dotted initials. */
+    window._pendingAcct={id:id,name:prettyName(nameEl.value.trim()),nameKey:normName(nameEl.value)};
     document.getElementById('grantedId').textContent=id;
     document.getElementById('handlePick').value=genHandle();
     document.getElementById('granted').style.display="block";
@@ -4705,6 +4788,16 @@ function rosterEnroll(name,id){
     hashes.forEach(h=>ex.add(h));
     localStorage.setItem('shadowhook_roster_extra',JSON.stringify([...ex]));
   }catch(e){}
+  /* #gateorder — the card scan is GROUND TRUTH for order: the OCR read the name off
+     the printed card itself, so this order joins ROSTER_ORD and the gate is strict
+     for this card from now on. */
+  try{
+    const oh=ordHashes(normName(name),letter+num);
+    oh.forEach(h=>ROSTER_ORD.add(h));
+    const ox=new Set(JSON.parse(localStorage.getItem('shadowhook_rosterord_extra')||"[]"));
+    oh.forEach(h=>ox.add(h));
+    localStorage.setItem('shadowhook_rosterord_extra',JSON.stringify([...ox]));
+  }catch(e){}
 }
 
 /* --- wiring --- */
@@ -4733,8 +4826,8 @@ function rosterEnroll(name,id){
         return;
       }
       sm.textContent="";
-      /* title-case the read name for the record */
-      sName.value=(read.name||"").toLowerCase().replace(/(^|[\s\-'])([a-z])/g,(m,a,b)=>a+b.toUpperCase());
+      /* #gateorder — the read name goes in card-proper: caps, dotted initials */
+      sName.value=prettyName(read.name||"");
       sId.value=read.id;
       conf.style.display="block";
       if(!read.name)cm.textContent="> Got the ID but not the name — type it exactly as printed.";
@@ -4963,7 +5056,7 @@ function reloadAcctBucks(){
 
 function localEnter(){
   document.getElementById('meHandle').textContent=savedAcct.handle;
-  if(savedAcct.name)document.getElementById('meName').textContent=savedAcct.name;
+  if(savedAcct.name)document.getElementById('meName').textContent=prettyName(savedAcct.name);   /* #gateorder — card-proper on screen */
   if(savedAcct.id)document.getElementById('meCircle').textContent="Circle I · "+savedAcct.id;
   document.getElementById('gatePage').style.display="none";
   bootScreen(()=>enterApp('dockets'),true);
@@ -4981,22 +5074,30 @@ function localEnter(){
         if(prof){
           ACCT_ID=prof.card_id||(savedAcct&&savedAcct.id)||ACCT_ID;
           document.getElementById('meHandle').textContent=prof.handle;
-          document.getElementById('meName').textContent=prof.full_name||"";
+          document.getElementById('meName').textContent=prettyName(prof.full_name||"");   /* #gateorder */
           document.getElementById('meCircle').textContent="Circle I · "+(prof.card_id||"");
           /* #fix(bucks) — ACCT_ID just changed, so re-read this card's own numbers
              BEFORE deciding whether the server should override them. */
           reloadAcctBucks();
-          /* #truehrs(aug13) — ACCT_ID is what keys the official posting lookup, so the
-             book may have just jumped from 0 to this card's posted hours. Refresh the
-             header/ladder/race off the new figure and let the marks wall catch up —
-             the boot-time checkMarks ran before this async restore landed. */
-          try{ if(typeof renderYear==="function")renderYear(); }catch(e){}
-          try{ if(typeof checkMarks==="function"){ const _mn=checkMarks(true);
-            if(_mn>0)try{toast('⚑ '+_mn+' mark'+(_mn>1?'s':'')+' caught up — check your wall')}catch(e){} } }catch(e){}
           /* #fix(bucks) — a NULL port_bucks column (a freshly claimed profile) used to
              coerce to 0 through `+prof.port_bucks||0` and wipe a real local balance.
              Only let the server win when it actually HAS a number. */
           if(prof.port_bucks!=null){ try{ CREDITS=+prof.port_bucks||0; localStorage.setItem(K('credits'),CREDITS); }catch(e){} }
+          /* #truehrs(aug13) + #bankorder(aug13) — the marks catch-up runs AFTER the
+             server-balance override, never before it. The first cut of this block sat
+             ABOVE that override: checkMarks paid its +50s onto the LOCAL balance, and
+             one line later CREDITS was reset to prof.port_bucks — a snapshot SELECTed
+             before the awards existed. The book printed "+50 · new mark earned" while
+             the header stood still — the classic "I see the earning, where's the
+             balance?" Every award lands ON TOP of the server's number now, and if the
+             catch-up paid anything, the bank is re-read after the apply_bucks burst
+             has had time to land (twice, belt and braces), so the header ends on the
+             BANK'S total, not this device's guess. */
+          try{ if(typeof renderYear==="function")renderYear(); }catch(e){}
+          try{ if(typeof checkMarks==="function"){ const _mn=checkMarks(true);
+            if(_mn>0){ try{toast('⚑ '+_mn+' mark'+(_mn>1?'s':'')+' caught up — check your wall')}catch(e){}
+              try{ setTimeout(function(){try{sbRefreshBucks()}catch(e){}},6000);
+                   setTimeout(function(){try{sbRefreshBucks()}catch(e){}},20000); }catch(e){} } } }catch(e){}
           /* #note(bucks) — profiles.circle / .badges / .is_keymaster are SELECTed above
              and deliberately NOT applied here. They look like a missing restore, but
              they aren't: the cloud-KV write-through mirrors every K() key through
@@ -5015,7 +5116,7 @@ function localEnter(){
              keep its own join date, so a device that had auto-rolled a handle at the
              gate today reported "member since" today while the real account read
              three weeks earlier. Server first, local only as a fallback. */
-          const a=loadAcct()||{}; a.handle=prof.handle; a.id=prof.card_id; a.name=prof.full_name;
+          const a=loadAcct()||{}; a.handle=prof.handle; a.id=prof.card_id; a.name=prettyName(prof.full_name);   /* #gateorder — stored card-proper */
           a.since=prof.since||a.since||todayISO();
           saveAcct(a);
         }
@@ -5168,7 +5269,7 @@ function finishEnter(handle, pa, balance){
   ACCT_ID=pa.id||"anon"; // from here on, everything earned belongs to THIS card
   try{ addActiveId(pa.id); }catch(e){}   // #204 — a new casual lands on the ACTIVE board + the calc
   document.getElementById('meHandle').textContent=handle;
-  document.getElementById('meName').textContent=pa.name||"";
+  document.getElementById('meName').textContent=prettyName(pa.name||"");   /* #gateorder */
   document.getElementById('meCircle').textContent="Circle I · "+(pa.id||"");
   const a=loadAcct()||{}; a.handle=handle; a.id=pa.id; a.name=pa.name; a.nameKey=pa.nameKey;
   a.since=pa.since||a.since||todayISO();   // #fix4 — a server join date beats this device's
@@ -5187,10 +5288,15 @@ function finishEnter(handle, pa, balance){
   reloadAcctBucks();
   if(balance!=null){ try{CREDITS=balance;localStorage.setItem(K('credits'),CREDITS);}catch(e){} try{renderCredits();}catch(e){} }
   /* #truehrs(aug13) — same as the session-restore path: ACCT_ID keys the official
-     posting lookup, so the book just changed hands. True up the screens and the wall. */
+     posting lookup, so the book just changed hands. True up the screens and the wall.
+     (#bankorder — this path was already ordered right: the balance override sits two
+     lines up, so awards land on top of it. The deferred bank re-read matches the
+     restore path: the header ends on the bank's total once the burst lands.) */
   try{ if(typeof renderYear==="function")renderYear(); }catch(e){}
   try{ if(typeof checkMarks==="function"){ const _mn=checkMarks(true);
-    if(_mn>0)try{toast('⚑ '+_mn+' mark'+(_mn>1?'s':'')+' caught up — check your wall')}catch(e){} } }catch(e){}
+    if(_mn>0){ try{toast('⚑ '+_mn+' mark'+(_mn>1?'s':'')+' caught up — check your wall')}catch(e){}
+      try{ setTimeout(function(){try{sbRefreshBucks()}catch(e){}},6000);
+           setTimeout(function(){try{sbRefreshBucks()}catch(e){}},20000); }catch(e){} } } }catch(e){}
   /* #marks2 — a fresh hand who came in on a crew link credits their voucher: one
      invisible row (room "_vouch", body = the voucher's handle), once per device. */
   try{ const _cw=localStorage.getItem('shadowhook_crew_pending');
