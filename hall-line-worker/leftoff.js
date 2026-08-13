@@ -38,8 +38,18 @@
    Flags (local testing):
      --transcript "..."   skip Twilio+Whisper, parse this text
      --audio file.mp3     skip Twilio, transcribe this file
-     --force              ignore the time-of-day gate
+     --early              dispatch ended early: open the TIME GATE only — every
+                          cost protection (wire skip, human skip, call budget)
+                          stays armed. This is the Keymaster's early-run switch.
+     --force              override EVERYTHING (gate + all skips) — always dials
      --dry-run            do everything except write to Supabase
+   #aug13(cost) — COST RAILS. Every run ends with one COST line + a GitHub step
+   summary, so the Actions list answers "did that run spend money?" at a glance.
+   New guarantees: a run that cannot READ the wire refuses to dial (a broken
+   read otherwise burns a call per sweep, silently); a human-owned target row
+   skips the call BEFORE dialing (not after); MAX_CALLS_PER_WINDOW hard-caps
+   paid calls per board window; and sweeps corroborate each other through
+   hall_line_log — two agreeing reads can post with zero new calls.
    ========================================================================== */
 const fs = require('fs');
 const { parseLeftOff, parseCounts, parseSpecial, parseForecastTarget } = require('./parse.js');
@@ -60,10 +70,19 @@ const CFG = {
   sbKey:       env('SUPABASE_SERVICE_KEY'),
   minConf:     parseFloat(env('MIN_CONF') || '0.75'),
   retryCalls:  Math.max(1, parseInt(env('RETRY_CALLS') || '2', 10)),   // #jul23 — call again if the line gave nothing usable
+  /* #aug13(cost) — HARD CEILING on paid calls per board window. The dense cron net is
+     supposed to be free after the first good read; this bounds the worst case even
+     when every read comes back garbage: once this many calls have burned in one
+     window, later sweeps run log-only, no dial. */
+  maxCallsWindow: Math.max(1, parseInt(env('MAX_CALLS_PER_WINDOW') || '4', 10)),
   botId:       env('BOT_ID') || 'hall-line-bot',
   botHandle:   env('BOT_HANDLE') || '☎ Hall Line',
   keywords:    (env('SLOT_KEYWORDS') || '').split(',').map(s => s.trim()).filter(Boolean),
   force:       flag('--force'),
+  /* #aug13(cost) — "dispatch ended early": opens the TIME GATE only. Unlike --force,
+     every cost protection stays armed (wire skip, human skip, budget) — so the
+     Keymaster's early run never burns a call the wire already answered. */
+  early:       flag('--early'),
   dryRun:      flag('--dry-run'),
   transcript:  argAfter('--transcript'),
   audioFile:   argAfter('--audio'),
@@ -71,6 +90,21 @@ const CFG = {
 const AZ = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const log = (...a) => console.log('[leftoff]', ...a);
+/* #aug13(cost) — say the money out loud. Every run ends with one COST line and,
+   on GitHub, a step summary — so the Actions list answers "did that run spend?"
+   without opening a single log. */
+let CALLS_PLACED = 0;
+function summary(line) {
+  log(line);
+  try {
+    if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, line + '\n\n');
+  } catch (e) {}
+}
+function costLine() {
+  return CALLS_PLACED === 0
+    ? '💰 COST: $0 — no call placed this run.'
+    : '💸 COST: ' + CALLS_PLACED + ' paid call' + (CALLS_PLACED > 1 ? 's' : '') + ' (Twilio + Whisper) this run.';
+}
 /* ---------- Long Beach wall-clock ---------- */
 function laParts(ts) {
   const d = new Date(ts || Date.now());
@@ -87,8 +121,15 @@ function laParts(ts) {
 }
 /* which board the recording is talking about = the board that just ENDED.
    Day board ends 9:30, night board 19:00 (#205 — moved from 19:30, hall timeline the app runs on). */
-function targetBoard() {
+function targetBoard(early) {
   const now = laParts();
+  /* #aug13(cost) — an EARLY run means "the board wrapped ahead of the clock": before
+     9:30 the just-ended board is TODAY'S AM (not yesterday's PM), and before 19:00
+     it's TODAY'S PM. Only the --early flag reads the clock this way. */
+  if (early) {
+    if (now.mins >= 6 * 60 && now.mins < 9 * 60 + 30)  return { key: now.iso + '_' + now.dow + '_AM', slot: 'AM', iso: now.iso, dow: now.dow };
+    if (now.mins >= 15 * 60 && now.mins < 19 * 60)     return { key: now.iso + '_' + now.dow + '_PM', slot: 'PM', iso: now.iso, dow: now.dow };
+  }
   if (now.mins >= 19 * 60) return { key: now.iso + '_' + now.dow + '_PM', slot: 'PM', iso: now.iso, dow: now.dow };
   if (now.mins >= 9 * 60 + 30)  return { key: now.iso + '_' + now.dow + '_AM', slot: 'AM', iso: now.iso, dow: now.dow };
   const y = laParts(Date.now() - 86400000);
@@ -99,6 +140,16 @@ function targetBoard() {
 function insideRunWindow() {
   const m = laParts().mins;
   return (m >= 9 * 60 + 35 && m <= 13 * 60) || (m >= 19 * 60 + 5 && m <= 23 * 60 + 30);
+}
+/* #aug13(cost) — when did the CURRENT board window open (for the call budget)?
+   Returns minutes-ago; pure on nowMins so it's testable. */
+function windowAgeMins(nowMins) {
+  if (nowMins >= 19 * 60) return nowMins - 19 * 60;           // tonight's window
+  if (nowMins >= 9 * 60 + 30) return nowMins - (9 * 60 + 30); // this morning's
+  return nowMins + (24 * 60 - 19 * 60);                       // still yesterday's night window
+}
+function windowStartISO() {
+  return new Date(Date.now() - windowAgeMins(laParts().mins) * 60000).toISOString();
 }
 /* the board directly before: AM -> previous-day PM, PM -> same-day AM */
 function prevBoardKey(t) {
@@ -185,6 +236,7 @@ async function recordHotline() {
   };
   if (CFG.dtmf) form.SendDigits = CFG.dtmf;
   const call = await twilio('/Calls.json', form);
+  CALLS_PLACED++;                       /* #aug13(cost) — count the money at the moment it's spent */
   log('call placed:', call.sid);
   // wait for the call to finish (recording completes shortly after)
   const deadline = Date.now() + (secs + 90) * 1000;
@@ -273,22 +325,34 @@ function resolveAboutKey(ft, t, mode){
   return (best && best.key) || fallback;
 }
 /* ---------- main ---------- */
-(async () => {
-  const t = targetBoard();
-  log('target board:', t.key, '· LA time gate', insideRunWindow() ? 'OPEN' : 'closed');
-  if (!insideRunWindow() && !CFG.force && !CFG.transcript && !CFG.audioFile) {
-    log('outside the fresh-recording window — nothing to do (use --force to override).');
+async function main() { try {
+  const t = targetBoard(CFG.early);
+  const liveMode = !CFG.transcript && !CFG.audioFile;
+  log('target board:', t.key, '· LA time gate', insideRunWindow() ? 'OPEN' : 'closed' + (CFG.early ? ' (early run)' : ''));
+  if (!insideRunWindow() && !CFG.force && !CFG.early && !CFG.transcript && !CFG.audioFile) {
+    summary('⏸ SKIPPED — outside the fresh-recording window (dispatch ended early? use the early input; force overrides everything).');
     return;
   }
   /* one read of the wire around the target: two boards back through two ahead —
      enough to chain starts, sanity-check ends, and honor human ownership. */
   const NEAR = [prevKeyOf(prevKeyOf(t.key)), prevKeyOf(t.key), t.key, nextKeyOf(t.key), nextKeyOf(nextKeyOf(t.key))].filter(Boolean);
   const WIRE = {};
+  let wireReadOk = false;
   if (CFG.sbUrl && CFG.sbKey) {
     try {
       const rows = await sbSelect('board_wire', 'k=in.(' + NEAR.map(k => '%22' + k + '%22').join(',') + ')&select=*');
       rows.forEach(r => { WIRE[r.k] = r; });
+      wireReadOk = true;
     } catch (e) { log('warn: could not read board_wire:', e.message); }
+  }
+  /* #aug13(cost) — NO CHECK, NO CALL. If the wire can't be READ, the pre-call skip
+     is blind: a broken key or RLS change would burn a paid call on EVERY sweep all
+     day, silently, even with the answer already sitting on the wire. A run that
+     cannot verify does not dial — it fails loudly so the broken read gets seen. */
+  if (liveMode && !wireReadOk && !CFG.force) {
+    summary('❌ ABORTED before dialing — board_wire could not be read, so the skip check is blind. Fix the read (key/RLS/network); forcing past this burns a call per sweep.');
+    process.exitCode = 1;
+    return;
   }
   const prevEnd = endOf(WIRE[prevKeyOf(t.key)]);
   /* #jul30b — PRE-CALL SKIP: if the wire already carries the end card of the
@@ -296,8 +360,61 @@ function resolveAboutKey(ft, t, mode){
      the number is in — exit BEFORE dialing. This is what makes the dense
      retry schedule free: only sweeps that still NEED a number spend a call. */
   if (!CFG.force && !CFG.transcript && !CFG.audioFile && endOf(WIRE[t.key])) {
-    log('wire already carries ' + t.key + ' end=' + endOf(WIRE[t.key]) + ' — no call needed.');
+    summary('✓ SKIPPED — the wire already carries ' + t.key + ' end=' + endOf(WIRE[t.key]) + '. No call needed.');
     return;
+  }
+  /* #aug13(cost) — A HUMAN ROW IS A FULL STOP, EVEN WITHOUT AN END. The old order
+     checked humanOwns only AFTER the call: a hand's start-only row on the target
+     board meant every sweep dialed (money), parsed, and then "stood down" — the
+     one outcome the bot could post was on a key it would never touch. If a human
+     owns the target row, the call can buy nothing: skip before dialing. */
+  const rowT = WIRE[t.key];
+  if (!CFG.force && liveMode && rowT && rowT.by && rowT.by !== CFG.botId) {
+    summary('✓ SKIPPED — a hand already owns ' + t.key + ' (' + (rowT.by_handle || rowT.by) + '); the bot never writes over a human, so a call could post nothing.');
+    return;
+  }
+  /* #aug13(cost) — THE WINDOW'S CALL BUDGET + PRIOR READS. hall_line_log already
+     records every run; read this window's rows once, up front. Two uses:
+       · budget — count the calls already PAID for this window; at the ceiling,
+         later sweeps stop dialing (the worst case has a price, by design);
+       · corroboration — two different recordings agreeing on the same card is
+         stronger evidence than either alone. If earlier reads this window
+         already agree at near-post confidence, post FROM THE LOG, zero calls. */
+  let priorReads = [];
+  if (liveMode && wireReadOk) {
+    try {
+      const lr = await sbSelect('hall_line_log',
+        'ran_at=gte.' + encodeURIComponent(windowStartISO()) + '&select=k,card,conf,call_sid,posted,extras&order=ran_at.desc&limit=30');
+      priorReads = Array.isArray(lr) ? lr : [];
+    } catch (e) { log('warn: could not read hall_line_log (budget/corroboration unavailable):', e.message); }
+    const callsSpent = priorReads.filter(r => r.call_sid).length;
+    if (!CFG.force && callsSpent >= CFG.maxCallsWindow) {
+      summary('🧯 SKIPPED — call budget spent: ' + callsSpent + '/' + CFG.maxCallsWindow + ' paid calls this window already. No dial. (Raise MAX_CALLS_PER_WINDOW to change.)');
+      return;
+    }
+    const fromLog = corroborateFromLog(priorReads, CFG.minConf);
+    if (!CFG.force && fromLog) {
+      const tr = buildPatchFromLogRow(fromLog.row);
+      if (tr && tr.patch) {
+        const ex = WIRE[tr.postKey];
+        const human = !!(ex && ex.patch && ex.by && ex.by !== CFG.botId);
+        const dupe = !!(ex && ex.patch && ((tr.patch.end && ex.patch.end === tr.patch.end) || (tr.patch.start && ex.patch.start === tr.patch.start && !tr.patch.end)));
+        if (!human && !dupe) {
+          if (tr.patch.end) { const pe = endOf(WIRE[prevKeyOf(tr.postKey)]); if (pe) { tr.patch.start = nextCard(pe); tr.patch.act = letterDist(tr.patch.start, tr.patch.end); } }
+          const row = { k: tr.postKey, patch: tr.patch, by: CFG.botId, by_handle: CFG.botHandle,
+            yes: 2, no: 0, confirmers: 0, chal: null, chal_by: null, chal_handle: null, chal_yes: 0, chal_no: 0,
+            status: 'live', heist_from: null, heist_handle: null };
+          if (CFG.dryRun) { summary('DRY RUN — would post FROM THE LOG (no call): ' + tr.postKey + ' ' + JSON.stringify(tr.patch)); return; }
+          await sbUpsert('board_wire', row, 'k');
+          await sbInsert('hall_line_log', { k: fromLog.row.k, card: fromLog.card, conf: fromLog.conf,
+            heard: 'corroborated from ' + fromLog.n + ' earlier reads this window', transcript: '', call_sid: null, posted: true,
+            extras: { kind: 'corroborated', about: (fromLog.row.extras && fromLog.row.extras.about) || fromLog.row.k, posted_to: tr.postKey } });
+          summary('⚓ POSTED FROM THE LOG — ' + fromLog.n + ' earlier reads this window agree on ' + fromLog.card +
+            ' (conf ' + fromLog.conf.toFixed(2) + '); wrote ' + tr.postKey + ' ' + JSON.stringify(tr.patch) + ' with ZERO new calls.');
+          return;
+        }
+      }
+    }
   }
   /* get a transcript: flag > audio file > live call — and if a LIVE call hears
      nothing usable, wait and CALL AGAIN (#jul23: the recording is sometimes
@@ -305,7 +422,6 @@ function resolveAboutKey(ft, t, mode){
   const keywords = CFG.keywords.length ? CFG.keywords
     : (t.slot === 'AM' ? ['day', 'morning', 'casual', 'casuals', 'unidentified']
                        : ['night', 'evening', 'casual', 'casuals', 'unidentified']);
-  const liveMode = !CFG.transcript && !CFG.audioFile;
   if (liveMode) {
     for (const k of ['twilioSid', 'twilioToken', 'twilioFrom', 'dispatchNum', 'openaiKey'])
       if (!CFG[k]) { console.error('missing config: ' + k); process.exit(1); }
@@ -369,6 +485,14 @@ function resolveAboutKey(ft, t, mode){
     else if (d > 20) conf -= 0.15;                    // moving backwards / wrapping hard — suspicious, not fatal
     log('sanity: prior end ' + priorEnd + ' -> ' + patch.end + ' is ' + d + ' letters forward');
   }
+  /* #aug13(cost) — CROSS-RUN CORROBORATION: an earlier sweep this window that heard
+     the SAME card is a second, independent recording agreeing. That's worth real
+     confidence — and it's what stops a "readable but always just under threshold"
+     day from burning a call on every sweep to reach the same stuck answer. */
+  if (res.card && priorReads.some(r => r && r.card === res.card)) {
+    conf = Math.min(0.98, conf + 0.12);
+    log('corroborated: an earlier read this window also heard ' + res.card + ' — confidence now ' + conf.toFixed(2));
+  }
   /* ── the recording's COUNTS (E/N/D) — backup ears only. The PDF is the record:
      compare and log MATCH/MISMATCH, never write over sheet data. ── */
   const counts = parseCounts(transcript);
@@ -415,17 +539,18 @@ function resolveAboutKey(ft, t, mode){
     if (!wrote) await sbInsert('hall_line_log', baseRow);   // older table without the extras column
   }
   if (humanOwns) {
-    log('a hand already logged ' + postKey + ' (' + (existing.by_handle || existing.by) + ') — standing down.');
+    summary('🛑 STOOD DOWN after reading — a hand already logged ' + postKey + ' (' + (existing.by_handle || existing.by) + '). Logged for the audit only.');
     return;
   }
   if (!posting) {
-    log(res.card ? 'below MIN_CONF (' + CFG.minConf + ') — logged only, not posted.' : 'no card found — logged only.');
+    summary(res.card ? '📉 LOGGED ONLY — ' + res.card + ' at conf ' + conf.toFixed(2) + ' is below MIN_CONF ' + CFG.minConf + '. A later sweep that hears the same card will corroborate and post without guessing looser.'
+                     : '🔇 LOGGED ONLY — no card heard in this recording.');
     return;
   }
   const dupe = existing && existing.patch &&
     ((patch.end && existing.patch.end === patch.end) || (patch.start && existing.patch.start === patch.start && !patch.end));
   if (dupe) {
-    log('already on the record (' + postKey + ' ' + JSON.stringify(existing.patch) + ') — nothing new.');
+    summary('✓ NOTHING NEW — ' + postKey + ' already carries ' + JSON.stringify(existing.patch) + '.');
     return;
   }
   /* the bot's post: exactly the row a member's log produces (status live, fact
@@ -442,12 +567,48 @@ function resolveAboutKey(ft, t, mode){
     chal: null, chal_by: null, chal_handle: null, chal_yes: 0, chal_no: 0,
     status: 'live', heist_from: null, heist_handle: null
   };
-  if (CFG.dryRun) { log('DRY RUN — would upsert board_wire:', JSON.stringify(row)); return; }
+  if (CFG.dryRun) { summary('DRY RUN — would upsert board_wire: ' + JSON.stringify(row)); return; }
   if (!CFG.sbUrl || !CFG.sbKey) { console.error('missing SUPABASE_URL / SUPABASE_SERVICE_KEY'); process.exit(1); }
   await sbUpsert('board_wire', row, 'k');
-  log('⚓ posted to the wire: ' + postKey + ' ' + JSON.stringify(patch) +
+  summary('⚓ POSTED to the wire: ' + postKey + ' ' + JSON.stringify(patch) +
       (mode === 'start' ? '  (the hall said ' + aboutKey + ' starts on ' + res.card + ')' : ''));
-})().catch(e => { console.error('[leftoff] FAILED:', e.message); process.exit(1); });
+} finally { summary(costLine()); } }
+/* ---------- #aug13(cost) — helpers for the log-corroboration path ---------- */
+/* translate one hall_line_log row back into the record entry it supports */
+function buildPatchFromLogRow(row) {
+  if (!row || !row.card) return null;
+  const kind = row.extras && row.extras.kind, about = (row.extras && row.extras.about) || row.k;
+  if (kind === 'start') {
+    const end = prevCardId(row.card);
+    if (end) return { postKey: prevKeyOf(about), patch: { end } };
+    return { postKey: about, patch: { start: row.card } };
+  }
+  return { postKey: row.k, patch: { end: row.card } };
+}
+/* two or more independent reads this window agreeing on one card, close enough to
+   the post threshold that agreement carries it over → post with zero new calls */
+function corroborateFromLog(rows, minConf) {
+  const byCard = {};
+  (rows || []).forEach(r => { if (r && r.card) (byCard[r.card] = byCard[r.card] || []).push(r); });
+  let best = null;
+  Object.keys(byCard).forEach(card => {
+    const g = byCard[card];
+    if (g.length < 2) return;
+    const max = Math.max.apply(null, g.map(r => +r.conf || 0));
+    if (max < minConf - 0.05) return;
+    const conf = Math.min(0.98, max + 0.08 * (g.length - 1));
+    if (conf < minConf) return;
+    if (!best || conf > best.conf) best = { card, conf: Math.round(conf * 100) / 100, n: g.length, row: g[0] };
+  });
+  return best;
+}
+if (require.main === module) {
+  main().catch(e => { console.error('[leftoff] FAILED:', e.message); summary('❌ FAILED: ' + e.message); summary(costLine()); process.exit(1); });
+}
+module.exports = { _internals: {
+  windowAgeMins, targetBoard, insideRunWindow, buildPatchFromLogRow, corroborateFromLog,
+  prevKeyOf, nextKeyOf, keyFor, isoShift, prevCardId, nextCard, letterDist, endOf, resolveAboutKey
+} };
 
 /* #jul30 — plain-regex fallback for hall phrasings the main parser misses.
    Only called when parseLeftOff found no card at all. High confidence (0.85)
