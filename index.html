@@ -1037,6 +1037,26 @@ html.daylight .heist{background:rgba(64,54,38,.6)}
 .race-list li.me .rid{color:var(--copper-hi)}
 .race-list .rhrs{flex:none;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--steel)}
 .race-list .rtagme{font-family:'IBM Plex Mono',monospace;font-size:8.5px;letter-spacing:.14em;color:var(--void);background:linear-gradient(180deg,var(--copper-hi),var(--copper));border-radius:4px;padding:2px 6px;margin-left:7px;vertical-align:2px}
+/* ===== #onedeck — THE BOARD DECK: four boards, one swipeable window =====
+   Chips are a 4-up grid (metric on top, scope below); the window clips the
+   boards sliding through it exactly like the Marks wall (#markswipe2), and its
+   height rides whichever board is showing so the arena hugs a short squad list
+   and stretches for the full arcade podium. touch-action:pan-y keeps vertical
+   scrolling native while WE own the horizontal drag. */
+.bdk-tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:14px 0 10px}
+.bdk-tabs button{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0;padding:8px 2px 7px;border:1px solid var(--line-soft);border-radius:11px;background:var(--well);cursor:pointer;transition:.15s}
+.bdk-tabs .m{font-family:'IBM Plex Mono',monospace;font-size:8px;letter-spacing:.14em;color:var(--steel);text-transform:uppercase;opacity:.8}
+.bdk-tabs .s{font-family:'IBM Plex Mono',monospace;font-size:9.5px;font-weight:600;letter-spacing:.05em;color:var(--bone);text-transform:uppercase;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bdk-tabs button.on{border-color:rgba(238,180,107,.55);background:linear-gradient(180deg,rgba(238,180,107,.14),rgba(238,180,107,.04));box-shadow:0 0 12px rgba(238,180,107,.14)}
+.bdk-tabs button.on .s{color:var(--copper-hi)}
+.bdk-tabs button.on .m{color:var(--copper);opacity:1}
+.bdk-view{position:relative;overflow:hidden;touch-action:pan-y;transition:height .3s cubic-bezier(.22,.61,.36,1)}
+.bdk-page{position:absolute;top:0;left:0;right:0;visibility:hidden;will-change:transform;backface-visibility:hidden}
+.bdk-page.cur{visibility:visible}
+.bdk-cap{text-align:center;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.13em;color:var(--steel);text-transform:uppercase;padding:1px 0 9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bdk-dots{display:flex;justify-content:center;gap:5px;padding:9px 0 2px}
+.bdk-dots i{width:5px;height:5px;border-radius:3px;background:var(--line);transition:.22s}
+.bdk-dots i.on{width:15px;background:var(--copper-hi);box-shadow:0 0 7px rgba(238,180,107,.55)}
 /* #race — the stakes: two premium arena stat cards (was a cramped 3-tile grid) */
 .race-stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
 .race-stat{position:relative;overflow:hidden;border-radius:14px;padding:13px 13px 12px 15px;
@@ -2529,13 +2549,39 @@ window.DEVLOG=(function(){
         </div>
       </div>
       <div id="rLocked" class="sub" style="display:none;text-align:center;padding:6px 0">Verify your card at the gate to take your lane in the race.</div>
-      <!-- #race — the boards ride folded: push a button to roll one open, push again to fold it -->
-      <div class="race-board-tabs">
-        <button type="button" data-rboard="global" class="on">🌍 Global Top 10</button><!-- #race2 — the Global board rolls open by default -->
-        <button type="button" data-rboard="letter" id="rbLetterTab">Your Squad Top 10</button>
+      <!-- #onedeck(aug13) — ONE BOARD DECK. Every leaderboard in the Order lives in this
+           window now: the Race's two hours boards AND the week's Port Bucks boards that
+           used to be their own card down past the Circles. Four chips, one swipe — drag
+           the list sideways and it turns like the Marks wall (the board follows your
+           finger, the next one slides in beside it, settles on release), or tap a chip
+           to jump. The Race header — rank tiles, the chase — stays on top, untouched.
+           Ids raceListGlobal / raceListLetter / lbListAll / lbListSquad keep every
+           renderer honest. -->
+      <div class="bdk-tabs" id="bdkTabs">
+        <button type="button" data-pg="0" class="on"><span class="m">⏱ HOURS</span><span class="s">GLOBAL</span></button>
+        <button type="button" data-pg="1"><span class="m">⏱ HOURS</span><span class="s" id="rbLetterTab">MY SQUAD</span></button>
+        <button type="button" data-pg="2"><span class="m">⬡ BUCKS</span><span class="s">ALL HANDS</span></button>
+        <button type="button" data-pg="3"><span class="m">⬡ BUCKS</span><span class="s" id="bdkBuckSq">MY SQUAD</span></button>
       </div>
-      <ol class="race-list" id="raceListGlobal"></ol>
-      <ol class="race-list" id="raceListLetter" style="display:none"></ol>
+      <div class="bdk-view" id="bdkView">
+        <div class="bdk-page cur" data-pg="0">
+          <div class="bdk-cap">🏁 The Long Game · Global Top 10 · true hours</div>
+          <ol class="race-list" id="raceListGlobal"></ol>
+        </div>
+        <div class="bdk-page" data-pg="1">
+          <div class="bdk-cap">🏁 The Long Game · <span id="bdkCapSq">Your Squad</span> Top 10 · true hours</div>
+          <ol class="race-list" id="raceListLetter"></ol>
+        </div>
+        <div class="bdk-page" data-pg="2">
+          <div class="bdk-cap">🏆 The Boards · All Hands · ⬡ <span class="bdk-wintag">this week</span></div>
+          <div id="lbListAll"></div>
+        </div>
+        <div class="bdk-page" data-pg="3">
+          <div class="bdk-cap">🏆 The Boards · <span id="bdkCapBSq">Your Squad</span> · ⬡ <span class="bdk-wintag">this week</span></div>
+          <div id="lbListSquad"></div>
+        </div>
+      </div>
+      <div class="bdk-dots" id="bdkDots" aria-hidden="true"><i class="on"></i><i></i><i></i><i></i></div>
       <details class="fold" style="margin-top:8px">
         <summary>The stakes // why it's the long game</summary>
         <div class="race-stats">
@@ -2558,22 +2604,9 @@ window.DEVLOG=(function(){
       <div class="card-b"><div class="circles" id="circleList"></div></div>
     </div>
 
-    <div class="card">
-      <!-- #boards2(aug10) — one metric, one period, two lists. Hours left with the
-           HOURS tab (they still rank in the Race arena, which is where an hours
-           race belongs); month and year left with them. What's here now is the
-           week's Port Bucks, read either across the whole Record or inside your
-           own letter. The "-Squad" in the head follows YOUR letter — it used to
-           be the string "D-Squad" hardcoded for everybody. -->
-      <div class="card-h">🏆 The Boards <span class="sl">//</span> <span id="lbScopeName">All Hands</span> <span class="tag" id="lbTag">this week</span></div>
-      <div class="card-b" style="padding-top:6px">
-        <div class="lbseg" id="lbScope">
-          <button type="button" data-sc="all" class="on">🌍 ALL HANDS</button>
-          <button type="button" data-sc="squad" id="lbSquadBtn">⚓ MY SQUAD</button>
-        </div>
-        <div id="lbList"></div>
-      </div>
-    </div>
+    <!-- #onedeck(aug13) — THE BOARDS card retired as a standalone section: the week's
+         Port Bucks boards (All Hands + your squad) ride the board deck up in the Race
+         arena now. One leaderboard home, no split sections. -->
 
     <div class="card">
       <div class="card-h">Spread the Word <span class="tag">every hand makes the board smarter</span></div>
@@ -7034,14 +7067,18 @@ function renderRaceBoards(me){
     out+=row(me.live,esc(ACCT_ID)+' · '+esc(handle),hrsTx(me.est),true);
   }
   g.innerHTML=out;
-  /* your letter's squad — hours-ranked within the letter */
-  const tab=document.getElementById('rbLetterTab');
+  /* your letter's squad — hours-ranked within the letter. #onedeck — the name
+     rides the deck chip + the page caption now, not a fold-away tab */
+  const tab=document.getElementById('rbLetterTab'),cap=document.getElementById('bdkCapSq');
   if(!me){
-    if(tab)tab.textContent='Your Squad Top 10';
+    if(tab)tab.textContent='MY SQUAD';
+    if(cap)cap.textContent='Your Squad';
     lel.innerHTML='<li><span class="rmed">🔒</span><span class="rid" style="font-size:12px">Verify at the gate to take your lane</span><span class="rhrs"></span></li>';
+    try{if(window._bdkH)_bdkH();}catch(e){}
     return;
   }
-  if(tab)tab.textContent=me.L+'-Squad Top 10';
+  if(tab)tab.textContent=me.L+'-SQUAD';
+  if(cap)cap.textContent=me.L+'-Squad';
   const sq=LETTER_STAND[me.L]||[];
   let lo='';
   for(let q=1;q<=10;q++){
@@ -7055,20 +7092,80 @@ function renderRaceBoards(me){
     lo+=row(me.lLive,esc(ACCT_ID)+' · '+esc(handle),hrsTx(me.est),true);
   }
   lel.innerHTML=lo;
+  try{if(window._bdkH)_bdkH();}catch(e){}   /* #onedeck — the window hugs the fresh board */
 }
-/* board buttons — collapsible: push to roll a board open, push again to fold it;
-   pushing the other button swaps which board is open. Plus the hand-off card on Take. */
+/* #onedeck(aug13) — THE BOARD DECK ENGINE. One window, four boards: drag to turn
+   (the exact #markswipe2 feel — the board follows your finger, the next one slides
+   in beside it, past ~¼ width commits, else it snaps back) or tap a chip to jump;
+   the slide runs the same either way. The window's height glides to hug whichever
+   board is showing. This replaces the old fold-away pair AND its class-wide
+   `.race-board-tabs button` binder — which was also grabbing the Armory's shelf
+   tabs (#armMode, same class for style) and quietly flipping this arena's lists
+   from a different screen every time a shelf was switched. The new engine is
+   scoped to its own ids, so the Armory keeps its class and loses the hitchhiker. */
 (function(){
-  const tabs=document.querySelectorAll('.race-board-tabs button');
-  tabs.forEach(b=>b.addEventListener('click',()=>{
-    const g=document.getElementById('raceListGlobal'),l=document.getElementById('raceListLetter');
-    const closing=b.classList.contains('on');                       // same button again → fold it away
-    tabs.forEach(x=>x.classList.toggle('on',x===b&&!closing));
-    const isG=b.getAttribute('data-rboard')==='global';
-    const show=el=>{if(!el)return;el.style.display='';el.classList.remove('pop');void el.offsetWidth;el.classList.add('pop');};
-    if(g)g.style.display='none'; if(l)l.style.display='none';
-    if(!closing)show(isG?g:l);
-  }));
+  const view=document.getElementById('bdkView');
+  if(!view)return;
+  const pages=Array.prototype.slice.call(view.querySelectorAll('.bdk-page'));
+  const chips=Array.prototype.slice.call(document.querySelectorAll('#bdkTabs button'));
+  const dots=Array.prototype.slice.call(document.querySelectorAll('#bdkDots i'));
+  const EASE='transform .27s cubic-bezier(.22,.61,.36,1)';
+  let cur=0,busy=false,x0=null,y0=null,dx=0,active=false,axis=0,dir=0,W=1,tgt=-1;
+  const w=()=>view.clientWidth||320;
+  function mark(){chips.forEach((c,i)=>c.classList.toggle('on',i===cur));dots.forEach((d,i)=>d.classList.toggle('on',i===cur));}
+  function hugH(p){const h=(p||pages[cur]).offsetHeight;if(h)view.style.height=h+'px';}
+  window._bdkH=function(){if(!busy)hugH();};   // renderers call this so the window hugs a fresh board
+  function drop(i){const p=pages[i];if(!p||i===cur)return;p.classList.remove('cur');p.style.transform='';p.style.transition='';}
+  function prep(i,d){const p=pages[i];p.style.transition='';p.style.transform='translateX('+(d===1?w():-w())+'px)';p.classList.add('cur');return p;}
+  function settle(commit){
+    const W2=w(),d=dir,ti=tgt,a=pages[cur],p=(ti>=0&&ti!==cur)?pages[ti]:null;
+    if(commit&&p){
+      busy=true;
+      hugH(p);                                    // height glides to the incoming board alongside the slide
+      a.style.transition=EASE;p.style.transition=EASE;
+      a.style.transform='translateX('+(d===1?-W2:W2)+'px)';p.style.transform='translateX(0px)';
+      let done=false;const fin=()=>{if(done)return;done=true;a.removeEventListener('transitionend',fin);
+        a.classList.remove('cur');a.style.transform='';a.style.transition='';
+        p.style.transition='';p.style.transform='';
+        cur=ti;tgt=-1;dir=0;busy=false;mark();hugH();};
+      a.addEventListener('transitionend',fin);setTimeout(fin,380);
+    }else{
+      a.style.transition=EASE;a.style.transform='translateX(0px)';
+      if(p){p.style.transition=EASE;p.style.transform='translateX('+(d===1?W2:-W2)+'px)';}
+      setTimeout(()=>{if(p)drop(ti);a.style.transition='';a.style.transform='';tgt=-1;dir=0;},300);
+    }
+  }
+  /* chips / programmatic jump — same slide as a completed drag, any distance */
+  window._bdkGo=function(i){
+    if(busy||i===cur||i<0||i>=pages.length)return;
+    if(tgt>=0)drop(tgt);
+    dir=i>cur?1:-1;tgt=i;prep(i,dir);void pages[i].offsetWidth;settle(true);
+  };
+  view.addEventListener('touchstart',e=>{if(busy||e.touches.length!==1)return;const t=e.touches[0];x0=t.clientX;y0=t.clientY;dx=0;active=true;axis=0;dir=0;W=w();},{passive:true});
+  view.addEventListener('touchmove',e=>{
+    if(!active||x0==null)return;const t=e.touches[0],mx=t.clientX-x0,my=t.clientY-y0;
+    if(axis===0){if(Math.abs(mx)<8&&Math.abs(my)<8)return;axis=(Math.abs(mx)>Math.abs(my)*1.2)?1:-1;if(axis!==1){active=false;return;}}
+    const want=mx<0?1:-1,ti=cur+want,a=pages[cur];
+    if(ti<0||ti>=pages.length){if(tgt>=0)drop(tgt);tgt=-1;dir=0;dx=mx*0.3;a.style.transform='translateX('+dx+'px)';if(e.cancelable)e.preventDefault();return;}   // rubber-band at the ends
+    if(dir!==want||tgt!==ti){if(tgt>=0&&tgt!==ti)drop(tgt);dir=want;tgt=ti;prep(ti,want);}
+    dx=mx;a.style.transform='translateX('+dx+'px)';
+    pages[ti].style.transform='translateX('+((dir===1?W:-W)+dx)+'px)';
+    if(e.cancelable)e.preventDefault();
+  },{passive:false});
+  function up(){if(!active)return;active=false;
+    if(axis!==1){x0=null;if(tgt>=0)drop(tgt);tgt=-1;dir=0;return;}
+    settle(Math.abs(dx)>Math.min(80,W*0.25)&&tgt>=0);x0=null;dx=0;axis=0;}
+  view.addEventListener('touchend',up,{passive:true});
+  view.addEventListener('touchcancel',up,{passive:true});
+  chips.forEach((c,i)=>c.addEventListener('click',()=>{try{window._bdkGo(i)}catch(e){}}));
+  mark();
+  /* the window follows the live board: re-renders, the Social tab coming into
+     view (hidden parents measure 0 — the guard in hugH just waits), font loads,
+     rotations. ResizeObserver where it exists; a resize listener where it doesn't. */
+  try{const ro=new ResizeObserver(()=>{if(!busy)hugH();});pages.forEach(p=>ro.observe(p));}
+  catch(e){window.addEventListener('resize',()=>{if(!busy)hugH();});}
+  setTimeout(()=>hugH(),0);
+  window.addEventListener('load',()=>setTimeout(()=>hugH(),80));
   const lk=document.getElementById('raceLink');
   if(lk)lk.addEventListener('click',()=>{try{gotoTab('order')}catch(e){} try{setHallView('order')}catch(e){}});   // #hall — the Take's race card lands ON the race, not the feed
 })();
@@ -11491,7 +11588,8 @@ try{ const _mn=checkMarks(true); if(_mn>0){ try{toast('⚑ '+_mn+' mark'+(_mn>1?
    profiles row, which is the squad name and nothing more; card_id stays where
    it belongs, on profiles_private, readable only by its owner. */
 const BOARDS={week:[],mode:'week'};   // mode: 'week' (real) | 'alltime' (fallback)
-const lbState={scope:'all'};          // 'all' | 'squad'
+/* #onedeck(aug13) — lbState retired: scope isn't a toggle any more, it's WHICH
+   PAGE of the board deck you're on. Both scopes render every pass. */
 /* the member's own letter — the squad IS the letter, so no id, no squad */
 function myLetter(){ const id=(typeof myBoardId==='function')?myBoardId():null; return id?String(id).charAt(0).toUpperCase():null; }
 /* #boards2(aug10) — myBoardValue lives on for the HOURS rollup only: pushMyHours
@@ -11506,34 +11604,12 @@ function myBoardValue(metric,period){
   let t=0;DOCKETS.forEach(j=>{const d=new Date((j.date||'')+"T12:00");if(d>=from&&d<=now)try{t+=jobHours(j)||0}catch(e){}});
   return Math.round(t);
 }
-function renderBoards(){
-  const el=document.getElementById('lbList');if(!el)return;
+/* #75 — arcade board: podium for the top 3 (empty pedestals wait to be claimed),
+   glow-badged avatars, XP-style fill bars behind ranks 4+, pulsing YOU row.
+   #onedeck(aug13) — lifted out of renderBoards and parameterized by scope, so one
+   pass can draw BOTH deck pages. The math is #75/#boards2, untouched. */
+function lbBoardHTML(scope,L,handle){
   const unit='⬡';
-  const L=myLetter();
-  /* #boards2(aug10) — no letter, no squad. An unverified hand has no card and
-     therefore no letter to be ranked inside, so the tab stands down and says
-     why rather than showing them an empty board they can't ever join. */
-  const squadOk=!!L;
-  if(lbState.scope==='squad'&&!squadOk)lbState.scope='all';
-  const scope=lbState.scope;
-  const sqBtn=document.getElementById('lbSquadBtn');
-  if(sqBtn){ sqBtn.textContent=squadOk?('⚓ '+L+'-SQUAD'):'⚓ MY SQUAD';
-             sqBtn.disabled=!squadOk;
-             sqBtn.style.opacity=squadOk?'':'.45';
-             sqBtn.title=squadOk?'':'Verify your card at the gate to take a squad'; }
-  document.querySelectorAll('#lbScope button').forEach(b=>b.classList.toggle('on',b.dataset.sc===scope));
-  const nm=document.getElementById('lbScopeName');
-  if(nm)nm.textContent=(scope==='squad'&&L)?(L+'-Squad'):'All Hands';
-  /* the tag never claims a week it isn't reading — see #weekreal above */
-  const tag=document.getElementById('lbTag');
-  /* #boards2(aug10) — the tag dropped "port bucks" because the card carries no
-     other metric now; its whole job is to say WHICH WINDOW you're looking at,
-     and it must never say "week" while the fallback is serving lifetime. */
-  if(tag)tag.textContent=(BOARDS.mode==='week'?'this week':'all time');
-
-  /* #75 — arcade board: podium for the top 3 (empty pedestals wait to be claimed),
-     glow-badged avatars, XP-style fill bars behind ranks 4+, pulsing YOU row. */
-  const handle=((document.getElementById('meHandle')||{}).textContent||'YOU').trim()||'YOU';
   const myH0=handle.toUpperCase();
   const pool=(BOARDS.week||[]).filter(x=>scope!=='squad'||String(x.L||'').toUpperCase()===L);
   /* my own number comes off the same list the board is drawn from, so the YOU
@@ -11604,12 +11680,30 @@ function renderBoards(){
               : 'Nothing’s moved on the Record since Monday. First buck earned takes the crown.')
           : 'No stacks on the board yet. First buck earned takes the crown.')
   )+'</p>';
-  el.innerHTML=html;
+  return html;
+}
+function renderBoards(){
+  const elA=document.getElementById('lbListAll'),elS=document.getElementById('lbListSquad');
+  if(!elA)return;
+  const L=myLetter();
+  /* #boards2(aug10) — no letter, no squad. An unverified hand has no card and
+     therefore no letter to be ranked inside, so the squad page says why rather
+     than showing them an empty board they can't ever join. */
+  const squadOk=!!L;
+  const ch=document.getElementById('bdkBuckSq');if(ch)ch.textContent=squadOk?(L+'-SQUAD'):'MY SQUAD';
+  const cp=document.getElementById('bdkCapBSq');if(cp)cp.textContent=squadOk?(L+'-Squad'):'Your Squad';
+  /* the window tag never claims a week it isn't reading — see #weekreal above.
+     #boards2(aug10) — its whole job is to say WHICH WINDOW you're looking at, and
+     it must never say "week" while the fallback is serving lifetime. */
+  document.querySelectorAll('.bdk-wintag').forEach(t=>{t.textContent=(BOARDS.mode==='week'?'this week':'all time');});
+  const handle=((document.getElementById('meHandle')||{}).textContent||'YOU').trim()||'YOU';
+  elA.innerHTML=lbBoardHTML('all',L,handle);
+  if(elS)elS.innerHTML=squadOk
+    ? lbBoardHTML('squad',L,handle)
+    : '<p class="sub" style="text-align:center;padding:16px 8px 10px">🔒 Verify your card at the gate to take a squad — your letter is your crew.</p>';
+  try{if(window._bdkH)_bdkH();}catch(e){}   /* #onedeck — the window hugs the fresh board */
 }
 window.renderBoards=renderBoards;
-document.querySelectorAll('#lbScope button').forEach(b=>b.addEventListener('click',()=>{
-  if(b.disabled)return; lbState.scope=b.dataset.sc; renderBoards();
-}));
 renderBoards();
 /* ===== #boards-live — THE WIRE FILLS THE BOARDS =====
    · THIS WEEK'S BUCKS — the `board_week` view (BOARDS-WEEK.sql): handle, letter
@@ -19184,10 +19278,12 @@ html.arcade .dl-flop-h{color:var(--neon2);text-shadow:0 0 12px rgba(255,77,210,.
    which this skin already turns cyan — but its border, fill and glow were the
    literal copper #eeb46b, so the selected tab read as cyan lettering sitting in
    an amber box. Put the box on the same rail as the letters. */
-html.arcade .race-board-tabs button.on{
+html.arcade .race-board-tabs button.on,
+html.arcade .bdk-tabs button.on{
   border-color:rgba(77,226,255,.55);
   background:linear-gradient(180deg,rgba(77,226,255,.16),rgba(123,92,255,.06));
   box-shadow:0 0 14px rgba(77,226,255,.20)}
+html.arcade .bdk-dots i.on{box-shadow:0 0 8px rgba(77,226,255,.5)}
 /* the Armory's category rail had the same split — cyan lettering, copper ring */
 html.arcade .shop-rail button.on{
   border-color:rgba(77,226,255,.5);
