@@ -13,7 +13,7 @@
      • Bumping the number below also wipes every old cache on activate, so nothing
        stale can survive.
    ──────────────────────────────────────────────────────────────────────────── */
-const CACHE = 'shadowhook-v63';  // ← bump this each time you deploy an update  (v63: the PROFILE closes on a hard pull-down from its top, same finger-following feel as the Bank — armed only when the card is scrolled to the top, so mid-profile drags still just scroll. Rides on v62's antifraud build — run BUCKS-GUARD.sql if you haven't.)
+const CACHE = 'shadowhook-v66';  // ← bump this each time you deploy an update  (v66: DIRECT MESSAGES — ✉ DMs is the third Social pill: your wires + find-a-hand, member cards off the ONLINE roster, full-screen threads at 1 ⬡ a message with realtime delivery, friends & requests, and who-can-reach-you on the PROFILE. Privacy is enforced server-side — run DM-SETUP.sql once or sends/settings will refuse. Rides on v65's Online rename.)
 
 /* #swdupe(aug10) — '.' and 'index.html' ARE THE SAME 2.1 MB DOCUMENT.
    They both sat in the shell list, so every version bump pulled the whole app
