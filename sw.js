@@ -13,7 +13,7 @@
      • Bumping the number below also wipes every old cache on activate, so nothing
        stale can survive.
    ──────────────────────────────────────────────────────────────────────────── */
-const CACHE = 'shadowhook-v50';  // ← bump this each time you deploy an update  (v50: the chat send box accepts the keyboard's GIF button directly — it's a rich editor now, so the keyboard hands the GIF to the room instead of bouncing it to a share sheet ("Send to Edge Drop"). Carries v49's one-look boards, v48's GIF links, v47's board deck.)
+const CACHE = 'shadowhook-v52';  // ← bump this each time you deploy an update  (v52: GIF gets its own button — out of the ＋ menu, standing beside it in the send bar; the GIPHY picker is back as the dependable door (v51's retirement never shipped), the send bar gets side air, and every keyboard intake path stays. Carries v50's rich send box, v49's one-look boards, v47's deck.)
 
 /* #swdupe(aug10) — '.' and 'index.html' ARE THE SAME 2.1 MB DOCUMENT.
    They both sat in the shell list, so every version bump pulled the whole app
