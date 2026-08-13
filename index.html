@@ -803,8 +803,21 @@ html.daylight .heist{background:rgba(64,54,38,.6)}
 #socialFeed .sty-tile .sty-play{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff;padding-left:3px;
   background:rgba(0,0,0,.45);border:1.5px solid rgba(255,255,255,.8);box-shadow:0 2px 10px rgba(0,0,0,.5)}
 /* #stories2 — the story composer sheet's media preview */
-.sty-compose-prev{width:100%;max-height:340px;border-radius:16px;overflow:hidden;background:#000;margin:2px 0 14px;border:1px solid var(--line)}
+.sty-compose-prev{position:relative;width:100%;max-height:340px;border-radius:16px;overflow:hidden;background:#000;margin:2px 0 14px;border:1px solid var(--line)}
 .sty-compose-prev img,.sty-compose-prev video{width:100%;max-height:340px;object-fit:contain;display:block}
+/* #vidtext(aug13) — TikTok/IG-style text laid over the clip. The composer overlay is
+   draggable up/down; the viewer overlay (.sv-txt) is the same text at its saved spot. */
+.sty-txtover{position:absolute;left:50%;top:42%;transform:translate(-50%,-50%);max-width:88%;text-align:center;
+  font-family:'Anton',sans-serif;font-size:clamp(17px,6.2vw,30px);line-height:1.08;color:#fff;letter-spacing:.01em;
+  text-shadow:0 2px 10px rgba(0,0,0,.72),0 0 3px rgba(0,0,0,.9);word-wrap:break-word;overflow-wrap:anywhere;
+  cursor:grab;user-select:none;-webkit-user-select:none;touch-action:none;padding:2px 8px;z-index:3}
+.sty-txtover:empty{display:none}
+.sty-txtover.drag{cursor:grabbing}
+.sty-txthint{position:absolute;left:0;right:0;bottom:8px;z-index:3;text-align:center;pointer-events:none;
+  font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.6)}
+.sv-txt{position:absolute;left:50%;top:42%;transform:translate(-50%,-50%);max-width:86%;text-align:center;z-index:2;pointer-events:none;
+  font-family:'Anton',sans-serif;font-size:clamp(22px,7.4vw,44px);line-height:1.08;color:#fff;letter-spacing:.01em;
+  text-shadow:0 2px 12px rgba(0,0,0,.72),0 0 3px rgba(0,0,0,.95);word-wrap:break-word;overflow-wrap:anywhere;padding:0 8px}
 
 .brandmark{display:block;width:82%;height:82%;background:var(--crest-img) center/contain no-repeat;filter:brightness(1.12) contrast(1.05) drop-shadow(0 1px 2px rgba(0,0,0,.5))}
 /* ===== #hub — the TikTok-style full-page STORY VIEWER ===== */
@@ -13003,10 +13016,11 @@ function storyCreateChooser(){
   sh.classList.add('on');
 }
 window.storyCreateChooser=storyCreateChooser;
-let _styFile=null,_styKind='img',_styBlobUrl=null;
+let _styFile=null,_styKind='img',_styBlobUrl=null,_styTxtY=0.42;   // #vidtext — vertical position (0..1) of the on-clip text
 function storyCompose(file){
   if(!file)return;
   _styFile=file;_styKind=(file.type&&file.type.startsWith('video'))?'vid':'img';
+  _styTxtY=0.42;
   if(_styBlobUrl){try{URL.revokeObjectURL(_styBlobUrl)}catch(e){}}
   _styBlobUrl=URL.createObjectURL(file);
   let sh=document.getElementById('storySheet');
@@ -13014,15 +13028,33 @@ function storyCompose(file){
     sh.addEventListener('click',e=>{if(e.target===sh)sh.classList.remove('on')});}
   sh.innerHTML='<div class="sheet-card" style="text-align:left">'
     +'<div class="big" style="font-size:20px;letter-spacing:.06em;text-align:center">YOUR STORY</div>'
-    +'<div class="sty-compose-prev">'+(_styKind==='vid'
+    +'<div class="sty-compose-prev" id="styPrev">'+(_styKind==='vid'
         ?'<video src="'+esc(_styBlobUrl)+'" autoplay muted loop playsinline></video>'
-        :'<img src="'+esc(_styBlobUrl)+'" alt="">')+'</div>'
-    +'<span class="lbl">Say something (optional)</span>'
-    +'<input class="field" id="styCap" placeholder="why it&#39;s worth a look" maxlength="120" style="margin-bottom:14px">'
+        :'<img src="'+esc(_styBlobUrl)+'" alt="">')
+        +'<div class="sty-txtover" id="styTxtOver"></div>'
+        +'<div class="sty-txthint" id="styTxtHint">✍ type below · drag the words to place them</div></div>'
+    +'<span class="lbl">Add text on the '+(_styKind==='vid'?'video':'photo')+' (optional)</span>'
+    +'<input class="field" id="styCap" placeholder="type words to lay over the clip" maxlength="120" style="margin-bottom:14px">'
     +'<button class="btn" id="styPost" type="button">📣 POST IT — FREE</button>'
     +'<button class="btn-ghost" id="styNo" type="button" style="width:100%;margin-top:10px;border:0;color:#586067">Never mind</button></div>';
   sh.querySelector('#styNo').addEventListener('click',()=>sh.classList.remove('on'));
   sh.querySelector('#styPost').addEventListener('click',postMediaStory);
+  /* #vidtext — live overlay: type to lay words on the clip, drag them up/down to place. */
+  (function(){
+    const prev=sh.querySelector('#styPrev'), over=sh.querySelector('#styTxtOver'),
+          hint=sh.querySelector('#styTxtHint'), capIn=sh.querySelector('#styCap');
+    if(!prev||!over||!capIn)return;
+    const paint=()=>{const t=(capIn.value||'').trim();over.textContent=t;over.style.top=(_styTxtY*100)+'%';if(hint)hint.style.display=t?'none':'';};
+    capIn.addEventListener('input',paint);
+    let drag=false;
+    const move=e=>{if(!drag)return;const r=prev.getBoundingClientRect();let y=(e.clientY-r.top)/Math.max(1,r.height);
+      y=Math.max(.08,Math.min(.92,y));_styTxtY=y;over.style.top=(y*100)+'%';};
+    over.addEventListener('pointerdown',e=>{drag=true;over.classList.add('drag');try{over.setPointerCapture(e.pointerId)}catch(_){}});
+    over.addEventListener('pointermove',move);
+    const up=()=>{drag=false;over.classList.remove('drag');};
+    over.addEventListener('pointerup',up);over.addEventListener('pointercancel',up);
+    paint();
+  })();
   sh.classList.add('on');
 }
 function shrinkImage(file,maxW,q){   // offline fallback: a story-sized JPEG that fits localStorage
@@ -13039,7 +13071,8 @@ function shrinkImage(file,maxW,q){   // offline fallback: a story-sized JPEG tha
 }
 async function postMediaStory(){
   const sh=document.getElementById('storySheet');
-  const cap=((sh&&sh.querySelector('#styCap'))?sh.querySelector('#styCap').value:'').trim().slice(0,120);
+  const _txt=((sh&&sh.querySelector('#styCap'))?sh.querySelector('#styCap').value:'').trim().slice(0,120);
+  const note=_txt?JSON.stringify({t:_txt,y:+(_styTxtY||0.42).toFixed(3)}):'';   // #vidtext — on-clip text saved as {t,y}; empty when none
   const file=_styFile; if(!file)return;
   const btn=sh&&sh.querySelector('#styPost'); if(btn){btn.disabled=true;btn.textContent='POSTING…';}
   const plat='hook-'+_styKind;
@@ -13049,7 +13082,7 @@ async function postMediaStory(){
     try{
       let url=_styBlobUrl;
       if(_styKind==='img')url=await shrinkImage(file,1080,.72);
-      MY_LOCAL_STORIES.unshift({id:'loc'+Date.now(),by_handle:chatMyHandle(),by_id:ACCT_ID,url:url,platform:plat,note:cap,created_at:new Date().toISOString(),local:true});
+      MY_LOCAL_STORIES.unshift({id:'loc'+Date.now(),by_handle:chatMyHandle(),by_id:ACCT_ID,url:url,platform:plat,note:note,created_at:new Date().toISOString(),local:true});
       try{localStorage.setItem(K('mystories'),JSON.stringify(MY_LOCAL_STORIES.filter(s=>!/^blob:/.test(String(s.url||'')))));}catch(e){}
       if(sh)sh.classList.remove('on');
       renderSocialFeed();
@@ -13067,9 +13100,9 @@ async function postMediaStory(){
       if(up.error)throw up.error;
       const pub=window.SB.storage.from('chat-media').getPublicUrl(path);
       const url=pub&&pub.data&&pub.data.publicUrl; if(!url)throw new Error('no public url');
-      const r=await window.SB.from('stories').insert({owner:window.__shkUid,by_id:ACCT_ID,by_handle:chatMyHandle(),url:url,platform:plat,note:cap});   // #stories3 — plain insert; no SELECT-policy trap
+      const r=await window.SB.from('stories').insert({owner:window.__shkUid,by_id:ACCT_ID,by_handle:chatMyHandle(),url:url,platform:plat,note:note});   // #stories3 — plain insert; no SELECT-policy trap
       if(r.error)throw r.error;
-      ALL_STORIES.unshift({id:'srv'+Date.now(),owner:window.__shkUid,by_id:ACCT_ID,by_handle:chatMyHandle(),url:url,platform:plat,note:cap,created_at:new Date().toISOString()});
+      ALL_STORIES.unshift({id:'srv'+Date.now(),owner:window.__shkUid,by_id:ACCT_ID,by_handle:chatMyHandle(),url:url,platform:plat,note:note,created_at:new Date().toISOString()});
       if(_styKind==='vid')try{makeVideoThumb(_styBlobUrl,url)}catch(e){}   // #stories6b — poster from the fresh blob, keyed to the public URL
       if(sh)sh.classList.remove('on');
       renderSocialFeed();
@@ -13125,6 +13158,19 @@ async function shareStory(url){
   try{await navigator.clipboard.writeText(text+url);toast("⧉ Link copied — paste it anywhere");}catch(e){location.href="sms:?&body="+encodeURIComponent(text+url);}
 }
 let _svList=[];
+/* #vidtext — a camera/gallery story's note is JSON {t,y} when the poster laid text over
+   the clip (t = the words, y = 0..1 vertical spot); it's plain text or empty otherwise.
+   Returns {t,y} for an overlay, else null (so plain notes still render as a caption). */
+function storyOverlay(note){
+  try{
+    const s=String(note||'');
+    if(s.charAt(0)!=='{')return null;
+    const o=JSON.parse(s);
+    if(o&&typeof o.t==='string'&&o.t.trim())
+      return {t:o.t, y:(typeof o.y==='number'&&isFinite(o.y))?Math.max(.05,Math.min(.95,o.y)):0.42};
+  }catch(e){}
+  return null;
+}
 function svPageHTML(s,i){
   const k=storyKind(s), liked=storyLiked(s.id), n=storyLikeCount(s.id), u=esc(String(s.url));
   const likeBtn='<button class="sv-like'+(liked?' liked':'')+'" data-like="'+esc(String(s.id))+'"><span class="ic">'+(liked?'❤':'🤍')+'</span><span class="cnt">'+n.toLocaleString()+'</span></button>';
@@ -13152,17 +13198,20 @@ function svPageHTML(s,i){
   /* #stories2 — a MEDIA page: the camera clip/photo itself, full-bleed */
   if(k==='img'||k==='vid'){
     const poster=_thumbCache()[String(s.url)]||'';
+    const ov=storyOverlay(s.note);                       // #vidtext — text the poster laid on the clip
+    const capTxt=ov?'':(s.note||'');                     // overlay rides on the media; a plain note stays a caption
+    const overHTML=ov?'<div class="sv-txt" style="top:'+(ov.y*100).toFixed(1)+'%">'+esc(ov.t).replace(/\n/g,'<br>')+'</div>':'';
     const media=(k==='vid')
       ?'<video class="sv-mediafull" src="'+u+'" muted autoplay playsinline webkit-playsinline preload="auto"'+(poster?' poster="'+esc(poster)+'"':'')+'></video>'
       :'<img class="sv-mediafull" src="'+u+'" alt="">';
     return '<div class="sv-page" data-si="'+i+'" style="--pc:#EEB46B">'
-      +media+'<div class="sv-shade top"></div><div class="sv-shade"></div><div class="sv-burst">❤</div>'
+      +media+overHTML+'<div class="sv-shade top"></div><div class="sv-shade"></div><div class="sv-burst">❤</div>'
       +'<div class="sv-rail"><div class="sv-av">🎭</div>'+likeBtn+cmBtn
         +'<button data-share="'+(s.local?'__APP__':u)+'"><span class="ic">⤴</span>Share</button>'
-        
+
       +'</div>'
       +'<div class="sv-cap"><div class="sv-h">🎭 '+esc(s.by)+'</div>'
-        +(s.note&&s.note.trim()?'<div class="sv-note">'+esc(s.note)+'</div>':'')
+        +(capTxt&&capTxt.trim()?'<div class="sv-note">'+esc(capTxt)+'</div>':'')
         +'<div class="sv-t">'+(k==='vid'?'🎬':'📸')+' from a hand\'s camera · '+agoShort(s.ts)+'</div></div>'
       +hint
     +'</div>';
@@ -13185,11 +13234,9 @@ function svPageHTML(s,i){
         +'<iframe class="sv-embed" data-esrc="'+esc(emb.src)+'" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe>'
       +'</div>'
       +'<div class="sv-shade top"></div>'
-      /* #openorig(aug12) \u2014 TikTok / IG / FB embeds often render blank or cover-only
-         on mobile Chrome (the platforms gate inline autoplay), and an embed page had
-         NO way out. This always-there chip opens the real clip in one tap, so a dead
-         embed is never a dead end. data-open is handled by the viewer's click map. */
-      +'<button type="button" class="sv-openorig" data-open="'+u+'" style="position:absolute;top:52px;left:14px;z-index:6;display:inline-flex;align-items:center;gap:6px;background:rgba(11,13,15,.72);border:1px solid rgba(238,180,107,.5);color:#EEB46B;border-radius:99px;padding:7px 12px;font:800 11px \'IBM Plex Mono\',monospace;letter-spacing:.04em;cursor:pointer;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)">\u25b7 Watch on '+esc(p.label&&p.label!=='Link'?p.label:'the app')+' \u2197</button>'
+      /* #openorig removed (aug13) \u2014 the crew wants people kept in the Hall, so no
+         "Watch on YouTube" chip. The embed plays inline; if a clip ever refuses to
+         embed, that's the moment to reconsider, not a standing door out. */
       +rail
       +'<div class="sv-cap"><div class="sv-h">'+(s.bot?'\u2693':'\ud83c\udfad')+' '+esc(s.by)+'</div>'
         +(s.note&&s.note.trim()?'<div class="sv-note">'+esc(s.note)+'</div>':'')
