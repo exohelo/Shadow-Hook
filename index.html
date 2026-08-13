@@ -12009,10 +12009,20 @@ function renderChatRow(row){
   if(_chatSeen.has(row.id))return; _chatSeen.add(row.id);
   const self=chatIsSelf(row), kind=row.kind||'text';
   let inner;
-  if(kind==='link') inner=linkCard(row.url||row.body||'', row.body&&!isLink(row.body)?row.body:'');   // #hub — a shared link is a branded card
+  /* #kbgif — a 'link' row that is recognizably a GIF plays inline instead of carding:
+     covers GIF links already in the room's history and hands still on an old build.
+     Every gif/image bubble carries the onerror fallback back to the card. */
+  const _gm=(kind==='link'&&typeof gifMediaUrl==='function')?gifMediaUrl(row.url||row.body||''):null;
+  if(kind==='link'&&!_gm) inner=linkCard(row.url||row.body||'', row.body&&!isLink(row.body)?row.body:'');   // #hub — a shared link is a branded card
   else if(kind==='text') inner='<div class="txt">'+esc(row.body||'').replace(/\n/g,'<br>')+'</div>';
   else if(kind==='video') inner='<video class="media" src="'+esc(String(row.url||''))+'" controls playsinline></video>';
-  else inner='<img class="media" src="'+esc(String(row.url||''))+'" alt="'+(kind==='gif'?'GIF':'')+'" loading="lazy">';
+  else{
+    const src=_gm||String(row.url||'');
+    const orig=_gm?String(row.url||''):((kind==='gif'&&row.body&&isLink(row.body))?String(row.body):'');
+    inner='<img class="media" src="'+esc(src)+'" alt="'+((kind==='gif'||_gm)?'GIF':'')+'" loading="lazy"'
+      +(orig?' data-orig="'+esc(orig)+'"':'')
+      +' onerror="window._gifFall&&window._gifFall(this)">';
+  }
   const d=row.created_at?new Date(row.created_at):null;
   const t=(d&&!isNaN(d.getTime()))?d.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}):nowT();
   const who=esc(self?chatMyHandle():(row.by_handle||'a hand'));
@@ -12342,9 +12352,19 @@ document.addEventListener('keydown',function(e){ if(e.key==='Escape'&&_chatEditI
 document.getElementById('chatSend').addEventListener('click',()=>{
   const i=document.getElementById('chatInput');const v=i.value.trim();if(!v)return;
   if(_chatEditId){ chatSaveEdit(v); return; }                           // #chatedit — saving an edit, not a new send (no fare)
+  /* #kbgif — the phone keyboard's GIF button types a tenor/giphy LINK into the box.
+     Recognize it BEFORE the generic link path: resolve to the media file, ride
+     kind:'gif' at the GIF fare, and it plays inline like a picker GIF. The original
+     page link rides along in body so the card fallback has somewhere real to point. */
+  const gm=gifMediaUrl(v);
+  if(gm){
+    if(!payCredits(GIF_COST,'GIF',true))return;
+    chatOutbound({kind:'gif',url:gm,body:(gm===v?'':v),cost:GIF_COST});i.value="";
+  }else{
   if(!payCredits(MSG_COST,"message",true))return;                       // #61
   if(isLink(v)) chatOutbound({kind:'link',url:v,body:'',cost:MSG_COST}); // #hub — a pasted link rides as a branded card
   else chatOutbound({kind:'text',body:v,cost:MSG_COST});i.value="";     // #chat-live — send to the room
+  }
   try{const mc=(+localStorage.getItem(K('msgcount'))||0)+1;localStorage.setItem(K('msgcount'),mc);
     if(mc>=500)unlockBadge(bixLate("Voice of the Hall"));}catch(e){}     // #8
 });
@@ -12370,6 +12390,69 @@ function chatMediaPicked(e){
    with no setup. Anyone can paste their own key via ⚙ Change key (stored on-device,
    overrides the default) — handy if the shared key ever hits its daily cap. Tap to
    send at 1 ⬡ (see #61). A pasted GIF link always works, key or not. */
+/* #kbgif(aug13) — GIFs FROM THE PHONE KEYBOARD. Gboard / SwiftKey can't hand a web
+   input the image itself, so the keyboard's GIF button TYPES A LINK into the box —
+   a tenor.com view page (Gboard) or a giphy.com page (SwiftKey). That used to ride
+   the generic link path: a branded card that opened tenor.com in the browser. "The
+   GIF doesn't work, it opens a link to something else" — that card. Now any link
+   that is recognizably a GIF resolves to its direct media file and rides kind:'gif',
+   playing inside the room exactly like a picker GIF, at the same 1 ⬡ GIF fare.
+   The resolver is pure string work — no API, no key:
+     · media hosts (media/c.tenor.com, media/i.giphy.com) and any *.gif/.webp URL
+       pass straight through;
+     · a tenor VIEW page serves the media itself when '.gif' is appended — the same
+       trick GitHub/Discord embeds ride on;
+     · a giphy PAGE carries its media id at the end of the slug.
+   If the media still won't load (dead id, tenor changes the trick), the <img>'s
+   onerror swaps the bubble back to the old link card — the worst case is exactly
+   what every case was before. renderChatRow runs the same resolver on INCOMING
+   kind:'link' rows too, so GIF links already sitting in the room's history — and
+   ones sent by hands still on an old build — play inline as well. */
+function gifMediaUrl(raw){
+  const s=String(raw||'').trim(); if(!/^https?:\/\/\S+$/i.test(s))return null;
+  let u;try{u=new URL(s);}catch(e){return null;}
+  const h=u.hostname.replace(/^www\./,'').toLowerCase(), p=u.pathname;
+  if(/\.(gif|webp)(\?|#|$)/i.test(p))return s;                       // already the media file, any host
+  if(/^(media\d*|c|i)\.tenor\.com$/.test(h))return s;                // tenor media host
+  if(/^(media\d*|i)\.giphy\.com$/.test(h))return s;                  // giphy media host
+  if(h==='tenor.com'){
+    if(/^\/view\/[\w-]*\d/.test(p))return 'https://tenor.com'+p.replace(/\/+$/,'')+'.gif';
+    if(/^\/[a-zA-Z0-9]{5,}$/.test(p))return 'https://tenor.com'+p+'.gif';   // share short-code
+    return null;
+  }
+  const m=(h==='giphy.com'||h.endsWith('.giphy.com'))?p.match(/^\/gifs\/(?:.*-)?([A-Za-z0-9]{8,})\/?$/):null;
+  if(m)return 'https://media.giphy.com/media/'+m[1]+'/giphy.gif';
+  return null;
+}
+/* #kbgif — the safety net: a GIF bubble whose media 404s turns back into the link card */
+window._gifFall=function(img){
+  try{
+    if(img._fell)return; img._fell=1;
+    const orig=img.getAttribute('data-orig')||img.src||'';
+    if(!orig)return;
+    const wrap=document.createElement('div');
+    wrap.innerHTML=linkCard(orig,'Open the GIF');
+    if(wrap.firstChild)img.replaceWith(wrap.firstChild);
+  }catch(e){}
+};
+/* #kbgif — some keyboards (iOS Gboard, long-press → copy) put the GIF on the clipboard
+   as an actual FILE instead of a link. Catch it on paste: a gif/webp file rides the
+   1 ⬡ GIF fare, anything else pays the normal photo fare, and both upload through the
+   same media path — so a pasted GIF plays inline instead of pasting nothing. */
+(function(){
+  const ci=document.getElementById('chatInput'); if(!ci)return;
+  ci.addEventListener('paste',e=>{
+    try{
+      const f=e.clipboardData&&e.clipboardData.files&&e.clipboardData.files[0];
+      if(!f||!/^image\//i.test(f.type||''))return;
+      e.preventDefault();
+      const isGif=/gif|webp/i.test(f.type||'');
+      const mc=isGif?GIF_COST:((typeof CIRCLE_LVL!=='undefined'&&CIRCLE_LVL>=3)?3:MEDIA_COST);
+      if(!payCredits(mc,isGif?'GIF':'photo / video',true))return;
+      chatSendMedia(f,isGif?'gif':'image',mc);
+    }catch(err){}
+  });
+})();
 const GIF_COST=1;
 let GIPHY_KEY="XiipLFs9jYdXKYzheyzwt8abEyanYYrC";   // built-in GIPHY API (beta) key — GIFs work out of the box for all users
 try{const _gk=localStorage.getItem(K('giphykey'));if(_gk)GIPHY_KEY=_gk;}catch(e){}   // a user's own saved key overrides the built-in default
