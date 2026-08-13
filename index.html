@@ -1996,7 +1996,7 @@ window.DEVLOG=(function(){
       </div>
       <div class="hdr-wallet">
         <button class="mebucks" id="meBucks" type="button" title="Port Bucks — earned working the docks. Spend them in the Armory.">⬡ <span id="meBucksV">0</span></button>
-        <div class="hdr-hrs"><span class="hi">⏱</span><span id="meHours" title="Total hours on the book — paystub baseline plus every docket you seal after it.">0 hrs on the book</span></div>
+        <div class="hdr-hrs"><span class="hi">⏱</span><span id="meHours" title="Total hours on the book — your official posted hours plus every docket you seal after the posting's cutoff.">0 hrs on the book</span></div>
       </div>
     </div>
     <!-- row 2 — the lit dispatch board -->
@@ -2104,7 +2104,7 @@ window.DEVLOG=(function(){
         <div class="tk-stage">
           <div class="tk-stoplbl">ON THE BOOK</div>
           <div class="tk-hero" id="ratHrs">0 <span style="font-size:15px;color:var(--steel)">hrs</span></div>
-          <div class="tk-moves" id="ratNext">Log your hours or upload a stub — the Order tracks every step to your next pay bump.</div>
+          <div class="tk-moves" id="ratNext">Seal your dockets — the Order tracks every step to your next pay bump.</div>
         </div>
         <div class="tk-track" id="tierGates">
           <span class="tg on" data-min="0"><b>Base</b><i>0</i></span>
@@ -2142,7 +2142,7 @@ window.DEVLOG=(function(){
           <div class="stat"><div class="v" id="yJobs">0</div><div class="k">Jobs logged</div></div>
         </div>
         <hr class="rule">
-        <p class="sub">Sync your official hours &amp; YTD straight off your latest paystub — the date, the hours, gross and net. Typed by you, stays on your device. <span class="pill" id="stubStamp">no paystub synced yet</span></p>
+        <p class="sub">Sync your YTD pay straight off your latest paystub — the date, hours, gross and net. Typed by you, stays on your device, drives the pay figures below. <b style="color:var(--bone)">Hours on the book ride the official hour list + your sealed dockets</b> — a typed stub can't move marks, the ladder, or the Race. <span class="pill" id="stubStamp">no paystub synced yet</span></p>
         <input type="file" id="stubFile" accept="image/*" capture="environment" style="display:none">
         <!-- #noscan(aug13) — SCAN/UPLOAD retired, by request: nobody wants to photograph
              a paystub. Enter-by-hand is the one door now (also reachable from the
@@ -4977,6 +4977,13 @@ function localEnter(){
           /* #fix(bucks) — ACCT_ID just changed, so re-read this card's own numbers
              BEFORE deciding whether the server should override them. */
           reloadAcctBucks();
+          /* #truehrs(aug13) — ACCT_ID is what keys the official posting lookup, so the
+             book may have just jumped from 0 to this card's posted hours. Refresh the
+             header/ladder/race off the new figure and let the marks wall catch up —
+             the boot-time checkMarks ran before this async restore landed. */
+          try{ if(typeof renderYear==="function")renderYear(); }catch(e){}
+          try{ if(typeof checkMarks==="function"){ const _mn=checkMarks(true);
+            if(_mn>0)try{toast('⚑ '+_mn+' mark'+(_mn>1?'s':'')+' caught up — check your wall')}catch(e){} } }catch(e){}
           /* #fix(bucks) — a NULL port_bucks column (a freshly claimed profile) used to
              coerce to 0 through `+prof.port_bucks||0` and wipe a real local balance.
              Only let the server win when it actually HAS a number. */
@@ -5170,6 +5177,11 @@ function finishEnter(handle, pa, balance){
      their other phones. Only CREDITS was ever covered. */
   reloadAcctBucks();
   if(balance!=null){ try{CREDITS=balance;localStorage.setItem(K('credits'),CREDITS);}catch(e){} try{renderCredits();}catch(e){} }
+  /* #truehrs(aug13) — same as the session-restore path: ACCT_ID keys the official
+     posting lookup, so the book just changed hands. True up the screens and the wall. */
+  try{ if(typeof renderYear==="function")renderYear(); }catch(e){}
+  try{ if(typeof checkMarks==="function"){ const _mn=checkMarks(true);
+    if(_mn>0)try{toast('⚑ '+_mn+' mark'+(_mn>1?'s':'')+' caught up — check your wall')}catch(e){} } }catch(e){}
   document.getElementById('gatePage').style.display="none";
   bootScreen(()=>enterApp('dockets'));
 }
@@ -5255,8 +5267,13 @@ function defaultHours(shift, cat){
   return 8;
 }
 /* hours for a job — explicit value wins, else shift/category default; flex jobs start 1 hr early */
+/* #truehrs(aug13) — THE 1–16 RULE HOLDS EVERYWHERE, not just at the form. The seal
+   button validates 1–16 (njAdd), but this function is the one every counter actually
+   reads — and it trusted j.hours raw. A row that skipped the form (an old import, a
+   hand-edited store) could carry hours:500 and mint marks off it. Hours are money
+   now, so the clamp lives where the number is read. */
 function jobHours(j){
-  let hrs=(j.hours>0)?j.hours:defaultHours(j.shift,j.category);
+  let hrs=(j.hours>0)?Math.min(16,+j.hours):defaultHours(j.shift,j.category);
   if(j.flex && !(j.hours>0)) hrs+=1;
   return hrs;
 }
@@ -7185,7 +7202,7 @@ function renderLadder(hrs){
   const nx=document.getElementById('ratNext');
   if(nx){
     if(hrs<=0){
-      nx.innerHTML='<b style="color:var(--copper-hi)">No hours on the book yet.</b> Sync a paystub or seal a docket — until then, every estimate reads at the starter rate.';
+      nx.innerHTML='<b style="color:var(--copper-hi)">No hours on the book yet.</b> If your card is on the official posting your hours load the moment the Order knows you; every sealed docket climbs from there. Until then, estimates read at the starter rate.';
     } else if(cur<gates.length-1){const need=nextGate-hrs;
       nx.innerHTML='<b style="color:var(--copper-hi)">'+need.toLocaleString()+' hrs</b> to your next pay bump — the Order tracks every step.';
     } else nx.textContent="Tier 3 — full basic rate. You've climbed the whole ladder.";
@@ -7197,34 +7214,47 @@ renderLadder(0);
 /* (STUB itself is loaded at the top of the script, next to DOCKETS) */
 function saveStub(){ try{ localStorage.setItem(K("stub"), JSON.stringify(STUB)) }catch(e){} }
 function fmtStubDate(d){ try{return new Date(d+"T12:00").toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"})}catch(e){return d} }
-/* ===== #56 — running total-hours counter in the header ===== */
-function totalHoursOnBook(){
-  let base=0, cutoff="";
-  if(STUB && STUB.hours>0){ base=STUB.hours; cutoff=STUB.date||""; }
-  else{
-    /* #seed — a hand with no stub doesn't start at ZERO anymore: their card is on
-       the 07/13 posting, so their POSTED hours ride in as the baseline the moment
-       the gate knows them. Header, ladder, and pay estimates all inherit it; a
-       synced stub still replaces everything (that's their "update" path). */
-    try{
-      const id=(typeof ACCT_ID==="string"&&/^[A-Z]\d{3,5}$/.test(ACCT_ID))?ACCT_ID:null;
-      if(id && RACE_IDX[id]!=null){ base=RACE_LIST[RACE_IDX[id]][1]; cutoff=POSTING_PAID_THRU; }
-    }catch(e){}
-  }
-  let extra=0;
-  DOCKETS.forEach(j=>{ if(!cutoff || (j.date||"")>cutoff){ try{extra+=jobHours(j)||0}catch(e){} } });
-  return base+extra;
-}
+/* ===== #56 + #truehrs(aug13) — HOURS ON THE BOOK: one verified figure ===== */
 /* #split — the 07/13/26 posting covers hours PAID through 2026-05-22 (the report's own
    cutoff line). A docket dated on/before that day is already INSIDE your posted number —
    counting it again quietly paid you twice on your own screen. Only work sealed after
-   the cutoff rides on top of the posting; a synced stub still replaces everything. */
+   the cutoff rides on top of the posting.
+   (Declared ABOVE its readers — see the alertsLoaded TDZ note at gotoTab.) */
 const POSTING_PAID_THRU="2026-05-22";
-function hoursSincePosting(){
-  let extra=0;
-  DOCKETS.forEach(j=>{ if((j.date||"")>POSTING_PAID_THRU){ try{extra+=jobHours(j)||0}catch(e){} } });
-  return extra;
+/* #truehrs(aug13) — THE TYPED STUB IS OUT OF THE HOURS MATH. The old rule let
+   "STUB.hours replaces everything" — but that number is typed into a free field
+   by whoever is holding the phone. Marks pay ⬡, the ladder sets pay rates, and
+   the Race ranks 5,540 hands off this figure, so a typed number can't be the
+   anchor. The book now rides exactly two things, both with receipts:
+     · the OFFICIAL hour list on file — the 07/13/26 posting (RACE_LIST), the
+       hall's own printed hours for every card through 5/22. Not on the list =
+       no pre-5/22 hours: that posting IS the universe of hours through its
+       cutoff, so a fresh card claiming 5,000 old hours has nothing to stand on.
+     · SEALED DOCKETS DATED AFTER THE CUTOFF — the log with its own anti-fraud
+       rails (one board a day, 1–16 hrs, no future dates, dup + rest rules,
+       provenance on every seal). Pre-cutoff dockets are already inside the
+       posted number and count zero — which also closes the backdating door:
+       inventing last winter's dockets moves nothing.
+   The paystub sheet still syncs YTD gross/net/hours for PAY figures (renderYear)
+   — it just can't move the book, the marks, the ladder, or the Race any more. */
+function sealedHoursSince(cutoff){
+  /* per-DAY subtotal capped at 24: the save door already enforces one board a day
+     at 1–16 hrs, so this cap never touches honest data (or a legit legacy double)
+     — it only blunts rows stacked straight into storage past the form. */
+  const byDay={};
+  DOCKETS.forEach(j=>{ if((j.date||"")>cutoff){ try{ byDay[j.date]=(byDay[j.date]||0)+(jobHours(j)||0) }catch(e){} } });
+  let t=0; for(const d in byDay) t+=Math.min(24,byDay[d]);
+  return t;
 }
+function officialPostedHours(){
+  try{
+    const id=(typeof ACCT_ID==="string"&&/^[A-Z]\d{3,5}$/.test(ACCT_ID))?ACCT_ID:null;
+    if(id && RACE_IDX[id]!=null) return RACE_LIST[RACE_IDX[id]][1];
+  }catch(e){}
+  return 0;
+}
+function totalHoursOnBook(){ return officialPostedHours()+sealedHoursSince(POSTING_PAID_THRU); }
+function hoursSincePosting(){ return sealedHoursSince(POSTING_PAID_THRU); }
 function updateMeHours(){
   const el=document.getElementById('meHours'); if(!el)return;
   const t=Math.round(totalHoursOnBook());
@@ -7238,9 +7268,10 @@ window.updateMeHours=updateMeHours;
 
 /* ===== #14 + #52 + #80 + #truelist — THE RACE: TRUE standings =====
    The 2026 posting is the board. Your lane starts at your posted spot and every
-   hour you seal moves it live — you never fall below the posting. A synced stub
-   (real lifetime hours) replaces the estimate outright. Hands not on the posting
-   (verified after) start one past the back and climb the same rails. */
+   hour you seal moves it live — you never fall below the posting. Hands not on
+   the posting (verified after) start one past the back and climb the same rails.
+   #truehrs(aug13) — the typed stub no longer replaces the estimate: every lane
+   rides officialPostedHours + sealed post-cutoff dockets, same as the marks. */
 function raceHrsAt(r){ // true posted hours held at rank r (clamped to the board)
   if(!RACE_LIST.length)return 0;
   return RACE_LIST[Math.max(0,Math.min(RACE_LIST.length-1,Math.round(r)-1))][1];
@@ -7264,16 +7295,15 @@ function updateRace(){
   const onList=(RACE_IDX[id]!=null);
   const start=onList?RACE_IDX[id]+1:N+1;               // posted lane — hands added after start one past the back
   const baseHrs=onList?RACE_LIST[start-1][1]:0;
-  /* #split — no stub: posted + only dockets sealed AFTER the posting's paid-through date
-     (pre-cutoff dockets are already in baseHrs — they must not count twice). A hand NOT
-     on the posting has nothing to double-count: every docket they log climbs for them. */
-  const est=(STUB&&STUB.hours>0)?totalHoursOnBook():baseHrs+(onList?hoursSincePosting():totalHoursOnBook());
+  /* #split + #truehrs — one formula for every lane: posted (0 if not on the list) +
+     only dockets sealed AFTER the posting's paid-through date (pre-cutoff dockets are
+     already in baseHrs — they must not count twice). The typed stub can't move a lane. */
+  const est=totalHoursOnBook();
   try{const sp=document.getElementById('rSplit');
     if(sp){sp.style.display='';
-      if(STUB&&STUB.hours>0){const _x=Math.round(totalHoursOnBook()-STUB.hours);
-        sp.innerHTML='official stub <b>'+STUB.hours.toLocaleString()+'</b> + <b>'+_x.toLocaleString()+'</b> sealed since ≈ <b>'+Math.round(est).toLocaleString()+'</b> hrs on the book';}
-      else if(onList){sp.innerHTML='posted <b>'+baseHrs.toLocaleString()+'</b> (paid thru 5/22) + <b>'+Math.round(hoursSincePosting()).toLocaleString()+'</b> sealed since ≈ <b>'+Math.round(est).toLocaleString()+'</b> hrs on the book';}
-      else{sp.innerHTML='not on the 07/13 posting — every docket climbs: <b>'+Math.round(est).toLocaleString()+'</b> sealed hrs';}}}catch(e){}
+      const _stubHi=(STUB&&STUB.hours>Math.round(est))?' · stub noted at <b>'+(+STUB.hours).toLocaleString()+'</b> — the book rides the official list + sealed dockets':'';
+      if(onList){sp.innerHTML='posted <b>'+baseHrs.toLocaleString()+'</b> (paid thru 5/22) + <b>'+Math.round(hoursSincePosting()).toLocaleString()+'</b> sealed since ≈ <b>'+Math.round(est).toLocaleString()+'</b> hrs on the book'+_stubHi;}
+      else{sp.innerHTML='not on the 07/13 posting — hours climb by sealed docket: <b>'+Math.round(est).toLocaleString()+'</b> hrs on the book'+_stubHi;}}}catch(e){}
   const live=Math.max(1,Math.min(start,raceRankAt(est)));
   const moved=start-live;
   rk.textContent='#'+live.toLocaleString();
@@ -7461,8 +7491,8 @@ function renderYear(){
     if(fromStub){stamp.textContent="synced from "+fmtStubDate(STUB.date)+" stub"+(partial?" \u00b7 the rest estimated from your log":""); stamp.classList.add("gold");}
     else{stamp.textContent="no paystub synced — showing logged estimate"; stamp.classList.remove("gold");}
   }
-  // #63 — the pay-bump ladder runs on CAREER hours: stub baseline + every docket sealed after it —
-  // the exact same number the header shows. Not the frozen stub/YTD figure.
+  // #63 + #truehrs — the pay-bump ladder runs on CAREER hours: the official posting
+  // + every docket sealed after its cutoff — the exact same number the header shows.
   renderLadder(totalHoursOnBook());
   updateMeHours();
 }
@@ -7523,7 +7553,14 @@ document.getElementById('stubSave').addEventListener('click',()=>{
   try{if(document.getElementById('profileSheet').classList.contains('on')&&typeof window.openProfileSheet==='function')window.openProfileSheet();}catch(e){}
   document.getElementById('stubSheet').classList.remove('on');
   unlockBadge(bixLate("Paid in Full"));
-  toast("✓ Paystub synced");
+  /* #truehrs(aug13) — say it straight at the moment it matters: a typed hours figure
+     bigger than the book is NOTED (pay card shows it), but the book doesn't move —
+     marks, ladder and Race ride the official list + sealed dockets only. */
+  try{
+    const _v=Math.round(totalHoursOnBook());
+    if(hours>0 && hours>_v){ toast('✓ Stub noted — the book stays at '+_v.toLocaleString()+' hrs (official list + sealed dockets)'); }
+    else toast("✓ Paystub synced");
+  }catch(e){ toast("✓ Paystub synced"); }
 });
 
 // ---- scan / upload path (camera or file), reads with the same self-hosted OCR ----
@@ -11880,11 +11917,17 @@ function checkMarks(silent){ // real rules on real data — marks are earned, ne
   // five jobs in one Mon–Sun week
   const byWeek={};DOCKETS.forEach(j=>{const d=new Date(j.date+"T12:00");const wk=new Date(d);wk.setDate(d.getDate()-((d.getDay()+6)%7));byWeek[wk.toDateString()]=(byWeek[wk.toDateString()]||0)+1});
   if(Object.values(byWeek).some(n=>n>=5))unlockBadge(bix("Five for Five"));
-  // hours logged through dockets
-  let hrsTot=0;DOCKETS.forEach(j=>{try{hrsTot+=jobHours(j)||0}catch(e){}});
-  if(hrsTot>=200)unlockBadge(bix("Double Century"));
-  if(hrsTot>=500)unlockBadge(bix("Five Hundred"));
-  if(hrsTot>=1000)unlockBadge(bix("Thousand-Hour Hand"));
+  /* #truehrs(aug13) — THE HOUR MARKS READ THE BOOK, NOT JUST THE APP'S OWN LOG.
+     hrsTot here was docket-hours only, so a hand with 3,000+ REAL hours on the
+     official posting — hours the header, the ladder and the Race all already
+     credit — stood at the marks wall reading "Tier 1 · 1,000 hrs" locked. Same
+     figure everywhere now: totalHoursOnBook() = the official 07/13/26 hour list
+     + sealed post-cutoff dockets. The typed stub can't reach it (see #truehrs at
+     POSTING_PAID_THRU), so these marks can't be minted off a typed number. */
+  const vHrs=Math.round(totalHoursOnBook());
+  if(vHrs>=200)unlockBadge(bix("Double Century"));
+  if(vHrs>=500)unlockBadge(bix("Five Hundred"));
+  if(vHrs>=1000)unlockBadge(bix("Thousand-Hour Hand"));
   // time in the Order
   try{const a=loadAcct();if(a&&a.since){
     const yrs=(Date.now()-new Date(a.since+"T12:00").getTime())/31557600000;
@@ -11900,12 +11943,12 @@ function checkMarks(silent){ // real rules on real data — marks are earned, ne
   if(DOCKETS.length>=1)unlockBadge(bix("First Blood"));                    // first docket logged
   if(nights>=1)unlockBadge(bix("Night Owl"));                              // first night board
   if(DOCKETS.some(j=>j.shift==="HootOwl"))unlockBadge(bix("Hoot Owl"));    // a graveyard run
-  if(hrsTot>=100)unlockBadge(bix("Century Club"));
-  if(hrsTot>=1000)unlockBadge(bix("Tier 1"));
-  if(hrsTot>=2000)unlockBadge(bix("Tier 2"));
-  if(hrsTot>=4001)unlockBadge(bix("Tier 3"));
-  if(hrsTot>=6000)unlockBadge(bix("Tier 4"));
-  if(hrsTot>=8000)unlockBadge(bix("The Vault"));
+  if(vHrs>=100)unlockBadge(bix("Century Club"));
+  if(vHrs>=1000)unlockBadge(bix("Tier 1"));
+  if(vHrs>=2000)unlockBadge(bix("Tier 2"));
+  if(vHrs>=4001)unlockBadge(bix("Tier 3"));
+  if(vHrs>=6000)unlockBadge(bix("Tier 4"));
+  if(vHrs>=8000)unlockBadge(bix("The Vault"));
   if(nCat("CLERK")>=1)unlockBadge(bix("Clerk's Quill"));
   if(nCat("UTR")>=25)unlockBadge(bix("UTR Ace"));
   if(nCat("LASH")+nCat("SL")>=10)unlockBadge(bix("Lash Master"));
