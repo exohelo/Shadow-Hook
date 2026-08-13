@@ -13,7 +13,7 @@
      • Bumping the number below also wipes every old cache on activate, so nothing
        stale can survive.
    ──────────────────────────────────────────────────────────────────────────── */
-const CACHE = 'shadowhook-v59';  // ← bump this each time you deploy an update  (v59: pay updating lives on the profile — the HOURS tile opens the paystub sheet (date · hours · gross · net) with a live taxes-so-far line; Scan/Upload retired; Dispute Pay + Roy's hours moved under This Week's Take. Rides on v58's GIF-search keyboard fix.)
+const CACHE = 'shadowhook-v61';  // ← bump this each time you deploy an update  (v61: the ARMORY prints in THE BOOK — a card order lands as a 0-⬡ informational line and a minted ⬡ pack prints like any earn; plus v60's fixed-frame Bank with swipe/pull-down close and the payCredits statement fix.)
 
 /* #swdupe(aug10) — '.' and 'index.html' ARE THE SAME 2.1 MB DOCUMENT.
    They both sat in the shell list, so every version bump pulled the whole app
