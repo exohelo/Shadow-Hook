@@ -13,7 +13,7 @@
      • Bumping the number below also wipes every old cache on activate, so nothing
        stale can survive.
    ──────────────────────────────────────────────────────────────────────────── */
-const CACHE = 'shadowhook-v49';  // ← bump this each time you deploy an update  (v49: one look across the whole deck — the Port Bucks boards wear the same medal rows as the hours boards, so a swipe changes what's ranked, not how a rank looks. Carries v48's keyboard GIFs and v47's board deck.)
+const CACHE = 'shadowhook-v50';  // ← bump this each time you deploy an update  (v50: the chat send box accepts the keyboard's GIF button directly — it's a rich editor now, so the keyboard hands the GIF to the room instead of bouncing it to a share sheet ("Send to Edge Drop"). Carries v49's one-look boards, v48's GIF links, v47's board deck.)
 
 /* #swdupe(aug10) — '.' and 'index.html' ARE THE SAME 2.1 MB DOCUMENT.
    They both sat in the shell list, so every version bump pulled the whole app
