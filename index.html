@@ -169,8 +169,22 @@ button{font-family:inherit;-webkit-tap-highlight-color:transparent;-webkit-touch
    its own button beside the ＋. ===== */
 .gifsheet{position:fixed;inset:0;z-index:88;background:rgba(5,6,7,.72);-webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px);display:flex;align-items:flex-end;justify-content:center;opacity:0;visibility:hidden;transition:.22s}
 .gifsheet.on{opacity:1;visibility:visible}
-.gifcard{width:100%;max-width:460px;max-height:74vh;display:flex;flex-direction:column;background:linear-gradient(184deg,var(--plate-2),var(--plate));border:1px solid var(--line);border-radius:20px 20px 0 0;padding:14px 14px calc(14px + env(safe-area-inset-bottom));transform:translateY(22px);transition:.24s}
-.gifsheet.on .gifcard{transform:none}
+/* #gifsheet2(aug13) — A REAL BOTTOM SHEET, the way FB/Telegram do GIFs. The card is
+   near-full-height and rides translateY DETENTS: opens at HALF page, drag the grab
+   bar (or the grid itself) up for FULL page, drag down to fall back to half, keep
+   going to dismiss. The drag follows one-to-one (.drag kills the transition while a
+   finger owns it). Also fixes the old layout bug: #gifSearchView was display:flex
+   with no direction, so the search box and the grid sat SIDE BY SIDE and the grid
+   crushed into a narrow column — column now, grid fills the card. */
+.gifcard{width:100%;max-width:560px;height:96vh;height:96dvh;display:flex;flex-direction:column;background:linear-gradient(184deg,var(--plate-2),var(--plate));border:1px solid var(--line);border-radius:20px 20px 0 0;padding:10px 14px calc(14px + env(safe-area-inset-bottom));transform:translateY(105%);transition:transform .3s cubic-bezier(.22,.61,.36,1);will-change:transform}
+.gifsheet.on .gifcard{transform:translateY(48%)}
+.gifsheet.on.full .gifcard{transform:translateY(0)}
+.gifsheet .gifcard.drag{transition:none}
+.gif-grab{flex:none;padding:5px 0 10px;cursor:grab;touch-action:none}
+.gif-grab i{display:block;width:46px;height:5px;border-radius:3px;background:var(--line);margin:0 auto}
+#gifSearchView{flex-direction:column;flex:1;min-height:0}
+#gifSetupView{flex-direction:column;min-height:0;overflow-y:auto}
+@media(min-width:520px){.gif-grid{grid-template-columns:1fr 1fr 1fr}}
 .gif-h{display:flex;align-items:center;gap:9px;margin-bottom:11px}
 .gif-h b{font-family:'Anton',sans-serif;font-size:18px;letter-spacing:.03em;color:var(--bone)}
 .gif-h .pw{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--steel)}
@@ -12612,6 +12626,7 @@ let _gifSheet=null,_gifDeb=null,_gifSeq=0,_gifKeyBusy=false;
 function buildGifSheet(){
   const sh=document.createElement('div');sh.className='gifsheet';sh.id='gifSheet';
   sh.innerHTML='<div class="gifcard">'
+    +'<div class="gif-grab" id="gifGrab" aria-hidden="true"><i></i></div>'
     +'<div class="gif-h"><b>GIFs</b><span class="pw">Powered by GIPHY</span><button class="gif-x" type="button" id="gifX" aria-label="Close">✕</button></div>'
     /* search view — shown once a key is connected */
     +'<div id="gifSearchView" style="display:none">'
@@ -12656,6 +12671,57 @@ function buildGifSheet(){
   $('#gifUrlGo').addEventListener('click',linkSend);
   $('#gifUrl').addEventListener('keydown',e=>{if(e.key==='Enter')linkSend();});
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&sh.classList.contains('on'))closeGifPicker();});
+  /* #gifsheet2 — THE DETENT DRAG. Half ↔ full ↔ gone, finger-following. Grab bar and
+     header always drag the sheet. The GRID drags it too, the FB way: an upward pan
+     while the sheet sits at half EXPANDS it first (then the grid scrolls normally at
+     full); a downward pan only takes the sheet when the grid is already scrolled to
+     its top — mid-list scrolling stays native. Release snaps to the nearest detent;
+     past ~¾ of the way down, the sheet leaves. A mouse just clicks the grab bar to
+     toggle half/full. */
+  (function(){
+    const card=sh.querySelector('.gifcard'), grid=sh.querySelector('#gifGrid');
+    const grab=sh.querySelector('#gifGrab'), head=sh.querySelector('.gif-h');
+    let y0=null,dy=0,active=false,axis=0,gridDrag=false,fromFull=false,H=1;
+    function start(e,viaGrid){
+      if(!e.touches||e.touches.length!==1)return;
+      y0=e.touches[0].clientY;dy=0;active=true;axis=0;gridDrag=!!viaGrid;
+      H=card.getBoundingClientRect().height||1;
+      fromFull=sh.classList.contains('full');
+    }
+    function move(e){
+      if(!active||y0==null)return;
+      dy=e.touches[0].clientY-y0;
+      if(axis===0){
+        if(Math.abs(dy)<6)return;
+        if(gridDrag){
+          if(dy<0&&fromFull){active=false;return;}          // already full — the grid scrolls
+          if(dy>0&&grid.scrollTop>1){active=false;return;}   // mid-list — native scroll owns it
+        }
+        axis=1;card.classList.add('drag');
+      }
+      let y=(fromFull?0:0.5)*H+dy;
+      y=Math.max(0,Math.min(H*0.94,y));
+      card.style.transform='translateY('+y+'px)';
+      if(e.cancelable)e.preventDefault();
+    }
+    function end(){
+      if(!active)return;active=false;
+      if(axis!==1){y0=null;return;}
+      const y=Math.max(0,Math.min(H,(fromFull?0:0.5)*H+dy)), frac=y/H;
+      card.classList.remove('drag');card.style.transform='';
+      if(frac<0.26)sh.classList.add('full');
+      else if(frac<0.74)sh.classList.remove('full');
+      else{sh.classList.remove('full');closeGifPicker();}
+      y0=null;dy=0;axis=0;
+    }
+    grab.addEventListener('touchstart',e=>start(e,false),{passive:true});
+    head.addEventListener('touchstart',e=>start(e,false),{passive:true});
+    grid.addEventListener('touchstart',e=>start(e,true),{passive:true});
+    sh.addEventListener('touchmove',move,{passive:false});
+    sh.addEventListener('touchend',end,{passive:true});
+    sh.addEventListener('touchcancel',end,{passive:true});
+    grab.addEventListener('click',()=>sh.classList.toggle('full'));
+  })();
   return sh;
 }
 function gifShowView(hasKey){
@@ -12734,6 +12800,7 @@ function openGifPicker(){
   gifShowView(has);
   sh.querySelector('#gifLinkRow').classList.remove('on');
   sh.querySelector('#gifUrl').value='';
+  sh.classList.remove('full');   /* #gifsheet2 — every open starts at the HALF detent */
   sh.classList.add('on');
   if(has){runGifQuery(sh.querySelector('#gifQ').value.trim());}           // trending on open (or re-run last search)
   else{const ki=sh.querySelector('#gifKeyIn');if(ki){ki.value=GIPHY_KEY;setTimeout(()=>{try{ki.focus()}catch(e){}},60);}}
