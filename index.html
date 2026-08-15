@@ -12790,7 +12790,13 @@ setInterval(function(){try{pushMyHours()}catch(e){} try{pushMyLetter()}catch(e){
       const day=todayISO(), key='shadowhook_pulse_'+day, dev=devId();
       if(!dev||localStorage.getItem(key))return;
       window.SB.from('app_pulse').upsert({d:day,dev:dev,uid:window.__shkUid||null},{onConflict:'d,dev',ignoreDuplicates:true})
-        .then(function(r){ if(!r||!r.error||/duplicate|unique/i.test(String(r.error.message||''))){
+        .then(function(r){
+          /* #ccfix(aug15) — a REFUSED ping used to vanish without a word, which is
+             how the door count sat at 2 while real traffic walked past: RLS was
+             only letting signed-in phones ping. Say so, once, where a dev looks. */
+          if(r&&r.error&&!/duplicate|unique/i.test(String(r.error.message||'')))
+            try{console.warn('[pulse] the door beacon was refused:',(r.error.code||''),r.error.message,'— run COMMAND-CENTER-SETUP.sql (signed-out phones must be allowed to ping, or the traffic undercounts)');}catch(e){}
+          if(!r||!r.error||/duplicate|unique/i.test(String(r.error.message||''))){
           try{
             localStorage.setItem(key,'1');
             /* keep the ledger tidy: yesterday's flag is the only other one worth keeping */
@@ -22619,9 +22625,14 @@ html.season-xmas.daylight{}
         +'<button class="btn-ghost km-stock" data-do="passed" data-pid="'+esc(pd.id)+'" style="flex:1;padding:4px 0;font-size:11px;color:var(--steel)">✕ pass</button>'
         +'</div></div>';}).join('');
     }catch(e){
-      out.innerHTML=/does not exist|relation|schema|column/i.test(e.message||'')
-        ?'<span style="color:var(--ember)">the stockroom isn’t wired yet — run VENDOR-DESK.sql in Supabase (one paste)</span>'
-        :('stockroom failed: '+esc(e.message));
+      /* #ccfix(aug15) — name the ACTUAL missing piece. The old chip said "run
+         VENDOR-DESK.sql" for every relation/column error — including the case
+         where products itself was never built, or was built without status/cost,
+         which VENDOR-DESK alone never fixed. */
+      const m=String(e.message||'');
+      out.innerHTML=/does not exist|relation|schema|column|PGRST204/i.test(m)
+        ?'<span style="color:var(--ember)">the stockroom isn’t wired — '+esc(m)+'. Run COMMAND-CENTER-SETUP.sql in Supabase (one paste, safe to re-run) — it builds products with every column this desk reads, plus vendor_policies.</span>'
+        :('stockroom failed: '+esc(m));
     }
   };
   const kst=$('kmStock');
@@ -22678,6 +22689,67 @@ html.season-xmas.daylight{}
         ?'<span style="color:var(--ember)">the footfall book isn’t built yet — run PULSE.sql in Supabase (one paste)</span>'
         :('traffic failed: '+esc(e.message));
     }
+  };
+
+  /* ═══════════ #ccdiag(aug15) — kmDiag(): the whole desk, checked ═══════════
+     Open the console on the live site (signed in as the Keymaster) and type:
+       kmDiag()
+     One row per wire the Command Center and the app lean on, with the exact
+     error and which .sql heals it. Reads only — it changes nothing. */
+  window.kmDiag=async function(){
+    const out=[];
+    const add=(part,ok,note)=>{out.push({wire:part,state:ok?'OK':'✗',note:note||''});};
+    if(!window.SB){add('supabase client',false,'window.SB is not there');console.table(out);return out;}
+    if(!window.__shkUid)add('signed in',false,'no session — some wires below will read as refused just because you are signed out');
+    const probe=async(t,fix,cols)=>{
+      try{const r=await window.SB.from(t).select(cols||'*',{head:true,count:'exact'}).limit(1);
+        if(r.error)add(t,false,(r.error.code||'')+' '+r.error.message+' — '+fix);
+        else add(t,true,(r.count==null?'reachable':r.count+' row(s) visible to you'));
+      }catch(e){add(t,false,String((e&&e.message)||e)+' — '+fix);}
+    };
+    const CC='run COMMAND-CENTER-SETUP.sql';
+    await probe('profiles','core — this one existing is how you signed in');
+    await probe('products',CC+' (the stockroom reads status/cost/brand)','id,status,cost,brand,created_at');
+    await probe('vendor_policies',CC);
+    await probe('app_pulse_daily',CC+' (the traffic view)');
+    await probe('error_log','run ERROR-LOG.sql');
+    await probe('member_wire','run MEMBER-WIRE.sql');
+    await probe('amb_applications','run AMBASSADOR-APPLICATIONS.sql');
+    await probe('trade_posts','run TRADES-BOARD.sql');
+    await probe('km_flags','run shadowhook_fixes.sql');
+    await probe('sheet_log','run shadowhook_fixes.sql');
+    await probe('hall_line_log','run shadowhook_fixes.sql');
+    await probe('board_wire','run noflop_wire.sql');
+    await probe('board_week','run BOARDS-WEEK.sql (the week board view)');
+    await probe('bucks_book','run BUCKS-BANK.sql');
+    await probe('messages','run SOCIAL-SETUP.sql');
+    await probe('rooms','run SOCIAL-SETUP.sql');
+    await probe('message_reactions','run CHAT-REACT.sql');
+    await probe('stories','run STORIES-SETUP.sql');
+    await probe('story_comments','run STORY-COMMENTS-SETUP.sql');
+    await probe('user_kv','run WORK-ID-CLOUD-SETUP.sql');
+    await probe('push_subs','run PUSH-SETUP.sql');
+    await probe('product_reviews','run PRODUCT-REVIEWS.sql');
+    await probe('dm_messages','run DM-SETUP.sql (dmDiag() digs deeper)');
+    await probe('friends','run DM-SETUP.sql');
+    await probe('friend_requests','run DM-SETUP.sql');
+    /* the door beacon, WRITE-tested with the same idempotent ping the app sends —
+       a refusal here is exactly why the traffic undercounts */
+    try{const day=todayISO(), dev=(function(){try{return localStorage.getItem('shadowhook_dev')||'diag'}catch(e){return 'diag'}})();
+      const r=await window.SB.from('app_pulse').upsert({d:day,dev:dev,uid:window.__shkUid||null},{onConflict:'d,dev',ignoreDuplicates:true});
+      if(r&&r.error&&!/duplicate|unique/i.test(String(r.error.message||'')))
+        add('app_pulse PING (write)',false,(r.error.code||'')+' '+r.error.message+' — '+CC+'; until then only some phones count');
+      else add('app_pulse PING (write)',true,'the door counter takes this device\'s ping');
+    }catch(e){add('app_pulse PING (write)',false,String((e&&e.message)||e));}
+    /* km_roster — read-only rpc, safe to call; proves the keymaster functions bundle */
+    try{const r=await window.SB.rpc('km_roster');
+      if(r&&r.error)add('rpc km_roster',false,(r.error.code||'')+' '+r.error.message+(/could not find|PGRST202/i.test(String(r.error.message)+String(r.error.code||''))?' — the keymaster rpc bundle isn\'t installed':' — installed but refused (is this account crowned?)'));
+      else add('rpc km_roster',true,'installed, '+((r.data&&r.data.length)||0)+' hands on the roster');
+    }catch(e){add('rpc km_roster',false,String((e&&e.message)||e));}
+    try{console.table(out);}catch(e){}
+    const bad=out.filter(x=>x.state==='✗');
+    try{toast(bad.length?('✗ '+bad.length+' wire(s) down — see the console'):'⚓ every wire answers');}catch(e){}
+    return out;
   };
 
   /* ═══════════ #amb — CROWN REQUESTS (Keymaster side) ═══════════
