@@ -2901,13 +2901,13 @@ window.DEVLOG=(function(){
       <div class="big" style="font-size:20px;letter-spacing:.06em;text-align:center">⬡ PORT BUCKS</div>
       <p class="sub" style="margin:8px 0 12px">The Order pays for the work that keeps the tool sharp. What each action mints:</p>
       <table class="baseline-tbl" id="rateTbl">
-        <tr><td>Seal a docket</td><td><b data-rate="DOCKET">+3</b> <span style="opacity:.7">· 3 a day</span></td></tr>
-        <tr><td>Log a drop on the wire</td><td><b data-rate="DROP">+2</b> <span style="opacity:.7">· 6 a board</span></td></tr>
-        <tr><td>Feed the live board during dispatch</td><td><b data-rate="CW">+3–4</b></td></tr>
-        <tr><td>First to log today's board</td><td><b data-rate="SPIN">+15–100</b></td></tr>
-        <tr><td>Send word — number, map, correction, idea</td><td><b data-rate="WORD">+5</b> <span style="opacity:.7">· 3 a day</span></td></tr>
+        <tr><td>Seal a docket</td><td><b data-rate="DOCKET">+10</b> <span style="opacity:.7">· every saved docket counts; old boards need their slip</span></td></tr>
+        <tr><td>Log a drop on the wire</td><td><b data-rate="DROP">+5</b> <span style="opacity:.7">· 6 a board</span></td></tr>
+        <tr><td>Feed the live board during dispatch</td><td><b data-rate="CW">+5</b></td></tr>
+        <tr><td>First to log today's board</td><td><b data-rate="SPIN">+10–50</b></td></tr>
+        <tr><td>Send word — number, map, correction, idea</td><td><b data-rate="WORD">+10</b> <span style="opacity:.7">· 3 a day</span></td></tr>
         <tr><td>Share the Order with a casual</td><td><b data-rate="SHARE">+25</b> <span style="opacity:.7">· once</span></td></tr>
-        <tr><td>Earn a new mark</td><td><b data-rate="MARK">+10</b> <span style="opacity:.7">· buck marks excepted</span></td></tr>
+        <tr><td>Earn a new mark</td><td><b data-rate="MARK">+30</b> <span style="opacity:.7">· buck marks excepted</span></td></tr>
       </table>
       <!-- #fix3(bucks) — the old table said "on the spot" with no caps, while the code
            capped drops at 6 a board, send-word at 3 a day and the share bounty at once
@@ -4079,19 +4079,23 @@ function K(s){return "shadowhook_"+s+"_"+ACCT_ID;}
        Scaling those down would retro-award marks to every existing member — and each
        mark PAYS — so a tidy-up would have minted a fortune on the next login. They
        stay where they are and simply take longer, which is the point. */
+/* #rates2(aug15) — THE KEYMASTER'S OWN CARD. The first cut was a flat ~5× shave;
+   these are the owner's chosen numbers. Lands an active day at ~130–150 ⬡
+   ($1.30–1.50), so a $5 pack ≈ 3.5–4 days of honest grinding. */
 const PAY = {
-  DOCKET:      3,    // was 10 — seal a docket (cap SEAL_PAY_CAP/day)
-  DROP:        2,    // was 10 — log a drop on the wire (cap 6 a board)
-  WORD:        5,    // was 20 — send word to the Keymaster (cap WORD_PAY_CAP/day)
-  MARK:       10,    // was 50 — earn a new mark (107 payable marks: 5,350 ⬡ → 1,070 ⬡)
-  SHARE:      25,    // UNCHANGED — acquisition, see above
-  HEIST:       8,    // was 40 — your board correction carried
-  BW_CONFIRM:  2,    // was 10 — confirming someone else's board record
-  CW_CONFIRM_FLOOR: 1, // was 3 — floor under the 25% crowd-wire confirm cut
-  /* first-to-log-the-board slot payout: [amount, weight]. Old table was
-     [[50,45],[100,30],[150,15],[300,8],[500,2]] — EV 109 ⬡, top tier a full $5 pack.
-     New EV is 27 ⬡ and the top tier is $1: still a real bang, no longer a bank run. */
-  SPIN: [[15,45],[25,30],[40,15],[60,8],[100,2]]
+  DOCKET:     10,    // seal a docket — one board a day by rule, and a BACKLOG of
+                     // saved dockets all pays (SEAL_PAY_CAP raised; dockets older
+                     // than a week still need their slip photo — the fraud guard)
+  DROP:        5,    // log a drop on the wire (cap 6 a board)
+  WORD:       10,    // send word to the Keymaster (cap WORD_PAY_CAP/day)
+  MARK:       30,    // earn a new mark (107 payable marks: 3,210 ⬡ lifetime)
+  SHARE:      25,    // unchanged — acquisition
+  HEIST:      20,    // your board correction carried (scaled to match the card)
+  BW_CONFIRM:  5,    // confirming someone else's board record (scaled to match)
+  CW_CONFIRM_FLOOR: 1, // floor under the 25% crowd-wire confirm cut
+  /* first-to-log-the-board slot payout: [amount, weight] — the 10–50 range.
+     EV ≈ 17 ⬡; two fresh keys a day ≈ 34 ⬡ expected, 100 ⬡ on a lucky day. */
+  SPIN: [[10,45],[15,30],[25,15],[40,8],[50,2]]
 };
 window.PAY=PAY;
 /* the expected value of one board-log spin, in ⬡ — the number to watch when retuning.
@@ -8946,13 +8950,13 @@ setInterval(()=>{ try{DispatchBot.tick();}catch(e){} }, 60000);   // the schedul
    ========================================================= */
 const CW_KEY=K("wire");
 const CW_FIELDS=[
-  {id:"open",   label:"Who got the last job?", hint:"the last casual card handed a job — the wire calls who's up next",  type:"pos", need:2, tol:0, pay:4},
-  {id:"early",  label:"Early casual count",     hint:"casual jobs showing early",         type:"num", need:3, tol:15, pay:3},
+  {id:"open",   label:"Who got the last job?", hint:"the last casual card handed a job — the wire calls who's up next",  type:"pos", need:2, tol:0, pay:5},
+  {id:"early",  label:"Early casual count",     hint:"casual jobs showing early",         type:"num", need:3, tol:15, pay:5},
   /* #37 — you only report the board YOU stood at. Day hands call the day board,
      night hands call the night board; the app adds AM + PM itself when a whole-day
      figure is needed. Never ask one group to do the other shift's homework. */
-  {id:"total",  label:"Final Total",  hint:"all jobs on your board",         type:"num", need:3, tol:25, pay:4},
-  {id:"casual", label:"Final Casual", hint:"casual jobs on your board",      type:"num", need:3, tol:20, pay:4}
+  {id:"total",  label:"Final Total",  hint:"all jobs on your board",         type:"num", need:3, tol:25, pay:5},
+  {id:"casual", label:"Final Casual", hint:"casual jobs on your board",      type:"num", need:3, tol:20, pay:5}
 ];
 /* When each question is allowed to show, keyed off the clock. Dispatch schedule:
    Day  2nd @ 8:00 → ends 9:30.  Night 2nd @ 18:00 → ends 19:30.  Night flex opens 16:30.
@@ -10166,7 +10170,7 @@ function shiftSlot(shift){ return shift==="Day" ? "Day" : "Night"; }  // hoot & 
    client checks are curtains, not walls. The wall is server-side — run
    BUCKS-GUARD.sql (ships with this build) so the bank refuses oversized or
    over-frequent earns no matter what a tampered client asks for. */
-const SEAL_PAY_CAP=3, SEAL_STALE_DAYS=7;
+const SEAL_PAY_CAP=30, SEAL_STALE_DAYS=7;   /* #rates2 — a phone full of saved dockets all pays in one sitting; >7 days still needs the slip photo */
 function sealPaidToday(){try{return +localStorage.getItem(K('sealpaid_'+todayISO()))||0}catch(e){return 0}}
 function sealBucks(j){
   let age=Infinity;
@@ -13501,7 +13505,7 @@ window.chatOutbound=chatOutbound; window.chatSendMedia=chatSendMedia; window.cha
 /* ===== #61 — talk isn't free: every message spends Port Bucks =====
    1 ⬡ a text · 5 ⬡ a photo or video · GIFs will ride at 1 ⬡ when Tenor lands.
    Quiet deduction — the balance chip bumps, no toast spam per message. */
-const MSG_COST=1, MEDIA_COST=5, ROOM_COST=250, GATH_COST=150;
+const MSG_COST=1, MEDIA_COST=1, ROOM_COST=250, GATH_COST=150;   /* #rates2 — messages, GIFs, photo/video all 1 ⬡ */
 /* ===== #76/#77 — out of bucks: short and bank-plain. "INSUFFICIENT FUNDS." =====
    One sheet everywhere bucks move — chat, media, rooms, gatherings, the Armory.
    Shows the shortfall at a glance, offers package deals the way game apps do,
@@ -13679,7 +13683,7 @@ document.getElementById('chatInput').addEventListener('keydown',e=>{if(e.key==='
    so "📷 Camera" and "🖼 Photo or Video" both send a photo OR a clip. */
 function chatMediaPicked(e){
   const f=e.target.files&&e.target.files[0];if(!f){e.target.value="";return;}
-  const mc=(typeof CIRCLE_LVL!=='undefined'&&CIRCLE_LVL>=3)?3:MEDIA_COST;    // #7 — Watchman perk
+  const mc=MEDIA_COST;    /* #rates2 — media is 1 ⬡ flat; the old Watchman "discount" to 3 would now be a markup */
   if(!payCredits(mc,"photo / video",true)){e.target.value="";return;}  // #61
   chatSendMedia(f, (f.type&&f.type.startsWith('video'))?'video':'image', mc);    // #chat-live — upload to Storage + share
   e.target.value="";
@@ -13750,7 +13754,7 @@ window._gifFall=function(img){
   function takeImg(f){
     if(!f||!/^image\//i.test(f.type||''))return false;
     const isGif=/gif|webp/i.test(f.type||'');
-    const mc=isGif?GIF_COST:((typeof CIRCLE_LVL!=='undefined'&&CIRCLE_LVL>=3)?3:MEDIA_COST);
+    const mc=isGif?GIF_COST:MEDIA_COST;   /* #rates2 — flat 1 ⬡ */
     if(!payCredits(mc,isGif?'GIF':'photo / video',true))return true;   // handled — stopped at the till
     chatSendMedia(f,isGif?'gif':'image',mc);
     return true;
@@ -13829,7 +13833,7 @@ window._gifFall=function(img){
           if(!/^image\//i.test(bl.type||''))return;
           const isGif=/gif|webp/i.test(bl.type||'');
           const f=new File([bl],'keyboard.'+(isGif?'gif':'png'),{type:bl.type||'image/gif'});
-          const mc=isGif?GIF_COST:((typeof CIRCLE_LVL!=='undefined'&&CIRCLE_LVL>=3)?3:MEDIA_COST);
+          const mc=isGif?GIF_COST:MEDIA_COST;   /* #rates2 — flat 1 ⬡ */
           if(!payCredits(mc,isGif?'GIF':'photo / video',true))return;
           chatSendMedia(f,isGif?'gif':'image',mc);
         }
