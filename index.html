@@ -15477,7 +15477,10 @@ window.openFloorSheet=openFloorSheet;
    THE GATE IS SERVER-SIDE: RLS on dm_messages enforces the recipient's privacy
    (run DM-SETUP.sql once) — the client's canDm() is just honest UI over it.
    Unread rides locally (K('dmseen')), the pill wears the dot. */
-const DM={threads:{},friends:{},reqIn:{},reqOut:{},privacy:'all',ok:false,chan:null,openPeer:null,openPeerH:''};
+const DM={threads:{},friends:{},reqIn:{},reqOut:{},privacy:'all',_privSaved:false,ok:false,chan:null,openPeer:null,openPeerH:''};
+/* #dmpriv2 — hold the last confirmed choice on THIS phone so the segment never
+   flashes EVERYONE at a hand whose wire is closed while the profile loads. */
+try{const _lp=localStorage.getItem(K('dmpriv'));if(/^(all|friends|off)$/.test(_lp||''))DM.privacy=_lp;}catch(e){}
 function dmSeenMap(){try{return JSON.parse(localStorage.getItem(K('dmseen'))||'{}')}catch(e){return{}}}
 function dmMarkSeen(uid){try{const s=dmSeenMap();s[uid]=new Date().toISOString();localStorage.setItem(K('dmseen'),JSON.stringify(s));}catch(e){} dmBadges();}
 function dmUnread(uid){const t=DM.threads[uid];if(!t)return 0;const seen=dmSeenMap()[uid]||'';return t.msgs.filter(m=>!m.mine&&String(m.at)>String(seen)).length;}
@@ -15523,10 +15526,22 @@ async function dmLoad(){
     const q=await window.SB.from('friend_requests').select('*').or('to_id.eq.'+uid+',from_id.eq.'+uid);
     if(q&&!q.error&&Array.isArray(q.data)){DM.reqIn={};DM.reqOut={};q.data.forEach(x=>{if(x.to_id===uid)DM.reqIn[x.from_id]=x.from_handle||'a hand';else DM.reqOut[x.to_id]=1;});}
   }catch(e){}
+  /* #dmpriv2 — the gate setting, and whether the WIRE actually agrees with it.
+     A read that fails leaves the segment showing EVERYONE, which is a lie the
+     old build told silently. Now the last saved choice holds the segment until
+     the wire answers, and a failed read says so in the console. */
   try{
     const p=await window.SB.from('profiles').select('dm_privacy').eq('id',uid).maybeSingle();
-    if(p&&!p.error&&p.data&&p.data.dm_privacy)DM.privacy=p.data.dm_privacy;
-  }catch(e){}
+    if(p&&p.error){
+      DM._privSaved=false;
+      console.warn('[dm] privacy read:',(p.error.code||''),p.error.message,'— run DM-SETUP.sql, or type dmDiag()');
+      try{const loc=localStorage.getItem(K('dmpriv'));if(/^(all|friends|off)$/.test(loc||''))DM.privacy=loc;}catch(e){}
+    }else if(p&&p.data){
+      DM.privacy=p.data.dm_privacy||'all';
+      DM._privSaved=true;
+      try{localStorage.setItem(K('dmpriv'),DM.privacy);}catch(e){}
+    }
+  }catch(e){DM._privSaved=false;}
   DM.ok=true;
   dmRenderAll();
 }
@@ -15735,9 +15750,18 @@ function dmProfileRefresh(){
   if(!signed)return;
   box.querySelectorAll('#dmPrivSeg button').forEach(b=>b.classList.toggle('on',b.dataset.dp===DM.privacy));
   const note=box.querySelector('#dmPrivNote');
-  if(note)note.textContent=DM.privacy==='all'?'Any verified hand can open a wire with you.'
-    :DM.privacy==='friends'?'Only friends reach you. Others can send a friend request instead.'
-    :'The wire is closed — nobody can DM you, friends included. You can still DM out.';
+  if(note){
+    note.textContent=DM.privacy==='all'?'Any verified hand can open a wire with you.'
+      :DM.privacy==='friends'?'Only friends reach you. Others can send a friend request instead.'
+      :'The wire is closed — nobody can DM you, friends included. You can still DM out.';
+    /* #dmpriv2 — say it plainly when the setting is only living on this phone.
+       The gate is enforced at the SERVER, so an unsaved choice protects nobody. */
+    note.style.color='';
+    if(DM.ok&&!DM._privSaved){
+      note.textContent+='  ⚠ Not saved to the wire yet — this is showing your last choice on this phone only. Run DM-SETUP.sql in Supabase, then tap again.';
+      note.style.color='var(--warn)';
+    }
+  }
   const rq=box.querySelector('#dmReqList'), rIds=Object.keys(DM.reqIn);
   if(rq)rq.innerHTML=rIds.length?rIds.map(u=>'<div style="display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid var(--line-soft)">'
     +_dmAv(DM.reqIn[u])+'<span style="flex:1;min-width:0;font-family:\'IBM Plex Mono\',monospace;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(DM.reqIn[u])+'</span>'
@@ -15751,15 +15775,114 @@ function dmProfileRefresh(){
     +'<button class="pill" style="cursor:pointer;background:none" onclick="dmUnfriend(\''+esc(u)+'\')">✕</button></div>').join('')
     :'<p class="sub" style="margin:2px 0 0">No friends yet — ⚓ Add friend on a hand’s card.</p>';
 }
+/* #dmpriv2(aug15) — THE SWITCH THAT WOULDN'T SAVE.
+   The old version fired an UPDATE and trusted it. Two of the four ways this
+   breaks are SILENT — PostgREST answers 204 with no error when the write
+   touched zero rows, which is exactly what happens if profiles has RLS on
+   with no self-UPDATE policy, or if this account has no profile row at all.
+   So the switch would flip, say nothing, and be back where it started on the
+   next open. The other two ways are loud, but the old catch threw the reason
+   away and printed one guess.
+   Now: read the row back, prove the value landed, name the real cause, and
+   put the segment back where it was if it didn't. */
+let _dmPrivBusy=false;
 async function dmSetPrivacy(p){
-  if(!(window.SB&&window.__shkUid))return;
-  DM.privacy=p; dmProfileRefresh();
-  try{const r=await window.SB.from('profiles').update({dm_privacy:p}).eq('id',window.__shkUid);
+  if(!/^(all|friends|off)$/.test(String(p)))return;
+  if(!(window.SB&&window.__shkUid)){toast('Sign in first — the gate rides your account');return;}
+  if(_dmPrivBusy)return;                       /* a double-tap must not race itself */
+  if(p===DM.privacy&&DM._privSaved)return;     /* already there, and the wire agreed */
+  const prev=DM.privacy;
+  _dmPrivBusy=true; DM.privacy=p; dmProfileRefresh();
+  try{
+    /* .select() makes the write answer with the row it wrote — that's the proof */
+    const r=await window.SB.from('profiles').update({dm_privacy:p}).eq('id',window.__shkUid).select('id,dm_privacy');
     if(r&&r.error)throw r.error;
+    const row=(r&&Array.isArray(r.data))?r.data[0]:null;
+    if(!row){
+      /* zero rows came back. Is the row missing, or is the wire refusing us? */
+      const chk=await window.SB.from('profiles').select('id').eq('id',window.__shkUid).maybeSingle();
+      if(chk&&chk.error)throw chk.error;
+      if(chk&&chk.data)throw{code:'SHK_RLS0',message:'your row exists but the write was refused'};
+      throw{code:'SHK_NOROW',message:'no profile row on this account yet'};
+    }
+    if(row.dm_privacy!==p)throw{code:'SHK_DRIFT',message:'the wire stored "'+row.dm_privacy+'" instead of "'+p+'"'};
+    DM._privSaved=true;
+    try{localStorage.setItem(K('dmpriv'),p);}catch(e){}
     toast(p==='all'?'🌍 Wires open to every hand':p==='friends'?'⚓ Friends only — requests still land':'🚫 The wire is closed');
-  }catch(e){toast('Couldn’t save — run DM-SETUP.sql, then try again');}
+  }catch(e){
+    DM.privacy=prev; DM._privSaved=false; dmProfileRefresh();   /* the segment tells the truth again */
+    toast('Couldn’t save — '+_dmPrivWhy(e));
+    try{console.warn('[dm] privacy save failed:',(e&&e.code)||'',(e&&e.message)||e,e);}catch(e2){}
+  }
+  _dmPrivBusy=false;
+}
+/* every way this write can fail, in the member's language, with the fix attached */
+function _dmPrivWhy(e){
+  const code=String((e&&e.code)||''), msg=String((e&&e.message)||e||'');
+  if(code==='PGRST204'||/schema cache|column .*dm_privacy|dm_privacy.*does not exist/i.test(msg))
+    return 'the profiles table has no dm_privacy column — run DM-SETUP.sql';
+  if(code==='23514'||/check constraint|violates check/i.test(msg))
+    return 'the column refuses that value — an old setup named them everyone/nobody. Re-run DM-SETUP.sql';
+  if(code==='SHK_RLS0'||code==='42501'||/row-level security|permission denied|not authorized/i.test(msg))
+    return 'the wire refused the write — profiles needs its self-update grant. Run DM-SETUP.sql';
+  if(code==='SHK_NOROW')
+    return 'this account has no profile row yet — claim your card at the gate first';
+  if(code==='SHK_DRIFT')
+    return msg+' — a trigger is rewriting it. Re-run DM-SETUP.sql';
+  if(code==='PGRST301'||/JWT|expired|\b401\b/i.test(msg))
+    return 'your session went stale — sign in again';
+  if(/fetch|network|offline/i.test(msg))
+    return 'no signal — try again when the wire is up';
+  return msg||'the wire said nothing useful. Run DM-SETUP.sql, then try again';
 }
 window.dmSetPrivacy=dmSetPrivacy;
+
+/* #dmdiag(aug15) — one command that tells you which piece is missing.
+   Open the console on the live site and type:  dmDiag()
+   It prints a row per piece of the DM backend, with the exact reason. */
+async function dmDiag(){
+  const out=[];
+  const add=(part,ok,note)=>{out.push({part:part,state:ok?'OK':'✗',note:note||''});};
+  if(!window.SB){add('supabase client',false,'window.SB is not there — the app never connected');console.table(out);return out;}
+  add('supabase client',true,'');
+  const uid=window.__shkUid;
+  if(!uid){add('signed in',false,'no session — sign in, then run dmDiag() again');console.table(out);return out;}
+  add('signed in',true,String(uid));
+
+  try{const r=await window.SB.from('profiles').select('id,handle,dm_privacy').eq('id',uid).maybeSingle();
+    if(r.error)add('profiles.dm_privacy readable',false,(r.error.code||'')+' '+r.error.message+' — run DM-SETUP.sql');
+    else if(!r.data)add('your profile row',false,'no row with your id — claim your card at the gate');
+    else add('profiles.dm_privacy readable',true,'currently "'+(r.data.dm_privacy==null?'(null → treated as all)':r.data.dm_privacy)+'"');
+  }catch(e){add('profiles.dm_privacy readable',false,String((e&&e.message)||e));}
+
+  /* the real test: write back the value that is already there, then read it */
+  try{const cur=DM.privacy||'all';
+    const w=await window.SB.from('profiles').update({dm_privacy:cur}).eq('id',uid).select('dm_privacy');
+    if(w.error)add('privacy WRITE',false,(w.error.code||'')+' '+w.error.message+' → '+_dmPrivWhy(w.error));
+    else if(!w.data||!w.data.length)add('privacy WRITE',false,'0 rows changed and no error → profiles has no self-UPDATE policy. Run DM-SETUP.sql');
+    else add('privacy WRITE',true,'wrote and read back "'+w.data[0].dm_privacy+'"');
+  }catch(e){add('privacy WRITE',false,String((e&&e.message)||e));}
+
+  for(let i=0;i<3;i++){
+    const t=['dm_messages','friends','friend_requests'][i];
+    try{const r=await window.SB.from(t).select('*',{head:true,count:'exact'}).limit(1);
+      if(r.error)add('table '+t,false,(r.error.code||'')+' '+r.error.message+' — run DM-SETUP.sql');
+      else add('table '+t,true,(r.count==null?'reachable':r.count+' row(s) visible to you'));
+    }catch(e){add('table '+t,false,String((e&&e.message)||e));}
+  }
+  try{const r=await window.SB.rpc('accept_friend',{p_from:uid});
+    /* friending yourself is refused BY DESIGN — that refusal proves it's installed */
+    const m=String((r&&r.error&&r.error.message)||'')+' '+String((r&&r.error&&r.error.code)||'');
+    if(/could not find|does not exist|PGRST202|404/i.test(m))add('rpc accept_friend',false,'not installed — run DM-SETUP.sql');
+    else add('rpc accept_friend',true,'installed');
+  }catch(e){add('rpc accept_friend',false,String((e&&e.message)||e));}
+
+  try{console.table(out);}catch(e){}
+  const bad=out.filter(x=>x.state==='✗');
+  try{toast(bad.length?('✗ '+bad.length+' piece(s) missing — see the console'):'⚓ The DM backend is sound');}catch(e){}
+  return out;
+}
+window.dmDiag=dmDiag;
 (function(){
   const seg=document.getElementById('dmPrivSeg');
   if(seg)seg.addEventListener('click',e=>{const b=e.target.closest('button[data-dp]');if(b)dmSetPrivacy(b.dataset.dp);});
