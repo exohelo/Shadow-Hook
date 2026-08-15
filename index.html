@@ -2900,19 +2900,23 @@ window.DEVLOG=(function(){
     <div class="sheet-card" style="text-align:left">
       <div class="big" style="font-size:20px;letter-spacing:.06em;text-align:center">⬡ PORT BUCKS</div>
       <p class="sub" style="margin:8px 0 12px">The Order pays for the work that keeps the tool sharp. What each action mints:</p>
-      <table class="baseline-tbl">
-        <tr><td>Seal a docket</td><td>+10</td></tr>
-        <tr><td>Log a drop on the wire</td><td>+10 <span style="opacity:.7">· 6 a board</span></td></tr>
-        <tr><td>Feed the live board during dispatch</td><td>+15–20</td></tr>
-        <tr><td>First to log today's board</td><td>+50–500</td></tr>
-        <tr><td>Send word — number, map, correction, idea</td><td>+20 <span style="opacity:.7">· 3 a day</span></td></tr>
-        <tr><td>Share the Order with a casual</td><td>+25 <span style="opacity:.7">· once</span></td></tr>
-        <tr><td>Earn a new mark</td><td>+50 <span style="opacity:.7">· buck marks excepted</span></td></tr>
+      <table class="baseline-tbl" id="rateTbl">
+        <tr><td>Seal a docket</td><td><b data-rate="DOCKET">+3</b> <span style="opacity:.7">· 3 a day</span></td></tr>
+        <tr><td>Log a drop on the wire</td><td><b data-rate="DROP">+2</b> <span style="opacity:.7">· 6 a board</span></td></tr>
+        <tr><td>Feed the live board during dispatch</td><td><b data-rate="CW">+3–4</b></td></tr>
+        <tr><td>First to log today's board</td><td><b data-rate="SPIN">+15–100</b></td></tr>
+        <tr><td>Send word — number, map, correction, idea</td><td><b data-rate="WORD">+5</b> <span style="opacity:.7">· 3 a day</span></td></tr>
+        <tr><td>Share the Order with a casual</td><td><b data-rate="SHARE">+25</b> <span style="opacity:.7">· once</span></td></tr>
+        <tr><td>Earn a new mark</td><td><b data-rate="MARK">+10</b> <span style="opacity:.7">· buck marks excepted</span></td></tr>
       </table>
       <!-- #fix3(bucks) — the old table said "on the spot" with no caps, while the code
            capped drops at 6 a board, send-word at 3 a day and the share bounty at once
            ever, paid 50–500 for a board log that wasn't listed at all, and pays nothing
-           for the four balance-threshold marks. Every row now matches the code. -->
+           for the four balance-threshold marks. Every row now matches the code.
+           #rates(aug15) — and now it CAN'T drift again: the amounts above are the
+           fallback for a member reading this before the script block parses, and
+           paintRateCard() overwrites every one of them from the PAY table on open.
+           Retune PAY, the sheet retunes itself. -->
       <p class="sub" style="margin-top:12px">When the Armory opens, gear moves for <b style="color:var(--bone)">cash or Port Bucks</b>. Straight talk: early exchange rates will be steep — the Order can't give away cannons before there's powder in the keg. As the Armory earns, the rates loosen and the grinders get paid. Port Bucks never expire.</p>
       <button class="btn-ghost" style="width:100%;margin-top:14px" onclick="document.getElementById('rulesSheet').classList.remove('on')">Understood</button>
     </div>
@@ -4046,6 +4050,79 @@ function wipeAcct(){try{localStorage.removeItem('shadowhook_account')}catch(e){}
 const savedAcct=loadAcct();
 let ACCT_ID=(savedAcct&&savedAcct.id)?savedAcct.id:"anon";
 function K(s){return "shadowhook_"+s+"_"+ACCT_ID;}
+/* ═══════════ #rates(aug15) — THE RATE CARD, IN ONE PLACE ═══════════
+   Every ⬡ payout used to be a bare integer sitting next to the code that paid it —
+   ten of them, across 9,000 lines, with the rules sheet hand-copied from memory and
+   already drifting. Nobody could answer "what does a member earn in a day?" without
+   reading the whole file, which is how the mint got away from us.
+
+   THE PEG: 500 ⬡ = $5. One ⬡ is one cent. Read every number below in cents.
+
+   WHAT WAS WRONG: at the old rates an active day paid ~430–500 ⬡ — a member ground
+   out the entry pack EVERY DAY, so the pack was worth nothing. The board-log jackpot
+   alone averaged 109 ⬡ ($1.09) a pop with a 2% tier at 500 ⬡ — we were handing out
+   the $5 pack as a slot prize. The wall paid 107 marks × 50 ⬡ = 5,350 ⬡ ($53.50)
+   lifetime, more than the $50 top pack, for free.
+
+   THE CUT: ~5×. An active day now pays ~90–110 ⬡, so a $5 pack ≈ five days of grinding
+   and the packs finally mean something. Nothing was removed — every action that paid
+   still pays, and the jackpot still has a top tier worth chasing. It just isn't a
+   second currency press.
+
+   DELIBERATELY NOT CUT:
+     · SHARE (25 ⬡, once ever) — that's acquisition, the one payout that brings in a
+       member who might buy. Cutting it saves 25 ⬡ and costs a customer.
+     · SPEND prices (message 1 ⬡, media 5, room 250, gathering 150, rings) — those are
+       already priced in cents and the peg didn't move. Cutting earn while holding
+       prices IS the rebalance; touching both would cancel out.
+     · The ⬡-threshold marks (Buck Baron 5,000 held, Earned Stripes 1,000 earned, …).
+       Scaling those down would retro-award marks to every existing member — and each
+       mark PAYS — so a tidy-up would have minted a fortune on the next login. They
+       stay where they are and simply take longer, which is the point. */
+const PAY = {
+  DOCKET:      3,    // was 10 — seal a docket (cap SEAL_PAY_CAP/day)
+  DROP:        2,    // was 10 — log a drop on the wire (cap 6 a board)
+  WORD:        5,    // was 20 — send word to the Keymaster (cap WORD_PAY_CAP/day)
+  MARK:       10,    // was 50 — earn a new mark (107 payable marks: 5,350 ⬡ → 1,070 ⬡)
+  SHARE:      25,    // UNCHANGED — acquisition, see above
+  HEIST:       8,    // was 40 — your board correction carried
+  BW_CONFIRM:  2,    // was 10 — confirming someone else's board record
+  CW_CONFIRM_FLOOR: 1, // was 3 — floor under the 25% crowd-wire confirm cut
+  /* first-to-log-the-board slot payout: [amount, weight]. Old table was
+     [[50,45],[100,30],[150,15],[300,8],[500,2]] — EV 109 ⬡, top tier a full $5 pack.
+     New EV is 27 ⬡ and the top tier is $1: still a real bang, no longer a bank run. */
+  SPIN: [[15,45],[25,30],[40,15],[60,8],[100,2]]
+};
+window.PAY=PAY;
+/* the expected value of one board-log spin, in ⬡ — the number to watch when retuning.
+   Old table: 109. Anything much above ~30 and the daily grind starts out-earning the
+   $5 pack again, which is the hole this whole pass climbed out of. */
+PAY.spinEV=function(){ const t=PAY.SPIN, w=t.reduce((a,x)=>a+x[1],0);
+  return w?Math.round(t.reduce((a,x)=>a+x[0]*x[1],0)/w*10)/10:0; };
+/* #rates(aug15) — the rules sheet paints ITSELF from the table above, so the posted
+   rates and the paid rates cannot drift. THE BANK clones this table into its own
+   "how they're earned" drawer, and that clone is taken lazily on first open — long
+   after this runs — so painting the source once here covers both. */
+function paintRateCard(){
+  try{
+    const tb=document.getElementById('rateTbl'); if(!tb) return;
+    let cwLo=3, cwHi=4;
+    try{ if(typeof CW_FIELDS!=='undefined'&&CW_FIELDS.length){
+      const ps=CW_FIELDS.map(f=>f.pay).filter(n=>isFinite(n));
+      if(ps.length){ cwLo=Math.min.apply(null,ps); cwHi=Math.max.apply(null,ps); } } }catch(e){}
+    const sp=PAY.SPIN.map(t=>t[0]);
+    const txt={
+      DOCKET:'+'+PAY.DOCKET, DROP:'+'+PAY.DROP, WORD:'+'+PAY.WORD,
+      MARK:'+'+PAY.MARK, SHARE:'+'+PAY.SHARE,
+      CW: cwLo===cwHi ? ('+'+cwLo) : ('+'+cwLo+'–'+cwHi),
+      SPIN:'+'+Math.min.apply(null,sp)+'–'+Math.max.apply(null,sp)
+    };
+    tb.querySelectorAll('b[data-rate]').forEach(function(b){
+      const v=txt[b.getAttribute('data-rate')]; if(v)b.textContent=v;
+    });
+  }catch(e){}
+}
+window.paintRateCard=paintRateCard;
 /* #truehrs + #tdz2(aug13) — THE POSTING CUTOFF LIVES AT THE TOP OF THE SCRIPT.
    It sat next to the hours functions (~7,400), but those functions are HOISTED and
    boot paths can call them DURING evaluation — on some members' devices (data-
@@ -5014,6 +5091,14 @@ async function sbLoadProfile(){
    New rule: a response is authoritative only if its request never overlapped another.
    The moment two overlap, stop trusting individual replies and do ONE authoritative
    re-read when the burst drains. */
+/* #harden(aug15) — FLIP THIS TO true AFTER DEPLOYING BUCKS-HARDEN.sql.
+   The hardened apply_bucks() writes the bucks_book line itself, inside the same
+   transaction that moves the balance — which is the only way a ledger is ever really
+   a ledger. Until that function is deployed, the client writes the line (from inside
+   the success branch, so it still can't record money that didn't move). Leaving this
+   false against the NEW function double-books every row; setting it true against the
+   OLD one leaves THE BOOK blank. One flag, one deploy, no overlap. */
+const BOOK_SERVER_SIDE=false;
 let _bucksInFlight=0, _bucksOverlap=false;
 function sbRefreshBucks(){
   if(!window.SB || !window.__shkUid) return;
@@ -5036,7 +5121,16 @@ function sbBookWrite(delta,reason,allowZero){ /* #bank — mirror every earn/spe
     window.SB.from('bucks_book').insert({user_id:window.__shkUid,delta:Math.round(delta),reason:String(reason||'').slice(0,140)}).then(()=>{},()=>{});
   }catch(e){}
 }
-function sbApplyBucks(delta, reason){   // push an earn/spend to the server; server balance wins
+/* #bookhonest(aug15) — THE BOOK IS A LEDGER, NOT A WISHLIST. sbBookWrite used to be
+   called as a bare sibling of sbApplyBucks: two independent requests, no ordering, no
+   shared fate. So a delta whose apply_bucks failed still printed its line in THE BANK,
+   and the overlap re-read then restored the server's OLD balance underneath it. The
+   member reads a statement showing money that does not exist, with a balance that
+   refuses to match it — the single most trust-destroying thing a wallet can do.
+   Callers now pass book=true and the line is written from INSIDE the success branch,
+   after the bank has confirmed the delta. If the apply never lands, no line is printed
+   and the member is told out loud — for earns as well as spends. Silence was the bug. */
+function sbApplyBucks(delta, reason, book){   // push an earn/spend to the server; server balance wins
   if(!window.SB || !delta) return;
   /* #fix2(bucks) — onSess() sets __shkUid to a uid when a session is live and to
      explicit null when there isn't one; it is undefined only before getSession()
@@ -5062,10 +5156,18 @@ function sbApplyBucks(delta, reason){   // push an earn/spend to the server; ser
         if(attempt<2) return new Promise(function(res){setTimeout(res,2500);}).then(function(){return fire(attempt+1);});
         console.warn('apply_bucks:', r.error.message); _bucksOverlap=true;
         try{DEVLOG.data('apply_bucks',{ok:false,err:r.error.message+' — delta '+delta+' ('+(reason||'')+') never reached the bank'});}catch(e){}
-        if(delta<0){ try{toast("⚠ That charge didn't reach the bank — it may bounce back. ⚙ dev log has why.");}catch(e){} }
-        return;
+        /* #bookhonest(aug15) — say it for EARNS too. The old line only spoke up on a
+           spend, on the reasoning that silently un-charging is what kills trust. It is
+           — but so is silently not-paying, and that failure is far harder for a member
+           to spot: the mark lights, the coins rain, and the number just never moves. */
+        try{toast(delta<0
+          ? "⚠ That charge didn't reach the bank — it may bounce back. ⚙ dev log has why."
+          : "⚠ +"+delta+" ⬡ didn't reach the bank — it isn't in your balance. ⚙ dev log has why.");}catch(e){}
+        return;                                  // NO book line: nothing happened to record
       }
       if(acct!==ACCT_ID) return;               // the member changed cards while this was in flight
+      /* the bank confirmed it — now, and only now, does it belong in the statement */
+      if(book && !BOOK_SERVER_SIDE){ try{sbBookWrite(delta,reason);}catch(e){} }
       if(solo && !_bucksOverlap && typeof r.data==='number'){
         try{CREDITS=r.data;localStorage.setItem(K('credits'),CREDITS);}catch(e){} try{renderCredits();}catch(e){}
       }
@@ -5158,7 +5260,12 @@ function localEnter(){
           /* #fix(bucks) — a NULL port_bucks column (a freshly claimed profile) used to
              coerce to 0 through `+prof.port_bucks||0` and wipe a real local balance.
              Only let the server win when it actually HAS a number. */
-          if(prof.port_bucks!=null){ try{ CREDITS=+prof.port_bucks||0; localStorage.setItem(K('credits'),CREDITS); }catch(e){} }
+          if(prof.port_bucks!=null){ try{ CREDITS=+prof.port_bucks||0; localStorage.setItem(K('credits'),CREDITS); }catch(e){}
+            /* #bankorder2(aug15) — PAINT IT. The override moved CREDITS and the storage
+               key but never re-rendered, so the header/BANK kept showing whatever the
+               eval-time catch-up had put there until the next unrelated render — and
+               THAT is the frame the member screenshots. */
+            try{ renderCredits(); }catch(e){} }
           /* #truehrs(aug13) + #bankorder(aug13) — the marks catch-up runs AFTER the
              server-balance override, never before it. The first cut of this block sat
              ABOVE that override: checkMarks paid its +50s onto the LOCAL balance, and
@@ -5168,12 +5275,19 @@ function localEnter(){
              balance?" Every award lands ON TOP of the server's number now, and if the
              catch-up paid anything, the bank is re-read after the apply_bucks burst
              has had time to land (twice, belt and braces), so the header ends on the
-             BANK'S total, not this device's guess. */
+             BANK'S total, not this device's guess.
+             #bankorder2(aug15) — ordering this block right was never enough, because a
+             SECOND catch-up already ran at script-eval time (the #marksfix line down by
+             checkMarks). It fired while this function sat parked on `await
+             getSession()`, paid every mark onto the LOCAL balance, and then the override
+             two lines up flattened it back to the pre-award snapshot. The call here then
+             returned 0 — the eval-time run had already set every flag — so `_mn>0` was
+             false and the two belt-and-braces re-reads NEVER RAN. Net: the book showed
+             the earnings, the bank showed the old number, and nothing ever reconciled.
+             The eval-time run is now deferred whenever a backend is present, and the
+             re-read scheduling lives inside marksCatchUp() so it cannot be gated out. */
           try{ if(typeof renderYear==="function")renderYear(); }catch(e){}
-          try{ if(typeof checkMarks==="function"){ const _mn=checkMarks(true);
-            if(_mn>0){ try{toast('⚑ '+_mn+' mark'+(_mn>1?'s':'')+' caught up — check your wall')}catch(e){}
-              try{ setTimeout(function(){try{sbRefreshBucks()}catch(e){}},6000);
-                   setTimeout(function(){try{sbRefreshBucks()}catch(e){}},20000); }catch(e){} } } }catch(e){}
+          try{ if(typeof marksCatchUp==="function")marksCatchUp(); }catch(e){}
           /* #floorwho2 — identity just settled: the ONLINE roster hears the real name now */
           try{if(typeof floorTrack==='function')floorTrack((typeof CURRENT_ROOM!=='undefined'&&CURRENT_ROOM)||null);}catch(e){}
           /* #note(bucks) — profiles.circle / .badges / .is_keymaster are SELECTed above
@@ -5329,7 +5443,10 @@ document.getElementById('enterBtn').addEventListener('click',async ()=>{
          claimed a server account, had them written away. Keep the device's balance
          and carry it up as the account's opening delta so both sides agree. */
       finishEnter(h, pa, null);
-      try{ if(CREDITS>0) sbApplyBucks(CREDITS, 'opening balance carried from this device'); }catch(e){}
+      /* #bookhonest(aug15) — book it too. This is the single biggest delta most accounts
+         ever see and it was the one earn that printed NO statement line, so the book
+         opened mid-story: a four-figure balance with nothing behind it. */
+      try{ if(CREDITS>0) sbApplyBucks(CREDITS, 'opening balance carried from this device', true); }catch(e){}
       return;
     }catch(e){ console.warn(e); pm.textContent="> couldn't reach the backend — try again"; undo(); return; }
   }
@@ -5371,10 +5488,7 @@ function finishEnter(handle, pa, balance){
      lines up, so awards land on top of it. The deferred bank re-read matches the
      restore path: the header ends on the bank's total once the burst lands.) */
   try{ if(typeof renderYear==="function")renderYear(); }catch(e){}
-  try{ if(typeof checkMarks==="function"){ const _mn=checkMarks(true);
-    if(_mn>0){ try{toast('⚑ '+_mn+' mark'+(_mn>1?'s':'')+' caught up — check your wall')}catch(e){}
-      try{ setTimeout(function(){try{sbRefreshBucks()}catch(e){}},6000);
-           setTimeout(function(){try{sbRefreshBucks()}catch(e){}},20000); }catch(e){} } } }catch(e){}
+  try{ if(typeof marksCatchUp==="function")marksCatchUp(); }catch(e){}
   /* #floorwho2 — identity just settled: the ONLINE roster hears the real name now */
   try{if(typeof floorTrack==='function')floorTrack(null);}catch(e){}
   /* #marks2 — a fresh hand who came in on a crew link credits their voucher: one
@@ -8832,13 +8946,13 @@ setInterval(()=>{ try{DispatchBot.tick();}catch(e){} }, 60000);   // the schedul
    ========================================================= */
 const CW_KEY=K("wire");
 const CW_FIELDS=[
-  {id:"open",   label:"Who got the last job?", hint:"the last casual card handed a job — the wire calls who's up next",  type:"pos", need:2, tol:0, pay:20},
-  {id:"early",  label:"Early casual count",     hint:"casual jobs showing early",         type:"num", need:3, tol:15, pay:15},
+  {id:"open",   label:"Who got the last job?", hint:"the last casual card handed a job — the wire calls who's up next",  type:"pos", need:2, tol:0, pay:4},
+  {id:"early",  label:"Early casual count",     hint:"casual jobs showing early",         type:"num", need:3, tol:15, pay:3},
   /* #37 — you only report the board YOU stood at. Day hands call the day board,
      night hands call the night board; the app adds AM + PM itself when a whole-day
      figure is needed. Never ask one group to do the other shift's homework. */
-  {id:"total",  label:"Final Total",  hint:"all jobs on your board",         type:"num", need:3, tol:25, pay:20},
-  {id:"casual", label:"Final Casual", hint:"casual jobs on your board",      type:"num", need:3, tol:20, pay:20}
+  {id:"total",  label:"Final Total",  hint:"all jobs on your board",         type:"num", need:3, tol:25, pay:4},
+  {id:"casual", label:"Final Casual", hint:"casual jobs on your board",      type:"num", need:3, tol:20, pay:4}
 ];
 /* When each question is allowed to show, keyed off the clock. Dispatch schedule:
    Day  2nd @ 8:00 → ends 9:30.  Night 2nd @ 18:00 → ends 19:30.  Night flex opens 16:30.
@@ -9128,7 +9242,7 @@ document.getElementById('dropAdd').addEventListener('click',()=>{
      striking it can claw the same amount back. Without it a member could log six
      drops (+60 ⬡), delete all six — taking the data back off the wire — and keep
      the money for contributing nothing. */
-  if(o.paid<6){o.paid++;d.earned=10;addCredits(10,"drop logged on the wire");toast("✓ Drop logged · +10 ⬡");try{buzz(30);}catch(e){}try{rainCoins(9);}catch(e){}}   /* #dl2 — a paid catch sprinkles coins */
+  if(o.paid<6){o.paid++;d.earned=PAY.DROP;addCredits(PAY.DROP,"drop logged on the wire");toast("✓ Drop logged · +"+PAY.DROP+" ⬡");try{buzz(30);}catch(e){}try{rainCoins(9);}catch(e){}}   /* #dl2 — a paid catch sprinkles coins */
   else toast("✓ Drop logged — pay caps at 6 a board");
   dropSave(o);dropRecompute();renderDropLog();
   try{dwPush(d);}catch(e){}                     // #118 — every member's log hears it
@@ -9210,7 +9324,7 @@ function cwParseNum(s){const n=parseInt((s||"").replace(/\D/g,""),10);return isF
      smaller cut. Two ✓ confirms mark it LIVE (locked). Two ✗ claws back the first reporter's
      pay and re-opens the question for a fresh first report. */
 function cwFirstPay(f){return f.pay;}                 // full pay for being first
-function cwConfirmPay(f){return Math.max(3,Math.round(f.pay*0.25));} // smaller cut for confirming
+function cwConfirmPay(f){return Math.max(PAY.CW_CONFIRM_FLOOR,Math.round(f.pay*0.25));} // smaller cut for confirming
 
 /* ===== #countwire — COUNT REPORTS RIDE THE WIRE =====
    The Count Window settled on one phone and nowhere else: reports, confirms and
@@ -10068,9 +10182,9 @@ function sealBucks(j){
     return;
   }
   try{localStorage.setItem(K('sealpaid_'+todayISO()),String(sealPaidToday()+1));}catch(e){}
-  j.earned=10;
-  addCredits(10,"docket sealed · board "+j.date,true);
-  toast("✓ Log Successful · +10 ⬡");
+  j.earned=PAY.DOCKET;
+  addCredits(PAY.DOCKET,"docket sealed · board "+j.date,true);
+  toast("✓ Log Successful · +"+PAY.DOCKET+" ⬡");
 }
 function restViolation(j, ignoreId){
   const jSlot=shiftSlot(j.shift);
@@ -11805,7 +11919,7 @@ renderPorts();
     return (s.d===todayISO())?(+s.n||0):0; }catch(e){ return 0; } }
   function wordMarkPaid(){ try{ localStorage.setItem(K('wordpay'),JSON.stringify({d:todayISO(),n:wordPaidToday()+1})); }catch(e){} }
   function reward(cat,hadShots){
-    if(wordPaidToday()<WORD_PAY_CAP){ wordMarkPaid(); addCredits(20,"word sent to the Keymaster"); }
+    if(wordPaidToday()<WORD_PAY_CAP){ wordMarkPaid(); addCredits(PAY.WORD,"word sent to the Keymaster"); }
     else try{toast("✓ Word sent — ⬡ pay caps at "+WORD_PAY_CAP+" reports a day");}catch(e){}
     unlockBadge(bixLate("Messenger"));
     if(hadShots||/map/i.test(cat))unlockBadge(bixLate("Mapmaker"));
@@ -12062,7 +12176,7 @@ function unlockBadge(ix){ // fire the casino moment for a genuinely new mark
      controllerchange reload fires on every deploy, pull() reloads on first hydrate,
      and a batch scan can trip three marks at once right before the member closes the
      app. Quiet, so the mark popup stays the celebration — buckPop still floats it. */
-  if(typeof addCredits==="function"&&!/Port Bucks|High Roller|True North/.test(BADGES[ix][1])){try{addCredits(50,"new mark earned",true)}catch(e){}}
+  if(typeof addCredits==="function"&&!/Port Bucks|High Roller|True North/.test(BADGES[ix][1])){try{addCredits(PAY.MARK,"new mark earned",true)}catch(e){}}
   try{const s=JSON.parse(localStorage.getItem(K('badges')))||[];if(!s.includes(ix)){s.push(ix);localStorage.setItem(K('badges'),JSON.stringify(s))}}catch(e){}
   const [ic,nm]=BADGES[ix];const parts=nm.split(' · ');
   if(!_marksSilent)bpopShow(ic,parts[0],parts[1]||'',true,true,BADGES[ix][3]||0);
@@ -12237,8 +12351,7 @@ function addCredits(n,reason,quiet){
   try{ if(n>0 && reason!=='refund'){ const el=tallyAdd('earned',n);
     if(el>=1000)unlockBadge(bixLate("Earned Stripes"));
     if(el>=5000)unlockBadge(bixLate("Payday Legend")); } }catch(e){}
-  try{sbApplyBucks(n,reason);}catch(e){}                    // persist to the server (no-op if backend off)
-  try{sbBookWrite(n,reason);}catch(e){}                     // #bank — a line in their statement
+  try{sbApplyBucks(n,reason,true);}catch(e){}               // persist to the server, and book it once the bank confirms
 }
 function spendCredits(n,reason){
   if(!n)return;
@@ -12254,8 +12367,7 @@ function spendCredits(n,reason){
   CREDITS=CREDITS-n;try{localStorage.setItem(K('credits'),CREDITS)}catch(e){}
   renderCredits();buckPop(-n);toast("−"+n+" ⬡ · "+reason);
   const chip=document.getElementById('meBucks');if(chip){chip.classList.remove('bump');void chip.offsetWidth;chip.classList.add('bump');}
-  try{sbApplyBucks(-n,reason);}catch(e){}                    // persist to the server (no-op if backend off)
-  try{sbBookWrite(-n,reason);}catch(e){}                     // #bank — a line in their statement
+  try{sbApplyBucks(-n,reason,true);}catch(e){}               // persist to the server, and book it once the bank confirms
 }
 /* ── CASINO JACKPOT — the dramatic win when Port Bucks land ──────────────────
    awardJackpot() credits the bucks (quietly, so the small float doesn't fight the
@@ -12310,7 +12422,7 @@ function awardJackpot(amount, reason){
 }
 /* slot-style payout: usually modest, sometimes a real win */
 function bucksSpin(tiers){
-  tiers=tiers||[[50,45],[100,30],[150,15],[300,8],[500,2]];
+  tiers=tiers||PAY.SPIN;
   let tot=tiers.reduce((a,t)=>a+t[1],0), r=Math.random()*tot;
   for(const t of tiers){ if((r-=t[1])<0) return t[0]; }
   return tiers[0][0];
@@ -12500,8 +12612,49 @@ function checkMarks(silent){ // real rules on real data — marks are earned, ne
 }
 /* #marksfix — run the wall against the member's real data ON OPEN too, not only when a
    docket is saved. Silent, so it doesn't blast a flurry of popups; if it caught anything
-   up, one quiet line says so. Everything it awards is a mark genuinely already earned. */
-try{ const _mn=checkMarks(true); if(_mn>0){ try{toast('⚑ '+_mn+' mark'+(_mn>1?'s':'')+' caught up — check your wall');}catch(e){} } }catch(e){}
+   up, one quiet line says so. Everything it awards is a mark genuinely already earned.
+
+   #bankorder2(aug15) — THE BUG THAT ATE THE BALANCE. This used to run bare, right here,
+   at script-eval time. sbStartup() is declared ~7,000 lines up but parks on
+   `await SB.auth.getSession()` on its very first statement, so the whole rest of this
+   block — including this line — evaluates BEFORE it resumes. The catch-up paid a mark
+   per +⬡ onto the local CREDITS, fired one apply_bucks per mark (those DID reach the
+   bank) and wrote one bucks_book line per mark (those showed up in THE BOOK). Then
+   sbStartup resumed and set CREDITS = prof.port_bucks — a SELECT taken before any of it
+   happened — and its own catch-up returned 0 because these flags were already set, so
+   the "re-read the bank in 6s/20s" safety net was gated out. Member sees the earnings
+   in the book, sees the header frozen, and concludes the app ate their money. It never
+   did: the bucks were on the server the whole time, one hard reload away.
+
+   Now: the payout is DEFERRED whenever a backend exists, so sbStartup's post-override
+   call owns it. With no backend there is no override to lose to, so it runs here as
+   before. The 8s timer is the belt for the case that resolves neither way (SB present,
+   session never resolves, sbStartup falls through to localEnter) — marksCatchUp() is
+   idempotent via __marksCaughtUp, so a double call costs nothing. */
+function marksCatchUp(){
+  if(window.__marksCaughtUp) return 0;
+  window.__marksCaughtUp=true;
+  let n=0;
+  try{ n=checkMarks(true); }catch(e){ return 0; }
+  if(n>0){
+    try{toast('⚑ '+n+' mark'+(n>1?'s':'')+' caught up — check your wall');}catch(e){}
+    /* the awards went out as apply_bucks calls; re-read the bank once that burst has
+       landed so the header ends on the BANK'S total, never this device's guess.
+       Scheduled HERE, not at the call site, so no caller can gate it out again. */
+    try{ setTimeout(function(){try{sbRefreshBucks()}catch(e){}},6000);
+         setTimeout(function(){try{sbRefreshBucks()}catch(e){}},20000); }catch(e){}
+  }
+  return n;
+}
+window.marksCatchUp=marksCatchUp;
+if(!window.SB){ try{ marksCatchUp(); }catch(e){} }
+else { try{ setTimeout(function(){ try{ marksCatchUp(); }catch(e){} }, 8000); }catch(e){} }
+/* #rates(aug15) — paint the posted rate card from the PAY table. Called HERE, not up
+   beside paintRateCard's declaration, because it reads CW_FIELDS for the dispatch-feed
+   range and that is a `const` several thousand lines below the declaration — reaching
+   it early would hit the temporal dead zone (`typeof` does NOT protect a let/const,
+   see the circleLvl() note). By this line every rate the card quotes is initialised. */
+try{ paintRateCard(); }catch(e){}
 /* #marks3(aug13) — whyMark(): SHOW YOUR WORK. When a hand says "I earned that" and
    the wall says otherwise, this prints exactly what the rules see — night dates and
    the consecutive pairs found, flex check-ins, weekend shifts, photo'd slips, ports
@@ -13395,14 +13548,16 @@ function payCredits(n,reason,quiet){
      Note the credits key is deliberately excluded from the cloud-KV mirror
      (see mine() — "port bucks excluded: own atomic path"), so apply_bucks is the
      ONLY way a spend can ever reach the server. */
-  try{sbApplyBucks(-n,reason);}catch(e){}
   /* #bookfix(aug13) — THE MISSING STATEMENT LINES. This function moved the balance
      but never wrote THE BOOK — addCredits/spendCredits both mirror into bucks_book,
      and this one (chat messages, GIFs, media, rooms, gatherings, rings — every real
      purchase) didn't. So the bank showed the stack going DOWN with no line saying
      why, while a failed send's refund (addCredits) DID print — a book with credits
-     for reversals and no sign of what was reversed. Every spend writes its line now. */
-  try{sbBookWrite(-n,reason);}catch(e){}
+     for reversals and no sign of what was reversed. Every spend writes its line now.
+     #bookhonest(aug15) — and it writes it from inside apply_bucks' success branch
+     (book=true) rather than as an unrelated second request, so the statement can
+     never show a charge the bank refused. */
+  try{sbApplyBucks(-n,reason,true);}catch(e){}
   /* #marks2 — LIFETIME SPENT. payCredits is the one door every VOLUNTARY spend walks
      through (chat fares, media, rooms, gatherings, rings, the rename desk) — penalties
      and claw-backs go through spendCredits and rightly never count as spending. */
@@ -16934,7 +17089,7 @@ function shareReward(){
   unlockBadge(TOWN_CRIER);
   if(already)return;
   try{ localStorage.setItem(K('sharepaid'),'1'); }catch(e){}
-  addCredits(25,"spread the word");
+  addCredits(PAY.SHARE,"spread the word");
 }
 document.getElementById('shareSms').addEventListener('click',()=>setTimeout(shareReward,800));
 document.getElementById('shareMail').addEventListener('click',()=>setTimeout(shareReward,800));
@@ -17329,7 +17484,7 @@ function chainBoards(fromKey){
      · post a DIFFERENT number         → a challenge: the wire votes
      · your correction carries (2 votes) → ⚔ HEIST — you lift ⬡40 from the wrong hand
    Offline/no backend: everything still works on-device, exactly as before. */
-const BW_HEIST=40, BW_CONFIRM=10;
+const BW_HEIST=PAY.HEIST, BW_CONFIRM=PAY.BW_CONFIRM;
 window.BW={};                                            // server rows by key
 function bwL(){try{return JSON.parse(localStorage.getItem(K('boardwire'))||'{}')}catch(e){return{}}}
 function bwLSave(o){try{localStorage.setItem(K('boardwire'),JSON.stringify(o))}catch(e){}}
