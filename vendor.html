@@ -1198,18 +1198,29 @@ function renderLedger(){
     return;
   }
   if(ME.km){
-    const rows=BALANCES.slice().sort((a,b)=>Number(b.owed||0)-Number(a.owed||0));
+    /* #filedaway — the ledger lists who's WORKING. A retired hand leaves the
+       list the moment they're filed — unless the house still owes them: a debt
+       never files itself away, so those stay, wearing the RETIRED pill, until
+       settled to zero. Retire D4928, see D4928 gone. */
+    const vLive=id=>{const v=VENDORS.find(x=>x.id===id);return v?!!v.active:true;};
+    const rows=BALANCES.slice().sort((a,b)=>Number(b.owed||0)-Number(a.owed||0))
+      .filter(b=>vLive(b.vendor_id)||Number(b.owed)>0||Number(b.pending)>0);
+    const ambRows=AMBS.map(a=>({a:a,b:ambBook(a.id)}))
+      .filter(x=>x.a.active||x.b.owed>0||x.b.pending>0);
     host.innerHTML =
       '<div class="card"><div class="card-h">💰 WHO’S OWED WHAT<span class="tag">shipped work − payouts</span></div><div class="card-b">'
       +(rows.length?rows.map(b=>'<div class="vrow"><span class="n"><b>'+esc(b.vendor_name)+'</b>'
+        +(vLive(b.vendor_id)?'':' <span class="pill red">RETIRED — settle &amp; clear</span>')
         +'<i>in the pipe '+money(b.pending)+' · paid to date '+money(b.paid)+'</i></span>'
         +'<span class="m" style="color:'+(Number(b.owed)>0?'var(--copper-hi)':'var(--steel)')+'">'+money(b.owed)+'</span>'
         +'<button class="btn-line gold" data-settle="'+esc(b.vendor_id)+'">SETTLE</button></div>').join('')
-        :'<p class="sub">No vendors on the rolls yet.</p>')
+        :'<p class="sub">'+(BALANCES.length?'Nobody working is owed — the retired are filed on their own tabs.':'No vendors on the rolls yet.')+'</p>')
       +'</div></div>'
-      +(AMBS.length?'<div class="card"><div class="card-h">🎖 AMBASSADOR COMMISSIONS<span class="tag">% of house margin · settle from here or the vendors tab</span></div><div class="card-b">'
-        +AMBS.map(a=>{ const b2=ambBook(a.id);
-          return '<div class="vrow"><span class="n"><b>🎖 '+esc(a.name)+'</b><i>'+(Number(a.rate)||0)+'% · pipe '+money(b2.pending)+' · paid '+money(b2.paid)+'</i></span>'
+      +(ambRows.length?'<div class="card"><div class="card-h">🎖 AMBASSADOR COMMISSIONS<span class="tag">% of house margin · settle from here or the vendors tab</span></div><div class="card-b">'
+        +ambRows.map(x=>{ const a=x.a, b2=x.b;
+          return '<div class="vrow"><span class="n"><b>🎖 '+esc(a.name)+'</b>'
+            +(a.active?'':' <span class="pill red">RETIRED — settle &amp; clear</span>')
+            +'<i>'+(Number(a.rate)||0)+'% · pipe '+money(b2.pending)+' · paid '+money(b2.paid)+'</i></span>'
             +'<span class="m" style="color:'+(b2.owed>0?'var(--copper-hi)':'var(--steel)')+'">'+money(b2.owed)+'</span>'
             +'<button class="btn-line gold" data-asettle="'+esc(a.id)+'">SETTLE</button></div>'; }).join('')
         +'</div></div>':'')
@@ -1319,11 +1330,23 @@ function renderGear(){
 
 /* ════════ VENDORS (Keymaster) ════════ */
 let inviteVendorId=null;
+/* #filedaway(aug15) — RETIRED MEANS FILED, NOT LOITERING. A retired vendor or
+   crown used to keep standing in the main list with everyone working; now the
+   working list shows working hands only, and the retired drop into a closed
+   cabinet at the bottom — still there, one tap open, REVIVE still on the card. */
+function filedCabinet(cards,noun){
+  if(!cards.length)return '';
+  return '<details style="margin-top:16px"><summary style="cursor:pointer;list-style:none;border:1px dashed var(--line);border-radius:12px;padding:11px 14px;color:var(--steel);font-size:12px;letter-spacing:.08em">'
+    +'🗄 FILED AWAY — '+cards.length+' retired '+noun+(cards.length===1?'':'s')+' <span style="float:right">▾ open the drawer</span></summary>'
+    +'<div class="cardgrid" style="margin-top:12px">'+cards.join('')+'</div></details>';
+}
 function renderVendors(){ /* #ambtab — vendors only now; the crowns moved to their own room */
   const host=$('panel');
+  const live=VENDORS.filter(v=>v.active), filed=VENDORS.filter(v=>!v.active);
   host.innerHTML = '<button class="btn" id="vAdd" style="margin:2px 0 14px">🤝 ADD A VENDOR</button>'
-    +(VENDORS.length?'<div class="cardgrid">'+VENDORS.map(vendorCard).join('')+'</div>'
-      :'<p class="sub" style="text-align:center;padding:14px">No vendors on the rolls yet. Add the first, hand gear to their bench, mint their pass.</p>');
+    +(live.length?'<div class="cardgrid">'+live.map(vendorCard).join('')+'</div>'
+      :'<p class="sub" style="text-align:center;padding:14px">'+(VENDORS.length?'Nobody working the rolls right now — the retired are in the drawer below.':'No vendors on the rolls yet. Add the first, hand gear to their bench, mint their pass.')+'</p>')
+    +filedCabinet(filed.map(vendorCard),'vendor');
   $('vAdd').addEventListener('click',()=>openVendorSheet(null));
   wireVendorRows(host);
 }
@@ -1437,9 +1460,11 @@ function ambCard(a){
 }
 function kmAmbSection(){
   /* the add button leads, big and full-width — the same read as ADD A VENDOR */
+  const live=AMBS.filter(a=>a.active), filed=AMBS.filter(a=>!a.active);   /* #filedaway */
   return '<button class="btn" id="ambAdd" style="margin:2px 0 14px">🎖 CROWN AN AMBASSADOR</button>'
-    +(AMBS.length?'<div class="cardgrid">'+AMBS.map(ambCard).join('')+'</div>'
-      :'<p class="sub" style="text-align:center;padding:14px">No crowns handed out yet. An ambassador recruits makers to the Armory and earns a cut of the house margin on everything their recruits sell — and they don’t have to be a casual.</p>');
+    +(live.length?'<div class="cardgrid">'+live.map(ambCard).join('')+'</div>'
+      :'<p class="sub" style="text-align:center;padding:14px">'+(AMBS.length?'No crowns working right now — the retired are in the drawer below.':'No crowns handed out yet. An ambassador recruits makers to the Armory and earns a cut of the house margin on everything their recruits sell — and they don’t have to be a casual.')+'</p>')
+    +filedCabinet(filed.map(ambCard),'crown');
 }
 let editAmbId=null;
 function openAmbSheet(aid){
