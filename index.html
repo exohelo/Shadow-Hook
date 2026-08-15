@@ -479,6 +479,14 @@ html.daylight .dayBtn{box-shadow:0 5px 14px rgba(70,56,30,.2)}
    and #stubSheet in the DOM as well, so the Back guard's last-.sheet.on-wins pick still
    peels them top-down. */
 #hoursSheet{z-index:95}
+/* #bankdoor(aug15) — same story as the hours sheet, same fix. Port Bucks reads in two
+   places (the header chip and the profile tile) but only the chip could open the Bank,
+   so a member looking at their balance ON the profile had no way through from there.
+   Now the tile is a door too — and the Bank, like the hours sheet, has to clear the
+   profile (92) or it opens behind the page that sent you. The Back guard sorts open
+   sheets by computed z-index rather than DOM order, so this one line is also what makes
+   Back close the Bank first and land you back on the profile. */
+#bankSheet{z-index:95}
 #paySheet{z-index:93}
 /* #sheetscroll(aug10) — EVERY sheet card scrolls itself now.
    Two bugs lived here. (1) Cards without an inline max-height (the PROFILE
@@ -3799,7 +3807,12 @@ window.DEVLOG=(function(){
           <div class="prof-k">Hours on the Book</div><div class="prof-v" id="pfHours">—</div>
           <div class="prof-k" style="margin-top:3px;color:var(--copper-hi)">set your hours ▸</div>
         </div>
-        <div class="prof-cell"><div class="prof-k">Port Bucks</div><div class="prof-v gold" id="pfBucks">—</div></div>
+        <!-- #bankdoor(aug15) — the second door to the Bank, matching the HOURS tile
+             beside it: the tile that shows the number is the tile a hand taps. -->
+        <div class="prof-cell" id="pfBucksCell" role="button" tabindex="0" style="cursor:pointer">
+          <div class="prof-k">Port Bucks</div><div class="prof-v gold" id="pfBucks">—</div>
+          <div class="prof-k" style="margin-top:3px;color:var(--copper-hi)">the bank ▸</div>
+        </div>
         <div class="prof-cell wide"><div class="prof-k">Member Since</div><div class="prof-v" id="pfSince">—</div></div>
         <!-- #hdr2 — the 6-month rule moved off the header; it reads here now. The
              red countdown strip under the header still fires app-wide in the final 30 days. -->
@@ -8307,6 +8320,23 @@ window.openHoursSheet=openHoursSheet;
     c.addEventListener('click',open);
     c.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open();}});
   }
+  /* #bankdoor(aug15) — the profile's PORT BUCKS tile opens the Bank, the same way the
+     HOURS tile beside it opens the hours sheet. bankOpen() is global by the time any
+     tap can land, and it repaints the balance and the book on the way in, so the sheet
+     is never showing a stale figure. Null-guarded: if the bank module ever fails to
+     wire, the tile stays inert instead of throwing on every tap. */
+  const bc=document.getElementById('pfBucksCell');
+  if(bc){
+    const bank=()=>{try{
+      /* true up the tile before we leave it — fill() paints the profile once on open,
+         so anything earned since (a mark, a seal) would otherwise leave the number the
+         member just tapped disagreeing with the balance the Bank shows them */
+      if(typeof window.openProfileSheet==='function')window.openProfileSheet();
+      if(typeof window.bankOpen==='function')window.bankOpen();
+    }catch(e){}};
+    bc.addEventListener('click',bank);
+    bc.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();bank();}});
+  }
   const cancel=document.getElementById('hbCancel');
   if(cancel)cancel.addEventListener('click',()=>document.getElementById('hoursSheet').classList.remove('on'));
   const sheet=document.getElementById('hoursSheet');
@@ -12587,6 +12617,16 @@ function renderCredits(){
   const hv=document.getElementById('meBucksV');if(hv)hv.textContent=CREDITS.toLocaleString();
   const sv=document.getElementById('bankStripV');if(sv)sv.textContent=CREDITS.toLocaleString();   /* #bank — the strip under the head */
   const bb=document.getElementById('bankBal');if(bb)bb.textContent=CREDITS.toLocaleString();      /* #bank — the sheet, if it's open */
+  /* #bankdoor(aug15) — the PROFILE tile is the fifth place the balance reads, and it
+     was the only one this funnel didn't touch: it is painted once by the profile's
+     fill() and never again. Open the profile, buy a pack or earn a mark, and the tile
+     sat on the pre-purchase number while the header chip and the Bank both moved —
+     and now that the tile is a door INTO the Bank, a member could tap 4,922 and land
+     on 5,162. Every path that moves the balance comes through here, so refresh it
+     here. Guarded on the sheet actually being open: no work when it isn't. */
+  try{ const pb=document.getElementById('pfBucks');
+       if(pb && document.getElementById('profileSheet').classList.contains('on'))
+         pb.textContent=CREDITS.toLocaleString()+" ⬡"; }catch(e){}
   if(typeof window.renderBoards==="function")try{window.renderBoards()}catch(e){} // #5 — bucks board tracks the balance live
 }
 /* #fix3(bucks) — two tabs on one account never saw each other's balance. The credits key
