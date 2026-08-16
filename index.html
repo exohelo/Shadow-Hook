@@ -10631,9 +10631,22 @@ function attachAutocomplete(input, getItems){
   function close(){menu.style.display='none';hi=-1;}
   function render(){
     const q=input.value.trim().toUpperCase();
+    /* #berthac(aug15) — the dropdown was a plain substring test, so a hand typing the
+       berth off his docket ("LB 96") got "No match" even though LB 96 is inside the
+       listed span "LB 88-96". Now: substring, then space-insensitive substring, then
+       the same numeric range test the Ports tab and the log-seal already use. The
+       range test only fires on berth-shaped input (letters + a number) so job codes
+       and other pickers behave exactly as before. */
+    const qz=q.replace(/\s+/g,""), berthQ=/^[A-Z]{0,3}\s*\d{1,4}$/.test(q);
     rows=getItems().filter(it=>{
       if(!q) return true;
-      return String(it.value).toUpperCase().indexOf(q)>-1 || String(it.label||"").toUpperCase().indexOf(q)>-1;
+      const V=String(it.value).toUpperCase(), L=String(it.label||"").toUpperCase();
+      if(V.indexOf(q)>-1||L.indexOf(q)>-1) return true;
+      if(berthQ){ /* range test only — never loose text, so "LB 26" can't hit "LB 266-270" */
+        if(typeof berthMatch!=="function")return false;
+        try{ return berthMatch(q,L); }catch(e){ return false; }
+      }
+      return V.replace(/\s+/g,"").indexOf(qz)>-1||L.replace(/\s+/g,"").indexOf(qz)>-1;
     }).slice(0,40);
     if(!rows.length){menu.innerHTML='<div class="ac-empty">No match — type it in, it still counts.</div>';menu.style.display='block';return;}
     menu.innerHTML=rows.map((it,i)=>'<button type="button" class="ac-opt" data-i="'+i+'"><span class="ac-code">'+acEsc(it.value)+'</span>'+(it.label?'<span class="ac-lbl">'+acEsc(it.label)+'</span>':'')+'</button>').join("");
