@@ -10615,6 +10615,17 @@ const TERM_ALIASES={"EVERPORT":"ETS","PIER 400":"APM"}; // names that appear on 
    the one thing that tells five SSA docks apart. It now returns the matched TERMINAL
    ROW; termResolve keeps its old signature on top of it so every existing caller is
    unaffected, and the seal reads .berths off the row to stamp the docket. */
+/* #berthlog(aug15) — every listed dock whose span CONTAINS this berth. Two reasons it
+   exists: (1) a slip sometimes prints the bare number ("136", "96") with no LB/LA/TI
+   in front, and the old test demanded the prefix, so typing what the slip actually
+   said came back "not listed"; (2) some spans genuinely overlap — LA 130 and LA 131
+   sit in BOTH Yang Ming (LA 121-131) and TraPac (LA 130-136) — and a berth that lands
+   in two docks must be asked about, not guessed at. */
+function berthCandidates(raw){
+  const q=String(raw||"").trim().toUpperCase().replace(/\s+/g," ");
+  if(!/^(TI|LB|LA)?\s*\d{1,4}$/.test(q))return [];
+  return TERMINALS.filter(t=>{ try{ return berthMatch(q,t.berths); }catch(e){ return false; } });
+}
 function termResolveTerm(raw){
   if(!raw)return null;
   const q=raw.trim().toUpperCase().replace(/\s+/g," ");
@@ -10623,7 +10634,7 @@ function termResolveTerm(raw){
     const t=TERMINALS.find(x=>x.operator.toUpperCase()===a);
     if(t)return t;
   }
-  const berthQ=q.match(/^(TI|LB|LA)\s*(\d{1,3})$/); // berth-number input: range-match only, never substring ("LB 26" must not hit "LB 266-270")
+  const berthQ=/^(TI|LB|LA)?\s*\d{1,4}$/.test(q); // berth-number input (prefix optional): range-match only, never substring ("LB 26" must not hit "LB 266-270")
   for(const t of TERMINALS){
     const op=t.operator.toUpperCase(), aka=(t.aka||"").toUpperCase(), br=t.berths.toUpperCase();
     if(q===op)return t;
@@ -10631,13 +10642,8 @@ function termResolveTerm(raw){
     if(q===br||(!berthQ&&q.length>=3&&br.includes(q)))return t;
   }
   if(berthQ){
-    for(const t of TERMINALS){
-      const b=t.berths.toUpperCase().match(/^(TI|LB|LA)\s*(\d+)(?:-(\d+))?/);
-      if(b&&b[1]===berthQ[1]){
-        const n=+berthQ[2],lo=+b[2],hi=b[3]?+b[3]:lo;
-        if(n>=lo&&n<=hi)return t;
-      }
-    }
+    const cands=berthCandidates(q);
+    if(cands.length)return cands[0];
   }
   return null;
 }
@@ -10743,6 +10749,17 @@ document.getElementById('njAdd').onclick=()=>{
   /* #57 / #29 — the log only takes terminals we track. An unlisted terminal can't be
      sealed; instead the member is walked straight into "send word" with the report
      pre-filled, so the request reaches the Keymaster for review. */
+  /* #berthlog — LA 130 and LA 131 sit in two listed spans at once (Yang Ming
+     LA 121-131 and TraPac LA 130-136), as do the two docks sharing LB 205-207.
+     Sealing the first hit would quietly send the hand to the wrong gate, so an
+     ambiguous berth stops here and asks him to name the dock off the list. */
+  const _amb=(typeof berthCandidates==='function')?berthCandidates(terminal):[];
+  if(_amb.length>1){
+    alert('"'+terminal+'" sits on more than one listed dock:\n\n'
+      +_amb.map(t=>'  · '+(t.aka||t.operator)+' — '+t.berths).join('\n')
+      +'\n\nTap the one you worked from the list so the gate is right.');
+    return;
+  }
   const termHit=termResolveTerm(terminal);          // #berthlog — the DOCK, not just the operator
   const termOk=termHit?termHit.operator:null;
   const termBerth=termHit?termHit.berths:undefined;
@@ -17398,8 +17415,16 @@ function parseDocket(t, knownId){
    must never move a job to another company's gate, so on disagreement the operator wins. */
 function scanTerm(p){
   if(!p||typeof termResolveTerm!=='function')return null;
-  const bt=p.berth?termResolveTerm(p.berth):null;
   const tt=p.terminal?termResolveTerm(p.terminal):null;
+  /* an overlapping berth (LA 130, LB 205-207) is settled by the operator the scan
+     read off the same slip — that's exactly what the second line is for. */
+  let bt=null;
+  if(p.berth){
+    const c=(typeof berthCandidates==='function')?berthCandidates(p.berth):[];
+    if(c.length>1&&tt)bt=c.find(x=>x.operator===tt.operator)||null;
+    else if(c.length===1)bt=c[0];
+    if(!bt&&c.length<=1)bt=termResolveTerm(p.berth);
+  }
   if(bt&&tt)return bt.operator===tt.operator?bt:tt;
   return bt||tt||null;
 }
