@@ -22815,6 +22815,12 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
     <input class="field" id="kmNotice" placeholder="notice text — rides along when you ✕ pass a request" style="margin-bottom:6px">
     <div id="kmRoster" class="sub" style="max-height:260px;overflow-y:auto;line-height:1.7;margin-bottom:14px">—</div>
 
+    <!-- #book(aug16) — THE BOOKS. Nobody reads 132 statements by eye. Every hand
+         whose book contradicts itself, or contradicts their stack, surfaces here
+         with the reason why; tap one to open their page and read the lines. -->
+    <div class="card-h">The books <span class="pill red" id="kmBooksN" style="display:none">0</span></div>
+    <div id="kmBooks" class="sub" style="max-height:240px;overflow-y:auto;line-height:1.7;margin-bottom:14px">—</div>
+
     <div class="card-h">The Mint</div>
     <div style="display:flex;gap:8px;margin:8px 0 6px">
       <input class="field" id="kmHandle" placeholder="handle — e.g. MAD MORGAN" style="flex:2">
@@ -23149,6 +23155,13 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
       try{await kmAmbLoad();}catch(e2){} /* #amb — the crowns ride the same pull; the roster still paints if this leg fails */
       try{await kmWireLoad();}catch(e3){} /* #mempage — report counts ride along too */
       kmRosterDraw();
+      /* #book — PAINT FIRST, DECORATE AFTER. The scan is an aggregate over every
+         hand's ledger and feeds nothing but ⚠ marks, so it must never be awaited
+         here: kmRoster() is awaited by the mint, the ban and the crown before
+         those buttons re-enable, and a slow scan would freeze a write the server
+         already committed. It redraws itself when it lands. */
+      kmScanLoad().catch(function(e4){ _scanErr=(e4&&e4.message)||'scan failed'; })
+                  .then(function(){ try{kmRosterDraw();}catch(e5){} });
     }catch(e){out.textContent='roster failed: '+e.message;}
   };
   function kmRosterDraw(){
@@ -23156,6 +23169,7 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
     const q=(($('kmFind')||{}).value||'').trim().toLowerCase();
     const rows=_roster.filter(x=>!q||[x.handle,x.card_id,x.full_name].some(v=>String(v||'').toLowerCase().includes(q)));
     try{kmStatsDraw();}catch(e){} /* #mempage — the head-count strip rides every redraw */
+    try{kmBooksDraw();}catch(e){} /* #book — and so does the suspects list */
     if(!rows.length){out.textContent=q?'no hand matches "'+q+'"':'no claimed accounts yet';return;}
     /* #mempage — the roster is a LIST now, not a control panel: handle · card ·
        name · stack, one line each. Every lever lives on the member page — tap
@@ -23173,6 +23187,12 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
         +(a?'<span class="pill gold">🎖</span>':'')
         +(x.banned?'<span class="pill red">BANNED</span>':'')
         +(mail?'<span class="pill" style="border-color:rgba(77,226,255,.5);color:#4de2ff">✉ '+mail+'</span>':'')
+        /* #book — the book speaks on the list too. Wrapped: this runs inside
+           rows.map(), and a throw here is caught by kmRoster()'s outer catch,
+           which would replace the whole roster with an error string — every
+           member door gone because one decoration failed. */
+        +(function(){try{const n=kmFlagsOf(kmScanOf(x.handle)).length;
+          return n?'<span class="pill red">⚠ '+n+'</span>':'';}catch(e6){return '';}})()
         +'</div>'
         +'<div class="sub" style="color:var(--steel);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(x.full_name||'')+'</div>'
         +'</div>'
@@ -23181,6 +23201,41 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
         +'</div>';
     }).join('');
   }
+  function kmBooksDraw(){ /* #book — only the hands whose book has something to answer for */
+    const host=$('kmBooks'), pill=$('kmBooksN'); if(!host)return;
+    const hide=function(){ if(pill)pill.style.display='none'; };
+    if(_scanErr){
+      host.innerHTML=/could not find|PGRST202|does not exist|schema cache/i.test(_scanErr)
+        ?'<span style="color:var(--steel)">The books aren\u2019t open yet — run <b style="color:var(--bone)">MEMBER-BOOK.sql</b> once in Supabase, then pull the roster again.</span>'
+        :'<span style="color:var(--ember)">books failed: '+esc(_scanErr)+'</span>';
+      hide(); return;
+    }
+    /* never claim the books are clean on the strength of never having read them */
+    if(!_scanOK){ host.innerHTML='<span style="color:var(--steel)">reading the books…</span>'; hide(); return; }
+    const bad=Object.keys(_scan).map(k=>_scan[k]).filter(x=>kmFlagsOf(x).length>0);
+    if(pill){ pill.textContent=bad.length; pill.style.display=bad.length?'':'none'; }
+    if(!bad.length){ host.innerHTML='<span style="color:var(--ok)">Every book adds up. No hand\u2019s stack disagrees with their lines.</span>'; return; }
+    host.innerHTML=bad.map(x=>{
+      const h=esc(x.handle||'?');
+      /* a handle the scan sees but km_roster does not (unclaimed card, RLS gap)
+         has no member page to open — say so instead of serving a dead door */
+      const rrow=_roster.find(r=>String(r.handle||'').toLowerCase()===String(x.handle||'').toLowerCase());
+      const crowned=rrow&&rrow.is_keymaster;
+      return '<div'+(rrow?' class="km-row" data-open="'+h+'"':'')+' style="border-bottom:1px solid var(--line-soft);padding:9px 2px'+(rrow?';cursor:pointer':'')+(crowned?';opacity:.6':'')+'">'
+        +'<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'
+        +'<b style="color:var(--bone)">'+h+'</b>'
+        +(crowned?'<span class="pill gold">☠</span>':'')
+        +(rrow?'':'<span class="pill">not on the roster</span>')
+        +'<span class="mono" style="margin-left:auto;color:var(--copper-hi)">'+(+x.stack||0).toLocaleString()+' ⬡</span></div>'
+        +'<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px">'+kmFlagPills(x,true)+'</div>'
+        +'<div class="sub" style="color:var(--steel);margin-top:4px;font-size:10.5px">'
+        +(+x.lines_n||0).toLocaleString()+' line'+((+x.lines_n||0)===1?'':'s')+' · written down '+(+x.booked||0).toLocaleString()+' ⬡'
+        +((+x.drift||0)!==0?' · <span style="color:var(--ember)">'+((+x.drift)>0?'+':'')+(+x.drift).toLocaleString()+' ⬡ unaccounted</span>':'')
+        +'</div></div>';
+    }).join('');
+  }
+  const kb2=$('kmBooks');
+  if(kb2)kb2.addEventListener('click',function(e){ const row=e.target.closest('.km-row'); if(row)kmMemberOpen(row.dataset.open); });
   function kmStatsDraw(){ /* #mempage — the raw numbers, right above the list */
     const host=$('kmStats');if(!host)return;
     const n=_roster.length;
@@ -23222,7 +23277,11 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
     const row=_roster.find(x=>String(x.handle||'').toLowerCase()===String(handle||'').toLowerCase());
     if(!row){body.innerHTML='<p class="sub">no file for '+esc(handle)+'</p>';return;}
     const uid=_ambUids[String(handle||'').toLowerCase()]||null;
-    let prof=null,app=null,trade=null,wire=[];
+    /* #book — 'book not read' is the STARTING state, not ''. If the pull below
+       never happens, the page must say so: an empty book rendered as though it
+       were read prints "not one line in either record" against a member, which
+       on this screen is an accusation manufactured out of a network fault. */
+    let prof=null,app=null,trade=null,wire=[],book=[],bookErr='book not read';
     try{
       const [p,a2,t2,w2]=await Promise.all([
         window.SB.from('profiles').select('*').eq('handle',row.handle).maybeSingle(),
@@ -23232,7 +23291,22 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
       ]);
       prof=(p&&p.data)||null; app=(a2&&a2.data)||null; trade=(t2&&t2.data)||null; wire=(w2&&w2.data)||[];
     }catch(e){}
-    _mem={handle:row.handle,row:row,uid:uid,prof:prof,app:app,trade:trade,wire:wire};
+    /* #book — issued on its OWN wire, deliberately not inside the Promise.all
+       above. Two reasons: a slow book must not hold up the profile, the desks
+       and the wire; and a throw in there would have reset all four to empty
+       with nothing on screen to say why. Keyed on the HANDLE, not the uid —
+       the uid map comes from a separate profiles pull and can be missing a
+       hand; the rpc resolves it server-side. */
+    try{
+      const b2=await window.SB.rpc('km_book',{p_handle:row.handle,p_limit:400});
+      if(b2&&b2.error)bookErr=b2.error.message||'book failed';
+      /* data that isn't a row set is a BROKEN READ, not an empty book. Coercing
+         it to [] would print "not one line in either record" — an accusation —
+         because the wire misbehaved. */
+      else if(b2&&b2.data!=null&&!Array.isArray(b2.data))bookErr='the book came back in an unexpected shape';
+      else { book=(b2&&b2.data)||[]; bookErr=''; }
+    }catch(e7){ bookErr=(e7&&e7.message)||'book failed'; }
+    _mem={handle:row.handle,row:row,uid:uid,prof:prof,app:app,trade:trade,wire:wire,book:book,bookErr:bookErr};
     kmMemberDraw();
   };
   function kmMemberDraw(){
@@ -23267,6 +23341,14 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
       +tile(since?since.toLocaleDateString([],{month:'short',year:'numeric'}):'—','ABOARD SINCE')
       +tile(hrsY!=null?hrsY.toLocaleString():'—','HOURS THIS YEAR')
       +'</div>'
+      /* #book — wrapped. kmMemberDraw() runs OUTSIDE kmMemberOpen's try, and
+         kmMemberOpen is called without await, so a throw in here would be an
+         unhandled rejection that leaves the page frozen on "pulling their
+         file…" — taking SEND WORD, the mint, ban, the key and the ambassador
+         levers with it. A book that can't be drawn must cost nothing else. */
+      +(function(){try{return kmMemBook();}catch(e8){
+        return '<div class="card-h" style="margin-top:16px">Their book</div>'
+              +'<div class="sub" style="margin-top:6px;color:var(--ember)">book unavailable — '+esc((e8&&e8.message)||'unknown')+'</div>';}})()
       +'<div class="card-h" style="margin-top:16px">The levers</div>'
       +'<div class="sub" style="margin:6px 0 2px">Word to them — lands on their next open</div>'
       +'<textarea class="field" id="mmWord" rows="2" style="width:100%;resize:vertical;margin-bottom:6px" placeholder="Straight talk — also rides along as the notice on ban and key moves"></textarea>'
@@ -23288,6 +23370,105 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
       +(desks?'<div class="card-h" style="margin-top:16px">On the desks</div>'+desks:'')
       +'<div class="card-h" style="margin-top:16px">Their wire — reports &amp; ideas'+(wireNew?' <span class="pill" style="border-color:rgba(77,226,255,.5);color:#4de2ff">'+wireNew+' new</span>':'')+'</div>'
       +'<div style="margin-top:6px">'+wireHTML+'</div>';
+  }
+  /* ═══ #book(aug16) — the same statement the member reads in THE BANK ═══
+     Two records are merged into one column, newest first, and each line says
+     which one it came from:
+       · ledger — buck_ledger, written server-side. Carries the running balance
+                  after the move, so the arithmetic can be read straight down
+                  the page, and marks a pack bought with real money.
+       · book   — bucks_book, written by the app from the PHONE once the bank
+                  confirms. No running balance. This is the line the MEMBER sees.
+     A line that exists only in the book is not proof of anything on its own —
+     the phone wrote it. That is why 'ledger' is named on the rows that have it,
+     and why DRIFT is the flag that matters most. */
+  function kmMemBookLines(rows){
+    return rows.map(function(x){
+      const d=+x.delta||0;
+      const amt=d===0?'<b class="mono" style="color:var(--steel)">⬡</b>'
+        :'<b class="mono" style="color:'+(d>0?'var(--ok)':'var(--ember)')+'">'+(d>0?'+':'')+d.toLocaleString()+' ⬡</b>';
+      const who=(x.who&&x.who!=='self')
+        ?(x.who==='system'?'<span class="pill" style="margin-left:6px;font-size:9.5px">⚙ system</span>'
+                          :'<span class="pill gold" style="margin-left:6px;font-size:9.5px">☠ '+esc(x.who)+'</span>')
+        :'';
+      const paid=x.paid?'<span class="pill gold" style="margin-left:6px;font-size:9.5px">$ pack</span>':'';
+      /* no date is better than a fabricated one. _dt(null) renders
+         "Jan 1 · 12:00 AM" — a real-looking timestamp on the one screen whose
+         entire purpose is when things happened. */
+      const foot=[x.ts?_dt(x.ts):'no date', x.src==='ledger'?'ledger':'book only'];
+      if(x.balance_after!=null)foot.push('→ '+(+x.balance_after).toLocaleString()+' ⬡ after');
+      /* the reason is the identifying part of a line — 'docket sealed · board
+         2026-08-15' says WHICH board. It gets the full width and wraps; the
+         timestamp and the source drop to a quiet second line rather than
+         squeezing it into an ellipsis. */
+      return '<div style="border-bottom:1px solid var(--line-soft);padding:7px 0">'
+        +'<div style="display:flex;gap:8px;align-items:baseline">'
+        +'<span style="flex:none;min-width:70px;text-align:right">'+amt+'</span>'
+        +'<span style="flex:1;min-width:0;line-height:1.45;word-break:break-word">'+esc(x.reason||'—')+who+paid+'</span>'
+        +'</div>'
+        +'<div class="mono" style="color:var(--steel);font-size:9.5px;margin-top:3px">'+esc(foot.join(' · '))+'</div>'
+        +'</div>';
+    }).join('');
+  }
+  function kmMemBook(){
+    if(!_mem)return '';
+    const rows=Array.isArray(_mem.book)?_mem.book:[], err=_mem.bookErr||'', sc=kmScanOf(_mem.handle);
+    const head='<div class="card-h" style="margin-top:16px">Their book'
+      +(rows.length?' <span class="pill">'+rows.length+(rows.length>=400?'+':'')+' line'+(rows.length===1?'':'s')+'</span>':'')+'</div>';
+    if(err){
+      return head+'<div class="sub" style="margin-top:6px">'
+        +(/could not find|PGRST202|does not exist|schema cache/i.test(err)
+          ?'<span style="color:var(--steel)">The books aren\u2019t open yet — run <b style="color:var(--bone)">MEMBER-BOOK.sql</b> once in Supabase. Until then only the member can read their own statement.</span>'
+          :'<span style="color:var(--ember)">'+esc(err)+' — this is the wire failing, not a finding about '+esc(_mem.handle)+'.</span>')
+        +'</div>';
+    }
+    /* the reckoning strip: what the card says, what the lines say, and the gap */
+    let strip='';
+    if(sc){
+      const drift=+sc.drift||0, fl=kmFlagsOf(sc);
+      /* only clauses that actually say something. A hand who bought a pack and
+         did nothing else should not read 'biggest single credit 0 ⬡'. */
+      const bits=[];
+      if(+sc.paid_in)bits.push('bought with real money '+(+sc.paid_in).toLocaleString()+' ⬡');
+      if(+sc.big_credit)bits.push('biggest single credit '+(+sc.big_credit).toLocaleString()+' ⬡');
+      if(sc.hot_day&&+sc.hot_day_earn)bits.push('busiest day '+(+sc.hot_day_earn).toLocaleString()+' ⬡ ('+esc(String(sc.hot_day))+')');
+      if(+sc.carried)bits.push('carried in at sign-in '+(+sc.carried).toLocaleString()+' ⬡');
+      if(+sc.churn)bits.push((+sc.churn)+' seal/strike cycle'+((+sc.churn)===1?'':'s'));
+      if(+sc.breaks)bits.push((+sc.breaks)+' broken link'+((+sc.breaks)===1?'':'s')+' in the chain');
+      strip='<div style="border:1px solid '+(drift?'rgba(255,107,74,.45)':'var(--line-soft)')+';border-radius:10px;padding:9px 10px;margin-top:8px">'
+        +'<div class="mono" style="font-size:11px;line-height:1.8">'
+        +'ON THE CARD <b style="color:var(--copper-hi)">'+(+sc.stack||0).toLocaleString()+' ⬡</b>'
+        +' · WRITTEN DOWN <b style="color:var(--bone)">'+(+sc.booked||0).toLocaleString()+' ⬡</b>'
+        +'</div>'
+        +'<div style="margin-top:6px">'
+        +(drift?'<span class="pill red">'+(drift>0?'+':'')+drift.toLocaleString()+' ⬡ UNACCOUNTED</span>'
+               :'<span class="pill grn">IT ADDS UP</span>')
+        +'</div>'
+        /* say which record was read. 'it adds up' against the wrong record is
+           worth nothing, and the Keymaster should never have to guess. */
+        +'<div class="sub" style="color:var(--steel);margin-top:5px;font-size:10.5px">counted against '
+        +esc(BOOK_BASIS[sc.basis]||sc.basis||'—')
+        +' · ledger '+(+sc.ledger_n||0)+' line'+((+sc.ledger_n||0)===1?'':'s')
+        +' · book '+(+sc.book_n||0)+' line'+((+sc.book_n||0)===1?'':'s')+'</div>'
+        +(bits.length?'<div class="sub" style="color:var(--steel);margin-top:6px;font-size:10.5px;line-height:1.6">'+bits.join(' · ')+'</div>':'')
+        +(fl.length
+          ?'<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:7px">'+kmFlagPills(sc,true)+'</div>'
+           +'<div class="sub" style="color:var(--steel);margin-top:5px;line-height:1.6;font-size:10.5px">'
+           +fl.map(f=>'<b style="color:var(--warn)">'+esc(f)+'</b> — '+(BOOK_WHY[f]||'')).join('<br>')
+           +'</div>'
+          :'')
+        +'</div>';
+    }else{
+      strip='<div class="sub" style="margin-top:6px;color:var(--steel)">'
+        +(_scanErr?'The reckoning needs the roster scan, and it failed — the lines below are still theirs.'
+                  :(_scanOK?'No reckoning for this hand — the scan didn\u2019t return a row for them.'
+                           :'reading the reckoning…'))
+        +'</div>';
+    }
+    const body=rows.length
+      ?'<div style="max-height:300px;overflow-y:auto;margin-top:8px">'+kmMemBookLines(rows)+'</div>'
+      :'<div class="sub" style="margin-top:8px;color:var(--steel)">The book was read and came back empty — not one line in either record. If their stack is above zero, that gap is the finding.</div>';
+    return head+strip+body;
   }
   const mb=$('kmMemBody');
   if(mb)mb.addEventListener('click',async function(e){
@@ -23375,6 +23556,61 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
     if(!a.error)_ambs=a.data||[];
     if(!m.error)_ambMems=m.data||[];
     if(!p.error){_ambUids={};_profSince={};(p.data||[]).forEach(x=>{if(x&&x.handle){_ambUids[String(x.handle).toLowerCase()]=x.id;_profSince[String(x.handle).toLowerCase()]=x.since||null;}});}
+  }
+  /* ═══ #book(aug16) — THE BOOK, READ FROM THE DESK ═══
+     A member reads their own statement in THE BANK. The Keymaster could not read
+     anyone else's — bucks_book and buck_ledger are locked to their owner by RLS,
+     which is correct and stays. km_book() / km_book_scan() (run MEMBER-BOOK.sql
+     once) are keymaster-guarded and read past it, so the same book opens on any
+     hand's page here. The scan rides the roster pull: one call for all 132, and
+     every flag on this screen comes out of it — so a row's ⚠, the suspects list
+     and the member page can never disagree about what a hand's book says.
+
+     THREE STATES, NOT TWO. _scanOK is the difference between "every book adds
+     up" and "nobody has looked yet". On a screen whose whole job is catching
+     theft, an all-clear painted from an empty object is the worst possible
+     default — and it is reachable without any error at all, just by typing in
+     the filter box while the roster is still loading. */
+  let _scan={}, _scanErr='', _scanOK=false;
+  async function kmScanLoad(){
+    _scanErr=''; _scanOK=false;
+    if(!window.SB)return;
+    const r=await window.SB.rpc('km_book_scan');
+    if(r&&r.error){ _scanErr=r.error.message||'scan failed'; return; }
+    const rows=(r&&r.data)||[];
+    /* SHAPE CHECK. If flags ever comes back as anything but an array, every
+       reader here quietly sees zero flags — and the panel would print a green
+       "every book adds up" built on data it failed to understand. A silent
+       all-clear is worse than an error, so refuse to interpret it. */
+    if(!Array.isArray(rows)||rows.some(x=>x&&x.flags!=null&&!Array.isArray(x.flags))){
+      _scanErr='the scan came back in a shape this build doesn’t know — is MEMBER-BOOK.sql the matching version?';
+      return;
+    }
+    const t={};
+    rows.forEach(x=>{ if(x&&x.handle)t[String(x.handle).toLowerCase()]=x; });
+    _scan=t; _scanOK=true;   /* swapped in whole — never half-filled */
+  }
+  function kmScanOf(h){ return _scan[String(h||'').toLowerCase()]||null; }
+  /* flags is the one field every new surface reads. Normalise it in ONE place:
+     if the column ever comes back as text instead of text[], .join/.map would
+     throw inside kmRosterDraw's map and take the entire roster down with it. */
+  function kmFlagsOf(sc){ return (sc&&Array.isArray(sc.flags))?sc.flags:[]; }
+  /* red = the book contradicts itself or the stack. gold = worth opening, not proof. */
+  const BOOK_RED={'DRIFT':1,'CHAIN BREAK':1,'NO LINES':1,'BLANK REASON':1,'BURST':1,'CHURN':1};
+  const BOOK_WHY={
+    'DRIFT':'no reading of the records explains the stack — ⬡ moved without writing a line',
+    'CHAIN BREAK':'a ledger row\u2019s running balance doesn\u2019t follow the one before it',
+    'NO LINES':'a stack above zero with nothing written down in either record',
+    'CHURN':'sealing dockets and striking them straight back, over and over',
+    'BURST':'a pile of credits inside sixty seconds — a held button, or a loop',
+    'HOT DAY':'one day paid out more than the card can honestly pay',
+    'BIG CREDIT':'a single credit far past anything the app hands out',
+    'BLANK REASON':'lines with no reason on them — apply_bucks called by hand',
+    'CARRY':'balance carried in from the phone\u2019s own storage at sign-in'
+  };
+  const BOOK_BASIS={'ledger':'the server ledger','book':'the app\u2019s book','both':'both records','none':'nothing'};
+  function kmFlagPills(sc,small){
+    return kmFlagsOf(sc).map(f=>'<span class="pill '+(BOOK_RED[f]?'red':'gold')+'"'+(small?' style="font-size:9.5px"':'')+'>'+esc(f)+'</span>').join('');
   }
   let _wireUnhandled={};   /* #mempage — uid → count of reports waiting */
   async function kmWireLoad(){
@@ -23887,6 +24123,7 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
     await probe('board_wire','run noflop_wire.sql');
     await probe('board_week','run BOARDS-WEEK.sql (the week board view)');
     await probe('bucks_book','run BUCKS-BANK.sql');
+    await probe('buck_ledger','the server-side ledger — MEMBER-BOOK.sql reads it');
     await probe('messages','run SOCIAL-SETUP.sql');
     await probe('rooms','run SOCIAL-SETUP.sql');
     await probe('message_reactions','run CHAT-REACT.sql');
@@ -23911,6 +24148,12 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
       if(r&&r.error)add('rpc km_roster',false,(r.error.code||'')+' '+r.error.message+(/could not find|PGRST202/i.test(String(r.error.message)+String(r.error.code||''))?' — the keymaster rpc bundle isn\'t installed':' — installed but refused (is this account crowned?)'));
       else add('rpc km_roster',true,'installed, '+((r.data&&r.data.length)||0)+' hands on the roster');
     }catch(e){add('rpc km_roster',false,String((e&&e.message)||e));}
+    /* #book — the two functions the Command Center reads every book through */
+    try{const r=await window.SB.rpc('km_book_scan');
+      if(r&&r.error)add('rpc km_book_scan',false,(r.error.code||'')+' '+r.error.message+(/could not find|PGRST202/i.test(String(r.error.message)+String(r.error.code||''))?' — run MEMBER-BOOK.sql':' — installed but refused (is this account crowned?)'));
+      else{const bad=((r&&r.data)||[]).filter(x=>((x&&Array.isArray(x.flags)?x.flags:[]).length>0));
+        add('rpc km_book_scan',true,(((r&&r.data)||[]).length)+' book(s) read, '+bad.length+' with something to answer for');}
+    }catch(e){add('rpc km_book_scan',false,String((e&&e.message)||e));}
     try{console.table(out);}catch(e){}
     const bad=out.filter(x=>x.state==='✗');
     try{toast(bad.length?('✗ '+bad.length+' wire(s) down — see the console'):'⚓ every wire answers');}catch(e){}
