@@ -10067,6 +10067,30 @@ function findTerminal(code){
   hit=TERMINALS.find(t=>((t.berths+" "+t.operator+" "+(t.aka||"")).toLowerCase().replace(/\s+/g,"")).includes(q));
   return hit||null;
 }
+/* #berthlog(aug15) — SSA runs FIVE separate docks (Matson LB 56-74, Zim LB 88-96,
+   Cosco 243-245, Cosco 266-270, the Tower 205-207) and the log only ever stored the
+   operator code. findTerminal("SSA") returns the first one on the list, so every SSA
+   job — Zim, Cosco, the Steel Dock — came back as Matson and pointed "To the Gate"
+   at the wrong end of the harbor. A docket now carries the berth it was sealed at
+   (j.berth) and this pairs the two. Dockets sealed before today have no berth and
+   fall through to the old behaviour untouched. */
+function dkTerminal(j){
+  if(!j)return null;
+  if(j.dock){   /* the Tower and the Steel Dock BOTH print LB 205-207 — only the name splits them */
+    const hit=TERMINALS.find(t=>(t.aka||"").toUpperCase()===String(j.dock).toUpperCase());
+    if(hit)return hit;
+  }
+  if(j.berth){
+    const op=String(j.terminal||"").toUpperCase();
+    let hit=TERMINALS.find(t=>t.operator.toUpperCase()===op&&t.berths.toUpperCase()===String(j.berth).toUpperCase());
+    if(hit)return hit;
+    try{ hit=TERMINALS.find(t=>t.operator.toUpperCase()===op&&berthMatch(j.berth,t.berths)); }catch(e){ hit=null; }
+    if(hit)return hit;
+    hit=findTerminal(j.berth);
+    if(hit)return hit;
+  }
+  return findTerminal(j.terminal);
+}
 const PORT_NOTES={ // layout notes — the Keymaster photographs a map every job until all are in
   "APM":"TI 400-405 · Maersk. Huge footprint — rows run numbered from the shipside gate; rails check-in is a separate pin south of the stacks.",
   "FMS":"TI 300-304 · Fenix/APL. Dockwork, rails & all clerks share the north gate; shipside is its own pin down Terminal Way."
@@ -10159,7 +10183,7 @@ function renderDockets(){
   }
   [...DOCKETS].sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))).forEach(j=>{
     const p=estPay(j);const catCls=(j.category||"").startsWith("CLERK")?"CLERK":j.category;
-    const t=findTerminal(j.terminal);
+    const t=dkTerminal(j);   // #berthlog — operator + berth, not operator alone
     // #48 — board code retired; the spot now opens the terminal's interactive yard map
     const ymOp=(t?t.operator:(j.terminal||'')).replace(/'/g,"");
     const ymLabel=(t?[t.aka,t.operator].filter(Boolean).join(' · '):(j.terminal||'—')).replace(/'/g,"");
@@ -10245,7 +10269,7 @@ document.getElementById('strikeEdit').addEventListener('click',e=>{
   document.getElementById('strikeSheet').classList.remove('on');
   if(!j)return;
   document.getElementById('njShip').value=(j.ship&&j.ship!=="—")?j.ship:"";
-  document.getElementById('njTerm').value=j.terminal==="\u2014"?"":j.terminal;
+  document.getElementById('njTerm').value=j.terminal==="\u2014"?"":(j.dock||j.berth||j.terminal);   // #berthlog — reopen on the dock, not the company
   document.getElementById('njCat').value=j.category||"";
   njSetShift(j.shift||njDefaultShift()); // #49 — injects HootOwl only for legacy hoot entries
   document.getElementById('njDate').value=j.date;
@@ -10587,28 +10611,37 @@ function restViolation(j, ignoreId){
    by operator, by AKA, or by berth number inside a listed range. Anything else is blocked
    and pointed at Ports → "Send word" (those reports land in the Keymaster panel when it ships). */
 const TERM_ALIASES={"EVERPORT":"ETS","PIER 400":"APM"}; // names that appear on dockets but not in our data strings
-function termResolve(raw){
+/* #berthlog(aug15) — this used to answer with a bare operator code, which threw away
+   the one thing that tells five SSA docks apart. It now returns the matched TERMINAL
+   ROW; termResolve keeps its old signature on top of it so every existing caller is
+   unaffected, and the seal reads .berths off the row to stamp the docket. */
+function termResolveTerm(raw){
   if(!raw)return null;
   const q=raw.trim().toUpperCase().replace(/\s+/g," ");
-  if(TERM_ALIASES[q])return TERM_ALIASES[q];
+  if(TERM_ALIASES[q]){
+    const a=TERM_ALIASES[q].toUpperCase();
+    const t=TERMINALS.find(x=>x.operator.toUpperCase()===a);
+    if(t)return t;
+  }
   const berthQ=q.match(/^(TI|LB|LA)\s*(\d{1,3})$/); // berth-number input: range-match only, never substring ("LB 26" must not hit "LB 266-270")
   for(const t of TERMINALS){
     const op=t.operator.toUpperCase(), aka=(t.aka||"").toUpperCase(), br=t.berths.toUpperCase();
-    if(q===op)return t.operator;
-    if(aka&&(q===aka||(q.length>=3&&(aka.includes(q)||q.includes(aka)))))return t.operator;
-    if(q===br||(!berthQ&&q.length>=3&&br.includes(q)))return t.operator;
+    if(q===op)return t;
+    if(aka&&(q===aka||(q.length>=3&&(aka.includes(q)||q.includes(aka)))))return t;
+    if(q===br||(!berthQ&&q.length>=3&&br.includes(q)))return t;
   }
   if(berthQ){
     for(const t of TERMINALS){
       const b=t.berths.toUpperCase().match(/^(TI|LB|LA)\s*(\d+)(?:-(\d+))?/);
       if(b&&b[1]===berthQ[1]){
         const n=+berthQ[2],lo=+b[2],hi=b[3]?+b[3]:lo;
-        if(n>=lo&&n<=hi)return t.operator;
+        if(n>=lo&&n<=hi)return t;
       }
     }
   }
   return null;
 }
+function termResolve(raw){ const t=termResolveTerm(raw); return t?t.operator:null; }
 (function(){ // fill the picker with every listed terminal
   const dl=document.getElementById('termList');if(!dl)return;
   TERMINALS.forEach(t=>{const o=document.createElement('option');
@@ -10652,7 +10685,10 @@ function attachAutocomplete(input, getItems){
     menu.innerHTML=rows.map((it,i)=>'<button type="button" class="ac-opt" data-i="'+i+'"><span class="ac-code">'+acEsc(it.value)+'</span>'+(it.label?'<span class="ac-lbl">'+acEsc(it.label)+'</span>':'')+'</button>').join("");
     hi=-1; menu.style.display='block';
   }
-  function pick(i){const it=rows[i]; if(!it)return; input.value=it.value; close();
+  /* #berthlog — a picked row fills `fill` when the item has one. The terminal list
+     sets fill to the BERTH, because tapping "Zim · LB 88-96" used to drop "SSA" in
+     the box and SSA resolves to Matson. Items without a fill behave as before. */
+  function pick(i){const it=rows[i]; if(!it)return; input.value=(it.fill||it.value); close();
     input.dispatchEvent(new Event('input',{bubbles:true})); input.dispatchEvent(new Event('change',{bubbles:true}));}
   input.addEventListener('focus',render);
   input.addEventListener('input',render);
@@ -10674,7 +10710,13 @@ function attachAutocomplete(input, getItems){
 (function(){
   function jobItems(){return Object.keys(JOB_CATALOG).filter(c=>JOB_CATALOG[c].casual!==false).sort().map(c=>{
     const e=JOB_CATALOG[c]; return {value:c,label:(e.name||c)+(e.diff?' (+$'+e.diff.toFixed(2)+')':'')};});}
-  function termItems(){return TERMINALS.map(t=>({value:t.operator,label:(t.aka?t.aka+" · ":"")+t.berths}));}
+  function termItems(){
+    /* two rows share "LB 205-207" (the Tower and the Steel Dock) — for those the berth
+       can't tell them apart, so fill the aka instead, which resolves cleanly. */
+    const dup={}; TERMINALS.forEach(t=>{dup[t.berths]=(dup[t.berths]||0)+1;});
+    return TERMINALS.map(t=>({value:t.operator,label:(t.aka?t.aka+" · ":"")+t.berths,
+      fill:(dup[t.berths]>1?(t.aka||t.operator):t.berths)}));
+  }
   attachAutocomplete(document.getElementById('njCat'), jobItems);
   attachAutocomplete(document.getElementById('njTerm'), termItems);
 })();
@@ -10701,7 +10743,10 @@ document.getElementById('njAdd').onclick=()=>{
   /* #57 / #29 — the log only takes terminals we track. An unlisted terminal can't be
      sealed; instead the member is walked straight into "send word" with the report
      pre-filled, so the request reaches the Keymaster for review. */
-  const termOk=termResolve(terminal);
+  const termHit=termResolveTerm(terminal);          // #berthlog — the DOCK, not just the operator
+  const termOk=termHit?termHit.operator:null;
+  const termBerth=termHit?termHit.berths:undefined;
+  const termDock=termHit?(termHit.aka||undefined):undefined;
   if(!termOk){
     shConfirm('"'+terminal+'" isn\'t a terminal The Order has listed, so it can\'t go in the log yet.\n\nSend word to the Keymaster so it gets added?',
       ()=>{gotoTab('ports');if(typeof openWordSheetTerm==='function')openWordSheetTerm(terminal);},
@@ -10720,7 +10765,7 @@ document.getElementById('njAdd').onclick=()=>{
      shortage of calendar dates. ISO strings compare correctly as text. */
   if(date>todayISO()){alert("That shift hasn't happened yet — you can't seal a docket for a future date.");return;}
 
-  const j={date,ship:ship||"—",terminal:termOk,category,shift,start:start||undefined,hours:hours||undefined,flex:flex||undefined,clerkPct:clerkPct||undefined,board:"",queue:"",photo:(window.scanThumb||null),_id:Date.now()};
+  const j={date,ship:ship||"—",terminal:termOk,berth:termBerth,dock:termDock,category,shift,start:start||undefined,hours:hours||undefined,flex:flex||undefined,clerkPct:clerkPct||undefined,board:"",queue:"",photo:(window.scanThumb||null),_id:Date.now()};
   const editId=window.njEditId||null;
   if(isDupDocket(j,editId)){alert("You already logged this job — same terminal, shift, and date. No duplicate sealed.");return;}
   const rest=restViolation(j,editId);
@@ -10730,7 +10775,7 @@ document.getElementById('njAdd').onclick=()=>{
     const ix=DOCKETS.findIndex(x=>x._id==editId);
     if(ix>-1){
       const prev=DOCKETS[ix];
-      DOCKETS[ix]={...prev,date,ship:ship||"—",terminal:termOk,category,shift,start:start||prev.start||undefined,hours:hours||undefined,flex:(start?flex:prev.flex)||undefined,clerkPct:clerkPct||undefined,photo:prev.photo}; // #27 — no start typed = keep the old flex
+      DOCKETS[ix]={...prev,date,ship:ship||"—",terminal:termOk,berth:termBerth,dock:termDock,category,shift,start:start||prev.start||undefined,hours:hours||undefined,flex:(start?flex:prev.flex)||undefined,clerkPct:clerkPct||undefined,photo:prev.photo}; // #27 — no start typed = keep the old flex
       if(shift==="HootOwl"&&hours>0)setLearnedHoot(hours); // learn the real hoot length
       if(hours>0){ learnJob(category, null, hours, null); renderJobDatalist(); } // remember corrected hours
       saveDK();renderDockets();drawWG();checkMarks();
@@ -17173,7 +17218,7 @@ function dktEd1(a,b){ /* edit distance <= 1 */
   return true;
 }
 function parseDocket(t, knownId){
-  const p={pos:null,terminal:null,ship:null,date:null,cat:null,shift:null};
+  const p={pos:null,terminal:null,berth:null,ship:null,date:null,cat:null,shift:null};
   if(!t)return p;
   const rawLines=t.split("\n").map(s=>s.trim()).filter(s=>s&&/[A-Za-z0-9]/.test(s));
   const lines=rawLines.map(s=>s.toUpperCase());
@@ -17313,7 +17358,13 @@ function parseDocket(t, knownId){
         if(Ln===T||new RegExp("\\b"+T.replace(" ","\\s+")+"\\b").test(Ln)||(T.length>=3&&Ln.length>=2&&Ln.length<=8&&dktEd1(Ln,T))){isTerm=true;break;}
       }
       if(isTerm)break;
-      if(berthRe.test(L)){berthSkipped=true;continue;} /* the berth line: TI 218 / LB 140 / 136 */
+      if(berthRe.test(L)){
+        berthSkipped=true;
+        /* #berthlog — this line was read and thrown away. It's the berth (TI 218 /
+           LB 96 / 136) and it's the only thing on the slip that says WHICH SSA dock. */
+        if(!p.berth){const bl=Ln.replace(/\s+/g," ").trim(); if(/\d/.test(bl))p.berth=bl;}
+        continue;
+      }
       if(!berthSkipped&&!shipLines.length&&Ln.replace(/ /g,"").length<=7){berthSkipped=true;continue;} /* mangled berth: "BR. LB" */
       if(L.replace(/[^A-Z]/g,"").length<3)continue; /* junk */
       if(shipLines.length&&Ln.replace(/ /g,"").length<5)break; /* ship block over; short trailing junk */
@@ -17342,6 +17393,16 @@ function parseDocket(t, knownId){
   }
   return p;
 }
+/* #berthlog — a slip names BOTH the operator (SSA) and the berth (LB 96). The berth
+   picks the dock, but only INSIDE the operator the scan actually read: a misread berth
+   must never move a job to another company's gate, so on disagreement the operator wins. */
+function scanTerm(p){
+  if(!p||typeof termResolveTerm!=='function')return null;
+  const bt=p.berth?termResolveTerm(p.berth):null;
+  const tt=p.terminal?termResolveTerm(p.terminal):null;
+  if(bt&&tt)return bt.operator===tt.operator?bt:tt;
+  return bt||tt||null;
+}
 function sealScan(p){
   const w=liveWindow();
   const rawShift=p.shift||((w==="DAY"||(!w&&nowLA().getHours()<14))?"Day":"Night");
@@ -17357,9 +17418,12 @@ function sealScan(p){
     try{scanHandOff(p);}catch(e){}
     return;
   }
+  const _hit=scanTerm(p);   // #berthlog — operator + berth read off the slip together
   const j={date:p.date||todayISO(),
     ship:p.ship||"—",
-    terminal:p.terminal||"\u2014",
+    terminal:(_hit?_hit.operator:(p.terminal||"\u2014")),
+    berth:(_hit?_hit.berths:undefined),
+    dock:(_hit?(_hit.aka||undefined):undefined),
     category:p.cat||"S",
     shift:trS.shift,start:p.start||undefined,flex:trS.flex||undefined,
     board:"",queue:"",photo:(window.scanThumb||null),_id:Date.now()};
@@ -17376,7 +17440,9 @@ function sealScan(p){
 }
 function scanHandOff(p){
   gotoTab('dockets');
-  if(p.terminal)document.getElementById('njTerm').value=p.terminal;
+  const _h=scanTerm(p);   // #berthlog — hand the form the DOCK when the slip gave us one
+  if(_h)document.getElementById('njTerm').value=_h.berths;
+  else if(p.terminal)document.getElementById('njTerm').value=p.terminal;
   if(p.ship)document.getElementById('njShip').value=p.ship;
   if(p.date)document.getElementById('njDate').value=p.date;
   if(p.cat)document.getElementById('njCat').value=p.cat;
@@ -17673,7 +17739,7 @@ window.renderHarborBoard=function(){
     const _all=(typeof DOCKETS!=='undefined'&&Array.isArray(DOCKETS))?DOCKETS:[];
     const _mine=_all.filter(j=>j&&j.date===_today);
     let _live=null,_term=null;
-    for(let i=0;i<_mine.length;i++){ const t=findTerminal(_mine[i].terminal); if(t){ _live=_mine[i]; _term=t; break; } }
+    for(let i=0;i<_mine.length;i++){ const t=(typeof dkTerminal==='function')?dkTerminal(_mine[i]):findTerminal(_mine[i].terminal); if(t){ _live=_mine[i]; _term=t; break; } }   // #berthlog
     if(!_live && _mine.length) _live=_mine[_mine.length-1];
     const _total=_all.length;
     const _last=_all.reduce((a,j)=>(j&&j.date&&(!a||j.date>a.date))?j:a,null);
