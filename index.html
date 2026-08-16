@@ -4163,6 +4163,28 @@ function wipeAcct(){try{localStorage.removeItem('shadowhook_account')}catch(e){}
 const savedAcct=loadAcct();
 let ACCT_ID=(savedAcct&&savedAcct.id)?savedAcct.id:"anon";
 function K(s){return "shadowhook_"+s+"_"+ACCT_ID;}
+/* #markspay(aug16) — "THIS CARD'S RECORD OF WHAT IT HAS PAID FOR IS GONE."
+   Keyed by K('markspaid') — the payment record, NOT the wall — and set the moment any
+   reader finds that key holding something other than a real array: the empty string,
+   junk, a non-array, or the boot seeding finding neither record readable. While it is
+   set, unlockBadge RECORDS marks and pays for NONE of them, for the rest of the
+   session, and rebuilds the key so the next open is clean.
+   Declared HERE, immediately under K() and above every reader, rather than down beside
+   BADGES where it started: reloadAcctBucks() sits 1,300 lines above that point and now
+   reaches it through _seedMarksPaid(). Function declarations hoist; a const does not,
+   and a temporal-dead-zone throw in the seeding path would leave the payment record
+   absent — which reads as "nothing paid" and buys the whole wall again. That is the
+   #fix3(bucks) lesson about `typeof` not protecting a let/const, applied before it
+   could bite. Nothing can now read this before it exists.
+   Why a session flag and not a per-call check: unlockBadge heals the key on the first
+   mark it sees, which makes the key readable again — so without this, only the FIRST
+   mark of a re-derived wall was protected and the other 89 paid out normally. That is
+   a 2,640 ⬡ hole in the middle of the fix for a 3,210 ⬡ hole. The heal has to stop the
+   whole cascade, not the first step of it.
+   The cost is one session in which a genuinely new mark records without paying. That is
+   the direction to be wrong in: the member can earn it again tomorrow, and by then the
+   key is a real array and pays normally. Re-minting a wall cannot be taken back. */
+const _MARK_LEDGER_LOST=Object.create(null);
 /* ═══════════ #rates(aug15) — THE RATE CARD, IN ONE PLACE ═══════════
    Every ⬡ payout used to be a bare integer sitting next to the code that paid it —
    ten of them, across 9,000 lines, with the rules sheet hand-copied from memory and
@@ -4330,6 +4352,18 @@ function mergeDockets(a,b){
        user_kv rows and scattered to D492's other devices. */
     if(key.slice(-(('_'+a).length))!=='_'+a) return false;
     if(key==='shadowhook_credits_'+a) return false;
+    /* #markspay(aug16) — THE PAYMENT RECORD DOES NOT RIDE THE MIRROR, ON PURPOSE.
+       shadowhook_badges_<card> is the WALL: display state, and it has to sync so a
+       member's marks show up on their other phone. shadowhook_markspaid_<card> is a
+       different thing wearing the same shape — the record of which marks this card
+       has actually been PAID for. Conflating those two is the whole bug this build
+       fixes: the wall can be replaced by another device, nulled by the server, or
+       land as an empty string, and every one of those used to be read as "owes them
+       money". A payment record must survive all three, so it stays on the device,
+       exactly like the credits key one line up and for exactly the same reason.
+       The honest version of this is a server-side marks_awarded row with a unique
+       constraint; this is what can be done inside the client. */
+    if(key==='shadowhook_markspaid_'+a) return false;
     return true;
   }
   function markDirty(){ try{ _set(DIRTY,'1'); }catch(e){} }
@@ -4500,10 +4534,37 @@ function mergeDockets(a,b){
          and pays another 50 ⬡, and line ~8048 finds the index already listed so the
          second payout leaves no trace. Rebuild the flags whenever the list lands.
          CIRCLE_LVL rides the same mirror and gates what the member is charged. */
+      /* #markssync(aug16) — A MARK IS MONOTONIC: A SYNC MAY ONLY EVER ADD ONE.
+         This used to zero all 112 flags and re-apply from the incoming list, reading
+         it as `JSON.parse(localStorage.getItem(key)||'[]')`. That mapped THREE
+         different things onto "this member has earned nothing":
+           · a DELETE event (apply() removed the key),
+           · the EMPTY STRING the apply() above writes for a null row —
+             String(v!=null?v:''), four lines up,
+           · anything unparseable.
+         And even a clean read wiped the wall down to a SHORTER list, because this row
+         was server-wins-REPLACE while the dockets branch six lines up deliberately
+         MERGES ("a job can only ever be ADDED by a sync"). A second device holding
+         fewer marks was enough. Any of those left the flags cleared while the earned
+         list stayed on disk, and unlockBadge's payout guard read the flags — so the
+         next checkMarks() re-paid the whole wall, PAY.MARK a mark, and the deduped
+         write left no trace. See #markspay in unlockBadge for the other half.
+         Now: never clear, only add, and push the union back so both devices converge
+         upward. Indices this build doesn't know (a newer wall on the other device)
+         are carried through untouched rather than dropped. An unreadable value is
+         left strictly alone — absence of proof is not proof of absence. */
       if(a && key==='shadowhook_badges_'+a && typeof BADGES!=='undefined'){
-        var ids=JSON.parse(localStorage.getItem(key)||'[]');
-        BADGES.forEach(function(b){ b[2]=0; });
-        ids.forEach(function(ix){ if(BADGES[ix]) BADGES[ix][2]=1; });
+        var ids=null;
+        try{ var raw=localStorage.getItem(key);
+             if(raw!==null&&raw!==''){ var p=JSON.parse(raw); if(Array.isArray(p)) ids=p; } }catch(e){ ids=null; }
+        if(ids){
+          ids.forEach(function(ix){ if(BADGES[ix]) BADGES[ix][2]=1; });          // add only
+          var union=[]; BADGES.forEach(function(b,i){ if(b[2]) union.push(i); });
+          ids.forEach(function(ix){ if(union.indexOf(ix)<0) union.push(ix); });  // keep what we don't recognise
+          /* write only when we actually brought something across, so two devices
+             can't ping-pong the same row at each other forever */
+          if(union.length!==ids.length){ try{ localStorage.setItem(key,JSON.stringify(union)); }catch(e){} }
+        }
       }
       if(a && key==='shadowhook_circle_'+a && typeof CIRCLE_LVL!=='undefined'){
         CIRCLE_LVL=Math.min(6,Math.max(1,+localStorage.getItem(key)||1));
@@ -5444,6 +5505,11 @@ function reloadAcctBucks(){
       renderBadges();
     }
   }catch(e){}
+  /* #markspay(aug16) — K() just repointed at a different card. That card's payment
+     record is absent until it is seeded, and an absent record reads as "nothing paid",
+     which would pay for the whole wall on the very next mark. Seed it here, off the
+     wall we just loaded, for the same reason CREDITS and BADGES are re-read above. */
+  try{ if(typeof _seedMarksPaid==='function') _seedMarksPaid('card change'); }catch(e){}
   try{ renderCredits(); }catch(e){}
   try{ circleChip(); renderCircles(); }catch(e){}
 }
@@ -12520,6 +12586,48 @@ document.getElementById('portSearch').addEventListener('input',e=>renderPorts(e.
    ORDER IS SACRED — earned marks persist by index; new marks only ever APPEND. */
 try{window.__bootProg&&__bootProg(76)}catch(e){}   /* #realboot — the wall is going up */
 const RARITY=[["COMMON","#8f979e"],["UNCOMMON","#7fae6a"],["RARE","#eeb46b"],["LEGENDARY","#e8967a"]];
+/* Read a stored list of mark indices. Returns an ARRAY when the value is provably
+   a list, [] when the key is genuinely absent, and NULL for every ambiguous value
+   in between — the empty string the cloud writes for a null row, junk, a non-array.
+   Null means "we do not know", and the one thing this build will not do with "we
+   do not know" is pay money. */
+function _markIdList(key){
+  try{
+    const raw=localStorage.getItem(key);
+    if(raw===null) return [];
+    if(raw==='') return null;
+    const p=JSON.parse(raw);
+    return Array.isArray(p)?p:null;
+  }catch(e){ return null; }
+}
+/* #markspay(aug16) — SEED THE PAYMENT RECORD FROM THE WALL, ONCE PER CARD.
+   Every member upgrading to this build already has a wall and has already been paid
+   for it. If the new key reads absent — "nothing paid" — the first checkMarks pays
+   for their whole history a second time: the exact bug this build exists to stop,
+   reintroduced by the fix for it. So the first time a card is seen, whatever is on
+   its wall is taken as already paid.
+   MUST run on every path that reassigns ACCT_ID, not just at boot — K() repoints at
+   the new card's keys, and that card's payment record is absent until this runs. A
+   card change without it re-mints the whole wall on the next mark. That is the same
+   lesson as #fix(bucks) and #hoursfix: anything account-scoped and read once has to
+   be re-read when the account changes.
+   If NEITHER record is readable, nothing on this device knows the truth — the one
+   state where marks record but no ⬡ moves. unlockBadge rebuilds the key so the next
+   open is clean. */
+function _seedMarksPaid(why){
+  try{
+    const pk=K('markspaid');
+    if(localStorage.getItem(pk)!==null) return;             // already seeded for this card
+    const w=_markIdList(K('badges'));
+    if(w){
+      localStorage.setItem(pk,JSON.stringify(w));
+      try{DEVLOG.data('marks',{ok:true,latest:'paid-marks record seeded from the wall ('+(why||'boot')+') — '+w.length+' mark'+(w.length===1?'':'s')+' carried over as already paid'});}catch(e){}
+    }else{
+      _MARK_LEDGER_LOST[pk]=true;
+      try{DEVLOG.data('marks',{ok:false,latest:'neither the wall nor the paid-marks record is readable ('+(why||'boot')+') — marks will record but nothing pays ⬡ this session'});}catch(e){}
+    }
+  }catch(e){}
+}
 const BADGES=[
  // first steps
  ["⚓","First Blood · first docket",0,0],["🩸","New Blood · joined the Order",0,0],["🌙","Night Owl · first night",0,0],["🦉","Hoot Owl · graveyard run",0,1],
@@ -12541,7 +12649,21 @@ const BADGES=[
  ["📢","Town Crier · shared the Order",0,0],["🕯","Lantern Bearer · recruit verified",0,1],["🗳","Council Voice · voted",0,2],["🗝","Keyholder · Patron's Key",0,3]
 ];
 /* earned marks persist on the device */
-try{(JSON.parse(localStorage.getItem(K('badges')))||[]).forEach(ix=>{if(BADGES[ix])BADGES[ix][2]=1})}catch(e){}
+/* #markspay(aug16) — AN EMPTY STRING IS NOT AN EMPTY LIST. The cloud apply() writes
+   String(v!=null?v:'') for a null row; JSON.parse('') throws; this bare catch then
+   restored ZERO flags and the whole wall read unearned while the earned list sat on
+   disk one key away. The old payout guard read those flags. Restore only from a real
+   array, and say so in the dev log when the value is junk instead of swallowing it —
+   that silence is what made this class of bug invisible for three builds. Same shape
+   reloadAcctBucks was hardened against at #fix3(bucks); these two copies were missed. */
+try{const _br=localStorage.getItem(K('badges'));
+    if(_br===null){ /* key absent — this card has genuinely earned none. Clean slate. */ }
+    else if(_br===''){ throw new Error("empty string — a null cloud row, not an empty wall"); }
+    else{ const _bl=JSON.parse(_br);
+      if(Array.isArray(_bl))_bl.forEach(ix=>{if(BADGES[ix])BADGES[ix][2]=1});
+      else throw new Error('badge list is not an array'); }
+}catch(e){
+  try{DEVLOG.data('marks',{ok:false,latest:'badge list on disk is unreadable ('+((e&&e.message)||e)+') — the wall starts empty this open; unlockBadge rebuilds the key so tomorrow reads clean. Payment is decided by shadowhook_markspaid_<card>, not by this key.'})}catch(_){}}
 const B_PER_PAGE=16;let badgePage=0;   /* #grid4x4(aug13) — 4 across × 4 down (was 20 = 4×5) */
 /* #markswipe2(aug13) — one page's worth of badge tiles as HTML, so both the live wall
    AND the drag-in "next page" pane are built the same way. */
@@ -12674,16 +12796,98 @@ let _marksSilent=false;   // #marksfix(aug13) — true while the load-time catch
 function unlockBadge(ix){ // fire the casino moment for a genuinely new mark
   if(ix<0||!BADGES[ix]||BADGES[ix][2])return;
   BADGES[ix][2]=1;renderBadges();if(!_marksSilent)chime();
-  /* #fix3(bucks) — pay NOW, not on a 600 ms timer. The mark hits disk two lines below
-     and unlockBadge hard-returns on the restored flag, so anything that tore the page
-     down inside that window forfeited the 50 ⬡ permanently, with no toast and no way
-     to ever recover it. Teardown in 600 ms is routine here: the service worker's
-     controllerchange reload fires on every deploy, pull() reloads on first hydrate,
-     and a batch scan can trip three marks at once right before the member closes the
-     app. Quiet, so the mark popup stays the celebration — buckPop still floats it. */
-  if(typeof addCredits==="function"&&!/Port Bucks|High Roller|True North/.test(BADGES[ix][1])){try{addCredits(PAY.MARK,"new mark earned",true)}catch(e){}}
-  try{const s=JSON.parse(localStorage.getItem(K('badges')))||[];if(!s.includes(ix)){s.push(ix);localStorage.setItem(K('badges'),JSON.stringify(s))}}catch(e){}
+  /* #markspay(aug16) — THE STORED LIST DECIDES WHO GETS PAID, NOT THE FLAG.
+     THE BUG: the payout was guarded by the IN-MEMORY flag (line above) while only the
+     disk write was deduped against the stored list. Whenever those two came apart —
+     memory 0, disk already holding ix — the mark paid PAY.MARK ⬡ again and wrote
+     nothing, so the second payout left no trace anywhere on the device. Four routes
+     reached that state with no console involved:
+       · settle() rebuilt the flags from a MISSING, EMPTY or SHORTER server row and
+         zeroed all 112 first (fixed below, at #markssync);
+       · the cloud apply() writes String(v!=null?v:'') — a null row lands as '';
+       · both boot restores JSON.parse that '' , throw, and restore ZERO flags;
+       · settle()'s badge branch is skipped while card() is null (ACCT_ID "anon"),
+         but apply() has already written the server's list to disk.
+     settle() only repaints, so the wipe was silent and detonated on the NEXT
+     checkMarks() — a docket seal, an hours save, a strike, or the next open. That is
+     the "I sealed one docket and got forty marks". Up to 107 × PAY.MARK per event,
+     repeatable, with the badge key byte-identical before and after.
+     THE FIX: the stored list IS the record of what has been paid. Read it, write it,
+     and only then pay. ORDER MATTERS and it is the reverse of #fix3 below: write-then-
+     pay can forfeit ONE award to a teardown in the millisecond between; pay-then-write
+     re-mints the whole wall. The first is a 30 ⬡ bug, the second is a mint.
+     An unreadable or empty value is never treated as "no marks earned" — it heals the
+     key from the wall and pays for NOTHING on that pass. When we cannot prove a mark
+     is unpaid, the honest default is silence, not money.
+     STILL OWED — DO NOT MISTAKE THIS FOR THE WHOLE FIX: this is a localStorage record,
+     so clearing site data still mints, and the app's own troubleshooting advice tells
+     members to clear site data. The durable version is a marks_awarded(user_id,mark_ix)
+     row with a unique constraint, and apply_bucks refusing a "new mark earned" delta
+     unless that insert actually took. Until that ships, this is a curtain, not a wall.
+     ── the #fix3(bucks) note this replaces, kept because the hazard is still real ──
+     pay NOW, not on a 600 ms timer: teardown inside that window forfeited the ⬡
+     permanently, with no toast and no way to recover it. Teardown in 600 ms is routine
+     here — the service worker's controllerchange reload fires on every deploy, pull()
+     reloads on first hydrate, and a batch scan can trip three marks at once right
+     before the member closes the app. The write below is synchronous, so the window is
+     now microseconds instead of 600 ms. Quiet, so the mark popup stays the
+     celebration — buckPop still floats it. */
   const [ic,nm]=BADGES[ix];const parts=nm.split(' · ');
+  const _lk=K('badges'), _pk=K('markspaid');
+
+  /* ── 1. THE WALL — display state. Record the mark; rebuild the key if it is junk. ── */
+  const _wall=_markIdList(_lk);
+  if(_wall===null){
+    /* the empty-string / junk state. Rebuild from what is lit so the NEXT open reads
+       clean. Written here on every call, not once up top, so marks checkMarks derives
+       after this one land in the rebuilt list too. */
+    try{ const _heal=[]; BADGES.forEach(function(b,i){ if(b[2])_heal.push(i); });
+         localStorage.setItem(_lk,JSON.stringify(_heal)); }catch(e){}
+  }else if(!_wall.includes(ix)){
+    _wall.push(ix);
+    try{ localStorage.setItem(_lk,JSON.stringify(_wall)); }catch(e){}
+  }
+
+  /* ── 2. THE MONEY — and nothing but the paid list decides it. ──
+     _pk is device-local (excluded from the mirror in mine()), so a nulled server row,
+     a shorter list from a second device, or an empty string cannot reach it. Write
+     first, pay second: a teardown between the two costs one 30 ⬡ award, where the old
+     order cost the whole wall. */
+  const _paid=_markIdList(_pk);
+  if(_paid===null && !_MARK_LEDGER_LOST[_pk]){
+    _MARK_LEDGER_LOST[_pk]=true;
+    try{ DEVLOG.data('marks',{ok:false,latest:'the paid-marks record is unreadable — rebuilding it, and no mark pays ⬡ for the rest of this session'}); }catch(e){}
+  }
+  if(_MARK_LEDGER_LOST[_pk]){
+    /* We cannot prove this mark is unpaid, so it does not get paid — not this call and
+       not for the rest of the session on this card. The key is rebuilt from the wall
+       plus what is lit, so tomorrow reads clean and pays normally. This is the only
+       branch that can cost a member a mark they honestly earned, and it has to exist:
+       the alternative is the 3,210 ⬡ re-mint this whole build is here to stop.
+       Reached two ways — a junk value here, or the boot seeding finding NEITHER record
+       readable, which is the one state where nothing on this device knows the truth. */
+    try{ const _seed=(_markIdList(_lk)||[]).slice();
+         BADGES.forEach(function(b,i){ if(b[2]&&_seed.indexOf(i)<0)_seed.push(i); });
+         localStorage.setItem(_pk,JSON.stringify(_seed)); }catch(e){}
+  }else if(!_paid.includes(ix)){
+    _paid.push(ix);
+    let _wrote=false;
+    try{ localStorage.setItem(_pk,JSON.stringify(_paid)); _wrote=true; }catch(e){}
+    /* no durable record of the award = no award. Quota-exceeded and Safari private mode
+       land here; holding one payout back beats paying it again on every open forever. */
+    if(_wrote){
+      if(typeof addCredits==="function"&&!/Port Bucks|High Roller|True North/.test(BADGES[ix][1])){
+        /* #markspay — the mark's NAME rides in the reason. The old line wrote the same
+           six words for all 107, so nothing downstream could tell which mark a payout
+           was for — the book could not distinguish a legitimate catch-up from a repeat,
+           and a claw-back could only ever bound the damage instead of naming it. Same
+           ' · ' convention the seal line already uses ("docket sealed · board <date>"). */
+        try{addCredits(PAY.MARK,"new mark earned · "+parts[0],true)}catch(e){}
+      }
+    }else{
+      try{ DEVLOG.data('marks',{ok:false,latest:'mark "'+parts[0]+'" could not be written to disk — payout held back rather than risk a repeat'}); }catch(e){}
+    }
+  }
   if(!_marksSilent)bpopShow(ic,parts[0],parts[1]||'',true,true,BADGES[ix][3]||0);
   /* #8 — meta-marks: the wall rewards the wall */
   setTimeout(()=>{const earned=BADGES.filter(b=>b[2]).length;
@@ -12750,7 +12954,31 @@ BADGES.push(
  ["💰","Payday Legend · 5,000 ⬡ earned",0,2],["🎰","Jackpot · hit an Order prize",0,1],
  ["🎟","Raffle Royalty · 3 prizes hit",0,2],["⭐","Dock Critic · put your word in the review book",0,1],
  ["💬","First Word · first message on the Hall Floor",0,0],["📸","Storyteller · clip on the Order's wall",0,1]);
-try{(JSON.parse(localStorage.getItem(K('badges')))||[]).forEach(ix=>{if(BADGES[ix])BADGES[ix][2]=1})}catch(e){}
+/* #markspay(aug16) — AN EMPTY STRING IS NOT AN EMPTY LIST. The cloud apply() writes
+   String(v!=null?v:'') for a null row; JSON.parse('') throws; this bare catch then
+   restored ZERO flags and the whole wall read unearned while the earned list sat on
+   disk one key away. The old payout guard read those flags. Restore only from a real
+   array, and say so in the dev log when the value is junk instead of swallowing it —
+   that silence is what made this class of bug invisible for three builds. Same shape
+   reloadAcctBucks was hardened against at #fix3(bucks); these two copies were missed. */
+try{const _br=localStorage.getItem(K('badges'));
+    if(_br===null){ /* key absent — this card has genuinely earned none. Clean slate. */ }
+    else if(_br===''){ throw new Error("empty string — a null cloud row, not an empty wall"); }
+    else{ const _bl=JSON.parse(_br);
+      if(Array.isArray(_bl))_bl.forEach(ix=>{if(BADGES[ix])BADGES[ix][2]=1});
+      else throw new Error('badge list is not an array'); }
+}catch(e){
+  try{DEVLOG.data('marks',{ok:false,latest:'badge list on disk is unreadable ('+((e&&e.message)||e)+') — the wall starts empty this open; unlockBadge rebuilds the key so tomorrow reads clean. Payment is decided by shadowhook_markspaid_<card>, not by this key.'})}catch(_){}}
+/* #markspay(aug16) — SEED THE PAYMENT RECORD, ONCE, FROM THE WALL.
+   Every member upgrading to this build already has a wall and has already been paid
+   for it. Without this line the new key reads absent — "nothing paid" — and the first
+   checkMarks would pay for their whole history a second time, which is the exact bug
+   this build exists to stop, reintroduced by the fix for it. So: the first time this
+   card runs v71, whatever is on the wall is taken as already paid.
+   If NEITHER record is readable, nothing on this device knows the truth. That is the
+   one state where marks record but no ⬡ moves — see the _MARK_LEDGER_LOST branch in
+   unlockBadge, which also rebuilds the key so the next open is clean. */
+_seedMarksPaid('boot');
 renderBadges();
 /* ===== Port Bucks — the Order pays for maintenance work ===== */
 let CREDITS=0;try{CREDITS=+localStorage.getItem(K('credits'))||0}catch(e){}
