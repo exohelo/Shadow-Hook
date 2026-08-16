@@ -10089,6 +10089,14 @@ function dkTerminal(j){
     hit=findTerminal(j.berth);
     if(hit)return hit;
   }
+  if(!j.berth&&!j.dock){
+    /* #berthscan — an old docket that only ever stored "SSA" cannot say WHICH SSA dock.
+       Returning the first row lit a To-the-Gate button aimed at Matson for a Zim job.
+       No dock, no gate: the row still shows the operator and the record still counts,
+       and the member can long-press → edit to name the berth. */
+    const op=String(j.terminal||"").toUpperCase();
+    if(TERMINALS.filter(t=>t.operator.toUpperCase()===op).length>1)return null;
+  }
   return findTerminal(j.terminal);
 }
 const PORT_NOTES={ // layout notes — the Keymaster photographs a map every job until all are in
@@ -10215,7 +10223,7 @@ function renderDockets(){
     // Row title = the port/terminal identity; sub-line carries the ship name.
     const portLabel = t
       ? [t.aka, t.operator, t.berths].filter(Boolean).join(" · ")
-      : j.terminal;
+      : (j.terminal+((!j.berth&&!j.dock&&TERMINALS.filter(x=>x.operator.toUpperCase()===String(j.terminal||"").toUpperCase()).length>1)?' · <span class="unconf">dock not set — long-press to fix</span>':''));
     const shipLabel = (j.ship && j.ship!=="\u2014") ? j.ship : "No ship · dock/rail work";
     el.insertAdjacentHTML('beforeend','<div class="jobrow press" data-id="'+j._id+'" data-name="'+j.ship+'" data-date="'+j.date+'"><div class="d mono">'+fmtD(j.date)+(j.start?'<br><span style="font-size:9.5px;color:var(--steel)">'+fmtStart(j.start)+(j.flex?' · FLX':'')+'</span>':'')+'</div><div class="n"><b>'+portLabel+(j.photo?' <span class="dkt-cam" role="button" title="View docket photo" onclick="openDocketPhoto(event,\''+j._id+'\')">📷</span>':'')+'</b><span>'+shipLabel+' · '+j.shift+(j.queue?' · #'+j.queue+' in line':'')+'</span></div><span class="cat '+catCls+'">'+j.category+'</span></div><div class="detail">'+det+'</div>');
   });
@@ -10626,6 +10634,30 @@ function berthCandidates(raw){
   if(!/^(TI|LB|LA)?\s*\d{1,4}$/.test(q))return [];
   return TERMINALS.filter(t=>{ try{ return berthMatch(q,t.berths); }catch(e){ return false; } });
 }
+/* #westbasin(aug15) — not every "two docks" is a real fork. China Shipping (LA 100-102)
+   and Yang Ming (LA 121-131) are both West Basin: 867 m apart, one complex, effectively
+   two ports in one, and the Tower and the Steel Dock sit 482 m apart on the same berth
+   span. Stopping to ask between those is friction that teaches a hand to tap through the
+   prompt. Matson to Zim is 2.5 km and Yang Ming to TraPac is 1.6 km — those are real
+   forks and they are what put somebody at the wrong gate. So the question is never
+   "how many docks matched" but "how far apart are their gates". */
+const SAME_YARD_M=1000;
+function dockGate(t){ return (t&&t.gates&&t.gates[0])?t.gates[0]:null; }
+function dockSpread(list){          // widest gate-to-gate gap in the candidate set, in metres
+  const pts=(list||[]).map(dockGate).filter(g=>g&&isFinite(g.lat)&&isFinite(g.lng));
+  let max=0;
+  for(let i=0;i<pts.length;i++)for(let j=i+1;j<pts.length;j++){
+    try{ max=Math.max(max, hav(pts[i].lat,pts[i].lng,pts[j].lat,pts[j].lng)*1000); }catch(e){}
+  }
+  return max;
+}
+/* when the gates are close enough that it doesn't matter, still don't hand a UTR the
+   tower-clerks-only gate if a general one is sitting right there. */
+function preferredDock(list){
+  const l=(list||[]).slice();
+  l.sort((a,b)=>(/only/i.test(a.aka||"")?1:0)-(/only/i.test(b.aka||"")?1:0));
+  return l[0]||null;
+}
 function termResolveTerm(raw){
   if(!raw)return null;
   const q=raw.trim().toUpperCase().replace(/\s+/g," ");
@@ -10754,13 +10786,17 @@ document.getElementById('njAdd').onclick=()=>{
      Sealing the first hit would quietly send the hand to the wrong gate, so an
      ambiguous berth stops here and asks him to name the dock off the list. */
   const _amb=(typeof berthCandidates==='function')?berthCandidates(terminal):[];
+  let _pick=null;
   if(_amb.length>1){
-    alert('"'+terminal+'" sits on more than one listed dock:\n\n'
-      +_amb.map(t=>'  · '+(t.aka||t.operator)+' — '+t.berths).join('\n')
-      +'\n\nTap the one you worked from the list so the gate is right.');
-    return;
+    if(dockSpread(_amb)>SAME_YARD_M){
+      alert('"'+terminal+'" sits on more than one listed dock, and they are not the same yard:\n\n'
+        +_amb.map(t=>'  · '+(t.aka||t.operator)+' — '+t.berths).join('\n')
+        +'\n\nTap the one you worked from the list so the gate is right.');
+      return;
+    }
+    _pick=preferredDock(_amb);   // same complex — take the sensible one and say so, don't interrogate
   }
-  const termHit=termResolveTerm(terminal);          // #berthlog — the DOCK, not just the operator
+  const termHit=_pick||termResolveTerm(terminal);          // #berthlog — the DOCK, not just the operator
   const termOk=termHit?termHit.operator:null;
   const termBerth=termHit?termHit.berths:undefined;
   const termDock=termHit?(termHit.aka||undefined):undefined;
@@ -17234,6 +17270,41 @@ function dktEd1(a,b){ /* edit distance <= 1 */
   while(i<s.length&&j<l.length){ if(s[i]===l[j]){i++;j++;} else {j++;d++; if(d>1)return false;} }
   return true;
 }
+/* #berthscan(aug15) — THE ONE THAT PUT A HAND AT THE WRONG PORT.
+   The berth used to be picked up only as a side effect of the ship scan, which reads
+   the narrow window between the date line and the terminal line and stops dead at the
+   terminal. So a slip that prints the operator ABOVE the berth, or labels it
+   "BERTH: LB 134", or puts it at the bottom, handed back no berth at all — and no
+   berth means SSA, and SSA means Matson. This sweeps every line of the slip instead,
+   scored: a labeled berth beats a bare "LB 96" line, which beats a lone number. A
+   lone number is only believed if it actually lands in a listed span, so worker and
+   gang numbers can't pose as berths. */
+function dktBerth(lines, opHint){
+  if(!lines||!lines.length)return null;
+  const fixn=s=>[...String(s)].map(dktDigit).join("").replace(/[^0-9]/g,"");
+  const out=[];
+  for(let i=0;i<lines.length;i++){
+    const L=String(lines[i]).toUpperCase().replace(/[^A-Z0-9 :#.\-]/g," ").replace(/\s+/g," ").trim();
+    let m=L.match(/\bB[EA]?RT?H?\b\s*[:#.\-]?\s*(TI|LB|LA)?\s*([0-9OQILZSBGDE(\[{|]{1,4})\b/);   // "BERTH: LB 134", "BTH 96"
+    if(m){ const n=fixn(m[2]); if(n)out.push({b:((m[1]||"")+" "+n).trim(),w:3}); continue; }
+    m=L.match(/^(TI|LB|LA)\s*([0-9OQILZSBGDE(\[{|]{1,4})$/);                                     // a line that is just "LB 96" / "LB 9G"
+    if(m){ const n=fixn(m[2]); if(n)out.push({b:m[1]+" "+n,w:2}); continue; }
+    m=L.match(/^([0-9]{2,4})$/);                                                                  // a line that is just "96"
+    if(m)out.push({b:m[1],w:1});
+  }
+  if(!out.length)return null;
+  const listed=b=>{ try{ return berthCandidates(b); }catch(e){ return []; } };
+  /* every candidate must land in a span The Order actually lists — that's what keeps
+     a worker number, a gang number or an OCR-mangled word from posing as a berth. */
+  const scored=out.map(o=>{
+    const c=listed(o.b);
+    if(!c.length)return null;
+    let s=o.w*10;
+    if(opHint&&c.some(t=>t.operator===opHint))s+=25;        // agrees with the operator printed on the same slip
+    return {b:o.b,s};
+  }).filter(Boolean).sort((a,b)=>b.s-a.s);
+  return scored.length?scored[0].b:null;
+}
 function parseDocket(t, knownId){
   const p={pos:null,terminal:null,berth:null,ship:null,date:null,cat:null,shift:null};
   if(!t)return p;
@@ -17336,6 +17407,13 @@ function parseDocket(t, knownId){
     }
   }
 
+  /* ---- berth: swept off the WHOLE slip, not just the ship window (#berthscan) ---- */
+  try{
+    const opHint=p.terminal?(function(){const h=(typeof termResolveTerm==='function')?termResolveTerm(p.terminal):null;return h?h.operator:null;})():null;
+    const b=dktBerth(lines,opHint);
+    if(b)p.berth=b;
+  }catch(e){}
+
   /* ---- worker number: prefer the verified gate ID ---- */
   const tokens=up.match(/[A-Z][0-9A-Z¢]{3,6}/g)||[];
   if(knownId){
@@ -17377,8 +17455,7 @@ function parseDocket(t, knownId){
       if(isTerm)break;
       if(berthRe.test(L)){
         berthSkipped=true;
-        /* #berthlog — this line was read and thrown away. It's the berth (TI 218 /
-           LB 96 / 136) and it's the only thing on the slip that says WHICH SSA dock. */
+        /* #berthlog — fallback only; the full-slip sweep above is the primary read. */
         if(!p.berth){const bl=Ln.replace(/\s+/g," ").trim(); if(/\d/.test(bl))p.berth=bl;}
         continue;
       }
@@ -17388,6 +17465,25 @@ function parseDocket(t, knownId){
       shipLines.push(L.replace(/^[^A-Z0-9]+|[^A-Z0-9)]+$/g,""));
     }
     if(shipLines.length)p.ship=shipLines.join(" ").replace(/\s{2,}/g," ").trim();
+  }
+
+  /* #berthlog2(aug15) — the walk above only sees the berth when it prints BETWEEN the
+     date line and the operator line. Plenty of slips print the operator first, and on
+     those the berth was silently dropped — leaving a bare "SSA", which resolves to the
+     first SSA dock (Matson) and sends the hand to the wrong end of the harbor. So sweep
+     the WHOLE slip for berth-shaped tokens as a backstop. Order matters: the line-walk
+     berth is the confident read and stays first; scanTerm only accepts a swept token
+     that lands inside a dock belonging to the operator printed on the same slip, so a
+     stray "LA 8" off the job line can't move anybody. */
+  p.berths=[];
+  const _bseen={};
+  const _pushB=v=>{const s=String(v||"").trim(); if(s&&!_bseen[s]){_bseen[s]=1;p.berths.push(s);}};
+  if(p.berth)_pushB(p.berth);
+  const _bre=/\b(TI|LB|LA)\s*([0-9OQILZ]{1,4})\b/g; let _bm;
+  while((_bm=_bre.exec(norm))){
+    const d=[..._bm[2]].map(dktDigit).join("");
+    if(!/^\d{1,4}$/.test(d))continue;
+    _pushB(_bm[1]+" "+parseInt(d,10));
   }
 
   /* ---- job category ---- */
@@ -17413,6 +17509,7 @@ function parseDocket(t, knownId){
 /* #berthlog — a slip names BOTH the operator (SSA) and the berth (LB 96). The berth
    picks the dock, but only INSIDE the operator the scan actually read: a misread berth
    must never move a job to another company's gate, so on disagreement the operator wins. */
+function opDocks(op){ return TERMINALS.filter(t=>t.operator===op); }
 function scanTerm(p){
   if(!p||typeof termResolveTerm!=='function')return null;
   const tt=p.terminal?termResolveTerm(p.terminal):null;
@@ -17427,6 +17524,25 @@ function scanTerm(p){
   }
   if(bt&&tt)return bt.operator===tt.operator?bt:tt;
   return bt||tt||null;
+}
+/* #berthscan — "SSA" names six docks and "PA" names two. Resolving either without a
+   berth isn't a read, it's a coin toss, and the losing side is a hand driving to the
+   wrong end of the harbor. This says plainly whether the dock is KNOWN or GUESSED,
+   and the seal refuses to guess. */
+function scanTermSure(p){
+  const t=scanTerm(p);
+  if(!t)return {t:null,sure:false,docks:[]};
+  let byBerth=false, docks=opDocks(t.operator);
+  if(p&&p.berth){
+    try{
+      const c=berthCandidates(p.berth).filter(x=>x.operator===t.operator);
+      /* the Tower and the Steel Dock BOTH answer to SSA at LB 205-207 — a berth that
+         still leaves two docks standing has not identified anything. Ask. */
+      byBerth=(c.length===1&&c[0]===t);
+      if(c.length)docks=c;
+    }catch(e){ byBerth=false; }
+  }
+  return {t:t, sure:!!(byBerth||docks.length===1), docks:docks};
 }
 function sealScan(p){
   const w=liveWindow();
@@ -17443,7 +17559,24 @@ function sealScan(p){
     try{scanHandOff(p);}catch(e){}
     return;
   }
-  const _hit=scanTerm(p);   // #berthlog — operator + berth read off the slip together
+  const _sure=scanTermSure(p);
+  let _hit=_sure.t;   // #berthlog — operator + berth read off the slip together
+  /* #berthscan / #westbasin — the operator alone can't always say which dock. If those
+     docks are far apart, hand the slip back rather than seal a gate miles from the job.
+     If they're the same yard (West Basin's two, the Tower and the Steel Dock), seal it
+     and name the one it used — the drive is the same and the record is one tap to fix. */
+  if(_hit&&!_sure.sure){
+    const _docks=_sure.docks&&_sure.docks.length?_sure.docks:opDocks(_hit.operator);
+    if(dockSpread(_docks)>SAME_YARD_M){
+      const _list=_docks.map(t=>'  · '+(t.aka||t.operator)+' — '+t.berths).join('\n');
+      alert("Docket read: "+p.pos+". The slip says "+_hit.operator+", but that's "
+        +_docks.length+" separate docks and no berth came off the photo:\n\n"+_list
+        +"\n\nPick the one you worked so the gate is right — the rest is filled in.");
+      try{scanHandOff(p);}catch(e){}
+      return;
+    }
+    _hit=preferredDock(_docks)||_hit;
+  }
   const j={date:p.date||todayISO(),
     ship:p.ship||"—",
     terminal:(_hit?_hit.operator:(p.terminal||"\u2014")),
