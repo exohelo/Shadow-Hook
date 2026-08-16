@@ -10618,7 +10618,25 @@ function restViolation(j, ignoreId){
    (people type "Maersk", "LB 26", "TraPac") but it must resolve to a listed terminal:
    by operator, by AKA, or by berth number inside a listed range. Anything else is blocked
    and pointed at Ports → "Send word" (those reports land in the Keymaster panel when it ships). */
-const TERM_ALIASES={"EVERPORT":"ETS","PIER 400":"APM"}; // names that appear on dockets but not in our data strings
+const TERM_ALIASES={"EVERPORT":"ETS","PIER 400":"APM",
+  "PIER A":["LB 88-96"],                    // SSA Pier A = the Zim dock. "SSA" alone would hand back Matson.
+  "WBCT":["LA 100-102","LA 121-131"],       // West Basin covers BOTH sides — 867 m apart, one complex
+  "PCT":["LB 243-245","LB 266-270"]};       // Pacific Container Terminal, Pier J = both Cosco docks, 644 m apart
+/* #scanterms — an alias may name a berth, or a LIST of berths when the name honestly
+   covers more than one dock (WBCT is both West Basin sides; PCT is both Pier J docks).
+   Naming only the first would be the same silent wrong guess this whole fix is about. */
+function aliasDocks(q){
+  const a=TERM_ALIASES[q]; if(!a)return [];
+  const list=Array.isArray(a)?a:[a];
+  const out=[];
+  list.forEach(v=>{
+    const V=String(v).toUpperCase();
+    let t=TERMINALS.find(x=>x.operator.toUpperCase()===V);
+    if(!t)t=TERMINALS.find(x=>x.berths.toUpperCase()===V);
+    if(t&&out.indexOf(t)<0)out.push(t);
+  });
+  return out;
+}
 /* #berthlog(aug15) — this used to answer with a bare operator code, which threw away
    the one thing that tells five SSA docks apart. It now returns the matched TERMINAL
    ROW; termResolve keeps its old signature on top of it so every existing caller is
@@ -10662,9 +10680,8 @@ function termResolveTerm(raw){
   if(!raw)return null;
   const q=raw.trim().toUpperCase().replace(/\s+/g," ");
   if(TERM_ALIASES[q]){
-    const a=TERM_ALIASES[q].toUpperCase();
-    const t=TERMINALS.find(x=>x.operator.toUpperCase()===a);
-    if(t)return t;
+    const al=aliasDocks(q);
+    if(al.length)return al[0];
   }
   const berthQ=/^(TI|LB|LA)?\s*\d{1,4}$/.test(q); // berth-number input (prefix optional): range-match only, never substring ("LB 26" must not hit "LB 266-270")
   for(const t of TERMINALS){
@@ -10788,13 +10805,15 @@ document.getElementById('njAdd').onclick=()=>{
   const _amb=(typeof berthCandidates==='function')?berthCandidates(terminal):[];
   let _pick=null;
   if(_amb.length>1){
-    if(dockSpread(_amb)>SAME_YARD_M){
+    /* #shipsplit — the ship field settles most overlaps off tonight's sheet */
+    _pick=shipDock(ship,_amb);
+    if(!_pick&&dockSpread(_amb)>SAME_YARD_M){
       alert('"'+terminal+'" sits on more than one listed dock, and they are not the same yard:\n\n'
         +_amb.map(t=>'  · '+(t.aka||t.operator)+' — '+t.berths).join('\n')
         +'\n\nTap the one you worked from the list so the gate is right.');
       return;
     }
-    _pick=preferredDock(_amb);   // same complex — take the sensible one and say so, don't interrogate
+    if(!_pick)_pick=preferredDock(_amb);   // same complex — take the sensible one, don't interrogate
   }
   const termHit=_pick||termResolveTerm(terminal);          // #berthlog — the DOCK, not just the operator
   const termOk=termHit?termHit.operator:null;
@@ -17259,7 +17278,22 @@ async function ocrDocket(dataUrl){
   return (r&&r.data&&r.data.text)||"";
 }
 /* parseDocket v2.2 — line-based, tested against 39 real Local 13 photos */
-const SCAN_TERMS=["EVERPORT","TRAPAC","MATSON","PIER 400","PIER A","LBCT","WBCT","PST","YTI","SSA","ITS","TTI","PCT","FMS","APM","TP","PA"];
+/* #scanterms(aug15) — the reader only ever looked for these words on a slip, and the
+   RORO docks and the satellite yards were never in the list. Toyota has always been on
+   the Ports tab and has always been searchable; the PHOTO READER just couldn't see the
+   word "TOYOTA". A Toyota slip still landed right, but only off its berth line (LB 82),
+   so a smudged berth meant the whole read fell through. Every name here resolves to a
+   real dock — checked, not assumed. */
+const SCAN_TERMS=["EVERPORT","ETS","TRAPAC","MATSON","PIER 400","PIER A","LBCT","WBCT","PST","YTI","SSA","ITS","TTI","PCT","FMS","APM","TP","PA",
+  "TOYOTA","NISSAN",                                    // the RORO docks
+  "YANG MING","CHINA SHIPPING","COSCO","STEEL DOCK","MERCEDES",   // dock names that aren't the operator code
+  "CANNERY","AVALON","ELDRIDGE","REEVES","BARRACUDA","NEW DOCK","PIER B","OVERFLOW"];  // the satellite yards, by their distinctive word
+/* #scanterms — PIER A, WBCT and PCT were already in the list above but resolved to
+   NOTHING, so a slip naming the dock that way read as an unknown terminal. Pier A is
+   SSA's Zim dock, West Basin is the PA pair, Pier J is the Cosco pair. Aliases point at
+   the BERTH so they land on the dock, not on whichever row shares the operator code.
+   PST (Pasha) stays unresolved on purpose — that terminal isn't in TERMINALS at all,
+   and inventing a gate for it is exactly the failure we're fixing. */
 function dktDigit(c){return ({"O":"0","Q":"0","D":"0","I":"1","L":"1","(":"1","[":"1","{":"1","|":"1","Z":"2","S":"8","B":"8","G":"6","¢":"6","E":"8"})[c]||c;}
 function dktEd1(a,b){ /* edit distance <= 1 */
   if(a===b)return true;
@@ -17397,8 +17431,16 @@ function parseDocket(t, knownId){
     for(let i=0;i<lines.length;i++){ if(seen+lines[i].length+1>job.idx){dateLineIdx=i;break;} seen+=lines[i].length+1; }
   }
 
-  /* ---- terminal: exact on normalized text, then edit-distance-1 on short standalone lines ---- */
-  for(const T of SCAN_TERMS){ if(new RegExp("\\b"+T.replace(" ","\\s+")+"\\b").test(norm)){p.terminal=T;break;} }
+  /* ---- terminal: a line that IS the name, then the name anywhere, then edit-distance-1 ----
+     #shipsplit(aug15) — the "anywhere" test used to run first, and vessel names are full of
+     operator words: COSCO SHIPPING DENALI made the terminal read COSCO, MERCEDES and the
+     RORO names do the same. A line that is nothing but the terminal is the terminal; the
+     loose scan is only a fallback now. */
+  {
+    const tl=norm.split("\n").map(s=>s.replace(/[^A-Z0-9 ]/g," ").replace(/\s+/g," ").trim());
+    outerT: for(const L of tl){ for(const T of SCAN_TERMS){ if(L===T){p.terminal=T;break outerT;} } }
+  }
+  if(!p.terminal){ for(const T of SCAN_TERMS){ if(new RegExp("\\b"+T.replace(" ","\\s+")+"\\b").test(norm)){p.terminal=T;break;} } }
   if(!p.terminal){
     outer: for(let i=0;i<lines.length;i++){
       const L=norm.split("\n")[i].replace(/[^A-Z0-9 ]/g,"").trim();
@@ -17449,8 +17491,16 @@ function parseDocket(t, knownId){
       if(stopRe.test(L))break;
       const Ln=norm.split("\n")[i].replace(/[^A-Z0-9 ]/g,"").trim();
       let isTerm=false;
+      /* #shipsplit — this used to stop the ship scan on ANY line containing an operator
+         word, so "COSCO SHIPPING DENALI" read as the terminal line and the vessel was
+         thrown away — losing the one field that settles an overlap. A terminal line is
+         the name itself, or at most a name plus a word ("SSA TERMINALS"); three words
+         and up is a ship. */
+      const words=Ln?Ln.split(" ").filter(Boolean).length:0;
       for(const T of SCAN_TERMS){
-        if(Ln===T||new RegExp("\\b"+T.replace(" ","\\s+")+"\\b").test(Ln)||(T.length>=3&&Ln.length>=2&&Ln.length<=8&&dktEd1(Ln,T))){isTerm=true;break;}
+        if(Ln===T){isTerm=true;break;}
+        if(words<=2&&new RegExp("\\b"+T.replace(" ","\\s+")+"\\b").test(Ln)){isTerm=true;break;}
+        if(T.length>=3&&Ln.length>=2&&Ln.length<=8&&dktEd1(Ln,T)){isTerm=true;break;}
       }
       if(isTerm)break;
       if(berthRe.test(L)){
@@ -17510,6 +17560,35 @@ function parseDocket(t, knownId){
    picks the dock, but only INSIDE the operator the scan actually read: a misread berth
    must never move a job to another company's gate, so on disagreement the operator wins. */
 function opDocks(op){ return TERMINALS.filter(t=>t.operator===op); }
+/* #shipsplit(aug15) — the answer to an overlap is usually already sitting on the Ports
+   tab. Tonight's dispatch sheet lists every ship with its COMPANY and its BERTH, which
+   is exactly what tells LA 130 (Yang Ming) from LA 130 (TraPac) or one Pier J Cosco dock
+   from the other. So before asking the member anything, look the vessel up: if the sheet
+   puts that ship at exactly one of the candidate docks, that IS the answer. Only falls
+   through to a prompt when the ship isn't on the sheet or doesn't narrow it to one. */
+function dktShipKey(s){ return String(s||"").toUpperCase().replace(/[^A-Z0-9]/g,""); }
+function shipDock(ship, list){
+  const k=dktShipKey(ship);
+  if(k.length<4||!list||list.length<2)return null;
+  let ships=[];
+  try{ ships=boardShipList().filter(s=>s&&!s.cancelled); }catch(e){ return null; }
+  if(!ships.length)return null;
+  const hits=ships.filter(s=>{
+    const n=dktShipKey(s.ship||s.name);
+    return n&&n.length>=4&&(n===k||n.indexOf(k)>-1||k.indexOf(n)>-1);
+  });
+  if(!hits.length)return null;
+  const out=[];
+  hits.forEach(s=>{
+    if(!s.berth&&!s.company)return;                       // a bare name pins nothing
+    list.forEach(t=>{
+      if(s.company&&String(s.company).toUpperCase()!==String(t.operator).toUpperCase())return;
+      if(s.berth){ try{ if(!berthMatch(s.berth,t.berths))return; }catch(e){ return; } }
+      if(out.indexOf(t)<0)out.push(t);
+    });
+  });
+  return out.length===1?out[0]:null;                      // still two? then the sheet didn't settle it either
+}
 function scanTerm(p){
   if(!p||typeof termResolveTerm!=='function')return null;
   const tt=p.terminal?termResolveTerm(p.terminal):null;
@@ -17520,6 +17599,10 @@ function scanTerm(p){
     const c=(typeof berthCandidates==='function')?berthCandidates(p.berth):[];
     if(c.length>1&&tt)bt=c.find(x=>x.operator===tt.operator)||null;
     else if(c.length===1)bt=c[0];
+    /* #berthonly — operator line unreadable AND the berth lands in two docks: this used
+       to return NOTHING, and a null dock seals a docket with no terminal and no gate.
+       Hand back a candidate so the ambiguity path can ask (or seal, if it's one yard). */
+    else if(c.length>1&&!tt)bt=preferredDock(c);
     if(!bt&&c.length<=1)bt=termResolveTerm(p.berth);
   }
   if(bt&&tt)return bt.operator===tt.operator?bt:tt;
@@ -17529,13 +17612,40 @@ function scanTerm(p){
    berth isn't a read, it's a coin toss, and the losing side is a hand driving to the
    wrong end of the harbor. This says plainly whether the dock is KNOWN or GUESSED,
    and the seal refuses to guess. */
+/* #scanterms — how many docks does the word on the slip actually stand for? A bare
+   operator code stands for every dock that operator runs ("SSA" = six). A dock NAME or
+   an alias ("PIER A", "PCT", "TOYOTA") stands for exactly one, and that's an identified
+   dock, not a guess — it shouldn't drag the member through a six-way prompt. */
+function termDocks(raw){
+  const q=String(raw||"").trim().toUpperCase().replace(/\s+/g," ");
+  if(!q)return [];
+  if(TERM_ALIASES[q]){ const al=aliasDocks(q); if(al.length)return al; }
+  /* collect EVERY row the word covers. "COSCO" is two docks and "SSA" is six — returning
+     the first match was how a name that means two places passed itself off as certain. */
+  const hits=TERMINALS.filter(t=>{
+    const op=t.operator.toUpperCase(), aka=(t.aka||"").toUpperCase(), br=t.berths.toUpperCase();
+    if(q===op)return true;
+    /* whole-word only: a bare `includes` had "SSA" matching "NISSAN RORO", which quietly
+       added a RORO dock in Los Angeles to the list of Long Beach SSA docks. */
+    if(aka&&(q===aka||(q.length>=3&&new RegExp("\\b"+q.replace(/[.*+?^${}()|[\]\\]/g,"\\$&").replace(/\s+/g,"\\s+")+"\\b").test(aka))))return true;
+    if(q===br)return true;
+    return false;
+  });
+  if(hits.length)return hits;
+  const t=termResolveTerm(q);
+  return t?[t]:[];
+}
 function scanTermSure(p){
   const t=scanTerm(p);
   if(!t)return {t:null,sure:false,docks:[]};
-  let byBerth=false, docks=opDocks(t.operator);
+  let byBerth=false, docks=termDocks(p&&p.terminal)||[];
+  if(!docks.length)docks=opDocks(t.operator);
   if(p&&p.berth){
     try{
-      const c=berthCandidates(p.berth).filter(x=>x.operator===t.operator);
+      /* with no operator off the slip there is nothing to filter against, so the berth's
+         own candidates ARE the set in play. */
+      const raw=berthCandidates(p.berth);
+      const c=(p.terminal&&termResolveTerm(p.terminal))?raw.filter(x=>x.operator===t.operator):raw;
       /* the Tower and the Steel Dock BOTH answer to SSA at LB 205-207 — a berth that
          still leaves two docks standing has not identified anything. Ask. */
       byBerth=(c.length===1&&c[0]===t);
@@ -17567,15 +17677,18 @@ function sealScan(p){
      and name the one it used — the drive is the same and the record is one tap to fix. */
   if(_hit&&!_sure.sure){
     const _docks=_sure.docks&&_sure.docks.length?_sure.docks:opDocks(_hit.operator);
-    if(dockSpread(_docks)>SAME_YARD_M){
+    /* #shipsplit — the sheet may already know where this vessel is working */
+    const _byShip=shipDock(p.ship,_docks);
+    if(_byShip){ _hit=_byShip; }
+    else if(dockSpread(_docks)>SAME_YARD_M){
       const _list=_docks.map(t=>'  · '+(t.aka||t.operator)+' — '+t.berths).join('\n');
       alert("Docket read: "+p.pos+". The slip says "+_hit.operator+", but that's "
-        +_docks.length+" separate docks and no berth came off the photo:\n\n"+_list
+        +_docks.length+" separate docks and nothing on the slip or tonight's sheet says which:\n\n"+_list
         +"\n\nPick the one you worked so the gate is right — the rest is filled in.");
       try{scanHandOff(p);}catch(e){}
       return;
     }
-    _hit=preferredDock(_docks)||_hit;
+    else _hit=preferredDock(_docks)||_hit;
   }
   const j={date:p.date||todayISO(),
     ship:p.ship||"—",
