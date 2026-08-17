@@ -23105,9 +23105,20 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
 
     <!-- #book(aug16) — THE BOOKS. Nobody reads 132 statements by eye. Every hand
          whose book contradicts itself, or contradicts their stack, surfaces here
-         with the reason why; tap one to open their page and read the lines. -->
-    <div class="card-h">The books <span class="pill red" id="kmBooksN" style="display:none">0</span></div>
-    <div id="kmBooks" class="sub" style="max-height:240px;overflow-y:auto;line-height:1.7;margin-bottom:14px">—</div>
+         with the reason why; tap one to open their page and read the lines.
+         #bookshide(aug17) — THE WHOLE BLOCK IS GONE UNTIL THE SCAN HAS READ
+         SOMETHING. It used to print a setup nag ("run MEMBER-BOOK.sql") on every
+         open of the Command Center, forever, on a desk that has no use for it
+         until the books are actually open. Heading and body now live inside one
+         wrapper that starts display:none; kmBooksDraw() is the only thing that
+         opens it, and only from a state that has something to say. Note the
+         DEFAULT is hidden — if that function throws, or is never reached, the
+         section simply does not exist on the screen rather than sitting there
+         as a live heading over an empty box. -->
+    <div id="kmBooksWrap" style="display:none">
+      <div class="card-h">The books <span class="pill red" id="kmBooksN" style="display:none">0</span></div>
+      <div id="kmBooks" class="sub" style="max-height:240px;overflow-y:auto;line-height:1.7;margin-bottom:14px">—</div>
+    </div>
 
     <div class="card-h">The Mint</div>
     <div style="display:flex;gap:8px;margin:8px 0 6px">
@@ -23490,16 +23501,29 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
     }).join('');
   }
   function kmBooksDraw(){ /* #book — only the hands whose book has something to answer for */
-    const host=$('kmBooks'), pill=$('kmBooksN'); if(!host)return;
+    const host=$('kmBooks'), pill=$('kmBooksN'), wrap=$('kmBooksWrap'); if(!host)return;
     const hide=function(){ if(pill)pill.style.display='none'; };
+    /* #bookshide(aug17) — gone() and show() are the ONLY two ways this block's
+       visibility moves, so no future branch can leave a live heading standing over
+       an empty box. gone() also empties the body: a stale suspects list left in the
+       DOM would flash back on the next unrelated repaint, naming hands off a scan
+       that has since failed. */
+    const gone=function(){ if(wrap)wrap.style.display='none'; host.innerHTML=''; hide(); };
+    const show=function(){ if(wrap)wrap.style.display=''; };
     if(_scanErr){
-      host.innerHTML=/could not find|PGRST202|does not exist|schema cache/i.test(_scanErr)
-        ?'<span style="color:var(--steel)">The books aren\u2019t open yet — run <b style="color:var(--bone)">MEMBER-BOOK.sql</b> once in Supabase, then pull the roster again.</span>'
-        :'<span style="color:var(--ember)">books failed: '+esc(_scanErr)+'</span>';
+      /* MEMBER-BOOK.sql not being installed is not a finding, and not something the
+         desk can act on from here — it is a feature that isn't switched on yet, and
+         it printed that nag on every single open of the Command Center. Vanish
+         instead. A scan that ran and BROKE is the opposite: the books were reachable
+         a moment ago and now are not, so that one still speaks, in ember. */
+      if(/could not find|PGRST202|does not exist|schema cache/i.test(_scanErr)){ gone(); return; }
+      show(); host.innerHTML='<span style="color:var(--ember)">books failed: '+esc(_scanErr)+'</span>';
       hide(); return;
     }
-    /* never claim the books are clean on the strength of never having read them */
-    if(!_scanOK){ host.innerHTML='<span style="color:var(--steel)">reading the books…</span>'; hide(); return; }
+    /* never claim the books are clean on the strength of never having read them —
+       and don't narrate the reading either. Silence until there is a verdict. */
+    if(!_scanOK){ gone(); return; }
+    show();
     const bad=Object.keys(_scan).map(k=>_scan[k]).filter(x=>kmFlagsOf(x).length>0);
     if(pill){ pill.textContent=bad.length; pill.style.display=bad.length?'':'none'; }
     if(!bad.length){ host.innerHTML='<span style="color:var(--ok)">Every book adds up. No hand\u2019s stack disagrees with their lines.</span>'; return; }
