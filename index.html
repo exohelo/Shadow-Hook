@@ -8022,6 +8022,49 @@ function sealedHoursSince(cutoff){
   let t=0; for(const d in byDay) t+=Math.min(24,byDay[d]);
   return t;
 }
+/* #hoursceiling(aug17) — A TYPED FIGURE HAS TO BE WITHIN REACH OF THE RECORD.
+   THE HOLE: the hours sheet took any number between 0 and 20,000 and wrote it
+   straight into the book, and the book drives the pay ladder, the Race, AND the
+   marks wall. A hand with 100 hours could type 8,000 and light nine hour-marks —
+   Century Club through The Vault — in about ten seconds. 270 ⬡ from a text field,
+   and a lane near the top of the Race they had not worked for.
+   WHAT THIS IS NOT: it is not a lock on the typed figure. #hoursown is right that
+   the posting is a snapshot of one day with a closed roster, and the hand holding
+   the stub can be right when the snapshot isn't. Correcting the record has to stay
+   possible. What cannot stay possible is inventing it.
+   THE SHAPE: the typed figure answers "what did my stub say as of its paid-through
+   date". Work done SINCE that date is not supposed to be in it — sealed dockets add
+   that on top (see totalHoursOnBook). So the honest ceiling is what the Order's own
+   record says this card had, plus what they could physically have worked between
+   the posting's cutoff and the date they are claiming.
+   TEN HOURS A DAY, EVERY DAY, is the allowance. The rest rule allows one board per
+   calendar day, so that is seventy hours a week without a day off, sustained for as
+   long as the claim covers. Generous by design — nobody actually does it, which is
+   what makes it a ceiling rather than a limit on honest hands. Checked: 0 of the
+   5,510 hands on the posting have a posted figure above their own ceiling.
+   TOLERANCE: a flat 100 hours on top, so a hand fixing a genuine discrepancy in
+   their posted figure is never blocked by arithmetic.
+   THE ALLOWANCE IS CAPPED, and that matters more than it looks. Without a cap it
+   grows every day the posting sits unrefreshed, so the guard quietly loosens itself
+   over a year until it permits anything. 1,000 hours is a hundred days at the full
+   rate; past that the anchor stops moving and the way to raise it is to refresh the
+   posting, which is the correct answer anyway. Work done since the cutoff is not
+   supposed to live in this figure — sealed dockets add it on top by themselves.
+   NOT ON THE POSTING: posted reads 0, so the ceiling is tolerance plus allowance.
+   A hand with a real book bigger than that and no line on the record is a
+   conversation with the Keymaster, not a text field. */
+const MAX_HRS_PER_DAY = 10, HRS_TOLERANCE = 100, HRS_ALLOWANCE_CAP = 1000;
+function hoursCeiling(thruISO){
+  let posted = 0;
+  try{ posted = officialPostedHours() || 0; }catch(e){}
+  let days = 0;
+  try{
+    const a = Date.parse(POSTING_PAID_THRU + "T12:00");
+    const b = Date.parse(String(thruISO || POSTING_PAID_THRU) + "T12:00");
+    if(isFinite(a) && isFinite(b)) days = Math.max(0, Math.round((b - a) / 864e5));
+  }catch(e){}
+  return posted + HRS_TOLERANCE + Math.min(days * MAX_HRS_PER_DAY, HRS_ALLOWANCE_CAP);
+}
 function officialPostedHours(){
   /* #i20(aug15) — the card guard read \d{3,5} everywhere (19 sites). Exactly one hand
      on the 07/13 posting is shorter than that: I20, rank 2,164, 730.5 hours. Every one
@@ -8429,6 +8472,23 @@ window.openHoursSheet=openHoursSheet;
     if(h>20000){ alert("That's more hours than any hand on the posting. Check the number — Experience Hours, not year-to-date dollars."); return; }
     if(!/^\d{4}-\d{2}-\d{2}$/.test(t)){ alert("Pick the date that figure is paid through — it's printed on the stub."); return; }
     if(t>todayISO()){ alert("That date hasn't happened yet. Use the paid-through date on the stub in your hand."); return; }
+    /* #hoursceiling(aug17) — the jump guard. Checked AFTER the date, because the
+       ceiling is computed from it: the further forward your stub is paid through,
+       the more you could honestly have added since the posting's cutoff. */
+    var _ceil = 0, _posted = 0;
+    try{ _ceil = hoursCeiling(t); _posted = officialPostedHours() || 0; }catch(e){ _ceil = 20000; }
+    if(h > _ceil){
+      alert(
+        "That figure is further past the Order's record than a stub can explain.\n\n" +
+        (_posted > 0
+          ? "The posting has this card at " + _posted.toLocaleString() + " hrs, paid through " + POSTING_PAID_THRU + "."
+          : "This card isn't on the 07/13 posting, so there's no figure to check it against.") +
+        "\nPaid through " + t + ", the most that adds up to is about " + Math.round(_ceil).toLocaleString() + " hrs.\n\n" +
+        "If your book really is bigger than that, it needs the Keymaster's word — send it through ⚓ Send word and it gets set by hand.\n\n" +
+        "Check the number: Experience Hours, not year-to-date dollars, and not hours you've already sealed as dockets — those add on top by themselves."
+      );
+      return;
+    }
     HRSBASE={hrs:Math.round(h*10)/10, thru:t, at:Date.now(), src:'typed'};
     saveHoursBase();
     try{renderYear()}catch(e){}          // ladder + header + the Race all hang off this
