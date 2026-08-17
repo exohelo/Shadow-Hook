@@ -25580,7 +25580,17 @@ window.shareCall=shareCall;
           return_url:location.origin+location.pathname})
       });
       var j=null; try{ j=await r.json(); }catch(e){}
-      if(r.ok&&j&&j.url){ location.href=j.url; return; }
+      if(r.ok&&j&&j.url){
+        /* #tillproof(aug17) — REMEMBER THAT WE ACTUALLY OPENED THE TILL.
+           The walk back from Stripe is identified by nothing but ?armory_paid in
+           the URL, which anyone can type. This is the one piece of evidence the
+           phone can honestly hold: it was here, and it left for the checkout. Set
+           on the way out, consumed once on the way back — see handleReturn.
+           Not namespaced by card on purpose: mine() only mirrors keys ending in
+           _<card>, so this stays on the device and never rides the sync. */
+        try{ localStorage.setItem('shadowhook_till_pending', String(Date.now())); }catch(e){}
+        location.href=j.url; return;
+      }
       if(msg)msg.textContent='> '+((j&&j.error)||('the till jammed ('+r.status+') — try again'));
       try{ if(window.shkAlert)shkAlert('checkout',(j&&j.error)||('till jammed '+r.status)); }catch(e){}   /* #alarms */
     }catch(e){ if(msg)msg.textContent='> no wire to the till — check your signal and try again'; try{ if(window.shkAlert)shkAlert('checkout',e); }catch(e2){} }
@@ -25617,19 +25627,102 @@ window.shareCall=shareCall;
   function handleReturn(){
     var q; try{ q=new URLSearchParams(location.search); }catch(e){ return; }
     if(q.get('armory_paid')){
-      var code=(q.get('code')||'').replace(/[^A-Z0-9-]/gi,'');
+      var codeRaw=String(q.get('code')||'').trim().slice(0,64);
+      var code=codeRaw.replace(/[^A-Z0-9-]/gi,'');
+      /* #tillorder(aug17) — THE SANITISER IS FOR THE SCREEN, NOT FOR THE LOOKUP.
+         This strip was harmless while `code` was only ever printed in a message.
+         It is not harmless now that the same value is a database key: if an order
+         code ever carries a character outside A-Z 0-9 and the hyphen, the stripped
+         version matches no row, the check reads "no such order", and an HONEST
+         member is refused a mark they paid for. So the raw value does the lookup —
+         supabase-js parameterises it, there is nothing to inject through — and a
+         mismatch between the two is treated as "cannot verify" rather than "false",
+         which falls back to the footprint instead of denying. */
+      var _codeMangled = (codeRaw !== code);
       cart=[]; csave(); renderFab();
       try{ history.replaceState(null,'',location.pathname); }catch(e){}
-      /* #armlog(aug13) — an Armory order lands in THE BOOK too: a 0-⬡ informational
-         line (the charge was real money by card, not bucks), so the statement reads
-         as the one record of money moving through the Order. */
-      try{ if(typeof sbBookWrite==='function')sbBookWrite(0,'armory order '+(code||'received')+' — paid by card',true); }catch(e){}
-      /* #marks2 — a PAID card order is the realest purchase in the app: Till Ringer on
-         the first, and the Patron's Key to hands who keep coming back to the till. */
-      try{ if(typeof tallyAdd==='function'&&typeof unlockBadge==='function'){
-        var _co=tallyAdd('cardorders');
-        unlockBadge(bixLate("Till Ringer"));
-        if(_co>=3)unlockBadge(bixLate("Keyholder")); } }catch(e){}
+      /* #tillproof(aug17) — DID THIS PHONE ACTUALLY GO TO THE TILL?
+         Everything below used to fire on the presence of ?armory_paid alone. No
+         order lookup, no session check, no nonce — loading
+         index.html?armory_paid=1&code=AAA three times awarded Till Ringer and the
+         Patron's Key and wrote three "paid by card" lines into the book.
+         pay() drops a marker on the way out to Stripe. This consumes it, once. A
+         hand-typed URL has no marker and gets the message but nothing else.
+         It is not proof — someone who really means it can open the till, cancel,
+         and craft the URL. It is the difference between typing eleven characters
+         and deliberately walking through a checkout, which is most of the gap.
+         THE ACTUAL WALL is a Stripe webhook writing bucks_book.stripe_session —
+         the column is already there and has never been written to. Once it is,
+         this can check the order instead of the member's own footprints. */
+      var _tillMark = 0;
+      try{ _tillMark = +localStorage.getItem('shadowhook_till_pending') || 0; }catch(e){}
+      try{ localStorage.removeItem('shadowhook_till_pending'); }catch(e){}   // one use, always
+      var _cameFromTheTill = _tillMark > 0 && (Date.now() - _tillMark) < 216e5;   // 6 hours
+      /* #tillproof — THE BOOK NO LONGER TAKES THE PHONE'S WORD ON REAL MONEY.
+         The old #armlog line wrote 'armory order … — paid by card' into bucks_book
+         off the query parameter, which put unverifiable claims of card payments
+         into the one record the Command Center audits. The server records the
+         order — it has to, or nothing ships — so the phone writing a second,
+         weaker copy of that claim added nothing and forged everything. Removed
+         outright. It comes back the day a webhook fills stripe_session, and then
+         it will be the server saying it, not the phone. */
+      /* #tillorder(aug17) — ASK THE ORDERS TABLE, NOT THE URL.
+         v73 gated these marks on a footprint this phone left on its way to Stripe.
+         Better than the bare query parameter, but still the member's own word.
+         The orders table is the real record: armory-checkout writes the row, the
+         stripe-webhook flips payment_status to 'paid' on
+         checkout.session.completed, and `code` is exactly what comes back in the
+         URL. So the honest question is "is there a paid order with this code, and
+         is it mine" — and the server can answer it.
+         TIMING: Stripe redirects the member back immediately, but the webhook is a
+         separate call that may not have landed yet, so a legitimate return can
+         arrive while the row still reads 'pending'. Refusing on that would punish
+         the honest case, so we re-ask twice as it settles. An order that never
+         turns paid never awards anything.
+         IF THE TABLE CANNOT BE READ — no session yet, or RLS does not let a member
+         see their own orders — we fall back to the v73 footprint rather than
+         refusing outright. "Cannot check" and "checked and it is false" are
+         different answers and must not be treated the same. */
+      var _awardTill = function(){
+        try{ if(typeof tallyAdd==='function'&&typeof unlockBadge==='function'){
+          var _co=tallyAdd('cardorders');
+          unlockBadge(bixLate("Till Ringer"));
+          if(_co>=3)unlockBadge(bixLate("Keyholder")); } }catch(e){}
+      };
+      (function(){
+        var tries=0;
+        var ask=function(){
+          tries++;
+          if(!(window.SB && window.__shkUid && codeRaw)){ return settle('unreadable'); }
+          try{
+            window.SB.from('orders').select('id,payment_status')
+              .eq('code',codeRaw).eq('user_id',window.__shkUid).maybeSingle()
+              .then(function(r){
+                /* an error covers RLS refusing the read AND maybeSingle finding more
+                   than one row — both mean "we do not know", not "it is false" */
+                if(r&&r.error) return settle('unreadable');
+                if(!(r&&r.data))  return settle(_codeMangled?'unreadable':'no such order');
+                if(r.data.payment_status==='paid') return settle('paid');
+                /* the row is theirs but Stripe has not confirmed yet — give the
+                   webhook room, then ask again. Twice, then let it go. */
+                if(tries<3) return setTimeout(ask, tries===1?4000:12000);
+                settle('never confirmed ('+r.data.payment_status+')');
+              }, function(){ settle('unreadable'); });
+          }catch(e){ settle('unreadable'); }
+        };
+        var done=false;
+        var settle=function(verdict){
+          if(done) return;
+          if(verdict==='unreadable'&&tries<3&&window.SB&&!window.__shkUid){ return setTimeout(ask,4000); }
+          done=true;
+          var award = (verdict==='paid') || (verdict==='unreadable' && _cameFromTheTill);
+          if(award) _awardTill();
+          try{ DEVLOG.data('till',{ok:award,latest:'order '+(code||'(no code)')+' — '+verdict
+            +(verdict==='unreadable'?(_cameFromTheTill?': falling back to this phone’s own record of opening the till':': and this phone has no record of opening the till either'):'')
+            +' → '+(award?'Till Ringer / Keyholder awarded':'no marks, no tally')}); }catch(e){}
+        };
+        ask();
+      })();
       setTimeout(function(){ try{ if(typeof gotoTab==='function')gotoTab('armory'); }catch(e){}
         say('⚓ PAID — order '+(code||'received')+' is in. The Keymaster and the supplier have it; the receipt’s in your email.'); },600);
     } else if(q.get('armory_cancel')){
