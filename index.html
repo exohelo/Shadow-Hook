@@ -3759,6 +3759,43 @@ window.DEVLOG=(function(){
     </div>
   </div>
 
+  <style>
+  /* #48f — the Pier A stage is the light sign plate; give its guide an opaque backdrop in both themes */
+  #paGuide{background:rgba(11,13,15,.94)}
+  html.daylight #paGuide{background:rgba(240,242,245,.97)}
+  </style>
+  <!-- #48f — SSA PIER A · interactive yard viewer · the posted wall map, berths A88-A94 -->
+  <div class="yiw" id="paw">
+    <div class="yi-top">
+      <button class="yi-back" id="paBack" type="button" aria-label="Back">‹</button>
+      <div class="yi-id"><span class="ico">🗺</span><div><b id="paName">SSA · PIER A</b><span id="paSub">—</span></div></div>
+      <button class="yi-guidebtn" id="paGuideBtn" type="button">📖 GUIDE</button>
+    </div>
+    <div class="yi-search">
+      <input id="paSearch" placeholder="Find a row, berth or spot — G-300, Berth A92, M&amp;R…" autocomplete="off">
+      <div class="yi-sug" id="paSug"></div>
+    </div>
+    <div class="yi-vp" id="paVp">
+      <button class="yi-reset" id="paReset" type="button">⤢ FIT</button>
+      <button class="yi-legend-btn" id="paLegBtn" type="button">☰ LEGEND</button>
+      <div class="yi-stage" id="paStage"></div>
+      <div class="yi-hint">PINCH ZOOM · DRAG · TAP A SPOT · DOUBLE-TAP</div>
+      <div class="yi-legend" id="paLegend"><div class="lgc">
+        <h4>Pier A Legend</h4><div id="paLegList"></div>
+        <button class="close" id="paLegClose" type="button">Close</button>
+      </div></div>
+      <div class="yi-guide" id="paGuide"><div class="ygc">
+        <div class="yg-top"><b>PIER A TERMINAL GUIDE</b><button id="paGuideClose" type="button">✕</button></div>
+        <div class="yg-body" id="paGuideBody"></div>
+      </div></div>
+      <div class="yi-info" id="paInfo">
+        <button class="close-i" id="paInfoClose" type="button">✕</button>
+        <div class="ih"><span class="swatch" id="paSw"></span><span class="nm" id="paInfoNm">—</span><span class="cat" id="paInfoCat"></span></div>
+        <div class="desc" id="paInfoDesc"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- send word to the keymaster -->
   <div class="sheet" id="wordSheet">
     <div class="sheet-card" style="text-align:left">
@@ -10505,6 +10542,12 @@ const PORT_NOTES={ // layout notes — the Keymaster photographs a map every job
    src = image URL or base64 data URI of the photographed wall map.
    e.g.  "APM": { src:"maps/apm.jpg", note:"photographed Jan 2026 · shipside wall" }  */
 const YARD_MAPS={};
+/* #48f — vault key: the operator code, except where one operator runs several docks and
+   only ONE of them has its wall map in the vault. SSA works six docks in this harbor —
+   Pier A (Zim), Matson, two Cosco yards, the Tower and the Steel Dock — so keying the
+   vault on "SSA" alone would hang Pier A's sign on every one of them. Pier A (Zim ·
+   berths A88–A96) gets its own key; the rest of SSA stays pending until their signs land. */
+function ymKey(t){ if(t&&t.operator==='SSA'&&/zim/i.test(t.aka||''))return 'SSA-A'; return t?t.operator:''; }
 const ymState={x:0,y:0,scale:1,min:.2,max:6};
 function ymApply(){document.getElementById('ymImg').style.transform='translate('+ymState.x+'px,'+ymState.y+'px) scale('+ymState.scale+')'}
 function fitYardMap(){
@@ -10591,7 +10634,7 @@ function renderDockets(){
     const t=dkTerminal(j);   // #berthlog — operator + berth, not operator alone
     const _pg=t?pickGate(t,j):null;   // #gateroute — WHICH entrance, not just which dock
     // #48 — board code retired; the spot now opens the terminal's interactive yard map
-    const ymOp=(t?t.operator:(j.terminal||'')).replace(/'/g,"");
+    const ymOp=(t?ymKey(t):(j.terminal||'')).replace(/'/g,"");   /* #48f — per-dock vault key (SSA Pier A) */
     const ymLabel=(t?[t.aka,t.operator].filter(Boolean).join(' · '):(j.terminal||'—')).replace(/'/g,"");
     /* #86/#87 — security button retired from the log; To the Gate + Yard Map now sit
        side by side as the job's two action buttons (yard-map stat tile replaced) */
@@ -12718,7 +12761,7 @@ function renderPorts(q){
     /* #ports2 — #72 undone, with lessons: the header pill read as a TITLE, so
        hands never pressed it. The pill stays as the name; the map action now
        rides its own lit row at the top of the gates, beside the GO column. */
-    const pmOp=t.operator.replace(/'/g,""), pmLabel=[t.aka,t.operator].filter(Boolean).join(' · ').replace(/'/g,"");
+    const pmOp=ymKey(t).replace(/'/g,""), pmLabel=[t.aka,t.operator].filter(Boolean).join(' · ').replace(/'/g,"");   /* #48f — per-dock vault key (SSA Pier A) */
     const hasMap=!!YARD_MAPS[pmOp];
     const ymRow='<div class="gaterow ym-row"><div class="g"><b>THE YARD MAP</b><br><span class="sub">'+(hasMap?'every row &amp; bay · in the vault':'not in the vault yet')+'</span></div><button type="button" class="ymgo'+(hasMap?'':' pending')+'" onclick="openYardMap(\''+pmOp+'\',\''+pmLabel+'\')">🗺 '+(hasMap?'MAP':'SOON')+'</button></div>';
     const now=dockToday(t.operator);
@@ -21914,6 +21957,684 @@ window.addEventListener('resize',()=>{if($t('ttw').classList.contains('on'))tzFi
 })();
 
 </script>
+<script>
+/* #48f — SSA PIER A · interactive vector yard map (SSA Terminals, Pier A · Long Beach) */
+/* ================= SSA PIER A — interactive vector redraw of the posted wall map =================
+   Vector redraw of the posted "PIER A · EMERGENCY PROCEDURES & ASSEMBLY AREAS" sign
+   (SSA Terminals · 700 Pier A Plaza, Long Beach · berths A88–A94), in the sign's own
+   portrait layout and colors: cream plate · pale-green container rows in three blocks
+   (100s · 200s · 300s) of vertical rows · the 400/500 south yard · pale-blue reefer rows
+   · the blue harbor down the left with berths A94-A92-A90-A88, ships, cranes, stokes
+   baskets and access ladders · Henry Ford Ave / Terminal Island Freeway over the top ·
+   the 8-track rail yard curving down Pier A Way to Pier B St · Carrack Avenue, gates 1-2-3
+   · the sign's own LEGEND, speed/security/load signs and the EMERGENCY PROCEDURES panel.
+   Tap-to-select, search, legend, and the Pier A guide (emergency procedures off the sign).
+   Hooks into openYardMap(): key "SSA-A" (SSA · Zim · Pier A) opens this; other docks untouched. */
+(function(){
+"use strict";
+const VBW=1560, VBH=2080;
+const PZ={
+  op:"SSA-A", name:"SSA TERMINALS · PIER A", sub:"700 Pier A Plaza · Long Beach · Berths A88–A94",
+  vb:[0,0,VBW,VBH],
+  cats:{
+    row  :{c:"#b9d3ab",s:"#3c4a33",lc:"#20301a",t:"CONTAINER ROW",d:"Grounded container row. End caps are the first & last piles — never drive between the stacks."},
+    reef :{c:"#aecde6",s:"#2f4a63",lc:"#173044",t:"REEFER ROW",d:"Reefer row — plugged, temperature-controlled boxes. Watch the cords and the light poles."},
+    fac  :{c:"#a9cbe4",s:"#20364a",lc:"#122435",t:"FACILITY",d:"Terminal facility / building."},
+    gate :{c:"#d6d2c6",s:"#4a463c",lc:"#26241e",t:"GATE / LANES",d:"Gate & truck lanes. Terminal speed limit 15 MPH — watch for pedestrians."},
+    park :{c:"#efece1",s:"#4a463c",lc:"#26241e",t:"PARKING",d:"Parking area."},
+    rail :{c:"#efece1",s:"#55524a",lc:"#33302a",t:"RAIL YARD",d:"On-dock rail yard. Trains built & worked here — stay off the tracks."},
+    road :{c:"#efece1",s:"#55524a",lc:"#33302a",t:"ROAD",d:"Road at the terminal boundary."},
+    berth:{c:"#cfc8bb",s:"#4a463c",lc:"#26241e",t:"VESSEL BERTH",d:"Ship works alongside here. Stay clear of all ship operations — never under the hook."},
+    asm  :{c:"#2e9e4f",s:"#14522a",lc:"#ffffff",t:"ASSEMBLY AREA",d:"Designated assembly area — proceed here if evacuated and remain until accounted for."},
+    cust :{c:"#eef0f5",s:"#274b8f",lc:"#274b8f",t:"US CUSTOMS",d:"Customs inspection area."}
+  },
+  legend:[["row","Container row — 100 · 200 · 300 · 400 · 500 blocks"],["reef","Reefer row (P·S·T·W)"],
+    ["berth","Vessel berth — A94 · A92 · A90 · A88"],["asm","Assembly area Ⓐ"],
+    ["fac","Terminal building / facility"],["gate","Gate & truck lanes — Gates 1 · 2 · 3"],
+    ["rail","Rail yard — tracks 1–8 & 9–16"],["park","Parking"],
+    ["cust","Customs"],["road","Pier A Plaza · Pier A Way · Pier B St · Carrack Ave"]],
+  spots:[]
+};
+
+/* ---- row-column geometry: block 100/200/300 share x positions (letters w26 · reefers w20) ---- */
+const CX={A:504,B:540,C:602,D:638,E:693,F:729,G:783,H:819,N:858,P:884,S:908,T:944,W:968,X2:1000,Y2:1025};
+const B1=[408,718], B2=[749,1202], B3=[1242,1450];
+
+/* ============================ SPOTS ============================ */
+(function(){
+  const S=PZ.spots;
+  const add=(id,label,cat,x,y,w,h,extra)=>{S.push(Object.assign({id,label:label||id,cat,x:Math.round(x),y:Math.round(y),w:Math.round(w),h:Math.round(h)},extra||{}));};
+  const col=(L,blk,y0,y1,extra)=>{const e=extra||{};const cx=e.cx!==undefined?e.cx:CX[L];const w=e.w||31;
+    add(L+"-"+blk,L+"-"+blk,"row",cx-w/2,y0,w,y1-y0,Object.assign({rot:1,
+      desc:"Container row "+L+"-"+blk+" — "+blk+" block. End caps are the first & last piles."},e));};
+  /* ---- 100 block ---- */
+  ["A","B","C","D","E","F","G","H"].forEach(L=>col(L,100,B1[0],B1[1]));
+  col("N",100,B1[0],B1[1]);
+  /* reefer rows: green cap on top (its own tap spot) + blue row below */
+  add("P-100c","P-100","row",CX.P-10,487,20,37,{rot:1,fs:8,desc:"P-100 — green end cap of reefer row P."});
+  add("RP-100","REEFER P-100","reef",CX.P-10,524,20,B1[1]-524,{rot:1,desc:"Reefer row P-100 — plugged boxes, 100 block."});
+  add("S-100c","S-100","row",CX.S-10,499,20,34,{rot:1,fs:8,desc:"S-100 — green end cap of reefer row S."});
+  add("RS-100","REEFER S-100","reef",CX.S-10,533,20,B1[1]-533,{rot:1,desc:"Reefer row S-100 — plugged boxes, 100 block."});
+  add("T-100c","T-100","row",CX.T-10,547,20,35,{rot:1,fs:8,desc:"T-100 — green end cap of reefer row T."});
+  add("RT-100","REEFER T-100","reef",CX.T-10,582,20,B1[1]-582,{rot:1,desc:"Reefer row T-100 — plugged boxes, 100 block."});
+  add("W-100c","W-100","row",CX.W-10,572,20,31,{rot:1,fs:8,desc:"W-100 — green end cap of reefer row W."});
+  add("RW-100","REEFER W-100","reef",CX.W-10,603,20,B1[1]-603,{rot:1,desc:"Reefer row W-100 — plugged boxes, 100 block."});
+  /* ---- 200 block ---- */
+  ["A","B","C","D","E","F","G","H"].forEach(L=>col(L,200,B2[0],B2[1]));
+  col("N",200,B2[0],B2[1]);
+  add("RP-200","REFFER P-200","reef",CX.P-10,832,20,248,{rot:1,desc:"Reefer row P-200 — plugged boxes, 200 block. (The sign itself spells it REFFER here.)"});
+  add("P-200c","P-200","row",CX.P-10,1098,20,B2[1]-1098,{rot:1,fs:8,desc:"P-200 — green end cap of reefer row P."});
+  add("RS-200","REEFER S-200","reef",CX.S-10,832,20,248,{rot:1,desc:"Reefer row S-200 — plugged boxes, 200 block."});
+  add("S-200c","S-200","row",CX.S-10,1098,20,B2[1]-1098,{rot:1,fs:8,desc:"S-200 — green end cap of reefer row S."});
+  add("RT-200","REEFER T-200","reef",CX.T-10,832,20,248,{rot:1,desc:"Reefer row T-200 — plugged boxes, 200 block."});
+  add("T-200c","T-200","row",CX.T-10,1098,20,B2[1]-1098,{rot:1,fs:8,desc:"T-200 — green end cap of reefer row T."});
+  add("RW-200","REEFER W-200","reef",CX.W-10,832,20,248,{rot:1,desc:"Reefer row W-200 — plugged boxes, 200 block."});
+  add("W-200c","W-200","row",CX.W-10,1098,20,B2[1]-1098,{rot:1,fs:8,desc:"W-200 — green end cap of reefer row W."});
+  add("X-200","X-200","row",CX.X2-11,832,22,212,{rot:1,desc:"Container row X-200 — short row against the customs lanes."});
+  add("Y-200","Y-200","row",CX.Y2-11,832,22,212,{rot:1,desc:"Container row Y-200 — the last row before the rail yard."});
+  /* ---- 300 block (no H — G-300 runs wide; A-300 is the segmented row on the apron) ---- */
+  add("A-300a","A-300","row",482,B3[0],22,33,{rot:1,fs:8,desc:"A-300 — segmented row on the wharf apron: green · open · reefer segments."});
+  add("A-300b","A-300","row",482,1396,22,54,{rot:1,fs:8,desc:"A-300 — segmented row on the wharf apron: green · open · reefer segments."});
+  ["B","C","D","E","F"].forEach(L=>col(L,300,B3[0],B3[1]));
+  add("G-300","G-300","row",762,B3[0],44,B3[1]-B3[0],{rot:1,desc:"Container row G-300 — the wide row; there is no H-300."});
+  col("N",300,B3[0],B3[1]);
+  ["P","S"].forEach(L=>add(L+"-300",L+"-300","row",CX[L]-10,B3[0],20,1470-B3[0],{rot:1,desc:"Container row "+L+"-300."}));
+  ["T","W"].forEach(L=>add(L+"-300",L+"-300","row",CX[L]-10,B3[0],20,1470-B3[0],{rot:1,desc:"Container row "+L+"-300."}));
+  add("X-300","X-300","row",997,B3[0],31,1470-B3[0],{rot:1,wedge:1,desc:"Container row X-300 — the wedge row cut by the rail yard."});
+  /* ---- 400 block (south yard · horizontal rows) ---- */
+  const bar=(id,x0,x1,y0,y1,extra)=>add(id,id,"row",x0,y0,x1-x0,y1-y0,Object.assign({desc:"Container row "+id+" — south yard."},extra||{}));
+  bar("A-400",704,796,1504,1521); bar("B-400",710,789,1539,1554);
+  add("C-400d","C-400","row",621,1542,79,13,{ang:-12,fs:9,desc:"Container row C-400 — upper leg along the fence."});
+  bar("C-400",707,786,1558,1572); bar("D-400",630,789,1594,1609); bar("E-400",634,789,1613,1628);
+  bar("F-400",643,796,1643,1658); bar("G-400",647,796,1668,1685);
+  bar("H-400",656,789,1714,1728); bar("K-400",660,789,1739,1755);
+  bar("L-400",668,780,1766,1780); bar("M-400",672,780,1793,1808);
+  bar("N-400",678,775,1818,1832); bar("P-400",712,768,1839,1851,{fs:8});
+  bar("S-400",700,756,1860,1872,{fs:8}); bar("T-400",675,764,1884,1899);
+  /* ---- 500 block ---- */
+  bar("A-500",814,997,1522,1540); bar("B-500",822,967,1558,1574); bar("C-500",825,967,1579,1597);
+  bar("D-500",835,945,1612,1631); bar("E-500",835,945,1633,1652);
+  bar("F-500",819,930,1670,1689); bar("G-500",819,930,1691,1710);
+  bar("H-500",825,930,1722,1741); bar("K-500",825,930,1743,1762);
+  bar("L-500",822,917,1772,1789); bar("M-500",822,917,1793,1812);
+  bar("N-500",817,911,1833,1847); bar("P-500",852,906,1853,1866,{fs:8});
+  bar("S-500",842,896,1878,1891,{fs:8}); bar("T-500",802,899,1897,1912);
+  bar("Y-500",700,893,1918,1939);
+  add("W-500a","W-500","row",994,1532,20,88,{ang:48,rot:1,fs:9,desc:"Container row W-500 — upper leg along the rail fan."});
+  add("W-500b","W-500","row",940,1668,20,122,{rot:1,ang:16,fs:9,desc:"Container row W-500 — lower leg along the rail fan."});
+  add("X-500","X-500","row",912,1796,20,112,{rot:1,ang:8,fs:9,desc:"Container row X-500 — against the track 9–16 fan."});
+  /* ---- berths (hull spots on the water) ---- */
+  add("BA94","Berth A94","berth",309,468,51,310,{hull:1,nolabel:1,desc:"Berth A94 — northernmost berth. Ship works alongside; access ladders & stokes baskets on the wharf."});
+  add("BA92","Berth A92","berth",309,934,51,287,{hull:1,nolabel:1,desc:"Berth A92 — ship works alongside; access ladders & stokes baskets on the wharf."});
+  add("BA90","Berth A90","berth",309,1377,51,287,{hull:1,nolabel:1,desc:"Berth A90 — ship works alongside; access ladders & stokes baskets on the wharf."});
+  add("BA88","Berth A88","berth",340,1660,60,120,{ghost:1,nolabel:1,desc:"Berth A88 — southernmost berth, at the roadability / crane maintenance corner."});
+  /* ---- buildings & facilities ---- */
+  add("MARINETOWER","Marine Tower","fac",450,333,36,25,{nolabel:1,desc:"Marine tower — vessel operations. You-are-here point of the posted sign: telephone, first aid, restroom & AED alongside."});
+  add("CHECKIN","Check-In Bldg.","fac",554,343,28,25,{nolabel:1,desc:"Check-in building — casuals & visitors check in here, off the vessel parking row."});
+  add("WASHRACK","Wash Rack","fac",905,395,48,36,{ang:28,nolabel:1,desc:"Wash rack — equipment wash-down, by the M&R shop."});
+  add("MR","M&R","fac",950,440,120,52,{ang:28,nolabel:1,desc:"M&R — maintenance & repair shop. First aid stations at both ends; MSDS sheets kept here."});
+  add("FUELTANKS","Fuel Tanks","fac",1040,478,30,22,{ghost:1,nolabel:1,desc:"Fuel tanks — UTR fueling, behind the M&R shop."});
+  add("GATEHOUSE","Gate-House","fac",1092,518,39,41,{ang:25,nolabel:1,desc:"Gate-house — AED on the building, first aid station alongside. The OUT GATE lanes run past it."});
+  add("DRVSRV1","Driver's Service","fac",1000,639,34,39,{ang:-40,nolabel:1,desc:"Driver's service building — restroom & telephone. Trouble tickets handled here."});
+  add("ROADAB1","Roadability","fac",1061,786,40,34,{nolabel:1,desc:"Roadability — chassis roadability inspection lanes at the head of the customs run."});
+  add("CUSTOMS1","Customs","cust",1104,856,26,26,{ghost:1,nolabel:1,desc:"US Customs — inspection lanes along the rail yard, down to the OCR portal."});
+  add("RAILBLDG","Rail Bldg.","fac",1276,612,30,22,{ang:-40,nolabel:1,desc:"Rail building — first aid station; the rail yard throat runs past Gate 1."});
+  add("GUARD1","Guard Shack · Gate 1","fac",1312,586,22,18,{nolabel:1,desc:"Guard shack at Gate 1 — first aid & AED alongside. In-gate off Pier A Plaza."});
+  add("OCR1","OCR Portal","gate",1331,524,22,18,{nolabel:1,desc:"OCR portal — optical character recognition camera at the in-gate."});
+  add("DRVSRV2","Driver's Service","fac",658,1495,36,32,{ang:-30,nolabel:1,desc:"Driver's service building (south) — restroom & telephone, above the 400 block."});
+  add("BOMBCART","Bombcart Parking","park",526,1518,79,196,{ghost:1,nolabel:1,desc:"Bombcart parking — slant-block carts staged in the lanes above Berth A88."});
+  add("OCR2","OCR Portal","gate",536,1504,20,16,{nolabel:1,desc:"OCR portal at the head of the bombcart lanes."});
+  add("CUSTOMS2","Customs","cust",484,1676,28,38,{nolabel:1,desc:"US Customs (south) — telephone & restroom alongside."});
+  add("ROADAB2","Roadability · Crane Maint.","fac",468,1818,39,35,{nolabel:1,desc:"Roadability & crane maintenance — the corner building at Berth A88. AED & first aid station."});
+  add("OUTGATE2","Out Gate","gate",523,1801,82,31,{ang:-15,nolabel:1,desc:"South OUT GATE — outbound truck lanes onto Carrack Avenue."});
+  add("INGATE2","In Gate","gate",608,1826,40,34,{ghost:1,nolabel:1,desc:"South IN GATE — inbound lanes off Carrack Avenue at Gate 2. OCR portal on the lanes."});
+  add("GUARD2","Guard Shack · Gate 2","fac",604,1896,20,16,{nolabel:1,desc:"Guard shack at Gate 2 — Carrack Avenue entrance to the 400/500 yard."});
+  add("GUARD3","Guard Shack · Gate 3","fac",946,1938,42,48,{ghost:1,nolabel:1,desc:"Guard shack at Gate 3 — the far Carrack Avenue gate, by the track 9–16 fan."});
+  add("RAMP1","Ramp","gate",800,1504,24,78,{ghost:1,nolabel:1,desc:"Ramp — the crossing lane between the 400 and 500 rows."});
+  add("RAMP2","Ramp","gate",606,1728,29,36,{ang:20,ghost:1,nolabel:1,desc:"Ramp — crossing at the south out-gate road."});
+  /* ---- parking ---- */
+  add("EQPARK","Equipment Parking","park",428,226,36,90,{ghost:1,nolabel:1,desc:"Equipment parking — top of the terminal, on the water side."});
+  add("VESPARK","Vessel Parking","park",505,308,375,40,{ghost:1,nolabel:1,desc:"Vessel parking — the long row along Pier A Plaza. Assembly area Ⓐ at the west end."});
+  add("TERMPARK","Terminal Parking","park",1146,420,64,62,{ang:28,ghost:1,nolabel:1,desc:"Terminal parking, off Pier A Plaza by the gatehouse."});
+  add("OFFPARK","Office Parking","park",1206,432,40,50,{ang:28,ghost:1,nolabel:1,desc:"Office parking, off Pier A Plaza."});
+  /* ---- assembly areas ---- */
+  add("ASM1","Assembly Area Ⓐ","asm",612,318,18,18,{fs:11,lb:"A",desc:"Assembly area — vessel parking row, by the check-in building."});
+  add("ASM2","Assembly Area Ⓐ","asm",1105,465,18,18,{fs:11,lb:"A",desc:"Assembly area — by the fuel tanks & gatehouse parking."});
+  add("ASM3","Assembly Area Ⓐ","asm",624,1851,18,18,{fs:11,lb:"A",desc:"Assembly area — at the south in-gate, Gate 2."});
+  /* ---- gates & lanes ---- */
+  add("INGATE1","In Gate","gate",1190,518,70,127,{ghost:1,nolabel:1,desc:"Main IN GATE — inbound truck lanes off Pier A Plaza to Gate 1. OCR portal & RPM portal on the lanes."});
+  add("OUTGATE1","Out Gate","gate",1061,618,73,91,{ghost:1,nolabel:1,desc:"Main OUT GATE — outbound lanes past the gatehouse and driver's service."});
+  add("GATE1","Gate 1","gate",1395,540,80,60,{ghost:1,nolabel:1,desc:"Gate 1 — Pier A Plaza entrance. Guard shack, first aid & AED."});
+  /* ---- rail & roads (ghost tap targets over the furniture) ---- */
+  add("RAILY","Rail Yard · Tracks 1–8","rail",1030,660,330,760,{ghost:1,nolabel:1,desc:"On-dock rail yard — tracks 1–8 curving down Pier A Way to Pier B St. Trains built & worked here."});
+  add("RAILF","Rail Yard · Tracks 9–16","rail",900,1600,110,340,{ghost:1,nolabel:1,desc:"Track 9–16 fan — the south rail lead into the 400/500 yard, off Gate 3."});
+  add("PLAZA","Pier A Plaza","road",700,258,560,46,{ghost:1,nolabel:1,desc:"Pier A Plaza — the terminal's address road: 700 Pier A Plaza. Runs the north fence to Gate 1."});
+  add("PAWAY","Pier A Way","road",1225,700,190,700,{ghost:1,nolabel:1,desc:"Pier A Way — outside the rail yard fence, down to Pier B St."});
+  add("PIERB","Pier B St.","road",1095,1440,70,570,{ghost:1,nolabel:1,desc:"Pier B Street — along the east side, from the rail yard to Carrack Ave."});
+  add("CARRACK","Carrack Avenue","road",520,1930,500,60,{ghost:1,nolabel:1,desc:"Carrack Avenue — the south boundary road: Gate 2, Gate 3 and around to Pier B St."});
+  add("HFA","Henry Ford Avenue","road",380,150,560,110,{ghost:1,nolabel:1,desc:"Henry Ford Avenue — crosses the bridge over the channel, north of the terminal."});
+  add("TIF","Terminal Island Freeway","road",360,240,540,100,{ghost:1,nolabel:1,desc:"Terminal Island Freeway — sweeps past the top of the terminal to the harbor bridges."});
+})();
+PZ.byId={}; PZ.spots.forEach(s=>PZ.byId[s.id]=s);
+
+/* ============================ FURNITURE ============================ */
+const INK='#17191d', CREAM='#f2efe3', PAPER='#faf8f0', GREY='#b7b3aa', WATER='#87a9cc',
+      RED='#d0342c', ICRED='#c1201a', ASMG='#2e9e4f', MSDSY='#f0c832', SHIPC='#cfc8bb', CRANE='#a9cbe0';
+const TXT=(x,y,s,size,opt)=>{const o=opt||{};return `<text x="${x}" y="${y}" fill="${o.c||INK}" font-family="${o.mono?"'IBM Plex Mono',monospace":(o.anton?"'Anton','Barlow Condensed',sans-serif":"'Barlow Condensed',sans-serif")}" font-weight="${o.w||700}" font-size="${size}" letter-spacing="${o.ls!==undefined?o.ls:0.4}" text-anchor="${o.a||'middle'}" ${o.r?`transform="rotate(${o.r} ${x} ${y})"`:''} ${o.o?`opacity="${o.o}"`:''}>${s}</text>`;};
+const IC={
+  dot:(x,y)=>`<circle cx="${x}" cy="${y}" r="4.6" fill="${ICRED}"/>`,
+  Hc :(x,y)=>`<g><circle cx="${x}" cy="${y}" r="5.5" fill="${ICRED}"/><text x="${x}" y="${y+2.6}" text-anchor="middle" fill="#fff" font-family="'Barlow Condensed',sans-serif" font-weight="700" font-size="7.5">H</text></g>`,
+  Pc :(x,y)=>`<g><circle cx="${x}" cy="${y}" r="5.5" fill="${ICRED}"/><text x="${x}" y="${y+2.6}" text-anchor="middle" fill="#fff" font-family="'Barlow Condensed',sans-serif" font-weight="700" font-size="7.5">P</text></g>`,
+  Pp :(x,y)=>`<g><rect x="${x-7}" y="${y-7}" width="14" height="14" rx="2.5" fill="${ICRED}" stroke="#5f0f0a" stroke-width="1"/><text x="${x}" y="${y+3.6}" text-anchor="middle" fill="#fff" font-family="'Barlow Condensed',sans-serif" font-weight="700" font-size="10.5">P</text></g>`,
+  Rb :(x,y)=>`<g><rect x="${x-6.5}" y="${y-6.5}" width="13" height="13" rx="2" fill="#fff" stroke="${INK}" stroke-width="1.4"/><text x="${x}" y="${y+3.8}" text-anchor="middle" fill="${INK}" font-family="'Barlow Condensed',sans-serif" font-weight="700" font-size="10.5">R</text></g>`,
+  Ab :(x,y,r)=>{const k=r||8.5;return `<g><rect x="${x-k}" y="${y-k}" width="${k*2}" height="${k*2}" rx="2" fill="${ASMG}" stroke="#0d3f1c" stroke-width="1"/><text x="${x}" y="${y+k*0.55}" text-anchor="middle" fill="#fff" font-family="'Barlow Condensed',sans-serif" font-weight="700" font-size="${k*1.5}">A</text></g>`;},
+  aed:(x,y)=>`<g><path d="M${x},${y+6.5} C${x-9},${y-1} ${x-6.5},${y-6.5} ${x-3},${y-6.5} C${x-1},${y-6.5} ${x},${y-5} ${x},${y-4} C${x},${y-5} ${x+1},${y-6.5} ${x+3},${y-6.5} C${x+6.5},${y-6.5} ${x+9},${y-1} ${x},${y+6.5} Z" fill="${ICRED}" stroke="#5f0f0a" stroke-width="0.8"/><path d="M${x+1.5},${y-4} L${x-2.5},${y+0.5} L${x+0.5},${y+0.5} L${x-1.5},${y+4.5}" stroke="#fff" stroke-width="1.4" fill="none"/></g>`,
+  fa :(x,y,k)=>{const r=k||6.5;return `<path d="M${x-r*0.38},${y-r} h${r*0.76} v${r*0.62} h${r*0.62} v${r*0.76} h-${r*0.62} v${r*0.62} h-${r*0.76} v-${r*0.62} h-${r*0.62} v-${r*0.76} h${r*0.62} z" fill="${ICRED}"/>`;},
+  msds:(x,y)=>`<rect x="${x-6.5}" y="${y-6.5}" width="13" height="13" fill="${MSDSY}" stroke="#7a5f10" stroke-width="1" transform="rotate(45 ${x} ${y})"/>`,
+  ph :(x,y)=>`<g transform="translate(${x},${y})"><path d="M-6,-2 C-6,-5.5 6,-5.5 6,-2 L4.4,0.4 C4,-1.8 -4,-1.8 -4.4,0.4 Z" fill="${INK}"/><path d="M-5.2,-0.5 C-6.8,2 -5,4.5 -2.5,4.8 L-1.8,2.6 C-3.4,2.2 -4.2,1 -3.6,-0.6 Z" fill="${INK}" transform="rotate(-25)"/></g>`,
+  drop:(x,y)=>`<g><path d="M${x},${y-14} C${x+9},${y-4} ${x+10},${y+2} ${x+10},${y+5} C${x+10},${y+11} ${x+5.5},${y+15} ${x},${y+15} C${x-5.5},${y+15} ${x-10},${y+11} ${x-10},${y+5} C${x-10},${y+2} ${x-9},${y-4} ${x},${y-14} Z" fill="${ASMG}" stroke="#0d3f1c" stroke-width="0.8"/><circle cx="${x}" cy="${y-1}" r="2.6" fill="#fff"/><path d="M${x-3},${y+2.5} h6 l1.4,7 h-2.4 l-1,-4.6 l-1,4.6 h-2.4 z" fill="#fff"/></g>`,
+  stok:(x,y)=>`<g transform="translate(${x},${y})"><ellipse cx="0" cy="0" rx="6.2" ry="10" fill="#efece1" stroke="${INK}" stroke-width="1.2"/><path d="M-4.6,-6.6 L4.6,-6.6 M-5.8,-3.3 L5.8,-3.3 M-6.2,0 L6.2,0 M-5.8,3.3 L5.8,3.3 M-4.6,6.6 L4.6,6.6 M-2,-9.4 L-2,9.4 M2,-9.4 L2,9.4" stroke="${INK}" stroke-width="0.9"/></g>`,
+  lad:(x,y,ang)=>`<g transform="rotate(${ang||0} ${x} ${y})"><path d="M${x-5},${y-11} L${x-5},${y+11} M${x+5},${y-11} L${x+5},${y+11} M${x-5},${y-7} h10 M${x-5},${y-2.3} h10 M${x-5},${y+2.3} h10 M${x-5},${y+7} h10" stroke="${RED}" stroke-width="2" fill="none"/></g>`,
+  ocr:(x,y)=>`<rect x="${x-9}" y="${y-7}" width="18" height="14" fill="${CRANE}" stroke="${INK}" stroke-width="1.2"/>`
+};
+const ARR=(x,y,ang,len,col,wid)=>{const L=len||16,c=col||INK,w=wid||2.2;
+  return `<g transform="rotate(${ang} ${x} ${y})"><path d="M${x-L/2},${y} L${x+L/2},${y} M${x+L/2},${y} L${x+L/2-5},${y-3.8} M${x+L/2},${y} L${x+L/2-5},${y+3.8}" stroke="${c}" stroke-width="${w}" fill="none" stroke-linecap="round"/></g>`;};
+/* comb (parking teeth): spine from (x1,y1)-(x2,y2), teeth each side */
+function comb(x1,y1,x2,y2,tick,both,step){
+  const dx=x2-x1,dy=y2-y1,len=Math.hypot(dx,dy),ux=dx/len,uy=dy/len,px=-uy,py=ux,st=step||7;
+  let g=`<path d="M${x1},${y1} L${x2},${y2}" stroke="${INK}" stroke-width="1.6"/>`;
+  for(let d=st/2;d<len;d+=st){const cx=x1+ux*d,cy=y1+uy*d;
+    g+=`<path d="M${cx},${cy} L${cx+px*tick},${cy+py*tick}" stroke="${INK}" stroke-width="1"/>`;
+    if(both)g+=`<path d="M${cx},${cy} L${cx-px*tick},${cy-py*tick}" stroke="${INK}" stroke-width="1"/>`;}
+  return g;
+}
+/* road band: path drawn wide black then cream */
+const band=(d,w)=>`<path d="${d}" fill="none" stroke="${INK}" stroke-width="${w+3}"/><path d="${d}" fill="none" stroke="${CREAM}" stroke-width="${w}"/>`;
+
+function paBase(){
+  let g='';
+  /* plate + title */
+  g+=`<rect x="6" y="6" width="${VBW-12}" height="${VBH-12}" rx="16" fill="${CREAM}" stroke="${INK}" stroke-width="5"/>`;
+  g+=`<rect x="26" y="24" width="${VBW-52}" height="112" rx="6" fill="${PAPER}" stroke="${INK}" stroke-width="4"/>`;
+  g+=TXT(48,110,'PIER A &#8226; EMERGENCY PROCEDURES &amp; ASSEMBLY AREAS',50,{anton:1,a:'start',ls:1});
+  /* land */
+  g+=`<rect x="24" y="140" width="${VBW-48}" height="${VBH-164}" fill="${GREY}"/>`;
+  /* water */
+  g+=`<path d="M24,140 L345,140 L345,205 L415,225 L415,318 L438,318 L438,368 L378,395 L378,1720 L507,1945 L600,2062 L24,2062 Z" fill="${WATER}"/>`;
+  /* terminal plate (white) */
+  g+=`<path d="M415,225 L497,225 L497,300 L880,302 L1010,332 L1092,400 L1160,460 L1240,510 L1330,512 L1408,545 L1470,585
+       L1430,665 L1352,795 L1290,915 L1243,1035 L1205,1155 L1173,1275 L1150,1395 L1128,1478
+       L1108,1525 L1092,1610 L1086,1710 L1092,1810 L1102,1905 L1108,1965
+       L1060,1985 L940,1972 L902,1958 L860,1942 L700,1948 L507,1945 L378,1720 L378,395 L438,368 L438,318 L415,318 Z"
+       fill="#f5f2e8" stroke="#8a867c" stroke-width="1"/>`;
+  /* ---- Henry Ford Ave & Terminal Island Fwy + interchange ---- */
+  g+=`<path d="M316,142 L700,232" stroke="${INK}" stroke-width="2"/><path d="M308,150 L560,215" stroke="${INK}" stroke-width="2"/>`;
+  g+=band('M338,146 C440,186 580,220 728,246',24);
+  g+=`<path d="M728,232 L750,246 L728,262 Z" fill="${CREAM}" stroke="${INK}" stroke-width="2"/>`;
+  g+=band('M330,152 C430,214 560,262 740,296 C860,316 1000,330 1210,448 C1258,482 1310,516 1408,548',30);
+  g+=band('M1258,398 C1340,440 1420,500 1470,585 C1500,640 1510,700 1512,760',20);
+  g+=band('M900,330 C1100,356 1290,400 1408,460 C1468,494 1512,528 1534,562',16);
+  g+=TXT(545,222,'HENRY FORD AVENUE',15.5,{r:9.5,ls:1.2});
+  g+=TXT(520,272,'TERMINAL ISLAND FREEWAY',15.5,{r:11,ls:1.2});
+  /* Pier A Plaza — the road along the top fence */
+  g+=band('M497,296 C700,298 860,300 1010,330 C1090,398 1140,440 1240,506 L1330,509 C1390,530 1440,556 1470,583',13);
+  g+=TXT(1016,336,'PIER A PLAZA',10.5,{r:11,ls:1.2});
+  g+=TXT(1322,449,'PIER A PLAZA',10.5,{r:22,ls:1.2});
+  /* Pier A Way — outside the rail yard */
+  g+=band('M1462,620 C1420,700 1372,790 1310,915 C1262,1015 1222,1155 1190,1290 C1170,1372 1155,1428 1140,1462',30);
+  g+=TXT(1233,1159,'PIER A WAY',15,{r:-68,ls:2});
+  /* Pier B St */
+  g+=band('M1150,1440 C1122,1540 1108,1640 1106,1740 C1104,1840 1112,1930 1122,2010 L1128,2062',26);
+  g+=TXT(1131,1537,'PIER B ST.',13,{r:-80,ls:1.2});
+  g+=`<path d="M1104,1490 L1120,1483 M1104,1502 L1121,1496" stroke="${INK}" stroke-width="1.4"/>`+ARR(1112,1476,-98,12,INK,1.6);
+  /* Carrack Avenue */
+  g+=band('M500,1952 C640,1964 760,1962 820,1956 C870,1950 894,1934 918,1916 C944,1898 974,1902 1004,1924 C1046,1952 1080,1968 1108,1978',22);
+  g+=band('M1004,1926 C1050,1968 1090,2010 1120,2056',16);
+  g+=TXT(760,1975,'CARRACK AVENUE',15,{r:2,ls:1.5});
+  g+=TXT(1078,2020,'CARRACK AVE.',10.5,{r:42,ls:1});
+  [[610,1950,2],[700,1955,1],[790,1952,-2],[950,1912,-28]].forEach(p=>{g+=ARR(p[0],p[1]-4,p[2]+180,13,INK,1.8)+ARR(p[0],p[1]+4,p[2],13,INK,1.8);});
+  g+=ARR(1052,1958,42,13,INK,1.8)+ARR(1036,1974,222,13,INK,1.8);
+  /* ---- RAIL YARD: tracks 1–8 ---- */
+  const trk=(o)=>`M${1394-o*1.05},${610+o*0.5} C${1330-o},${700+o*0.3} ${1260-o},${820+o*0.2} ${1210-o},${960+o*0.1} C${1160-o},${1110-o*0.12} ${1130-o*0.8},${1260-o*0.5} ${1108-o*0.55},${1352-o*0.9} C${1100-o*0.4},${1390-o*1.05} ${1096-o*0.3},${1415-o*1.15} ${1094-o*0.25},${1428-o*1.2}`;
+  for(let i=0;i<8;i++){g+=`<path d="${trk(i*13)}" fill="none" stroke="#2b2b2b" stroke-width="1.7" stroke-dasharray="14 9"/>`;}
+  g+=`<path d="M1094,1428 C1075,1490 1050,1560 1016,1640 C990,1700 960,1770 936,1830" fill="none" stroke="#2b2b2b" stroke-width="1.7" stroke-dasharray="14 9"/>`;
+  const TLB=[[1193,1238,'TRACK 1'],[1164,1263,'TRACK 2'],[1144,1267,'TRACK 3'],[1112,1300,'TRACK 4'],[1095,1304,'TRACK 5'],[1064,1362,'TRACK 6'],[1040,1364,'TRACK 7'],[1012,1404,'TRACK 8']];
+  TLB.forEach(t=>{g+=TXT(t[0],t[1],t[2],9.5,{r:-64,mono:1,ls:0.5,w:500});});
+  g+=TXT(1219,982,'RAIL YARD',20,{r:-63,ls:5});
+  /* tracks 9–16 fan (south yard) */
+  for(let i=0;i<8;i++){const o=i*9;
+    g+=`<path d="M${910+o*0.45},${1934-i*2.2} C${928+o*0.6},${1840-o*0.5} ${952+o*0.9},${1720-o*0.7} ${1005+o*1.25},${1585-o*0.75}" fill="none" stroke="#2b2b2b" stroke-width="1.5" stroke-dasharray="9 7"/>`;}
+  for(let i=0;i<8;i++){g+=TXT(920+i*8.5,1918-i*3,'TRACK '+(9+i),6.8,{r:-78,mono:1,ls:0,w:500});}
+  /* ---- customs / OCR run (tracks-side lanes) ---- */
+  for(let i=0;i<7;i++){const x0=1061+i*11.5;
+    g+=`<path d="M${x0},800 C${x0-2},880 ${1057+i*4},980 ${1053+i*1.5},1082" fill="none" stroke="${INK}" stroke-width="1.1"/>`;}
+  g+=comb(1063,792,1131,806,9,false,6.5);
+  g+=`<rect x="1061" y="786" width="40" height="34" fill="${CRANE}" stroke="${INK}" stroke-width="1.3"/>`;
+  g+=TXT(1080,749,'ROADABILITY',13.5,{ls:0.5})+`<path d="M1080,754 L1078,782" stroke="${INK}" stroke-width="1.4"/>`+ARR(1078,780,90,10,INK,1.6);
+  g+=`<rect x="1108" y="858" width="20" height="20" fill="${CRANE}" stroke="${INK}" stroke-width="1.2"/>`;
+  g+=TXT(1140,884,'CUSTOMS',13,{r:-57,ls:1.5});
+  g+=IC.Pp(1069,878);
+  g+=TXT(1046,1032,'OCR',11,{a:'end',ls:0.5})+IC.ocr(1053,1067)+IC.dot(1069,1092);
+  /* small staging shapes left of roadability */
+  g+=`<path d="M985,752 L1012,758 L1010,768 L995,765 L992,780 L982,778 Z" fill="none" stroke="${INK}" stroke-width="1.3"/>`;
+  for(let i=0;i<5;i++){g+=`<rect x="${986+i*9}" y="${788}" width="6" height="14" fill="none" stroke="${INK}" stroke-width="1"/>`;}
+  /* ---- fences (red) ---- */
+  const fence=(pts)=>`<path d="M${pts.map(p=>p.join(',')).join(' L')}" fill="none" stroke="${RED}" stroke-width="2.2"/>`;
+  g+=fence([[438,368],[438,318],[415,318],[415,225],[497,225],[497,300],[880,302],[1010,332],[1092,400],[1160,460],[1240,510],[1330,512],[1408,545],[1462,578],[1370,610],[1365,663],[1352,700],[1303,793],[1264,942],[1232,1092],[1200,1229],[1168,1373],[1123,1435],[1112,1470]]);
+  g+=fence([[624,1527],[802,1500],[822,1500],[997,1512],[1003,1489],[1055,1489],[1085,1500],[1053,1560],[1030,1640],[1000,1740],[975,1840],[940,1905],[908,1944]]);
+  g+=fence([[908,1944],[860,1928],[700,1934],[640,1922],[612,1878],[596,1826],[580,1770],[596,1714],[624,1527]]);
+  g+=fence([[445,1810],[520,1520],[624,1527]]);
+  /* fence furniture */
+  g+=IC.Pc(1365,666);
+  g+=IC.Pc(1162,1368)+IC.Hc(1175,1378);
+  [[1350,700],[1283,870],[1248,1010],[1216,1160],[1180,1300],[1137,793],[1103,942],[1069,1090],[700,290],[860,296],[1052,362],[1130,432]].forEach(p=>{g+=IC.dot(p[0],p[1]);});
+  /* ---- top-left: equipment · vessel parking · marine tower · check-in ---- */
+  g+=comb(446,232,446,312,11,true,7.5);
+  g+=TXT(524,240,'EQUIPMENT',13,{a:'start'})+TXT(524,255,'PARKING',13,{a:'start'});
+  g+=`<path d="M520,248 L470,260" stroke="${INK}" stroke-width="1.4"/>`+ARR(473,259,193,10,INK,1.6);
+  g+=comb(505,327,878,327,10,true,7.5);
+  g+=TXT(668,258,'VESSEL',13)+TXT(668,273,'PARKING',13);
+  g+=`<path d="M672,283 L700,315" stroke="${INK}" stroke-width="1.4"/>`+ARR(699,313,48,10,INK,1.6);
+  g+=TXT(414,332,'MARINE',13.5,{a:'end'})+TXT(414,348,'TOWER',13.5,{a:'end'});
+  g+=`<path d="M418,342 L446,345" stroke="${INK}" stroke-width="1.4"/>`+ARR(444,345,5,10,INK,1.6);
+  g+=IC.ph(500,352)+IC.fa(516,352)+IC.Rb(540,352);
+  g+=IC.drop(464,386)+IC.aed(513,386);
+  g+=TXT(604,392,'CHECK-IN',12.5,{a:'start'})+TXT(604,406,'BLDG.',12.5,{a:'start'});
+  g+=`<path d="M600,392 L580,370" stroke="${INK}" stroke-width="1.4"/>`+ARR(582,372,225,10,INK,1.6);
+  /* ---- M&R complex ---- */
+  /* parking combs by the gate */
+  g+=comb(1152,470,1198,432,10,true,7);
+  g+=comb(1212,476,1246,448,9,true,7);
+  g+=comb(1048,516,1088,486,9,true,7);
+  g+=comb(1040,560,1080,530,9,true,7);
+  g+=TXT(1168,376,'TERMINAL',12.5)+TXT(1168,390,'PARKING',12.5)+`<path d="M1170,394 L1176,420" stroke="${INK}" stroke-width="1.3"/>`+ARR(1176,418,80,9,INK,1.5);
+  g+=TXT(1256,384,'OFFICE',12.5)+TXT(1256,398,'PARKING',12.5)+`<path d="M1252,402 L1234,432" stroke="${INK}" stroke-width="1.3"/>`+ARR(1235,430,120,9,INK,1.5);
+  /* gatehouse & out gate */
+  g+=TXT(1156,576,'GATE-',13)+TXT(1156,591,'HOUSE',13)+`<path d="M1146,580 L1128,560" stroke="${INK}" stroke-width="1.3"/>`+ARR(1130,562,222,9,INK,1.5);
+  g+=IC.fa(1104,608,8);
+  g+=`<g transform="rotate(-40 1095 655)">`+comb(1060,655,1130,655,13,true,7)+`</g>`;
+  g+=`<g transform="rotate(-38 1172 596)">`+comb(1134,596,1210,596,13,true,7)+`</g>`;
+  g+=TXT(1148,646,'OUT GATE',13.5,{r:-50,ls:1});
+  g+=TXT(1060,700,"DRIVER'S",12.5,{a:'start'})+TXT(1060,714,'SERVICE',12.5,{a:'start'})+`<path d="M1056,700 L1036,676" stroke="${INK}" stroke-width="1.3"/>`+ARR(1038,678,228,9,INK,1.5);
+  g+=IC.Rb(986,646)+IC.ph(1006,614);
+  /* in gate + gate 1 */
+  for(let i=0;i<10;i++){const x0=1216+i*7.5;g+=`<path d="M${x0},560 L${x0+13},646" stroke="${INK}" stroke-width="1.3"/>`;}
+  g+=TXT(1252,542,'IN GATE',14,{ls:0.5});
+  g+=TXT(1330,514,'OCR',11,{ls:0.5})+IC.ocr(1341,532)+IC.Pp(1369,549);
+  g+=TXT(1332,558,'GUARD',11)+TXT(1332,570,'SHACK',11)+`<path d="M1326,574 L1320,584" stroke="${INK}" stroke-width="1.2"/>`;
+  g+=IC.fa(1300,592,7)+IC.aed(1352,598);
+  g+=TXT(1430,560,'GATE 1',14,{ls:0.5});
+  for(let i=0;i<6;i++){g+=`<path d="M${1442+i*9},${600+i*4} L${1462+i*9},${586+i*4}" stroke="${INK}" stroke-width="1.2"/>`;}
+  g+=TXT(1222,712,'RAIL BLDG.',13,{r:-52,ls:1});
+  g+=IC.fa(1258,632,7);
+  g+=`<path d="M1248,676 L1272,646" stroke="${INK}" stroke-width="1.2"/>`+ARR(1270,648,-52,9,INK,1.5);
+  /* ---- wharf: edge, ships, cranes, stokes, ladders, berth labels ---- */
+  g+=`<path d="M378,395 L378,1720 L507,1945" fill="none" stroke="${INK}" stroke-width="3"/>`;
+  const ship=(y0,y1)=>{let s=`<g><rect x="309" y="${y0}" width="51" height="${y1-y0-24}" fill="${SHIPC}" stroke="${INK}" stroke-width="2"/>`+
+    `<path d="M309,${y1-24} L309,${y1-14} Q334,${y1+6} 360,${y1-14} L360,${y1-24} Z" fill="${SHIPC}" stroke="${INK}" stroke-width="2"/>`;
+    const n=Math.floor((y1-y0-40)/26);
+    for(let i=1;i<=n;i++){s+=`<path d="M311,${y0+i*26} h47" stroke="${INK}" stroke-width="1.2"/>`;}
+    s+=`<rect x="322" y="${(y0+y1)/2-13}" width="25" height="26" fill="none" stroke="${INK}" stroke-width="1.6"/></g>`;return s;};
+  const crane=(y)=>`<g><rect x="296" y="${y-5}" width="122" height="10" fill="${CRANE}" stroke="${INK}" stroke-width="1.2"/><rect x="376" y="${y-12}" width="40" height="24" fill="${CRANE}" stroke="${INK}" stroke-width="1.4"/></g>`;
+  let hull=ship(468,778)+ship(934,1221)+ship(1377,1664);
+  g+=hull;
+  [489,557,663,726, 955,1009,1117,1183, 1389,1448,1558,1616, 1673].forEach(y=>{g+=crane(y);});
+  [[430,462],[430,530],[430,695],[430,753],[430,940],[430,1060],[430,1140],[430,1213],[430,1395],[430,1500],[430,1580],[430,1650],[430,1692]].forEach(p=>{g+=IC.stok(p[0],p[1]);});
+  [[370,441],[370,597],[370,753],[370,915],[370,1067],[370,1221],[370,1349],[370,1494],[370,1650],[386,1740],[418,1802]].forEach(p=>{g+=IC.lad(p[0],p[1],0);});
+  const berthLb=(x,y,n)=>TXT(x-8,y,'BERTH',15,{r:-90,ls:1})+TXT(x+10,y,n,15,{r:-90,ls:1});
+  g+=berthLb(406,617,'A94')+berthLb(406,943,'A92')+berthLb(420,1315,'A90')+berthLb(432,1725,'A88');
+  /* dots along the wharf apron */
+  [[470,455],[470,900],[470,1360],[452,1690]].forEach(p=>{g+=IC.dot(p[0],p[1]);});
+  /* ---- yard dots (light pole & hydrant) ---- */
+  const rows1=[455,563,671], rows2=[799,946,1090], xs=[487,608,769];
+  rows1.forEach(y=>xs.forEach(x=>{g+=IC.dot(x,y);}));
+  rows2.forEach(y=>xs.forEach(x=>{g+=IC.dot(x,y);}));
+  xs.forEach(x=>{g+=IC.dot(x,733);}); [487,608,769,900].forEach(x=>{g+=IC.dot(x,1222);});
+  g+=IC.dot(493,1385)+IC.dot(608,1300)+IC.dot(767,1377);
+  [[608,1480],[769,1480]].forEach(p=>{g+=IC.dot(p[0],p[1]);});
+  /* ---- 300-block two-way lane ---- */
+  g+=`<path d="M812,1242 L812,1470 M836,1242 L836,1470" stroke="${INK}" stroke-width="2"/>`;
+  [1268,1330,1392,1452].forEach(y=>{g+=ARR(818,y,-90,14,INK,1.8)+ARR(830,y,90,14,INK,1.8);});
+  /* ---- south yard furniture ---- */
+  /* ramp 1 between 400/500 + dashed lane */
+  g+=`<rect x="800" y="1506" width="24" height="74" fill="${CREAM}" stroke="${INK}" stroke-width="1.4"/>`;
+  for(let i=0;i<6;i++){g+=`<path d="M800,${1514+i*11} h24" stroke="${INK}" stroke-width="1"/>`;}
+  g+=ARR(806,1544,-90,16,INK,1.8)+ARR(818,1544,90,16,INK,1.8);
+  g+=TXT(812,1608,'RAMP',9.5,{r:-90,ls:1});
+  g+=`<path d="M812,1580 L812,1891" stroke="${INK}" stroke-width="1.4" stroke-dasharray="7 6"/>`;
+  /* ramp 2 */
+  g+=`<g transform="rotate(20 620 1746)"><rect x="606" y="1730" width="28" height="32" fill="${CREAM}" stroke="${INK}" stroke-width="1.3"/>`+ARR(613,1746,-70,13,INK,1.6)+ARR(627,1746,110,13,INK,1.6)+`</g>`;
+  g+=TXT(600,1724,'RAMP',8,{r:-70,ls:0.5});
+  /* bombcart lanes */
+  for(let i=0;i<11;i++){const x0=530+i*7;g+=`<path d="M${x0},1520 L${x0-12},1712" stroke="${INK}" stroke-width="1.1"/>`;}
+  g+=TXT(508,1600,'BOMBCART PARKING',11.5,{r:-83,ls:0.8});
+  g+=TXT(548,1502,'OCR',9.5,{a:'start',ls:0.5})+IC.ocr(542,1516);
+  g+=IC.Pp(534,1648);
+  /* customs south */
+  g+=TXT(470,1652,'CUSTOMS',12.5,{a:'end',ls:0.5});
+  g+=IC.ph(466,1672)+IC.Rb(473,1708);
+  g+=`<rect x="516" y="1716" width="12" height="10" fill="none" stroke="${INK}" stroke-width="1.1"/>`;
+  /* roadability / crane maint corner */
+  g+=TXT(506,1772,'ROADABILITY',12.5,{a:'end',ls:0.3})+TXT(506,1790,'CRANE MAINT.',12.5,{a:'end',ls:0.3});
+  g+=`<path d="M480,1794 L486,1814" stroke="${INK}" stroke-width="1.3"/>`+ARR(486,1812,80,9,INK,1.5);
+  g+=comb(510,1806,536,1800,7,false,5.5);
+  g+=IC.aed(468,1861)+IC.fa(494,1868,8);
+  g+=`<rect x="514" y="1836" width="10" height="9" fill="none" stroke="${INK}" stroke-width="1.1"/>`;
+  /* out gate 2 lanes */
+  g+=`<g transform="rotate(-15 560 1812)">`+comb(524,1812,600,1812,12,true,6.5)+`</g>`;
+  g+=TXT(548,1786,'OUT',12)+TXT(548,1799,'GATE',12);
+  /* in gate 2 */
+  for(let i=0;i<6;i++){const x0=612+i*6.5;g+=`<path d="M${x0},1828 L${x0+6},1892" stroke="${INK}" stroke-width="1"/>`;}
+  g+=TXT(646,1830,'IN',11.5,{a:'start'})+TXT(640,1843,'GATE',11.5,{a:'start'});
+  g+=TXT(600,1868,'OCR',9,{a:'end',ls:0.3})+IC.ocr(612,1870);
+  /* guard shack 2 / gate 2 */
+  g+=TXT(566,1904,'GUARD',11)+TXT(566,1916,'SHACK',11)+`<path d="M584,1912 L602,1906" stroke="${INK}" stroke-width="1.2"/>`;
+  g+=TXT(574,1936,'GATE 2',11,{ls:0.5});
+  /* gate 2 stub road + hatched island */
+  g+=band('M508,1948 C516,1918 520,1898 518,1878',12);
+  g+=`<g transform="rotate(12 522 1902)">`+comb(514,1930,522,1876,6,true,5)+`</g>`;
+  /* guard shack 3 / gate 3 */
+  g+=`<rect x="950" y="1936" width="14" height="11" fill="${CRANE}" stroke="${INK}" stroke-width="1.1"/>`;
+  g+=`<rect x="958" y="1950" width="28" height="34" fill="${PAPER}" stroke="${INK}" stroke-width="1.4"/>`;
+  g+=`<rect x="925" y="1956" width="11" height="11" fill="${INK}" transform="rotate(45 930 1961)"/>`;
+  g+=TXT(898,1928,'GUARD',10.5)+TXT(898,1940,'SHACK',10.5)+`<path d="M908,1944 L924,1956" stroke="${INK}" stroke-width="1.1"/>`;
+  g+=TXT(930,1992,'GATE 3',10.5,{ls:0.3})+`<path d="M930,1982 L930,1972" stroke="${INK}" stroke-width="1.1"/>`;
+  /* driver's service 2 */
+  g+=TXT(622,1468,"DRIVER'S",12.5)+TXT(622,1482,'SERVICE',12.5)+IC.Rb(662,1470)+IC.ph(684,1466);
+  g+=`<path d="M636,1486 L662,1502" stroke="${INK}" stroke-width="1.3"/>`+ARR(660,1500,32,9,INK,1.5);
+  /* white bldg at the block's NE corner */
+  g+=`<path d="M1006,1490 L1052,1490 L1052,1512 L1030,1512 L1030,1502 L1006,1502 Z" fill="${PAPER}" stroke="${INK}" stroke-width="1.4"/>`;
+  /* south-yard markers */
+  g+=IC.dot(651,1650)+IC.dot(676,1773)+IC.dot(714,1549)+IC.dot(660,1602)+IC.dot(893,1566)+IC.dot(864,1590)+IC.dot(940,1620)+IC.dot(986,1540)+IC.dot(830,1801)+IC.dot(950,1758)+IC.dot(918,1848);
+  g+=IC.Pp(766,1866)+IC.Pp(790,1685);
+  g+=IC.Hc(793,1904)+IC.Pc(900,1928);
+  g+=IC.dot(1020,1500);
+  /* ---- north arrow (the sign's jagged bolt) ---- */
+  g+=`<path d="M498,2004 L538,1988 L528,2000 L568,1984 L558,1996 L592,1982" fill="none" stroke="${INK}" stroke-width="3.4" stroke-linejoin="round"/>`;
+  g+=`<path d="M592,1982 L578,1978 M592,1982 L584,1994" stroke="${INK}" stroke-width="3.4"/>`;
+  g+=`<path d="M524,1978 L516,2008" stroke="${INK}" stroke-width="2.4"/>`;
+  /* ---- the three posted signs (over the water) ---- */
+  const signbox=(x,y,w,h)=>`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="10" fill="${PAPER}" stroke="${INK}" stroke-width="2.6"/><rect x="${x+5}" y="${y+5}" width="${w-10}" height="${h-10}" rx="7" fill="none" stroke="${INK}" stroke-width="1.2"/>`;
+  g+=signbox(108,963,128,144);
+  g+=TXT(172,996,'TERMINAL',17)+TXT(172,1016,'SPEED',17)+TXT(172,1036,'LIMIT',17)+TXT(184,1082,'15',42,{ls:0})+TXT(214,1096,'M.P.H.',9);
+  g+=signbox(105,1129,140,100);
+  g+=TXT(175,1160,'FOR SECURITY',16.5)+TXT(175,1181,'CALL CHANNEL',16.5)+TXT(175,1216,'#16',28,{ls:0});
+  g+=signbox(86,1252,189,100);
+  g+=TXT(180,1281,'MAXIMUM',16.5)+TXT(180,1302,'SAFE LOAD LIMIT',16.5)+`<path d="M112,1310 L248,1310" stroke="${INK}" stroke-width="1.6"/>`+TXT(180,1328,'1500 POUNDS',15)+TXT(180,1346,'PER SQUARE FOOT',15);
+  return g;
+}
+
+/* ---- the LEGEND panel + EMERGENCY panel (drawn over the water / land) ---- */
+function paPanels(){
+  let g='';
+  /* LEGEND */
+  g+=`<rect x="58" y="1385" width="263" height="651" rx="14" fill="${PAPER}" stroke="${INK}" stroke-width="2.6"/>`;
+  g+=TXT(76,1428,'LEGEND:',23,{a:'start',ls:1});
+  const items=[
+    [ (x,y)=>IC.drop(x,y+1),'YOU ARE HERE'],
+    [ (x,y)=>IC.Ab(x,y,8),'ASSEMBLY AREA'],
+    [ (x,y)=>IC.fa(x,y,9),'FIRST AID STATION'],
+    [ (x,y)=>IC.msds(x,y),'MSDS SHEETS'],
+    [ (x,y)=>IC.aed(x,y),'AED'],
+    [ (x,y)=>IC.stok(x,y),'STOKES BASKETS'],
+    [ (x,y)=>IC.lad(x,y,90),'ACCESS LADDER'],
+    [ (x,y)=>IC.ph(x,y),'TELEPHONE'],
+    [ (x,y)=>IC.Rb(x,y),'RESTROOM'],
+    [ (x,y)=>`<path d="M${x-9},${y} h7 M${x+1},${y} h7" stroke="${RED}" stroke-width="2.6"/>`,'EXISTING FENCE'],
+    [ (x,y)=>IC.Pp(x,y),'PORTAL (RPM)'],
+    [ (x,y)=>IC.dot(x,y),'LIGHT POLE &amp;|FIRE HYDRANT']
+  ];
+  let ly=1466;
+  items.forEach(it=>{
+    g+=it[0](96,ly);
+    const parts=it[1].split('|');
+    if(parts.length>1){g+=TXT(122,ly+1,parts[0],14.5,{a:'start',ls:0.6});g+=TXT(122,ly+17,parts[1],14.5,{a:'start',ls:0.6});ly+=16;}
+    else g+=TXT(122,ly+5,it[1],14.5,{a:'start',ls:0.6});
+    ly+=45;
+  });
+  g+=IC.Hc(96,ly-6)+TXT(106,ly-1,'Hydrant Only',11,{a:'start',w:600});
+  g+=IC.Pc(178,ly-6)+TXT(188,ly-1,'Pole Only',11,{a:'start',w:600});
+  g+=TXT(88,ly-1,'(',12,{a:'end'})+TXT(242,ly-1,')',12,{a:'start'});
+  /* EMERGENCY PROCEDURES */
+  g+=`<rect x="1168" y="1502" width="312" height="500" rx="14" fill="${PAPER}" stroke="${INK}" stroke-width="2.6"/>`;
+  g+=TXT(1324,1540,'EMERGENCY',24,{c:'#c1201a',ls:1});
+  g+=TXT(1324,1568,'PROCEDURES',24,{c:'#c1201a',ls:1});
+  g+=TXT(1324,1598,'700 PIER A PLAZA',21,{ls:0.8});
+  const L=[
+    ['b','• In the event of an emergency such as fire,'],
+    ['n','  earthquake, or severe hazardous materials leak...'],
+    ['m','• Communications: Terminal personnel will be'],
+    ['n','  notified of the incident verbally, by radio or bullhorn.'],
+    ['b','• Actions:'],
+    ['m','   • Visitors and Employees are NOT to approach'],
+    ['n','     the incident scene.'],
+    ['m','   • Employees are to report immediately to your'],
+    ['n','     direct supervisor for further information.'],
+    ['m','• Visitors should contact any SSAT supervisor'],
+    ['n','  upon notification of incident.'],
+    ['n','• If required to evacuate, proceed to the nearest assembly'],
+    ['A','  area (Ⓐ on the terminal map), and remain there until'],
+    ['n','  accounted for by supervision. If evacuation routes are'],
+    ['n','  blocked (i.e. rail traffic) employees shall evacuate at the'],
+    ['n','  direction of an SSAT supervisor to an upwind area. If'],
+    ['n','  unable to evacuate, take shelter in a nearby area that is'],
+    ['n','  NOT DOWNWIND from the incident.'],
+    ['m','• Accidents and injuries: Report all accidents and'],
+    ['n','  injuries, regardless of severity, immediately to SSAT'],
+    ['n','  management and before leaving the terminal. The'],
+    ['n','  address of the terminal, location of first aid kits and'],
+    ['n','  public phones are noted on the terminal map.']
+  ];
+  let ey=1622;
+  L.forEach(l=>{
+    const w=l[0]==='n'?500:700;
+    if(l[0]==='A'){
+      g+=TXT(1184,ey,'  area (',11.2,{a:'start',w:500,ls:0.1});
+      g+=IC.Ab(1222,ey-4,5.5);
+      g+=TXT(1229,ey,' on the terminal map), and remain there until',11.2,{a:'start',w:500,ls:0.1});
+    } else {
+      g+=TXT(1184,ey,l[1],11.2,{a:'start',w:w,ls:0.1});
+    }
+    ey+=13.2;
+  });
+  g+=TXT(1324,1946,'EMERGENCY NUMBER',13.5,{c:'#c1201a',ls:0.8});
+  g+=TXT(1324,1978,'911',30,{c:'#c1201a',ls:2});
+  g+=TXT(1324,1994,'FOR FIRE DEPARTMENT/PARAMEDIC',11,{c:'#c1201a',ls:0.5});
+  /* SSA logo (top right, over the land) */
+  g+=`<rect x="1200" y="156" width="318" height="116" rx="10" fill="${PAPER}" stroke="#9a968c" stroke-width="1.5"/>`;
+  g+=`<circle cx="1262" cy="200" r="30" fill="#7ab648"/>`;
+  g+=`<path d="M1240,188 C1252,178 1276,178 1286,192 M1238,206 C1252,222 1278,222 1288,208" stroke="#fff" stroke-width="4" fill="none"/>`;
+  g+=`<text x="1362" y="250" text-anchor="middle" font-family="'Barlow Condensed',sans-serif" font-size="27" letter-spacing="0.2"><tspan font-weight="700" fill="#26241e">SSA</tspan><tspan font-weight="400" fill="#3a3833">Terminals</tspan><tspan font-size="12" fill="#3a3833">&#8482;</tspan></text>`;
+  return g;
+}
+
+/* ---- A-300 segment overlays (ride ON the spot column) ---- */
+function paTop(){
+  let g='';
+  /* labels & icons that ride ON building spots */
+  g+=`<g transform="rotate(28 929 413)">`+TXT(929,410,'WASH',10)+TXT(929,422,'RACK',10)+`</g>`;
+  g+=`<g transform="rotate(28 1010 466)">`+TXT(1000,474,'M&amp;R',25,{ls:1})+`</g>`;
+  g+=IC.fa(1064,447,8)+IC.fa(956,474,8)+IC.msds(1042,408);
+  g+=TXT(1075,470,'FUEL TANKS',10,{r:-64,ls:0.5});
+  g+=`<rect x="1052" y="486" width="12" height="9" fill="${CRANE}" stroke="${INK}" stroke-width="1"/><rect x="1066" y="490" width="12" height="9" fill="${CRANE}" stroke="${INK}" stroke-width="1"/>`;
+  g+=IC.aed(1112,540);
+  g+=`<rect x="482" y="1300" width="22" height="52" fill="${PAPER}" stroke="${INK}" stroke-width="1.2"/>`;
+  g+=`<rect x="482" y="1354" width="22" height="25" fill="${CRANE}" stroke="${INK}" stroke-width="1.2"/>`;
+  g+=IC.dot(493,1387);
+  return g;
+}
+
+/* ================= viewer engine ================= */
+const pz={x:0,y:0,scale:1,min:.2,max:6,sel:null};
+function $a(id){return document.getElementById(id);}
+
+function pzRender(){
+  const st=$a('paStage');if(!st)return;const vb=PZ.vb;let shapes='';
+  PZ.spots.forEach(sp=>{
+    const cat=PZ.cats[sp.cat]||PZ.cats.fac;
+    const cx=sp.x+sp.w/2, cy=sp.y+sp.h/2;
+    const rx=sp.hull?6:2.5;
+    const fo=sp.ghost?0.08:1, so=sp.ghost?0.25:0.95;
+    let label='';
+    if(!sp.nolabel&&!sp.ghost){
+      const lc=cat.lc||'#20301a', lb=sp.lb||sp.label;
+      if(sp.rot){
+        const fs=sp.fs||Math.max(8.5,Math.min(sp.h/(lb.length*0.58),sp.w*0.55,15));
+        label=`<text x="${cx}" y="${cy}" text-anchor="middle" dy="0.34em" transform="rotate(-90 ${cx} ${cy})" fill="${lc}" font-family="'Barlow Condensed',sans-serif" font-weight="700" font-size="${(+fs).toFixed(1)}" letter-spacing="0.5" style="pointer-events:none">${lb}</text>`;
+      } else {
+        const fs=sp.fs||Math.max(8,Math.min(sp.w/(lb.length*0.52),sp.h*0.68,13.5));
+        label=`<text x="${cx}" y="${cy}" dy="0.34em" text-anchor="middle" fill="${lc}" font-family="'Barlow Condensed',sans-serif" font-weight="700" font-size="${(+fs).toFixed(1)}" letter-spacing="0.3" style="pointer-events:none">${lb}</text>`;
+      }
+    }
+    let rect;
+    if(sp.wedge){ /* X-300 — slanted top-right corner */
+      rect=`<path d="M${sp.x},${sp.y} L${sp.x+sp.w*0.55},${sp.y} L${sp.x+sp.w},${sp.y+44} L${sp.x+sp.w},${sp.y+sp.h} L${sp.x},${sp.y+sp.h} Z" fill="${cat.c}" fill-opacity="${fo}" stroke="${cat.s}" stroke-width="1.3" stroke-opacity="${so}"/>`;
+    } else {
+      rect=`<rect x="${sp.x}" y="${sp.y}" width="${sp.w}" height="${sp.h}" rx="${rx}" fill="${cat.c}" fill-opacity="${fo}" stroke="${cat.s}" stroke-width="1.3" stroke-opacity="${so}"/>`;
+    }
+    const inner=rect+label;
+    shapes+=`<g class="sp" data-id="${sp.id}"${sp.ang?` transform="rotate(${sp.ang} ${cx} ${cy})"`:''}>${inner}</g>`;
+  });
+  st.innerHTML=`<svg width="${vb[2]}" height="${vb[3]}" viewBox="${vb.join(' ')}" xmlns="http://www.w3.org/2000/svg">${paBase()}${shapes}${paTop()}${paPanels()}</svg>`;
+}
+function pzApply(){const st=$a('paStage');if(st)st.style.transform=`translate(${pz.x}px,${pz.y}px) scale(${pz.scale})`;}
+function pzFit(){
+  const vp=$a('paVp');if(!vp||!vp.clientWidth)return;const vb=PZ.vb;
+  const s=Math.min(vp.clientWidth/vb[2],vp.clientHeight/vb[3])*0.97;
+  pz.scale=s;pz.min=s*.85;pz.max=Math.max(s*10,5);
+  pz.x=(vp.clientWidth-vb[2]*s)/2;pz.y=(vp.clientHeight-vb[3]*s)/2;pzApply();
+}
+function pzZoomAt(pt,f){const r=$a('paVp').getBoundingClientRect();const px=pt.x-r.left,py=pt.y-r.top;
+  const ns=Math.min(pz.max,Math.max(pz.min,pz.scale*f)),k=ns/pz.scale;
+  pz.x=px-(px-pz.x)*k;pz.y=py-(py-pz.y)*k;pz.scale=ns;}
+function pzCenterOn(sp,zoom){const vp=$a('paVp');const ns=zoom||Math.max(pz.min*2.6,Math.min(pz.max,1.2));pz.scale=ns;
+  const cx=sp.x+sp.w/2,cy=sp.y+sp.h/2;pz.x=vp.clientWidth/2-cx*ns;pz.y=vp.clientHeight/2-cy*ns;pzApply();}
+function pzSelect(id,center){
+  const sp=PZ.byId[id];if(!sp)return;pz.sel=id;
+  document.querySelectorAll('#paStage .sp').forEach(g=>g.classList.toggle('sel',g.dataset.id===id));
+  const cat=PZ.cats[sp.cat]||PZ.cats.fac;
+  $a('paSw').style.background=cat.s;$a('paInfoNm').textContent=sp.label;
+  $a('paInfoCat').textContent=cat.t;$a('paInfoDesc').textContent=sp.desc||cat.d;
+  $a('paInfo').classList.add('on');if(center)pzCenterOn(sp);
+}
+function pzCloseInfo(){$a('paInfo').classList.remove('on');
+  document.querySelectorAll('#paStage .sp').forEach(g=>g.classList.remove('sel'));pz.sel=null;}
+function pzSearch(q){
+  const sug=$a('paSug');q=q.trim().toLowerCase();
+  if(!q){sug.classList.remove('on');sug.innerHTML='';return;}
+  const score=s=>{const id=s.id.toLowerCase(),lb=s.label.toLowerCase();
+    if(id===q||lb===q)return 0;if(id.startsWith(q)||lb.startsWith(q))return 1;
+    if(lb.includes(q))return 2;if(id.includes(q))return 3;return 9;};
+  const hits=PZ.spots.map(s=>[s,score(s)]).filter(a=>a[1]<9)
+    .sort((a,b)=>a[1]-b[1]).slice(0,8).map(a=>a[0]);
+  if(!hits.length){sug.classList.remove('on');sug.innerHTML='';return;}
+  sug.innerHTML=hits.map(s=>{const c=PZ.cats[s.cat]||PZ.cats.fac;
+    return `<button data-id="${s.id}"><span class="dot" style="background:${c.s}"></span>${s.label}<span class="t">${c.t}</span></button>`;}).join('');
+  sug.classList.add('on');
+}
+
+/* ================= PIER A TERMINAL GUIDE (off the sign) ================= */
+function pzRenderGuide(){
+  return `
+    <div class="yg-safe">⚠ Terminal speed limit 15 MPH · For security call channel #16 · Maximum safe load limit 1,500 lbs per square foot.</div>
+    <h5 class="yg-h no">⚠ EMERGENCY PROCEDURES — 700 PIER A PLAZA</h5>
+    <dl class="yg-terms">
+      <dt>In the event of an emergency</dt><dd>Such as fire, earthquake, or severe hazardous materials leak — terminal personnel will be notified of the incident verbally, by radio or bullhorn.</dd>
+      <dt>Actions</dt><dd>Visitors and employees are NOT to approach the incident scene. Employees report immediately to your direct supervisor for further information. Visitors should contact any SSAT supervisor upon notification of incident.</dd>
+      <dt>If required to evacuate</dt><dd>Proceed to the nearest assembly area (the green Ⓐ squares — vessel parking row, the gatehouse parking, and the south in-gate) and remain there until accounted for by supervision. If evacuation routes are blocked (i.e. rail traffic), evacuate at the direction of an SSAT supervisor to an upwind area. If unable to evacuate, take shelter in a nearby area that is NOT DOWNWIND from the incident.</dd>
+      <dt>Accidents &amp; injuries</dt><dd>Report all accidents and injuries, regardless of severity, immediately to SSAT management and before leaving the terminal.</dd>
+      <dt>Emergency number</dt><dd>911 for fire department / paramedic.</dd>
+    </dl>
+    <h5 class="yg-h">🗺 On this map</h5>
+    <dl class="yg-terms">
+      <dt>Berths A94 · A92 · A90 · A88</dt><dd>Down the wharf on the west side — cranes, stokes baskets and access ladders are marked along the apron. The marine tower &amp; check-in building sit at the top corner.</dd>
+      <dt>The 100 · 200 · 300 blocks</dt><dd>Rows A through H plus N run in three blocks off the wharf; P·S·T·W are the reefer rows (blue, with green end caps); X and Y rows sit against the rail yard. G-300 runs wide — there is no H-300.</dd>
+      <dt>The 400 / 500 south yard</dt><dd>Its own fenced yard off Carrack Avenue: Gate 2 (in/out gates, OCR) and Gate 3 by the track 9–16 fan. The RAMP lane crosses between the 400 and 500 rows. Bombcart parking, customs and the roadability / crane maintenance corner sit against Berth A88.</dd>
+      <dt>Rail yard — tracks 1–8 &amp; 9–16</dt><dd>Curves from Gate 1 down Pier A Way to Pier B St, then feeds the south fan. Never cross between cars; if rail traffic blocks your evacuation route, supervision routes you upwind.</dd>
+      <dt>Gates</dt><dd>Gate 1 — main in/out off Pier A Plaza (gatehouse, OCR &amp; RPM portals). Gate 2 — Carrack Ave, south yard. Gate 3 — Carrack Ave at the rail fan.</dd>
+    </dl>
+    <p class="yg-src">From the posted SSA Terminals wall map — Pier A · Emergency Procedures &amp; Assembly Areas · 700 Pier A Plaza, Long Beach. For reference — obey posted signs and your foreman.</p>`;
+}
+
+/* ---- open / close, wired into the app's yard-map flow ---- */
+function openPierAYard(op,label){
+  $a('paName').textContent=PZ.name;
+  $a('paSub').textContent=label&&label!==PZ.op?label+' · 700 Pier A Plaza':PZ.sub;
+  pzRender();pzCloseInfo();
+  $a('paSearch').value='';$a('paSug').classList.remove('on');
+  $a('paLegend').classList.remove('on');$a('paGuide').classList.remove('on');
+  $a('paw').classList.add('on');
+  requestAnimationFrame(()=>{pzFit();requestAnimationFrame(pzFit);});
+}
+function closePierAYard(){$a('paw').classList.remove('on');}
+window.openPierAYard=openPierAYard;window.closePierAYard=closePierAYard;
+
+try{ if(typeof YARD_MAPS!=='undefined'){ YARD_MAPS["SSA-A"]={interactive:true,piera:true,note:"interactive — the Pier A wall map, row by row; 📖 for emergency procedures"}; } }catch(e){}
+(function(){const orig=window.openYardMap;
+  window.openYardMap=function(op,label){
+    if(op==='SSA-A')return openPierAYard(op,label);
+    if(typeof orig==='function')return orig(op,label);
+  };})();
+try{ if(typeof renderPorts==='function'){ const s=document.getElementById('portSearch'); renderPorts(s?s.value:""); } }catch(e){}
+try{ if(typeof renderDockets==='function') renderDockets(); }catch(e){}
+
+/* ---- event wiring ---- */
+pzRender();
+$a('paBack').addEventListener('click',closePierAYard);
+$a('paReset').addEventListener('click',pzFit);
+$a('paLegBtn').addEventListener('click',()=>{
+  const icons=[["drop","You are here"],["Ab","Assembly area"],["fa","First aid station"],["msds","MSDS sheets"],
+               ["aed","AED"],["stok","Stokes baskets"],["lad","Access ladder"],["ph","Telephone"],
+               ["Rb","Restroom"],["Pp","Portal (RPM)"],["dot","Light pole &amp; fire hydrant"],["Hc","Ⓗ hydrant only · Ⓟ pole only"]];
+  $a('paLegList').innerHTML=PZ.legend.map(([k,name])=>{const c=PZ.cats[k];
+    return `<div class="lg"><span class="dot" style="background:${c.c};border:1.5px solid ${c.s}"></span>${name}</div>`;}).join('')
+    +icons.map(ic=>`<div class="lg"><span class="dot" style="background:none;border:0;position:relative"><svg width="26" height="26" viewBox="-13 -13 26 26" style="position:absolute;left:-5px;top:-5px">${IC[ic[0]](0,0)}</svg></span>${ic[1]}</div>`).join('');
+  $a('paLegend').classList.add('on');
+});
+$a('paLegClose').addEventListener('click',()=>$a('paLegend').classList.remove('on'));
+$a('paGuideBtn').addEventListener('click',()=>{const gb=$a('paGuideBody');if(!gb.dataset.built){gb.innerHTML=pzRenderGuide();gb.dataset.built="1";}$a('paGuide').classList.add('on');});
+$a('paGuideClose').addEventListener('click',()=>$a('paGuide').classList.remove('on'));
+$a('paInfoClose').addEventListener('click',pzCloseInfo);
+const paSearchEl=$a('paSearch');
+paSearchEl.addEventListener('input',e=>pzSearch(e.target.value));
+$a('paSug').addEventListener('click',e=>{const b=e.target.closest('button[data-id]');if(!b)return;
+  paSearchEl.value='';$a('paSug').classList.remove('on');pzSelect(b.dataset.id,true);});
+
+/* ---- pan / pinch / tap engine ---- */
+(function(){
+  const vp=$a('paVp');if(!vp)return;
+  const pts=new Map();let lastDist=0,lastMid=null,lastTap=0,downT=null,moved=0;
+  vp.addEventListener('pointerdown',e=>{
+    if(e.target.closest&&e.target.closest('.yi-info,.yi-legend,.yi-guide,.yi-reset,.yi-legend-btn'))return;
+    vp.setPointerCapture(e.pointerId);pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(pts.size===1){downT=e.target;moved=0;const now=Date.now();
+      if(now-lastTap<300){if(pz.scale>pz.min*1.7)pzFit();else{pzZoomAt({x:e.clientX,y:e.clientY},2.3);pzApply();}lastTap=0;downT=null;}
+      else lastTap=now;}
+    if(pts.size===2){const a=[...pts.values()];lastDist=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y);
+      lastMid={x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2};downT=null;}
+  });
+  vp.addEventListener('pointermove',e=>{if(!pts.has(e.pointerId))return;const p=pts.get(e.pointerId);
+    if(pts.size===1){const dx=e.clientX-p.x,dy=e.clientY-p.y;moved+=Math.abs(dx)+Math.abs(dy);pz.x+=dx;pz.y+=dy;pzApply();}
+    p.x=e.clientX;p.y=e.clientY;
+    if(pts.size===2){const a=[...pts.values()];const d=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y);
+      const mid={x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2};
+      if(lastDist>0)pzZoomAt(mid,d/lastDist);
+      if(lastMid){pz.x+=mid.x-lastMid.x;pz.y+=mid.y-lastMid.y;}
+      lastDist=d;lastMid=mid;pzApply();}
+  });
+  const up=e=>{
+    if(pts.size===1&&downT&&moved<8){const g=downT.closest&&downT.closest('.sp');if(g)pzSelect(g.dataset.id);}
+    pts.delete(e.pointerId);lastDist=0;lastMid=null;downT=null;
+  };
+  vp.addEventListener('pointerup',up);vp.addEventListener('pointercancel',up);
+  vp.addEventListener('wheel',e=>{e.preventDefault();pzZoomAt({x:e.clientX,y:e.clientY},e.deltaY<0?1.15:.87);pzApply();},{passive:false});
+})();
+window.addEventListener('resize',()=>{if($a('paw').classList.contains('on'))pzFit();});
+})();
+
+try{window.__bootProg&&__bootProg(95)}catch(e){}   /* #realboot — Pier A sign hung in the vault */
+</script>
+
 <style id="daylight-v2">
 /* ══════════════════════════════════════════════════════════════════════════
    DAYLIGHT v2 — a real light theme, not an inverted dark one.
