@@ -1603,12 +1603,7 @@ html.arcade .scan-ic{--sc-ic-a:rgba(36,31,66,.92);--sc-ic-b:rgba(13,11,24,.92)}
 .jl-gate-pill.ask{border-color:rgba(214,90,60,.5);color:#e08a6a}
 .jl-gate-name{font-size:15px;font-weight:700;color:var(--bone);margin-top:5px;line-height:1.25}
 .jl-gate-why{font-size:10.5px;color:var(--steel);margin-top:3px;font-style:italic}
-.jl-alt{margin-top:9px;border-top:1px dashed rgba(122,130,138,.28);padding-top:8px}
-.jl-alt-h{font-family:'IBM Plex Mono',monospace;font-size:8.5px;letter-spacing:.16em;color:var(--steel);margin-bottom:5px}
-.jl-alt-b{display:block;width:100%;text-align:left;margin-top:4px;padding:7px 9px;border:1px solid var(--line);border-radius:9px;background:rgba(11,13,15,.4);color:var(--steel);font-size:11.5px;font-family:inherit;cursor:pointer}
-.jl-alt-b:active{border-color:rgba(214,138,74,.5);color:var(--bone)}
 html.daylight .jl-gate{background:linear-gradient(180deg,rgba(214,138,74,.12),rgba(255,255,255,.5))}
-html.daylight .jl-alt-b{background:rgba(255,255,255,.55)}
 .jl-port-note{position:relative;z-index:1;font-size:12px;line-height:1.5;color:var(--steel);margin-top:11px}
 .jl-port-ship{position:relative;z-index:1;display:block;font-size:12px;line-height:1.5;color:var(--steel);margin-top:7px}
 .jl-port-foot{position:relative;z-index:1;margin-top:11px;padding-top:10px;border-top:1px solid var(--line-soft)}
@@ -4865,18 +4860,12 @@ function dktWorkside(j){
     else if(SIDE_RAIL[cat]){ side="rail"; why="job code "+cat; }
   }
   if(!side&&craft==="clerk") why="clerk job · side not named on the slip";
-  /* 3 — THE ONE HONEST CONFLICT. A dock-family code (D, DA, DAL…) printed against a
-     VESSEL name says two things at once: the code says yard, the work line says hull.
-     A dockman at the berth is a real dispatch and so is a dockman in the yard, and
-     nothing else on the slip splits them. We follow the work line — the slip names a
-     ship, so the ship is where the job is — but we do NOT claim to be sure. The card
-     goes amber, the other gates ride under it, and one tap settles it for good. */
-  let conflict=false;
-  if(side==="ship"&&SIDE_DOCK[cat]){
-    conflict=true;
-    why="job code "+cat+" reads dock, but the slip names a vessel — check this one";
-  }
-  return {side:side,craft:craft,cat:cat,why:why,conflict:conflict};
+  /* THE WORK LINE IS THE AUTHORITY — it is printed for exactly this purpose.
+     A vessel on that line means the job is on that vessel, whatever the job code
+     reads. DOCK WORK means the yard. DOCK WORK RAILS means the rails. The code only
+     speaks when the line is silent. We do not hedge and we do not ask: the hand is
+     standing in the dark with a slip in his hand and he needs one answer. */
+  return {side:side,craft:craft,cat:cat,why:why};
 }
 
 /* --- score one gate against one docket --- */
@@ -4922,12 +4911,35 @@ function pickGate(t,j){
             alts:gates.map((g,i)=>i).filter(i=>i!==ov)};
   const scored=gates.map((g,i)=>({i:i,g:g,s:gateScore(GATE_SERVES[gateKey(g.gate)]||gateGuess(g.gate),w)}));
   const ranked=scored.slice().sort((a,b)=>b.s-a.s||a.i-b.i);
-  const top=ranked[0];
-  if(!top||top.s<0)   /* nothing on the slip matched any gate — say so, don't pretend */
-    return {i:0,gate:gates[0],why:"couldn’t read the job off this slip",sure:false,w:w,fixed:false,
+  let top=ranked[0];
+  /* NO GATE CLAIMS THIS EXACT JOB. Evergreen is the case: a dockman dispatched to a
+     VESSEL matches neither "Shipside UTR only" nor "Ship swing+DS" — the labels simply
+     never named him. Falling to gates[0] there hands a Dock Aloft man the UTR-only
+     gate, which is the original bug all over again. So take a second pass with the job
+     codes ignored: which gates serve this SIDE at all? Of those, the one that serves
+     the most kinds of work is the general gate, and the general gate is the right
+     place to send a hand the labels forgot. It is still shipside — it is just the
+     shipside gate that takes everybody. */
+  if(!top||top.s<0){
+    const relaxed=gates.map((g,i)=>{
+      const rule=GATE_SERVES[gateKey(g.gate)]||gateGuess(g.gate);
+      let hit=0,breadth=0;
+      (rule||[]).forEach(c=>{
+        breadth++;
+        if(c.any){ hit=Math.max(hit,1); return; }
+        if(c.sides&&w.side&&c.sides.indexOf(w.side)>-1) hit=Math.max(hit,c.cats?2:3);
+        else if(!c.sides&&c.crafts&&c.crafts.indexOf(w.craft)>-1) hit=Math.max(hit,3);
+      });
+      return {i:i,g:g,s:hit,b:breadth};
+    }).filter(r=>r.s>0).sort((a,b)=>b.s-a.s||b.b-a.b||a.i-b.i);
+    if(relaxed.length)
+      return {i:relaxed[0].i,gate:relaxed[0].g,
+              why:w.why||("job code "+(w.cat||"—")),sure:true,w:w,fixed:false,
+              alts:relaxed.slice(1).map(r=>r.i)};
+    return {i:0,gate:gates[0],why:w.why||"only gate this dock lists",sure:true,w:w,fixed:false,
             alts:gates.map((g,i)=>i).filter(i=>i!==0)};
-  const tied=ranked.filter(r=>r.s===top.s).length>1;
-  return {i:top.i,gate:top.g,why:w.why||("job code "+(w.cat||"—")),sure:!tied&&!w.conflict,w:w,fixed:false,
+  }
+  return {i:top.i,gate:top.g,why:w.why||("job code "+(w.cat||"—")),sure:true,w:w,fixed:false,
           alts:ranked.slice(1).map(r=>r.i)};
 }
 
@@ -4957,26 +4969,13 @@ function gateSideWord(pg){
 /* --- YOUR ENTRANCE: the resolved gate, why, and every other gate one tap away --- */
 function gateCardHTML(t,j,pg){
   if(!t||!pg||!pg.gate) return "";
-  const alts=(pg.alts||[]).filter(i=>t.gates[i]);
-  const pill = pg.fixed ? '<span class="jl-gate-pill fix">✓ YOUR FIX</span>'
-             : (!pg.sure ? '<span class="jl-gate-pill ask">◇ CHECK THIS</span>'
-             : '<span class="jl-gate-pill">'+esc(gateSideWord(pg).toUpperCase())+'</span>');
-  let h='<div class="jl-gate'+(pg.sure?'':' unsure')+'">'
+  const pill = '<span class="jl-gate-pill'+(pg.fixed?' fix':'')+'">'
+             +esc(gateSideWord(pg).toUpperCase())+'</span>';
+  return '<div class="jl-gate'+(pg.sure?'':' unsure')+'">'
     +'<div class="jl-gate-top"><span>▣ YOUR ENTRANCE</span>'+pill+'</div>'
     +'<div class="jl-gate-name">'+esc(pg.gate.gate)+'</div>'
-    +(pg.why?'<div class="jl-gate-why">'+esc(pg.why)+'</div>':'');
-  if(alts.length){
-    /* the member is the authority on his own gate — one tap and the app keeps it */
-    h+='<div class="jl-alt"><div class="jl-alt-h">'
-      +(pg.sure?'WRONG GATE? TAP THE ONE YOU USED':'NOT SURE — TAP THE ONE YOU USED')
-      +'</div>';
-    alts.forEach(i=>{
-      h+='<button type="button" class="jl-alt-b" onclick="event.stopPropagation();gateFix(\''
-        +String(j._id).replace(/'/g,"")+'\','+i+')">➤ '+esc(t.gates[i].gate)+'</button>';
-    });
-    h+='</div>';
-  }
-  return h+'</div>';
+    +(pg.why?'<div class="jl-gate-why">'+esc(pg.why)+'</div>':'')
+    +'</div>';
 }
 
 const SLOTS = {"Mon_AM":951,"Mon_PM":675,"Tue_AM":924,"Tue_PM":842,"Wed_AM":932,"Wed_PM":757,"Thu_AM":889,"Thu_PM":736,"Fri_AM":944,"Fri_PM":737,"Sat_AM":788,"Sat_PM":519,"Sun_AM":763,"Sun_PM":549};
