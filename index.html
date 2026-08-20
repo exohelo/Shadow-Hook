@@ -3458,6 +3458,8 @@ window.DEVLOG=(function(){
       <div class="room-id"><span class="room-ico" id="roomIco">⚓</span><div><b id="roomTitle">The Hall Floor</b><span id="roomSubc">212 masked · stay masked, the hall has ears</span></div></div>
       <!-- #12 — invite a hand into whatever room you're standing in -->
       <button class="room-back" id="roomInvite" aria-label="Invite to this room" style="margin-left:auto;font-size:16px">⤴</button>
+      <!-- #textsize — Aa right where the complaints are: taps through Small → Medium → Large -->
+      <button class="room-back" id="aaBtn" type="button" aria-label="Text size" title="Text size — small · medium · large">Aa</button>
     </div>
     <div id="chatFeed"></div>
     <style>
@@ -4007,6 +4009,15 @@ window.DEVLOG=(function(){
             <div class="alt">The store <span style="color:var(--ember)">· Keymaster</span></div>
             <div class="als">A sale lands, a vendor pitches gear for approval, or a vendor writes on the wire.</div>
           </div><button class="alsw" id="alStore" type="button" role="switch" aria-label="Store alerts"><i></i></button></div>
+        <!-- #textsize — by request from hands squinting at the messager: three sizes, app-wide -->
+        <div class="alrow"><div class="alm">
+            <div class="alt">Text size</div>
+            <div class="als">Scales the whole app — messages most of all. The Aa button in any chatroom does the same.</div>
+          </div><div class="fsz-seg" role="group" aria-label="Text size">
+            <button class="fsz-btn" data-fsz="sm" type="button" aria-label="Small text">A</button>
+            <button class="fsz-btn" data-fsz="md" type="button" aria-label="Medium text">A</button>
+            <button class="fsz-btn" data-fsz="lg" type="button" aria-label="Large text">A</button>
+          </div></div>
       </div>
 
       <div class="prof-actions">
@@ -23458,6 +23469,56 @@ try{window.__bootProg&&__bootProg(96)}catch(e){}   /* #realboot — Fenix sign h
 </script>
 
 
+<style id="textsizeCSS">
+/* ══════════ #textsize — SMALL · MEDIUM · LARGE ══════════
+   By request: hands were squinting at the messager with no way to grow it — the
+   viewport pins pinch-zoom (the yard maps need the gesture), so the size is a
+   SETTING instead. zoom scales the whole app faithfully (layout reflows, nothing
+   clips); the chat bubbles get an extra push past the global factor because the
+   messager is where the complaints came from. Medium is exactly today's look. */
+html.fs-sm body{zoom:.93}
+html.fs-lg body{zoom:1.15}
+html.fs-lg .msg .txt{font-size:17px;line-height:1.42}
+html.fs-lg .msg .who{font-size:13.5px}
+html.fs-lg .msg .who time{font-size:12px}
+html.fs-lg .sendbar #chatInput{font-size:18px}
+html.fs-lg .msg.keymaster .txt{font-size:15.5px}
+html.fs-lg .msg .reacts{font-size:12.5px}
+html.fs-sm .msg .txt{font-size:14px}
+.fsz-seg{display:flex;gap:6px;flex:none;align-items:center}
+.fsz-btn{width:38px;height:38px;border-radius:10px;border:1px solid var(--line);background:var(--plate);color:var(--steel);cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-weight:700;line-height:1;padding:0}
+.fsz-btn[data-fsz="sm"]{font-size:12px}
+.fsz-btn[data-fsz="md"]{font-size:16px}
+.fsz-btn[data-fsz="lg"]{font-size:21px}
+.fsz-btn.on{border-color:rgba(238,180,107,.65);color:var(--copper-hi);background:rgba(58,42,23,.5)}
+.fsz-btn:active{transform:scale(.94)}
+#aaBtn{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px}
+</style>
+<script>
+/* #textsize — one persisted figure drives the profile row, the chatroom Aa, and the CSS. */
+(function(){
+"use strict";
+let KEYF; try{ KEYF=(typeof K==='function')?K("textsize"):"tsh_textsize"; }catch(e){ KEYF="tsh_textsize"; }
+const ORDER=["sm","md","lg"], NAME={sm:"SMALL",md:"MEDIUM",lg:"LARGE"};
+let cur="md"; try{ const v=localStorage.getItem(KEYF); if(ORDER.indexOf(v)>=0)cur=v; }catch(e){}
+function apply(){
+  const h=document.documentElement;
+  ORDER.forEach(v=>h.classList.remove('fs-'+v)); h.classList.add('fs-'+cur);
+  document.querySelectorAll('.fsz-btn').forEach(b=>b.classList.toggle('on',b.dataset.fsz===cur));
+  try{ window.dispatchEvent(new Event('resize')); }catch(e){}   /* an open yard map re-fits itself */
+}
+function setSize(v,quiet){ if(ORDER.indexOf(v)<0)return; cur=v;
+  try{ localStorage.setItem(KEYF,v); }catch(e){}
+  apply();
+  if(!quiet){ try{ toast('Aa \u00b7 text '+NAME[v]); }catch(e){} }
+}
+window.setTextSize=setSize;
+document.querySelectorAll('.fsz-btn').forEach(b=>b.addEventListener('click',()=>setSize(b.dataset.fsz)));
+const aa=document.getElementById('aaBtn');
+if(aa)aa.addEventListener('click',()=>setSize(ORDER[(ORDER.indexOf(cur)+1)%ORDER.length]));
+apply();
+})();
+</script>
 <style id="daylight-v2">
 /* ══════════════════════════════════════════════════════════════════════════
    DAYLIGHT v2 — a real light theme, not an inverted dark one.
