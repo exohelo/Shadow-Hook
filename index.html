@@ -7735,6 +7735,7 @@ function publishCall(){
     const cats=V4.categories(nd2,callSlot);
     mom=V4.momentum(isAM);
     const ex=V4.expect(dowIdx,isAM);
+    var _totU=ex.tot;   /* #totshadow — the union-scale EWMA, stashed for the shadow call below (var: function-scoped on purpose) */
     const _fc=DISPATCH_DATA[key]; let _cas=casualJobsOf(_fc);
     if(_fc&&_fc.total&&_fc.total.cas>0) _cas=_fc.total.cas;   /* #totcas — an explicit casual count from the sheet wins over the board sum */
     /* #casaxis — the sheet's grand total is a CASUAL figure. The D/E/N PDFs publish casual
@@ -7775,7 +7776,7 @@ function publishCall(){
        casual figure, `ch` that figure on the hall scale (×boardsToCh) = the kNN's match key.
        totEwma is the weekday union-scale guess, carried for the fallback engines only —
        it is NOT off the sheet, so it never again gets to masquerade as a real total. */
-    window._v4dbg={source:source,axis:'casual',cas:(_cas!=null?Math.round(_cas):null),ch:Math.round(ex.ch),totEwma:Math.round(ex.tot),cap:_cap,att:(window._v4att||null),cats:cats.list,shutdown:!!cats.shutdown,mom:+(mom||0).toFixed(2),lastNight:(_xm!=null?_xm:null),earlyFed:_fromEarly,earlyDrift:(_fromEarly?+(_earlyDrift(!isAM)).toFixed(3):null)};   /* #earlyfeed(aug20) — the dev log shows when the call rides the 11 AM paper */
+    window._v4dbg={source:source,axis:'casual',cas:(_cas!=null?Math.round(_cas):null),ch:Math.round(ex.ch),totEwma:Math.round(ex.tot),cap:_cap,spill:(_cap!=null?Math.round(Math.max(0,ex.tot-_cap)):null),att:(window._v4att||null),cats:cats.list,shutdown:!!cats.shutdown,mom:+(mom||0).toFixed(2),lastNight:(_xm!=null?_xm:null),earlyFed:_fromEarly,earlyDrift:(_fromEarly?+(_earlyDrift(!isAM)).toFixed(3):null)};   /* #earlyfeed(aug20) — the dev log shows when the call rides the 11 AM paper */
   }catch(_v4e){ if(window.console)console.warn('V4 fallback',_v4e); pmf=null; }
   if(!pmf){
     if(!isAM){
@@ -7817,7 +7818,23 @@ function publishCall(){
      during the live run the call re-figures off real member scans, and scoring
      THAT against the seal would grade the bot on an open-book exam. The last
      pre-run call is the one that stands. */
-  try{ if(!liveWindow()) predSnap(key, AZ[(base+med)%26]); }catch(e){}
+  try{ if(!liveWindow()){
+    /* #totshadow(aug20) — the total-aware side-bet: same pmf, 65/35 blended with the
+       dormant spillover model on the union-scale EWMA. Snapshotted, never published. */
+    let _p2=null;
+    try{
+      if(pmf && typeof _totU!=="undefined" && _totU>0 && typeof V4._spilloverKnn==="function"){
+        const _sp=V4._spilloverKnn(isAM,dowIdx,_totU,(nd2?nd2.getMonth()+1:8));
+        if(_sp){
+          const _b=pmf.map((x,i)=>0.65*x+0.35*(_sp[i]||0));
+          const _s=_b.reduce((a,x)=>a+x,0)||1;
+          let _c=0,_m2=0; for(let i=0;i<_b.length;i++){_c+=_b[i]/_s; if(_c>=0.5){_m2=i;break;}}
+          _p2=AZ[(base+_m2)%26];
+        }
+      }
+    }catch(_se){}
+    predSnap(key, AZ[(base+med)%26], _p2);
+  } }catch(e){}
   renderMyOdds(lastStart, med);   /* #54 — personal odds off the same engine run */
 }
 /* ═══ #record(aug13) — THE BOT'S RECORD: the baby banner earns its retirement ═══
@@ -7835,11 +7852,30 @@ function _predLog(){ try{ return JSON.parse(localStorage.getItem('shadowhook_pre
 function _predSave(o){ try{
   const ks=Object.keys(o).sort(); while(ks.length>120)delete o[ks.shift()];
   localStorage.setItem('shadowhook_predlog',JSON.stringify(o)); }catch(e){} }
-function predSnap(k,stopLetter){
+/* ═══ #totshadow(aug20) — "THE MORE JOBS FOR THEM, THE LESS THEY TAKE FROM US" ═══
+   The union-scale TOTAL matters mechanically: registered members work the port's
+   total demand, and what clears past them is what reaches the casual hall — when
+   their side is fat they leave the casual boards alone; when it's thin they reach
+   down and take them. The engine MODELS exactly that (the capacity knee +
+   spillover in v5), but the live union total has no feed, and every backtested
+   attempt to ride it as a kNN axis (raw, spillover past the knee, four weights
+   each, on the real community-log totals — #casaxis, #jul30) LOST to the casual
+   count alone — because the casual count IS the measured spill. Still: a
+   backtest is a claim, not a receipt, and the hand who works the hall says the
+   total talks. So — SHADOW BET, the app's own #record method. Every pre-run
+   snapshot now carries a SECOND call (p2): the published pmf blended 65/35 with
+   the dormant spillover model riding the weekday union-scale EWMA (the honest
+   total guess in ex.tot). It is scored on the same seals (off2) and never
+   touches what's published. Once 8+ boards carry both scores, the baby banner
+   shows the running tally: if the shadow keeps winning, the total has EARNED
+   its seat in the live call; if it doesn't, the receipts settle the argument.
+   The ⚙ Dev Log's totEwma / cap / spill numbers are the same story per-board. */
+function predSnap(k,stopLetter,shadowLetter){
   if(!k||!stopLetter)return;
   const o=_predLog();
   if(o[k]&&o[k].off!=null)return;             // sealed & scored — the call is history
   o[k]=Object.assign(o[k]||{},{p:String(stopLetter),ts:Date.now()});
+  if(shadowLetter)o[k].p2=String(shadowLetter);   /* #totshadow — the total-aware side-bet rides along */
   _predSave(o);
 }
 function predScore(k,endCard){
@@ -7850,6 +7886,8 @@ function predScore(k,endCard){
     if(!e||e.off!=null||!e.p)return;
     const d=((AZ.indexOf(L)-AZ.indexOf(e.p))%26+26)%26;
     e.off=Math.min(d,26-d);                    // wrap-aware letters off
+    /* #totshadow — the shadow call takes the same exam on the same seal */
+    if(e.p2&&AZ.indexOf(e.p2)>=0){ const d2=((AZ.indexOf(L)-AZ.indexOf(e.p2))%26+26)%26; e.off2=Math.min(d2,26-d2); }
     _predSave(o);
     try{ updateBabyNote(); }catch(err){}
   }catch(e){}
@@ -7867,6 +7905,7 @@ function updateBabyNote(){
     el.innerHTML='<span class="bottle">🍼</span> <b>I’M JUST A BABY!</b> — the call bot is still learning the port. Every board makes it a little sharper. Love me, but don’t bet the rent on me.'
       +(n?' <span style="opacity:.75">('+n+' of the 10 boards it needs on the record are scored — then the record talks.)</span>':'')
       +'<span id="babyFeed"></span>';
+    try{_shadowTally();}catch(e){}   /* #totshadow — the side-bet tally can speak before the banner graduates */
     return;
   }
   const offs=scored.map(k=>log[k].off);
@@ -7877,6 +7916,24 @@ function updateBabyNote(){
   } else {
     el.innerHTML='<span class="bottle">🍼</span> <b>STILL LEARNING THIS REGIME</b> — last '+n+' boards: within ±1 letter on '+hit+' ('+pct+'%), avg '+mae+' letters off. The numbers are the numbers — don’t bet the rent on me yet.<span id="babyFeed"></span>';
   }
+  try{_shadowTally();}catch(e){}   /* #totshadow */
+}
+/* #totshadow(aug20) — the side-bet's running tally rides in the banner's feed slot
+   once enough boards carry BOTH scores. Written after the banner paints (all three
+   banner variants keep an empty #babyFeed span for exactly this kind of line). */
+function _shadowTally(){
+  try{
+    const log=_predLog();
+    const ks=Object.keys(log).filter(k=>log[k].off!=null&&log[k].off2!=null).sort().slice(-30);
+    if(ks.length<8)return;
+    const a=ks.map(k=>log[k].off), b=ks.map(k=>log[k].off2);
+    const mae=x=>Math.round(x.reduce((p,c)=>p+c,0)/x.length*10)/10;
+    const hit=x=>Math.round(x.filter(v=>v<=1).length/x.length*100);
+    const el=document.getElementById('babyFeed'); if(!el)return;
+    el.innerHTML=' <span style="opacity:.72">· SIDE-BET, '+ks.length+' boards: published call '
+      +hit(a)+'% ±1 / '+mae(a)+' off — total-aware shadow '+hit(b)+'% ±1 / '+mae(b)+' off. '
+      +(mae(b)<mae(a)?'The total is talking — if it keeps winning it earns its seat in the live call.':'The casual count is still carrying the signal.')+'</span>';
+  }catch(e){}
 }
 window.updateBabyNote=updateBabyNote; window.predScore=predScore;
 setTimeout(function(){try{updateBabyNote()}catch(e){}},1500);   // first paint once RECENT has settled
