@@ -7656,6 +7656,47 @@ window.V4=V4; window.setRain=V4.setRain; window.setStopWork=V4.setStopWork;
 try{ V4.loadWeather(); }catch(e){}
 
 /* ====== end v4 engine ====== */
+/* ═══ #earlyfeed(aug20) — THE EARLY SHEET FEEDS THE CALL AT LAST ═══
+   The pre-final call was always MEANT to ride the early count — the EARLY chip,
+   alertCountIn's gate and #205's 9:00 hunt all assume it — but the plumbing never
+   met in the middle: the worker lands the E sheet NESTED (dd.early), publishCall
+   read only the top-level total/boards, and window.EARLY_COUNTS (the old #23 drop
+   point) has been null since the pipeline moved to Supabase. Net effect: every
+   afternoon the call ran on the weekday EWMA (source EST) — the same number every
+   Thursday — and only started listening when the N final landed. That is why the
+   pre-call never moved off its rut no matter what the 11 AM paper said.
+   Now, until the final is in:
+     · the nested early's CASUAL count drives ex.ch (same #casaxis scale rules),
+     · scaled by the learned early→final drift — an EWMA over every early+final
+       pair already on the device (the board usually runs a little past the early
+       call), clamped 0.9–1.35, 1.0 until pairs exist,
+     · source/chip reads EARLY, which also opens the phone-alert gate for real,
+     · and the 2.5× "partial early" scale-up (÷max(.4,earlyRatio)) explicitly
+       never touches an E-sheet count — that branch was built for a truly partial
+       crowd count; the E pdf is a full forecast with its own printed total. */
+function _earlyCasOf(fc){
+  try{
+    if(!fc||!fc.early||typeof fc.early!=="object")return null;
+    const e=fc.early;
+    let ec=casualJobsOf(e);
+    if(e.total&&typeof e.total==="object"&&e.total.cas>0)ec=e.total.cas;      /* #totcas — same rule as the final */
+    const et=(e.total&&(e.total.total||(typeof e.total==="number"?e.total:0)))||0;
+    if(ec==null&&et>0)ec=et;                                                  /* breakdown didn't parse — total stands in */
+    return (ec!=null&&isFinite(ec)&&ec>0)?ec:null;
+  }catch(_e){return null;}
+}
+function _earlyDrift(slotIsPM){
+  try{
+    let r=null;
+    Object.keys(DISPATCH_DATA).sort().forEach(function(k){
+      if(slotIsPM!==/_PM$/.test(k))return;
+      const dd=DISPATCH_DATA[k];if(!dd||!dd.early)return;
+      const f=(dd.total&&dd.total.total)||0, e=(dd.early.total&&dd.early.total.total)||0;
+      if(f>0&&e>0){const x=f/e; if(x>0.5&&x<2)r=(r==null)?x:0.3*x+0.7*r;}     /* junk ratios (a misread pair) stay out */
+    });
+    return (r==null)?1:Math.max(0.9,Math.min(1.35,r));
+  }catch(_e){return 1;}
+}
 function publishCall(){
   /* #pending(aug10) — NO ANCHOR, NO CALL. Everything below measures FROM the
      opening card: the stop letter, the band, the ladder, the runaway odds, and
@@ -7705,9 +7746,15 @@ function publishCall(){
        an honest union-scale guess, used by the fallback engines only. */
     const _shTot=(_fc&&_fc.total&&(_fc.total.total||(typeof _fc.total==="number"?_fc.total:0)))||0;
     if(_cas==null && _shTot>0) _cas=_shTot;   /* breakdown didn't parse — the sheet total is the best casual figure there is */
+    /* #earlyfeed(aug20) — no final yet, but the 11 AM early is in: it drives the call */
+    let _fromEarly=false;
+    if(_cas==null){
+      const _ecas=_earlyCasOf(_fc);
+      if(_ecas!=null){ _cas=Math.round(_ecas*_earlyDrift(!isAM)); _fromEarly=true; }
+    }
     if(_cas!=null){
       ex.ch=_cas*V4.boardsToCh;                       /* casual BOARDS -> the hall scale the logs train on */
-      if(!_shTot) ex.ch=ex.ch/Math.max(0.4,V4.earlyRatio); /* an EARLY-only sheet is partial -> scale up to expected FINAL */
+      if(!_shTot&&!_fromEarly) ex.ch=ex.ch/Math.max(0.4,V4.earlyRatio); /* a truly PARTIAL count scales up to expected FINAL — the E sheet is a full forecast and never takes this (#earlyfeed) */
       source=_shTot?'FINAL':'EARLY';
     } else if(window.EARLY_COUNTS){
       ex.ch=(window.EARLY_COUNTS.ch||ex.ch); source='EARLY';   /* #casaxis — EARLY_COUNTS.tot is the same casual scale; it no longer touches ex.tot */
@@ -7728,7 +7775,7 @@ function publishCall(){
        casual figure, `ch` that figure on the hall scale (×boardsToCh) = the kNN's match key.
        totEwma is the weekday union-scale guess, carried for the fallback engines only —
        it is NOT off the sheet, so it never again gets to masquerade as a real total. */
-    window._v4dbg={source:source,axis:'casual',cas:(_cas!=null?Math.round(_cas):null),ch:Math.round(ex.ch),totEwma:Math.round(ex.tot),cap:_cap,att:(window._v4att||null),cats:cats.list,shutdown:!!cats.shutdown,mom:+(mom||0).toFixed(2),lastNight:(_xm!=null?_xm:null)};
+    window._v4dbg={source:source,axis:'casual',cas:(_cas!=null?Math.round(_cas):null),ch:Math.round(ex.ch),totEwma:Math.round(ex.tot),cap:_cap,att:(window._v4att||null),cats:cats.list,shutdown:!!cats.shutdown,mom:+(mom||0).toFixed(2),lastNight:(_xm!=null?_xm:null),earlyFed:_fromEarly,earlyDrift:(_fromEarly?+(_earlyDrift(!isAM)).toFixed(3):null)};   /* #earlyfeed(aug20) — the dev log shows when the call rides the 11 AM paper */
   }catch(_v4e){ if(window.console)console.warn('V4 fallback',_v4e); pmf=null; }
   if(!pmf){
     if(!isAM){
@@ -7739,6 +7786,8 @@ function publishCall(){
          casual number knnPredict would then match against union-scale neighbours. */
       const _hasTot=!!(_fc&&_fc.total&&_fc.total.total);
       if(_cas==null&&_hasTot) _cas=_fc.total.total;
+      /* #earlyfeed(aug20) — the fallback engine hears the 11 AM early too */
+      if(_cas==null){ const _ecas=_earlyCasOf(_fc); if(_ecas!=null)_cas=Math.round(_ecas*_earlyDrift(true)); }
       if(_cas!=null){ ex.ch=_cas; source=_hasTot?'FINAL':'EARLY'; }
       else if(window.EARLY_COUNTS){ex.ch=window.EARLY_COUNTS.ch||ex.ch;source='EARLY';}
       else source='EST';
