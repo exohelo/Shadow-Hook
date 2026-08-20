@@ -9096,8 +9096,70 @@ function flopCount(r){
    and persist on this device until the profile server takes over. Tap a
    Recent Board entry to open its sheet. */
 const DISPATCH_SEED={};   /* #data(jul23) — the hardcoded sample seed is RETIRED: this page renders ONLY real ingested sheets (Supabase dispatch_boards → localStorage). Nothing populates before the data lands. */
+/* ═══════ #sheetguard(aug20) — THE SHEET CHECKS ITS OWN MATH ═══════
+   8/20's early count came off the scan as CY 716 and grand total 70 — the paper
+   reads CY 76 and 585. The hall WRITES on these sheets before they post (the
+   total circled in pen, tallies down the margin), and the OCR reads the ink:
+   the circled 585 came back "70", a clean 76 grew a stray digit. The sheet
+   itself carries the antidote — every board row prints its order columns AND a
+   total, and the totals row re-prints every column — so one misread cell gets
+   outvoted by the cells that agree:
+     · board row: printed total ≠ the row's own columns' sum (columns present,
+       sum > 0) → the columns win (CY: 0+0+76+0+0+0+0 = 76, not 716).
+     · grand total: the totals row's column sum and the (repaired) board-total
+       sum agree with each other but not with the printed total → they win
+       (67+515+3 = 585, twice over, not 70).
+     · anything short of two agreeing reads is left ALONE and flagged
+       (_fxwarn), never guessed. manual_edit payloads (Sheet Editor) are never
+       touched — a hand-typed number outranks this arithmetic.
+   Runs on every sheet at the door (addDispatchData → the worker, Supabase and
+   the editor all pass through it) and once over everything already on the
+   device at boot — so the bad row still sitting in dispatch_boards heals on
+   every load until the worker itself is hardened. Repairs are listed on the
+   open sheet (⚙ line) so the app and the paper can be squared at a glance. */
+function _shRepairPart(d){
+  if(!d||typeof d!=="object")return 0;
+  const COLS=["shorted","early","mo","eo","mro","ro","lm"];
+  const num=function(v){const n=Number(v);return isFinite(n)?n:null;};
+  const rowSum=function(r){let s=0,seen=false;for(let i=0;i<COLS.length;i++){const n=num(r[COLS[i]]);if(n!=null){s+=n;seen=true;}}return seen?s:null;};
+  const notes=Array.isArray(d._fx)?d._fx:[],before=notes.length,seen={};
+  notes.forEach(function(s){seen[s]=1;});
+  const put=function(s){if(!seen[s]){seen[s]=1;notes.push(s);}};
+  let boardSum=0,haveBoards=false;
+  if(d.boards)for(const k in d.boards){
+    const r=d.boards[k];if(!r||typeof r!=="object")continue;
+    const rs=rowSum(r),t=num(r.total);
+    /* rs>0 guard: a row whose columns all read 0 but total didn't must NOT be
+       zeroed — dropped digits happen; only a nonzero column sum can outvote */
+    if(rs!=null&&rs>0&&t!=null&&t!==rs){put(k+" "+t.toLocaleString()+"→"+rs.toLocaleString());r.total=rs;}
+    else if(t==null&&rs!=null){r.total=rs;}
+    const t2=num(r.total);if(t2!=null){boardSum+=t2;haveBoards=true;}
+  }
+  if(d.total&&typeof d.total==="object"){
+    const printed=num(d.total.total),cs=rowSum(d.total),bs=haveBoards?boardSum:null;
+    const okC=(cs!=null&&cs>0),okB=(bs!=null&&bs>0);
+    if(printed!=null&&okC&&okB&&cs===bs&&printed!==cs){put("total "+printed.toLocaleString()+"→"+cs.toLocaleString());d.total.total=cs;delete d._fxwarn;}
+    else if(printed==null&&okC){put("total —→"+cs.toLocaleString());d.total.total=cs;}
+    /* a grand total SMALLER than its own boards is impossible on paper, but with
+       only one witness there's no safe repair — flag it, don't guess */
+    else if(printed!=null&&okB&&printed<bs){d._fxwarn=true;}
+  }
+  if(notes.length)d._fx=notes;
+  return notes.length-before;
+}
+function repairSheet(d){
+  if(!d||typeof d!=="object"||d.manual_edit)return 0;
+  let n=0;
+  try{n+=_shRepairPart(d);}catch(e){}
+  try{if(d.early&&typeof d.early==="object"&&!d.early.manual_edit)n+=_shRepairPart(d.early);}catch(e){}
+  return n;
+}
 let DISPATCH_DATA={};
 try{DISPATCH_DATA=Object.assign({},DISPATCH_SEED,JSON.parse(localStorage.getItem(K('dispatch'))||'{}'))}catch(e){DISPATCH_DATA=DISPATCH_SEED}
+/* #sheetguard(aug20) — heal what's already on the device BEFORE the first row,
+   card or prediction reads it (ensureRecentRow/publishCall run just below) */
+try{let _fxTot=0;Object.keys(DISPATCH_DATA).forEach(k=>{_fxTot+=repairSheet(DISPATCH_DATA[k]);});
+  if(_fxTot){localStorage.setItem(K('dispatch'),JSON.stringify(DISPATCH_DATA));}}catch(e){}
 /* #95 — publishCall was an IIFE that ran before this line, throwing a TDZ on PM boards
    (DISPATCH_DATA is a `let` declared here). Now it's a named function, run once the data exists. */
 /* #109 — every sheet already on the device gets its Recent Boards row at boot
@@ -9106,6 +9168,11 @@ try{Object.keys(DISPATCH_DATA).forEach(k=>ensureRecentRow(k,DISPATCH_DATA[k]));}
 try{publishCall();}catch(e){console.warn('publishCall',e);}
 try{renderCallStart();}catch(e){}
 window.addDispatchData=function(key,data){   // ← the dispatch bot calls this with each new sheet
+  /* #sheetguard(aug20) — every sheet reconciles its own math at the door; a
+     repair that actually changed something gets one dev-log line (re-ingesting
+     the same already-noted row on the next load stays quiet) */
+  let _fxNew=0; try{_fxNew=repairSheet(data);}catch(e){}
+  try{if(_fxNew&&data&&data._fx&&window.DEVLOG)DEVLOG.note('⚙ sheet reconciled off its own columns: '+key+' — '+data._fx.join(' · '));}catch(e){}
   const _prev=DISPATCH_DATA[key]||{};
   const _merged=Object.assign({},_prev,data);
   /* #totcas — a hand-corrected sheet is STICKY. The bot's parser undercounts the grand total
@@ -9255,6 +9322,13 @@ function xpSheet(d,label){
     if(t.mismatch)
       h+='<div class="xp-mem" style="color:var(--ember)">&#9888; the stated casual count ('+t.stated.toLocaleString()
         +') doesn\u2019t match these rows ('+t.summed.toLocaleString()+') \u2014 the breakdown is from a different read of the sheet. Trust the paper.</div>';
+    /* #sheetguard(aug20) \u2014 say WHICH numbers were reconciled (the scan read the
+       hall's pen marks; the sheet's own columns outvoted the misread cells), and
+       flag the one shape that can't be auto-fixed instead of printing nonsense */
+    if(d&&d._fx&&d._fx.length)
+      h+='<div class="xp-mem" style="color:var(--steel)">\u2699 reconciled off the sheet\u2019s own columns: '+acEsc(d._fx.join(' \u00b7 '))+'</div>';
+    if(d&&d._fxwarn)
+      h+='<div class="xp-mem" style="color:var(--ember)">&#9888; the sheet\u2019s stated total reads LOWER than its own boards add up to \u2014 one of the two is a misread the columns couldn\u2019t settle. Check the paper; fix it in the Sheet Editor.</div>';
     const mem=t.members.filter(x=>x[1]>0);
     if(mem.length)h+='<div class="xp-mem">\u26bf Members only: '+mem.map(([k,n])=>'<b>'+acEsc(k)+' '+n+'</b>').join(' \u00b7 ')+' \u2014 registered work, not on the casual board</div>';
   }
