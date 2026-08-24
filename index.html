@@ -666,9 +666,25 @@ html.daylight .heist{background:rgba(64,54,38,.6)}
 .heat.hot{color:var(--ember);border-color:rgba(179,85,42,.6);box-shadow:0 0 12px rgba(179,85,42,.3);animation:wirePulse 1.8s ease-in-out infinite}
 .heat.warm{color:var(--warn);border-color:rgba(216,165,68,.5)}
 .heat.cold{color:#6f9ac2;border-color:rgba(111,154,194,.4)}
-.wire-runaway{position:relative;z-index:1;margin-top:11px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;text-align:center;color:var(--ember);letter-spacing:.03em}
-.wire-runaway.steady{color:var(--steel)}
+/* #ff — two lines: the label on top, the odds on their own nowrap line so
+   "10+ about 1-in-11" can never break across the line-end. The guards that gate
+   this line (p6>=.12, p10>=.08) cap the odds at 1-in-8 / 1-in-13, so the phrase
+   cannot outgrow the card. */
+.wire-runaway{position:relative;z-index:1;margin-top:11px;font-family:'IBM Plex Mono',monospace;color:var(--ember);
+  display:flex;flex-direction:column;align-items:center;gap:3px}
+.wire-runaway.steady{color:var(--steel);font-size:10.5px;letter-spacing:.03em}
 .wire-runaway b{color:var(--copper-hi)}
+.rw-l{font-size:9.5px;letter-spacing:.16em;text-transform:uppercase}
+.rw-n{font-size:10.5px;letter-spacing:.02em;white-space:nowrap}
+/* #ff — the bell and Share share one row. #myOdds keeps its id so renderMyOdds
+   is untouched; :empty collapses it when there is no card on file, and .hold
+   gives the "no opening card" message its own full-width line. */
+.wire-btns{position:relative;z-index:1;display:flex;flex-wrap:wrap;gap:8px;margin-top:13px}
+.wire-btns #myOdds{flex:1 1 auto;min-width:0;display:flex}
+.wire-btns #myOdds:empty{display:none}
+.wire-btns #myOdds.hold{flex:1 1 100%;display:block}
+.wire-btns .ob{margin-top:0}
+.ff-share{flex:0 1 auto;white-space:nowrap}
 /* #baby — the call bot's own disclaimer, worn like a bib */
 .wire-baby{position:relative;z-index:1;margin-top:10px;padding:7px 10px;border:1px dashed rgba(220,214,201,.22);border-radius:12px;
   font-family:'IBM Plex Mono',monospace;font-size:10px;line-height:1.55;text-align:center;color:var(--steel);letter-spacing:.04em}
@@ -2315,14 +2331,224 @@ window.DEVLOG=(function(){
         <div class="wire-track" id="wTrack"></div>
         <div class="wire-meters" id="wMeters"></div>
         <div class="wire-runaway steady" id="wRun" style="display:none"></div>
-        <!-- #baby — "I'M JUST A BABY": the call bot owns up to still learning. Cute on purpose.
-             No numbers here on purpose — how much it has eaten stays under wraps. -->
-        <div class="wire-baby" id="babyNote"><span class="bottle">🍼</span> <b>I'M JUST A BABY!</b> — the call bot is still learning the port. Every board makes it a little sharper. Love me, but don't bet the rent on me.<span id="babyFeed"></span></div>
-        <div id="myOdds" style="margin-top:12px;text-align:center"></div>
-        <div style="text-align:center;margin-top:12px">
-          <button type="button" id="recalcBtn" onclick="recalcPredictions()" style="font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--copper-hi,#eeb46b);background:var(--plate-2,#161a1e);border:1px solid var(--line,#2a3138);border-radius:8px;padding:9px 18px;cursor:pointer">↻ Run the Numbers Again</button>
-          <button type="button" id="shareCallBtn" onclick="shareCall()" style="margin-left:8px;font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--copper-hi,#eeb46b);background:var(--plate-2,#161a1e);border:1px solid var(--line,#2a3138);border-radius:8px;padding:9px 14px;cursor:pointer">⤴ Share</button>
+        <!-- #ff — the bib, the recalc button and the bell's explainer are retired.
+             #babyNote / #babyFeed are gone: updateBabyNote and _shadowTally both
+             null-guard on them, so the record engine keeps scoring silently and
+             any future card can read it. #recalcBtn is gone too — the 60s
+             #liverecalc tick is the refresh now. The bell keeps its id, its
+             handler and its classes; it just shares a row with Share. -->
+        <div class="wire-btns">
+          <div id="myOdds"></div>
+          <button type="button" id="shareCallBtn" onclick="shareCall()" class="btn-line gold ff-share">⤴ Share</button>
         </div>
+      </div>
+    </div>
+
+    <!-- ══════════ #ff — FUTURE FORECAST ══════════
+         A second card under the call. It answers what the single-board
+         prediction can't: which days am I in the call. Two boards on one
+         swipeable window (the #onedeck engine, cut to two pages), the whole
+         thing folds to a header and one row, and it re-reads off the end of
+         repredict() — so every seal re-anchors it.
+
+         It is READ-ONLY on the engine: forecastMonth() calls V4.predict per
+         slot and never touches nd2, callSlot, publishCall or any RECENT row. -->
+    <div class="card wirecard ffcard" id="ffCard">
+  <style>
+  /* the fold: CSS-only, so there are no measured heights to go stale when the
+     card re-renders mid-animation */
+  /* the heat is the skin's own accent, as RGB, so the card re-tints with every
+     skin instead of staying copper on a neon board. Values are each skin's
+     --copper-hi; --ff-ink is the text that sits ON a lit fill. */
+  #ffCard{--ff-acc:238,180,107; --ff-ink:var(--void);
+    --ff-h1:.13; --ff-h2:.26; --ff-h3:.43; --ff-h4:.66; --ff-h5:.95}
+  html.arcade #ffCard{--ff-acc:77,226,255}
+  /* on a light ground the same alphas wash out — these steps are the ones that
+     clear 4.5:1 for the figure sitting on them, adjacent pair by adjacent pair */
+  html.daylight #ffCard{--ff-acc:143,61,8; --ff-ink:#fff;
+    --ff-h1:.17; --ff-h2:.33; --ff-h3:.52; --ff-h4:.82; --ff-h5:1}
+  html.arcade.daylight #ffCard{--ff-acc:122,47,214; --ff-ink:#fff;
+    --ff-h1:.17; --ff-h2:.33; --ff-h3:.52; --ff-h4:.82; --ff-h5:1}
+  #ffCard .ff-fold{display:grid;grid-template-rows:1fr;transition:grid-template-rows .3s cubic-bezier(.4,0,.2,1)}
+  #ffCard.shut .ff-fold{grid-template-rows:0fr}
+  #ffCard .ff-fold > div{overflow:hidden;min-height:0}
+  /* the header stays the app's own .card-h so every skin styles it — it just
+     gains button semantics. A <button> here dragged UA font defaults in and
+     the ID selector needed to undo them then outranked html.arcade .card-h. */
+  #ffCard .card-h{cursor:pointer;-webkit-tap-highlight-color:transparent;user-select:none}
+  #ffCard .card-h:focus-visible{outline:2px solid var(--copper-hi);outline-offset:-2px}
+  #ffCard .ff-caret{margin-left:9px;font-size:11px;color:var(--copper)}
+  #ffCard .ff-caret .dot{display:none;width:5px;height:5px;border-radius:99px;background:var(--ok);
+    margin-left:5px;vertical-align:middle}
+  #ffCard.moved .ff-caret .dot{display:inline-block;box-shadow:0 0 7px rgba(var(--ff-acc),.9)}
+
+  /* collapsed, the card still answers the question */
+  #ffCard .ff-peek{display:none;align-items:center;gap:10px;padding:9px 11px;border-radius:12px;
+    position:relative;overflow:hidden;background:rgba(var(--ff-acc),.045);border:1px solid var(--line-soft)}
+  #ffCard.shut .ff-peek{display:flex}
+  #ffCard .ff-peek::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--copper)}
+  #ffCard .ff-peek.night::before{background:linear-gradient(#4a6ea5,#8fb0d8);box-shadow:0 0 10px rgba(120,160,210,.5)}
+  #ffCard .ff-peek.off::before{background:var(--steel);opacity:.4}
+  #ffCard .ff-glyph{flex:0 0 30px;height:30px;border-radius:9px;display:flex;align-items:center;
+    justify-content:center;font-size:14px;background:var(--well);border:1px solid var(--line-soft)}
+  #ffCard .ff-main{flex:1;min-width:0}
+  #ffCard .ff-rtop{display:flex;align-items:baseline;gap:7px;font-size:13px;color:var(--bone);
+    font-weight:700;letter-spacing:.02em;text-transform:uppercase}
+  #ffCard .ff-when{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.05em;
+    color:var(--steel);font-weight:400;text-transform:none}
+  #ffCard .ff-rline{font-size:11.5px;color:var(--steel);margin-top:1px;line-height:1.35}
+  #ffCard .ff-word{flex:0 0 auto;font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:15px;
+    letter-spacing:.01em;font-variant-numeric:tabular-nums;padding:3px 9px;border-radius:99px;
+    border:1px solid rgba(var(--ff-acc),.4);color:var(--copper-hi);white-space:nowrap}
+
+  /* the source stamp + hero, same grammar as the call above */
+  #ffCard .ff-src{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:2px}
+  #ffCard .ff-stamp{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.05em;
+    color:var(--ok);border:1px solid rgba(127,174,106,.42);border-radius:6px;padding:3px 8px;white-space:nowrap}
+  #ffCard .ff-stamp.prov{color:var(--warn);border-color:rgba(216,165,68,.55)}
+  #ffCard .ff-why{font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:var(--steel);
+    letter-spacing:.03em;flex:1;min-width:120px}
+  #ffCard .ff-stage{text-align:center;padding:12px 0 4px}
+  #ffCard .ff-lbl{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.28em;
+    color:var(--copper);opacity:.85}
+  #ffCard .ff-hero{font-family:'Anton',sans-serif;font-size:50px;line-height:.94;color:var(--copper-hi);
+    filter:drop-shadow(0 0 16px rgba(var(--ff-acc),.42));animation:wirePulse 2.6s ease-in-out infinite;
+    letter-spacing:.01em}
+  #ffCard .ff-sub{font-size:15px;color:var(--bone);margin-top:3px}
+  #ffCard .ff-sub b{color:var(--copper-hi);font-weight:700}
+
+  /* the deck — #onedeck's grammar, two boards */
+  #ffCard .ff-tabs{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin:14px 0 10px}
+  #ffCard .ff-tabs button{display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0;
+    padding:8px 2px 7px;border:1px solid var(--line-soft);border-radius:11px;background:var(--well);
+    cursor:pointer;transition:.15s}
+  #ffCard .ff-tabs .m{font-family:'IBM Plex Mono',monospace;font-size:8px;letter-spacing:.14em;
+    color:var(--steel);text-transform:uppercase;opacity:.8}
+  #ffCard .ff-tabs .s{font-family:'IBM Plex Mono',monospace;font-size:9.5px;font-weight:600;
+    letter-spacing:.05em;color:var(--bone);text-transform:uppercase;max-width:100%;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap}
+  #ffCard .ff-tabs button.on{border-color:rgba(var(--ff-acc),.55);
+    background:linear-gradient(180deg,rgba(var(--ff-acc),.14),rgba(var(--ff-acc),.04));
+    box-shadow:0 0 12px rgba(var(--ff-acc),.14)}
+  #ffCard .ff-tabs button.on .s{color:var(--copper-hi)}
+  #ffCard .ff-tabs button.on .m{color:var(--copper);opacity:1}
+  #ffCard .ff-view{position:relative;overflow:hidden;touch-action:pan-y;
+    transition:height .3s cubic-bezier(.22,.61,.36,1)}
+  #ffCard .ff-page{position:absolute;top:0;left:0;right:0;visibility:hidden;
+    will-change:transform;backface-visibility:hidden}
+  #ffCard .ff-page.cur{visibility:visible}
+  #ffCard .ff-dots{display:flex;justify-content:center;gap:5px;padding:11px 0 2px}
+  #ffCard .ff-dots i{width:5px;height:5px;border-radius:3px;background:var(--line);transition:.22s}
+  #ffCard .ff-dots i.on{width:15px;background:var(--copper-hi);box-shadow:0 0 7px rgba(var(--ff-acc),.55)}
+
+  /* THE WEEK — seven rows, each board a discrete meter plus its own figure */
+  #ffCard .wk-hd{display:grid;grid-template-columns:52px 1fr 1fr;gap:9px;padding:0 11px 5px;
+    font-family:'IBM Plex Mono',monospace;font-size:8px;letter-spacing:.14em;color:var(--steel);
+    text-transform:uppercase}
+  #ffCard .wk-rows{margin-top:0}
+  #ffCard .wk-row{display:grid;grid-template-columns:52px 1fr 1fr;gap:9px;align-items:center;
+    padding:8px 10px;margin:5px 0;border-radius:12px;border:1px solid var(--line-soft);background:var(--well)}
+  #ffCard .wk-row.sharp{border-color:rgba(var(--ff-acc),.34);background:rgba(var(--ff-acc),.05)}
+  #ffCard .wk-row.hol{border-style:dashed;background:transparent}
+  #ffCard .wk-d{line-height:1.15}
+  #ffCard .wk-d b{display:block;font-size:13px;font-weight:700;letter-spacing:.04em;color:var(--bone)}
+  #ffCard .wk-row.today .wk-d b{color:var(--copper-hi)}
+  #ffCard .wk-d span{display:block;font-family:'IBM Plex Mono',monospace;font-size:9px;color:var(--steel);
+    font-variant-numeric:tabular-nums}
+  #ffCard .wk-d i{display:block;font-family:'IBM Plex Mono',monospace;font-size:7.5px;font-style:normal;
+    letter-spacing:.08em;color:var(--ok);text-transform:uppercase}
+  #ffCard .wk-pl{display:flex;align-items:center;gap:5px;font-size:10px;line-height:1}
+  #ffCard .wk-n{font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:14.5px;line-height:1;
+    letter-spacing:.01em;font-variant-numeric:tabular-nums;color:var(--steel);min-width:31px;
+    text-align:right;flex:none}
+  #ffCard .wk-n.b2,#ffCard .wk-n.b3{color:var(--bone)}
+  #ffCard .wk-n.b4,#ffCard .wk-n.b5{color:var(--copper-hi);text-shadow:0 0 10px rgba(var(--ff-acc),.4)}
+  #ffCard .wk-pips{display:flex;gap:2px;flex:1}
+  #ffCard .wk-pips i{flex:1;height:8px;border-radius:2px;background:var(--line-soft);border:1px solid transparent}
+  #ffCard .wk-pips i.on.b1{background:rgba(var(--ff-acc),var(--ff-h1))}
+  #ffCard .wk-pips i.on.b2{background:rgba(var(--ff-acc),var(--ff-h2))}
+  #ffCard .wk-pips i.on.b3{background:rgba(var(--ff-acc),var(--ff-h3))}
+  #ffCard .wk-pips i.on.b4{background:rgba(var(--ff-acc),var(--ff-h4))}
+  #ffCard .wk-pips i.on.b5{background:rgba(var(--ff-acc),var(--ff-h5));box-shadow:0 0 7px rgba(var(--ff-acc),.5)}
+  #ffCard .wk-pips.dark i{background:transparent;border-color:rgba(var(--ff-acc),.18);
+    background-image:repeating-linear-gradient(135deg,rgba(var(--ff-acc),.22) 0 1px,transparent 1px 4px)}
+  #ffCard .wk-w{font-family:'IBM Plex Mono',monospace;font-size:8.5px;letter-spacing:.07em;
+    color:var(--steel);margin-top:4px;padding-left:15px}
+  #ffCard .wk-w.hot{color:var(--copper-hi)}
+  #ffCard .wk-m.done{opacity:.45}
+  #ffCard .wk-m.done .wk-pips i{background:transparent;border-color:var(--line-soft)}
+  #ffCard .wk-w.done{color:var(--steel);letter-spacing:.14em}
+
+  /* THE MONTH — calendar-aligned, so the week's shape reads down a column */
+  #ffCard .ff-dow{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin:0 0 14px}
+  #ffCard .ff-dow span{font-family:'IBM Plex Mono',monospace;font-size:8.5px;letter-spacing:.1em;
+    color:var(--steel);text-align:center}
+  #ffCard .ff-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+  #ffCard .ff-cell{position:relative;border:1px solid var(--line-soft);border-radius:7px;
+    background:var(--well);padding:4px 3px 5px;display:flex;flex-direction:column;gap:3px}
+  #ffCard .ff-cell.void{background:transparent;border-color:transparent}
+  #ffCard .ff-cell.sharp{border-color:rgba(var(--ff-acc),.34);background:rgba(var(--ff-acc),.05)}
+  #ffCard .ff-dom{font-family:'IBM Plex Mono',monospace;font-size:9.5px;line-height:1;color:var(--steel);
+    text-align:center;font-variant-numeric:tabular-nums}
+  #ffCard .ff-cell.today .ff-dom{color:var(--copper-hi);font-weight:600}
+  #ffCard .ff-cell.today::after{content:"NOW";position:absolute;top:-13px;left:50%;transform:translateX(-50%);
+    font-family:'IBM Plex Mono',monospace;font-size:7.5px;letter-spacing:.1em;color:var(--ok);white-space:nowrap}
+  #ffCard .ff-cell .hol{position:absolute;top:2px;right:3px;font-size:8px;line-height:1}
+  /* the figure rides the heat, so the ink flips at the bright end */
+  #ffCard .ff-bar{height:13px;border-radius:3px;border:1px solid transparent;
+    display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;
+    font-size:8.5px;font-weight:500;letter-spacing:-.03em;font-variant-numeric:tabular-nums;color:var(--bone)}
+  #ffCard .ff-bar.b0{background:transparent;border-color:var(--line-soft);color:var(--steel)}
+  #ffCard .ff-bar.b1{background:rgba(var(--ff-acc),var(--ff-h1));color:var(--steel)}
+  #ffCard .ff-bar.b2{background:rgba(var(--ff-acc),var(--ff-h2))}
+  #ffCard .ff-bar.b3{background:rgba(var(--ff-acc),var(--ff-h3))}
+  #ffCard .ff-bar.b4{background:rgba(var(--ff-acc),var(--ff-h4));color:var(--ff-ink)}
+  #ffCard .ff-bar.b5{background:rgba(var(--ff-acc),var(--ff-h5));color:var(--void);box-shadow:0 0 9px rgba(var(--ff-acc),.5)}
+  #ffCard .ff-bar.dark{background:transparent;border-color:rgba(var(--ff-acc),.18);color:var(--steel);
+    background-image:repeating-linear-gradient(135deg,rgba(var(--ff-acc),.22) 0 1px,transparent 1px 4px)}
+  #ffCard .ff-bar.ran{background:transparent;border-color:var(--line-soft);
+    background-image:linear-gradient(to bottom right,transparent 46%,var(--line) 46%,var(--line) 54%,transparent 54%)}
+  #ffCard .ff-key{display:flex;align-items:center;gap:4px;margin-top:12px;flex-wrap:wrap;
+    font-family:'IBM Plex Mono',monospace;font-size:8px;letter-spacing:.06em;color:var(--steel)}
+  #ffCard .ff-key i{display:block;width:15px;height:7px;border-radius:2px;border:1px solid transparent}
+  #ffCard .ff-key .kg{display:flex;align-items:center;gap:3px}
+  #ffCard .ff-empty{font-family:'IBM Plex Mono',monospace;font-size:10.5px;line-height:1.6;
+    color:var(--steel);padding:14px 12px;text-align:center;border:1px dashed var(--line-soft);border-radius:12px}
+  @media (prefers-reduced-motion:reduce){
+    #ffCard .ff-fold,#ffCard .ff-view{transition:none}
+    #ffCard .ff-hero{animation:none}
+  }
+  </style>
+      <div class="card-h" id="ffHead" role="button" tabindex="0" aria-expanded="true" aria-controls="ffFold"></div>
+      <div class="card-b">
+        <div class="ff-peek" id="ffPeek"></div>
+        <div class="ff-fold" id="ffFold"><div>
+          <div class="ff-src">
+            <span class="ff-stamp" id="ffStamp">↻ RE-READ</span>
+            <span class="ff-why" id="ffWhy"></span>
+          </div>
+          <div class="ff-stage">
+            <div class="ff-lbl">YOUR NEXT ONE</div>
+            <div class="ff-hero" id="ffHero">—</div>
+            <div class="ff-sub" id="ffSub">reading the wire…</div>
+          </div>
+          <div class="ff-tabs" id="ffTabs">
+            <button type="button"><span class="m">7 days</span><span class="s">The Week</span></button>
+            <button type="button"><span class="m">30 days</span><span class="s">The Month</span></button>
+          </div>
+          <div class="ff-view" id="ffView">
+            <div class="ff-page cur" id="ffWeek">
+              <div class="wk-hd"><span></span><span>☀ day board</span><span>🌙 night board</span></div>
+              <div class="wk-rows" id="ffWeekRows"></div>
+            </div>
+            <div class="ff-page" id="ffMonth">
+              <div class="ff-dow" id="ffDow"></div>
+              <div class="ff-grid" id="ffGrid"></div>
+              <div class="ff-key" id="ffKey"></div>
+            </div>
+          </div>
+          <div class="ff-dots" id="ffDots"><i class="on"></i><i></i></div>
+        </div></div>
       </div>
     </div>
 
@@ -6849,7 +7075,7 @@ function renderCallStart(){
 }
 /* #114 — the predictions re-figure the moment data lands, wherever it lands from:
    a logged board, a wire correction, a bot sheet, or the boot seed. */
-function repredict(){try{renderCallStart();}catch(e){} try{publishCall();}catch(e){}}
+function repredict(){try{renderCallStart();}catch(e){} try{publishCall();}catch(e){} try{if(window.ffRender)ffRender();}catch(e){}}
 /* #recalc/#recalc2 — manual "run the numbers again" button on the wire. The old
    version only re-ran the math on the SAME inputs — same numbers in, same call out,
    so the press read as doing nothing. Now it actually goes and gets fresh inputs:
@@ -7165,7 +7391,7 @@ function renderWireStage(o){
   if(run){
     run.style.display='block';
     if(o.p6>=0.12){ run.className='wire-runaway';
-      run.innerHTML='⚠ runaway watch · 6+ cards about <b>1-in-'+Math.round(1/o.p6)+'</b>'+(o.p10>=0.08?' · 10+ about <b>1-in-'+Math.round(1/o.p10)+'</b>':'');
+      run.innerHTML='<span class="rw-l">⚠ runaway watch</span><span class="rw-n">6+ cards about <b>1-in-'+Math.round(1/o.p6)+'</b>'+(o.p10>=0.08?' · 10+ about <b>1-in-'+Math.round(1/o.p10)+'</b>':'')+'</span>';
     } else { run.className='wire-runaway steady'; run.innerHTML='steady run · no blowout signal'; }
   }
 }
@@ -7989,12 +8215,13 @@ function letterCatch(L){
 function renderMyOdds(startId, moved){
   const el=document.getElementById('myOdds'); if(!el)return;
   const my=myBoardId();
-  if(!my){el.innerHTML='';return;}   /* no in-app messaging — alerts are opt-in via the bell once verified */
+  if(!my){el.className='';el.innerHTML='';return;}   /* no in-app messaging — alerts are opt-in via the bell once verified */
   /* #pending(aug10) — "you have a 78% chance of getting a job" is measured as
      the distance from the opening card to yours. With no opening card there is
      no distance, and a percentage here is worse than none: this is the number a
      hand decides whether to drive to the hall on. */
   if(!startId){
+    el.className='hold';   /* #ff — the holding message takes the whole row */
     el.innerHTML='<div class="odds-hold">Your odds are holding — the board before this one hasn’t been sealed, '
       +'so there’s no opening card to measure your number from yet.</div>';
     return;
@@ -8035,12 +8262,396 @@ function renderMyOdds(startId, moved){
   window._lastOdds={pct:pct,word:word,reached:Math.round(p*100),catch:Math.round(catchRate*100),inLine:inLine,anchored:anchored,dist:Math.round(d*10)/10};
   /* per the Keymaster: the % is NOT shown in the app — it travels only in the phone alert.
      Only the bell (the required permission switch) renders here. */
-  el.innerHTML='<button class="btn-line gold ob" id="oddsBell" type="button" onclick="toggleOddsAlerts()"><span class="ob-ic">\uD83D\uDD14</span> <span class="ob-t">Notify me when I\u2019m in the firing line</span></button>'
-    +'<div class="ob-sub" id="oddsBellSub">A phone alert when the board\u2019s predicted to reach your number \u2014 and a live ping as it nears you during dispatch.</div>';
+  el.className='';   /* #ff \u2014 drop any .hold left by a previous render */
+  el.innerHTML='<button class="btn-line gold ob" id="oddsBell" type="button" onclick="toggleOddsAlerts()"><span class="ob-ic">\uD83D\uDD14</span> <span class="ob-t">Notify me</span></button>';
   renderBell();
   pushOddsAlert(false);
 }
 window.renderMyOdds=renderMyOdds;
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   #ff — FUTURE FORECAST. Thirty days of "is my number in the call".
+
+   The call above predicts ONE board. This runs the same engine sixty times.
+   The difference is that after the first board we no longer know where the
+   cursor sits, so instead of a card we carry a DISTRIBUTION over cursor
+   position and convolve it forward one board at a time. P(you're in the call
+   on board k) is then the survival function of that board's move PMF summed
+   against every place the cursor might be.
+
+   What it shows is P(THE BOARD SWEEPS PAST YOUR CARD) — not P(job in hand).
+   renderMyOdds' jobP discounts that by the come-down rate, and the phone alert
+   still sends jobP. The two quote different figures on purpose; if that ever
+   reads as a bug, this is the line to change.
+
+   READ-ONLY on the engine. It calls V4.predict/categories/expect/momentum and
+   nothing else. It never touches nd2, callSlot, publishCall, RECENT, or any
+   localStorage key the call uses. Its own two keys are ff_fold and ff_page.
+
+   The honest part, and why the week board leads: the anchor's information is
+   spent by about the seventh board. Past ~3 days every week the model produces
+   is the same week, so the month board is the RHYTHM — the shape of the week,
+   not a claim about the date.
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function(){
+  var DOWM=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  /* the engine indexes weekdays MONDAY-FIRST — publishCall builds dowIdx off
+     callSlot's name, not getDay(). Passing a JS day number here shifts every
+     weekday by one and maps Sunday onto Monday, which reads as plausible
+     nonsense rather than an error. */
+  var FFDOW={Mon:0,Tue:1,Wed:2,Thu:3,Fri:4,Sat:5,Sun:6};
+  var AZF="ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  var BINS=260;                    /* 0.1-letter resolution around the 26-letter ring */
+  var DAYS=30, SHARP_MIN=0.30;     /* below this the last seal tells us nothing */
+  var BANDS=[{k:0,w:"DARK",lo:0},{k:1,w:"COLD",lo:.02},{k:2,w:"LONG SHOT",lo:.09},
+             {k:3,w:"COIN FLIP",lo:.18},{k:4,w:"GOOD SHOT",lo:.28},{k:5,w:"SUIT UP",lo:.45}];
+
+  function bandOf(p){ var b=BANDS[0]; for(var i=0;i<BANDS.length;i++) if(p>=BANDS[i].lo)b=BANDS[i]; return b; }
+  function pctOf(v){ return (v>0&&v<0.005)?"<1%":Math.round(v*100)+"%"; }
+  function posOf(id){ var n=parseInt(String(id).slice(1),10)||0;
+                      return AZF.indexOf(String(id).charAt(0))+Math.min(0.999,n/10000); }
+  function ymdOf(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+  function relDay(n){ return n===0?"today":n===1?"tomorrow":n+" days out"; }
+  function survOf(p){ var S=new Array(29),r=0,j;
+                      for(j=28;j>26;j--)S[j]=0;
+                      for(j=26;j>=0;j--){ r+=(p[j]||0); S[j]=r; } return S; }
+
+  /* ── the forecast ─────────────────────────────────────────────────────── */
+  var _memo=null,_memoKey="";
+  function forecast(){
+    if(typeof V4==="undefined"||!V4||!V4.predict) return null;
+    var anchor="", my=null;
+    try{ anchor=(typeof pendingStartCard==="function")?pendingStartCard():""; }catch(e){}
+    try{ my=(typeof myBoardId==="function")?myBoardId():null; }catch(e){}
+    if(!anchor||!my||!/^[A-Z]\d{2,5}$/.test(String(anchor).toUpperCase())) return null;
+
+    var confirmed=true;
+    try{ confirmed=(typeof startConfirmed==="function")?startConfirmed():true; }catch(e){}
+
+    /* a COPY of the pending board's date — nd2 is the call's, never ours */
+    var from=new Date((typeof nd2!=="undefined"&&nd2)?nd2.getTime():Date.now());
+    var startPM=(typeof callSlot!=="undefined")&&String(callSlot).slice(-2)==="PM";
+
+    var key=[anchor,my,ymdOf(from),startPM?1:0,confirmed?1:0,Math.floor(Date.now()/300000)].join("|");
+    if(_memo&&_memoKey===key) return _memo;
+
+    var D=new Array(BINS); for(var b=0;b<BINS;b++)D[b]=0;
+    D[Math.round(posOf(anchor)*10)%BINS]=1;
+    var mine=posOf(my), out=[];
+
+    /* momentum rolls forward per slot type, the way the engine keeps it */
+    var momAM=1.5, momPM=1.5, lastPMact=null;
+    try{ momAM=V4.momentum(true); momPM=V4.momentum(false); }catch(e){}
+
+    for(var i=0;i<DAYS;i++){
+      var day=new Date(from.getTime()+i*86400000);
+      var dowName=DOWM[day.getDay()], dow=FFDOW[dowName];
+      var row={ymd:ymdOf(day),dow:dowName,dom:day.getDate(),date:day,cal:null,slots:[]};
+      for(var a=0;a<2;a++){
+        var isAM=(a===0), slot=dowName+"_"+(isAM?"AM":"PM");
+
+        /* the board that already ran today is history, not a forecast */
+        if(i===0&&startPM&&isAM){
+          row.slots.push({ap:"AM",slot:slot,reach:0,sharp:1,band:BANDS[0],done:true,mean:0});
+          continue;
+        }
+        var cats=null,ex=null,pmf=null;
+        try{ cats=V4.categories(day,slot); }catch(e){}
+        try{ ex=V4.expect(dow,isAM); }catch(e){}
+        if(!ex) ex={ch:isAM?860:650, tot:isAM?2200:1600};
+        try{
+          pmf=V4.predict({isAM:isAM,dow:dow,chHat:ex.ch,totHat:ex.tot,
+                          mom:(isAM?momAM:momPM),date:day,cats:cats,
+                          xm:(isAM&&lastPMact!=null)?lastPMact:null});
+        }catch(e){ pmf=null; }
+        if(!pmf){ row.slots.push({ap:isAM?"AM":"PM",slot:slot,reach:0,sharp:0,band:BANDS[0],mean:0}); continue; }
+
+        if(cats&&cats.shutdown&&!row.cal) row.cal={name:"BOARD DARK"};
+        else if(cats&&cats.holiday&&!row.cal) row.cal={name:"HOLIDAY"};
+
+        /* how far from flat the cursor still is — the anchor's remaining say */
+        var L=new Array(26),q; for(q=0;q<26;q++)L[q]=0;
+        for(q=0;q<BINS;q++)L[Math.floor(q/10)]+=D[q];
+        var tv=0; for(q=0;q<26;q++)tv+=Math.abs(L[q]-1/26);
+        var sharp=tv/2;
+
+        var S=survOf(pmf), reach=0, mean=0, j;
+        for(j=0;j<27;j++) mean+=j*(pmf[j]||0);
+        for(q=0;q<BINS;q++){
+          if(!D[q])continue;
+          var dist=((mine-q/10)%26+26)%26, lo=Math.floor(dist), fr=dist-lo;
+          reach+=D[q]*(S[Math.min(lo+1,28)]*(1-fr)+S[Math.min(lo+2,28)]*fr);
+        }
+        /* advance the cursor distribution */
+        var N=new Array(BINS); for(q=0;q<BINS;q++)N[q]=0;
+        for(q=0;q<BINS;q++){
+          if(!D[q])continue;
+          for(j=0;j<27;j++){ if(pmf[j]) N[(q+j*10)%BINS]+=D[q]*pmf[j]; }
+        }
+        D=N;
+        if(isAM) momAM=0.3*mean+0.7*momAM; else { momPM=0.3*mean+0.7*momPM; lastPMact=mean; }
+
+        row.slots.push({ap:isAM?"AM":"PM",slot:slot,reach:reach,sharp:sharp,
+                        band:(row.cal&&reach<0.09)?BANDS[0]:bandOf(reach),mean:mean});
+      }
+      out.push(row);
+    }
+    _memo={rows:out,anchor:anchor,card:my,confirmed:confirmed}; _memoKey=key;
+    return _memo;
+  }
+
+  /* ── state ────────────────────────────────────────────────────────────── */
+  var ST={open:true,page:0};
+  try{ var f=localStorage.getItem("ff_fold"); if(f!==null)ST.open=(f==="1"); }catch(e){}
+  try{ var g=localStorage.getItem("ff_page"); if(g==="1")ST.page=1; }catch(e){}
+  var _lastHero="";
+
+  function $ff(id){ return document.getElementById(id); }
+
+  /* ── render ───────────────────────────────────────────────────────────── */
+  function render(){
+    var card=$ff('ffCard'); if(!card) return;
+    var F=forecast();
+
+    var head=$ff('ffHead');
+    if(head){
+      head.innerHTML='Future Forecast'
+        +'<span class="ff-caret">'+(ST.open?"▴":"▾")+'<i class="dot"></i></span>';
+      head.setAttribute('aria-expanded',String(ST.open));
+    }
+    card.classList.toggle('shut',!ST.open);
+
+    if(!F){
+      /* no card on file, or no opening card yet — say which, don't go blank */
+      var why="";
+      try{ why=(typeof myBoardId==="function"&&myBoardId())?"waiting on an opening card":"add your card to see your forecast"; }catch(e){ why="waiting on an opening card"; }
+      if($ff('ffStamp')){ $ff('ffStamp').className='ff-stamp prov'; $ff('ffStamp').textContent='◆ HOLDING'; }
+      if($ff('ffWhy')) $ff('ffWhy').textContent=why;
+      if($ff('ffHero')) $ff('ffHero').textContent='—';
+      if($ff('ffSub')) $ff('ffSub').textContent=why;
+      if($ff('ffWeekRows')) $ff('ffWeekRows').innerHTML='<div class="ff-empty">'+why+'</div>';
+      if($ff('ffGrid')) $ff('ffGrid').innerHTML='';
+      if($ff('ffDow')) $ff('ffDow').innerHTML='';
+      if($ff('ffKey')) $ff('ffKey').innerHTML='';
+      if($ff('ffPeek')){ $ff('ffPeek').className='ff-peek off';
+        $ff('ffPeek').innerHTML='<div class="ff-glyph">–</div><div class="ff-main">'
+          +'<div class="ff-rtop">HOLDING</div><div class="ff-rline">'+why+'</div></div>'; }
+      if(window._ffHug)window._ffHug();
+      return;
+    }
+
+    var rows=F.rows;
+
+    /* the stamp — provisional when the last board isn't sealed */
+    var st=$ff('ffStamp');
+    if(st){ st.className='ff-stamp'+(F.confirmed?'':' prov');
+            st.textContent=F.confirmed?'↻ RE-READ':'◆ PROVISIONAL'; }
+    if($ff('ffWhy')) $ff('ffWhy').textContent=(F.confirmed?'off ':'off an unsealed ')+F.anchor;
+
+    /* the hero — your next one, chronologically, whichever board it lands on */
+    var hero=null,hi=-1,ha=0,i,j;
+    outer: for(i=0;i<rows.length;i++) for(j=0;j<2;j++){
+      var sl=rows[i].slots[j];
+      if(!sl.done&&sl.band.k>=3){ hero=rows[i]; hi=i; ha=j; break outer; }
+    }
+    if($ff('ffHero')&&$ff('ffSub')){
+      if(hero){
+        $ff('ffHero').textContent=hero.dow.toUpperCase()+" "+(hero.date.getMonth()+1)+"/"+hero.dom;
+        $ff('ffSub').innerHTML=relDay(hi)+" · "+(ha===0?"day":"night")+" board · <b>"
+          +pctOf(hero.slots[ha].reach)+"</b> · "+hero.slots[ha].band.w;
+      }else{
+        $ff('ffHero').textContent="—";
+        $ff('ffSub').textContent="nothing warm inside the month";
+      }
+    }
+
+    /* the peek — what the card still says folded */
+    var pk=$ff('ffPeek');
+    if(pk){
+      if(hero){
+        pk.className='ff-peek'+(ha===1?' night':'');
+        pk.innerHTML='<div class="ff-glyph">'+(ha===0?"☀":"🌙")+'</div><div class="ff-main">'
+          +'<div class="ff-rtop">'+hero.dow.toUpperCase()+" "+(hero.date.getMonth()+1)+"/"+hero.dom
+          +' <span class="ff-when">'+relDay(hi)+'</span></div>'
+          +'<div class="ff-rline">your next one · '+(ha===0?"day":"night")+' board · '+hero.slots[ha].band.w+'</div>'
+          +'</div><div class="ff-word">'+pctOf(hero.slots[ha].reach)+'</div>';
+      }else{
+        pk.className='ff-peek off';
+        pk.innerHTML='<div class="ff-glyph">–</div><div class="ff-main">'
+          +'<div class="ff-rtop">NOTHING WARM <span class="ff-when">in the month</span></div>'
+          +'<div class="ff-rline">open it for the rhythm</div></div>';
+      }
+    }
+    /* a seal that moved your next one earns a dot on the caret */
+    var hkey=hero?(hi+"|"+ha):"none";
+    if(_lastHero&&_lastHero!==hkey){ card.classList.remove('moved'); void card.offsetWidth; card.classList.add('moved'); }
+    _lastHero=hkey;
+
+    /* ── THE WEEK ── */
+    var wr=$ff('ffWeekRows');
+    if(wr){
+      var html="";
+      for(i=0;i<7&&i<rows.length;i++){
+        var r=rows[i], isSharp=r.slots[0].sharp>=SHARP_MIN||r.slots[1].sharp>=SHARP_MIN;
+        html+='<div class="wk-row'+(isSharp?' sharp':'')+(i===0?' today':'')+(r.cal?' hol':'')+'">'
+          +'<div class="wk-d"><b>'+r.dow.toUpperCase()+'</b><span>'
+          +(r.date.getMonth()+1)+"/"+r.dom+'</span>'+(i===0?'<i>now</i>':i===1?'<i>tmrw</i>':'')+'</div>';
+        for(j=0;j<2;j++){
+          var s=r.slots[j], dark=!!(r.cal&&s.band.k===0), pips="";
+          for(var n=0;n<5;n++) pips+='<i class="'+(n<s.band.k?"on b"+s.band.k:"")+'"></i>';
+          html+='<div class="wk-m'+(s.done?' done':'')+'">'
+            +'<div class="wk-pl">'+(j?"🌙":"☀")
+            +'<b class="wk-n b'+s.band.k+'">'+(s.done?"—":pctOf(s.reach))+'</b>'
+            +'<span class="wk-pips'+(dark?' dark':'')+'">'+pips+'</span></div>'
+            +'<div class="wk-w'+(s.done?' done':(s.band.k>=4?' hot':''))+'">'
+            +(s.done?"RAN":s.band.w)+'</div></div>';
+        }
+        html+='</div>';
+      }
+      wr.innerHTML=html;
+    }
+
+    /* ── THE MONTH ── */
+    var dw=$ff('ffDow');
+    if(dw){ var dl=["S","M","T","W","T","F","S"],dh="";
+      for(i=0;i<7;i++) dh+='<span>'+dl[i]+'</span>'; dw.innerHTML=dh; }
+    var gd=$ff('ffGrid');
+    if(gd){
+      var gh="";
+      for(i=0;i<rows[0].date.getDay();i++) gh+='<div class="ff-cell void"></div>';
+      for(i=0;i<rows.length;i++){
+        var rr=rows[i], sh=rr.slots[0].sharp>=SHARP_MIN||rr.slots[1].sharp>=SHARP_MIN;
+        var lbl=rr.dow+" "+(rr.date.getMonth()+1)+"/"+rr.dom;
+        gh+='<div class="ff-cell'+(sh?' sharp':'')+(i===0?' today':'')+'" tabindex="0" aria-label="'
+          +lbl+'. Day board '+rr.slots[0].band.w+'. Night board '+rr.slots[1].band.w
+          +(rr.cal?'. '+rr.cal.name:'')+'" title="'+lbl+' — ☀ '+pctOf(rr.slots[0].reach)
+          +' · 🌙 '+pctOf(rr.slots[1].reach)+'">'
+          +'<span class="ff-dom">'+rr.dom+'</span>'
+          +(rr.cal?'<span class="hol" aria-hidden="true">⚑</span>':'');
+        for(j=0;j<2;j++){
+          var ss=rr.slots[j];
+          gh+='<span class="ff-bar b'+ss.band.k
+            +(ss.done?' ran':((rr.cal&&ss.band.k===0)?' dark':''))+'">'
+            +(ss.done?'':pctOf(ss.reach))+'</span>';
+        }
+        gh+='</div>';
+      }
+      gd.innerHTML=gh;
+    }
+    var ky=$ff('ffKey');
+    if(ky){ var kh=[]; for(i=0;i<BANDS.length;i++)
+      kh.push('<span class="kg"><i class="ff-bar b'+BANDS[i].k+'"></i>'+BANDS[i].w+'</span>');
+      ky.innerHTML=kh.join('<span style="opacity:.3">·</span>'); }
+
+    if(window._ffHug)window._ffHug();
+  }
+  window.ffRender=render;
+
+  /* ── the fold ─────────────────────────────────────────────────────────── */
+  function bindFold(){
+    var h=$ff('ffHead'); if(!h||h._ffBound)return; h._ffBound=1;
+    function toggle(){
+      ST.open=!ST.open;
+      try{ localStorage.setItem("ff_fold",ST.open?"1":"0"); }catch(e){}
+      var c=$ff('ffCard'); if(c)c.classList.remove('moved');
+      render();
+      /* the window measured itself while clipped — re-hug once the fold is open */
+      setTimeout(function(){ try{ if(window._ffHug)_ffHug(); }catch(e){} },340);
+    }
+    h.addEventListener('click',toggle);
+    h.addEventListener('keydown',function(e){
+      if(e.key===' '||e.key==='Enter'||e.key==='Spacebar'){ e.preventDefault(); toggle(); }
+    });
+  }
+
+  /* ── the deck — #onedeck's engine, cut to two boards ──────────────────── */
+  function bindDeck(){
+    var view=$ff('ffView'); if(!view||view._ffBound)return; view._ffBound=1;
+    var pages=Array.prototype.slice.call(view.querySelectorAll('.ff-page'));
+    var chips=Array.prototype.slice.call(document.querySelectorAll('#ffTabs button'));
+    var dots=Array.prototype.slice.call(document.querySelectorAll('#ffDots i'));
+    var EASE='transform .27s cubic-bezier(.22,.61,.36,1)';
+    var cur=0,busy=false,x0=null,y0=null,dx=0,active=false,axis=0,dir=0,W=1,tgt=-1;
+    function w(){ return view.clientWidth||320; }
+    function mark(){
+      chips.forEach(function(c,i){ c.classList.toggle('on',i===cur); });
+      dots.forEach(function(d,i){ d.classList.toggle('on',i===cur); });
+      ST.page=cur; try{ localStorage.setItem("ff_page",String(cur)); }catch(e){}
+    }
+    function hugH(p){ var h=(p||pages[cur]).offsetHeight; if(h)view.style.height=h+'px'; }
+    window._ffHug=function(){ if(!busy)hugH(); };
+    function drop(i){ var p=pages[i]; if(!p||i===cur)return;
+      p.classList.remove('cur'); p.style.transform=''; p.style.transition=''; }
+    function prep(i,d){ var p=pages[i]; p.style.transition='';
+      p.style.transform='translateX('+(d===1?w():-w())+'px)'; p.classList.add('cur'); return p; }
+    function settle(commit){
+      var W2=w(),d=dir,ti=tgt,a=pages[cur],p=(ti>=0&&ti!==cur)?pages[ti]:null;
+      if(commit&&p){
+        busy=true; hugH(p);
+        a.style.transition=EASE; p.style.transition=EASE;
+        a.style.transform='translateX('+(d===1?-W2:W2)+'px)'; p.style.transform='translateX(0px)';
+        var done=false, fin=function(){ if(done)return; done=true;
+          a.removeEventListener('transitionend',fin);
+          a.classList.remove('cur'); a.style.transform=''; a.style.transition='';
+          p.style.transition=''; p.style.transform='';
+          cur=ti; tgt=-1; dir=0; busy=false; mark(); hugH(); };
+        a.addEventListener('transitionend',fin); setTimeout(fin,380);
+      }else{
+        a.style.transition=EASE; a.style.transform='translateX(0px)';
+        if(p){ p.style.transition=EASE; p.style.transform='translateX('+(d===1?W2:-W2)+'px)'; }
+        setTimeout(function(){ if(p)drop(ti); a.style.transition=''; a.style.transform=''; tgt=-1; dir=0; },300);
+      }
+    }
+    function go(i){ if(busy||i===cur||i<0||i>=pages.length)return;
+      if(tgt>=0)drop(tgt); dir=i>cur?1:-1; tgt=i; prep(i,dir); void pages[i].offsetWidth; settle(true); }
+    window._ffGo=go;
+    function begin(cx,cy){ if(busy)return; x0=cx; y0=cy; dx=0; active=true; axis=0; dir=0; W=w(); }
+    function moved(cx,cy,ev){
+      if(!active||x0==null)return;
+      var mx=cx-x0,my=cy-y0;
+      if(axis===0){ if(Math.abs(mx)<8&&Math.abs(my)<8)return;
+        axis=(Math.abs(mx)>Math.abs(my)*1.2)?1:-1; if(axis!==1){active=false;return;} }
+      var want=mx<0?1:-1, ti=cur+want, a=pages[cur];
+      if(ti<0||ti>=pages.length){                        /* rubber-band at the ends */
+        if(tgt>=0)drop(tgt); tgt=-1; dir=0; dx=mx*0.3;
+        a.style.transform='translateX('+dx+'px)';
+        if(ev&&ev.cancelable)ev.preventDefault(); return;
+      }
+      if(dir!==want||tgt!==ti){ if(tgt>=0&&tgt!==ti)drop(tgt); dir=want; tgt=ti; prep(ti,want); }
+      dx=mx; a.style.transform='translateX('+dx+'px)';
+      pages[ti].style.transform='translateX('+((dir===1?W:-W)+dx)+'px)';
+      if(ev&&ev.cancelable)ev.preventDefault();
+    }
+    function up(){ if(!active)return; active=false;
+      if(axis!==1){ x0=null; if(tgt>=0)drop(tgt); tgt=-1; dir=0; return; }
+      settle(Math.abs(dx)>Math.min(80,W*0.25)&&tgt>=0); x0=null; dx=0; axis=0; }
+
+    view.addEventListener('touchstart',function(e){ if(e.touches.length!==1)return;
+      begin(e.touches[0].clientX,e.touches[0].clientY); },{passive:true});
+    view.addEventListener('touchmove',function(e){ moved(e.touches[0].clientX,e.touches[0].clientY,e); },{passive:false});
+    view.addEventListener('touchend',up,{passive:true});
+    view.addEventListener('touchcancel',up,{passive:true});
+    chips.forEach(function(c,i){ c.addEventListener('click',function(){ go(i); }); });
+    view.setAttribute('tabindex','0');
+    view.addEventListener('keydown',function(e){
+      if(e.key==='ArrowRight'){ go(cur+1); e.preventDefault(); }
+      else if(e.key==='ArrowLeft'){ go(cur-1); e.preventDefault(); }
+    });
+    if(ST.page===1){ cur=1; pages[0].classList.remove('cur'); pages[1].classList.add('cur'); }
+    mark();
+    try{ var ro=new ResizeObserver(function(){ if(!busy)hugH(); });
+         pages.forEach(function(p){ ro.observe(p); }); }
+    catch(e){ window.addEventListener('resize',function(){ if(!busy)hugH(); }); }
+    setTimeout(function(){ hugH(); },0);
+    window.addEventListener('load',function(){ setTimeout(function(){ hugH(); },80); });
+  }
+
+  function boot(){ bindFold(); bindDeck(); try{ render(); }catch(e){ if(window.console)console.warn('ff',e); } }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot);
+  else boot();
+  setTimeout(boot,1200);   /* RECENT settles after first paint, same as updateBabyNote */
+})();
+
 
 /* ── PHONE ALERTS (system notifications, like other apps) ──────────────────────
    Tier 1 (now, no server): fires into the phone's notification tray while the app
@@ -8261,7 +8872,7 @@ function renderBell(){
   el.classList.toggle('on', on);
   const ic=el.querySelector('.ob-ic'), t=el.querySelector('.ob-t');
   if(ic)ic.textContent = on ? "\uD83D\uDD14" : "\uD83D\uDD15";
-  if(t)t.textContent = on ? "Alerts on \u2014 I\u2019ll ping you when you\u2019re up" : "Notify me when I\u2019m in the firing line";
+  if(t)t.textContent = on ? "Alerts on" : "Notify me";   /* #ff \u2014 the bell is half a row now */
   const sub=document.getElementById('oddsBellSub');
   /* #anchor(aug2) — when the opening card hasn't landed, say so instead of going quiet.
      A hand who knows the alert is HELD won't read the silence as "I'm not up". */
