@@ -2456,7 +2456,9 @@ window.DEVLOG=(function(){
   html.arcade.daylight #ffCard{--ff-acc:122,47,214;
     --ff-b1:#dfe8f4; --ff-b2:#86b4e0; --ff-b3:#1f6fa8; --ff-b4:#c22f9e; --ff-b5:#ab1450;
     --ff-k1:#171029; --ff-k2:#171029; --ff-k3:#fff; --ff-k4:#fff; --ff-k5:#fff}
-  #ffCard .ff-fold{display:grid;grid-template-rows:1fr;transition:grid-template-rows .3s cubic-bezier(.4,0,.2,1)}
+  /* #ffnohr(aug24) — margin-top was .ff-hr's; it keeps the tail off the call above. */
+  #ffCard .ff-fold{display:grid;grid-template-rows:1fr;margin-top:16px;
+    transition:grid-template-rows .3s cubic-bezier(.4,0,.2,1)}
   #ffCard.shut .ff-fold{grid-template-rows:0fr}
   #ffCard .ff-fold > div{overflow:hidden;min-height:0}
   /* the header stays the app's own .card-h so every skin styles it — it just
@@ -2632,8 +2634,10 @@ window.DEVLOG=(function(){
     #ffCard .ff-hero{animation:none}
   }
   </style>
-          <div class="ff-hr" id="ffHead" role="button" tabindex="0" aria-expanded="true" aria-controls="ffFold">
-            <span class="ff-hrt">And after that</span><span class="ff-caret">▴</span></div>
+          <!-- #ffnohr(aug24) — the "AND AFTER THAT" divider is retired. It was the
+               fold control as well as the label, so the tail no longer folds: it is
+               always open. #ffPeek only ever showed in the collapsed state, so it
+               stays in the markup (render() still writes it) but CSS keeps it hidden. -->
           <div class="ff-peek" id="ffPeek"></div>
           <div class="ff-fold" id="ffFold"><div>
             <div class="ff-tabs" id="ffTabs">
@@ -5073,10 +5077,21 @@ function mergeDockets(a,b){
    Pass an epoch (e.g. a stored Date.now() timestamp) to read THAT instant in LA.
    IMPORTANT: use it only for those wall-clock fields — its .getTime() is shifted,
    so keep Date.now()/new Date(ts) for durations, ages, and ids. */
+/* #perf(aug24) — ONE FORMATTER, NOT ONE PER CALL. toLocaleString(locale,opts)
+   builds a fresh Intl.DateTimeFormat every time it is handed an options object,
+   and nowLA() is called from everywhere (todayISO, every board render, every
+   clock line) — it measured 0.61ms a call and ~144ms of a cold start. A cached
+   formatter with the same fields emits the identical "8/24/2026, 12:34:56 PM"
+   string, so the Date it re-parses is bit-for-bit what it always was. */
+var _LAFMT=null;
+try{ _LAFMT=new Intl.DateTimeFormat('en-US',{timeZone:'America/Los_Angeles',
+  year:'numeric',month:'numeric',day:'numeric',
+  hour:'numeric',minute:'numeric',second:'numeric'}); }catch(e){ _LAFMT=null; }
 function nowLA(ts){
   try{
     var base = (ts==null) ? new Date() : new Date(ts);
-    return new Date(base.toLocaleString('en-US',{timeZone:'America/Los_Angeles'}));
+    return new Date(_LAFMT ? _LAFMT.format(base)
+                           : base.toLocaleString('en-US',{timeZone:'America/Los_Angeles'}));
   }catch(e){ return (ts==null) ? new Date() : new Date(ts); }  // no Intl/tz → fall back to device local
 }
 /* #50 — LOCAL calendar date (toISOString is UTC: after ~5pm in San Pedro it returns TOMORROW,
@@ -6494,10 +6509,20 @@ setTimeout(()=>{try{sbLoadVouches()}catch(e){}},4000);
    below it (their top rides var(--tbH)). Measure the strip's real height and
    keep the variable honest — the reel appearing during live dispatch, daylight
    mode or a font swap can all change it. */
+/* #perf(aug24) — WRITE ONLY WHEN THE NUMBER MOVES. --tbH/--nvH live on <html>,
+   so every set invalidates the computed style of all ~9,600 nodes against ~2,400
+   CSS rules and forces a full document layout — measured at ~128ms on a 4x-throttled
+   phone, PER WRITE. This ran on boot, on every resize (including the synthetic one
+   #textsize fires), on orientation change and on a ResizeObserver watching .topbar
+   and .nav — and the header height is the same number nearly every time. Reading
+   both heights first, then writing only what actually changed, turns the common
+   case into two cheap reads and zero invalidation. */
+var _tbHLast=-1,_nvHLast=-1;
 function setTbH(){try{var t=document.querySelector('.topbar');
-  document.documentElement.style.setProperty('--tbH',(t?t.offsetHeight:0)+'px');
   var n=document.querySelector('.nav');   /* #stories2 — the tab bar frames the story viewer's bottom edge */
-  document.documentElement.style.setProperty('--nvH',(n?n.offsetHeight:0)+'px');}catch(e){}}
+  var th=t?t.offsetHeight:0, nh=n?n.offsetHeight:0;   /* both reads before either write */
+  if(th!==_tbHLast){_tbHLast=th;document.documentElement.style.setProperty('--tbH',th+'px');}
+  if(nh!==_nvHLast){_nvHLast=nh;document.documentElement.style.setProperty('--nvH',nh+'px');}}catch(e){}}
 setTbH();
 window.addEventListener('resize',setTbH);
 window.addEventListener('orientationchange',setTbH);
@@ -8790,7 +8815,10 @@ window.renderMyOdds=renderMyOdds;
 
   /* ── state ────────────────────────────────────────────────────────────── */
   var ST={open:true,page:0};
-  try{ var f=localStorage.getItem("ff_fold"); if(f!==null)ST.open=(f==="1"); }catch(e){}
+  /* #ffnohr(aug24) — ff_fold is no longer read. The divider that toggled it is gone,
+     so a phone still holding ff_fold="0" from an earlier build would render the tail
+     shut forever with nothing left to tap. Clear the key and stay open. */
+  try{ localStorage.removeItem("ff_fold"); }catch(e){}
   try{ var g=localStorage.getItem("ff_page"); if(g==="1")ST.page=1; }catch(e){}
   var _lastHero="";
 
@@ -20967,7 +20995,10 @@ try{ if(typeof YARD_MAPS!=='undefined'){ YARD_MAPS["YTI"]={interactive:true,note
   };})();
 
 /* ---- event wiring ---- */
-yzRender();
+/* #perf(aug24) — was: yzRender();  Every openYusenYard() calls it again before it shows the
+   map, so this boot pass only built a stage nobody was looking at — 43KB of SVG
+   parsed into the DOM on a cold start, on a screen that opens from a tap. */
+
 $y('yiBack').addEventListener('click',closeYusenYard);
 $y('yiReset').addEventListener('click',yzFit);
 $y('yiLegBtn').addEventListener('click',()=>{
@@ -21510,7 +21541,10 @@ try{ if(typeof renderPorts==='function'){ const s=document.getElementById('portS
 try{ if(typeof renderDockets==='function') renderDockets(); }catch(e){}
 
 /* ---- event wiring ---- */
-wbRender();
+/* #perf(aug24) — was: wbRender();  Every openWbctYard() calls it again before it shows the
+   map, so this boot pass only built a stage nobody was looking at — 131KB of SVG
+   parsed into the DOM on a cold start, on a screen that opens from a tap. */
+
 $w('wbBack').addEventListener('click',closeWbctYard);
 $w('wbReset').addEventListener('click',wbFit);
 $w('wbLegBtn').addEventListener('click',()=>{
@@ -22624,7 +22658,10 @@ try{ if(typeof renderPorts==='function'){ const s=document.getElementById('portS
 try{ if(typeof renderDockets==='function') renderDockets(); }catch(e){}
 
 /* ---- event wiring ---- */
-izRender();
+/* #perf(aug24) — was: izRender();  Every openItsYard() calls it again before it shows the
+   map, so this boot pass only built a stage nobody was looking at — 108KB of SVG
+   parsed into the DOM on a cold start, on a screen that opens from a tap. */
+
 $i('itBack').addEventListener('click',closeItsYard);
 $i('itReset').addEventListener('click',izFit);
 $i('itLegBtn').addEventListener('click',()=>{
@@ -23201,7 +23238,10 @@ try{ if(typeof renderPorts==='function'){ const s=document.getElementById('portS
 try{ if(typeof renderDockets==='function') renderDockets(); }catch(e){}
 
 /* ---- event wiring ---- */
-tzRender();
+/* #perf(aug24) — was: tzRender();  Every openTtiYard() calls it again before it shows the
+   map, so this boot pass only built a stage nobody was looking at — 99KB of SVG
+   parsed into the DOM on a cold start, on a screen that opens from a tap. */
+
 $t('ttBack').addEventListener('click',closeTtiYard);
 $t('ttReset').addEventListener('click',tzFit);
 $t('ttLegBtn').addEventListener('click',()=>{
@@ -23876,7 +23916,10 @@ try{ if(typeof renderPorts==='function'){ const s=document.getElementById('portS
 try{ if(typeof renderDockets==='function') renderDockets(); }catch(e){}
 
 /* ---- event wiring ---- */
-pzRender();
+/* #perf(aug24) — was: pzRender();  Every openPierAYard() calls it again before it shows the
+   map, so this boot pass only built a stage nobody was looking at — 141KB of SVG
+   parsed into the DOM on a cold start, on a screen that opens from a tap. */
+
 $a('paBack').addEventListener('click',closePierAYard);
 $a('paReset').addEventListener('click',pzFit);
 $a('paLegBtn').addEventListener('click',()=>{
@@ -24651,7 +24694,10 @@ try{ if(typeof renderPorts==='function'){ const s=document.getElementById('portS
 try{ if(typeof renderDockets==='function') renderDockets(); }catch(e){}
 
 /* ---- event wiring ---- */
-fxRender();
+/* #perf(aug24) — was: fxRender();  Every openFenixYard() calls it again before it shows the
+   map, so this boot pass only built a stage nobody was looking at — 208KB of SVG
+   parsed into the DOM on a cold start, on a screen that opens from a tap. */
+
 $f('fxBack').addEventListener('click',closeFenixYard);
 $f('fxReset').addEventListener('click',fxFit);
 $f('fxLegBtn').addEventListener('click',()=>{
@@ -24749,11 +24795,16 @@ html.fs-lg .msg .reacts{font-size:14px}
 let KEYF; try{ KEYF=(typeof K==='function')?K("textsize"):"tsh_textsize"; }catch(e){ KEYF="tsh_textsize"; }
 const ORDER=["sm","md","lg"], NAME={sm:"SMALL",md:"MEDIUM",lg:"LARGE"};
 let cur="md"; try{ const v=localStorage.getItem(KEYF); if(ORDER.indexOf(v)>=0)cur=v; }catch(e){}
-function apply(){
+function apply(boot){
   const h=document.documentElement;
   ORDER.forEach(v=>h.classList.remove('fs-'+v)); h.classList.add('fs-'+cur);
   document.querySelectorAll('.fsz-btn').forEach(b=>b.classList.toggle('on',b.dataset.fsz===cur));
-  try{ window.dispatchEvent(new Event('resize')); }catch(e){}   /* an open yard map re-fits itself */
+  /* #perf(aug24) — this synthetic resize runs ALL EIGHT window resize handlers:
+     setTbH plus six yard-map re-fits plus the rail. On the boot pass there is
+     nothing open to re-fit and the header has just measured itself, so it was
+     ~1s of pure waste at 4x throttle. Fire it only when a hand actually changes
+     the text size, which is the case the comment below was written for. */
+  if(!boot){ try{ window.dispatchEvent(new Event('resize')); }catch(e){} }   /* an open yard map re-fits itself */
 }
 function setSize(v,quiet){ if(ORDER.indexOf(v)<0)return; cur=v;
   try{ localStorage.setItem(KEYF,v); }catch(e){}
@@ -24764,7 +24815,7 @@ window.setTextSize=setSize;
 document.querySelectorAll('.fsz-btn').forEach(b=>b.addEventListener('click',()=>setSize(b.dataset.fsz)));
 const aa=document.getElementById('aaBtn');
 if(aa)aa.addEventListener('click',()=>setSize(ORDER[(ORDER.indexOf(cur)+1)%ORDER.length]));
-apply();
+apply(true);   /* #perf(aug24) — boot pass: set the class, skip the resize storm */
 })();
 </script>
 <style id="daylight-v2">
@@ -26158,14 +26209,24 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
    overlap computes to ~0 and nothing moves — Android stays exactly as it was. */
 (function(){
   var vv=window.visualViewport; if(!vv)return;
-  var doc=document.documentElement, last=-1;
-  function kb(){
+  var doc=document.documentElement, last=-1, pend=false;
+  /* #perf(aug24) — MEASURE ONCE A FRAME, NOT ONCE AN EVENT. visualViewport
+     'scroll' fires on every scroll frame, and reading innerHeight/vv.height
+     inside the handler forces a synchronous layout of the whole document each
+     time — ~880ms of a cold start, most of it while the page is still being
+     built and nothing has focus, let alone a keyboard. Same numbers, same
+     early-out, just deferred to a rAF so a burst of events collapses into one
+     measurement taken after layout has settled. */
+  function measure(){
+    pend=false;
     var h=Math.max(0,Math.round(window.innerHeight-vv.height-vv.offsetTop));
     if(h<70)h=0;                     /* URL-bar wobble is not a keyboard */
     if(h===last)return; last=h;
     doc.style.setProperty('--kb',h+'px');
     doc.classList.toggle('kb-open',h>0);
   }
+  function kb(){ if(pend)return; pend=true;
+    try{ requestAnimationFrame(measure); }catch(e){ measure(); } }
   vv.addEventListener('resize',kb);
   vv.addEventListener('scroll',kb);
   kb();
