@@ -26988,11 +26988,18 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
 
   /* ═══════════ #kmflag — THE SHEET FLAGS ═══════════
      Sheets on this device whose stated total and their own columns disagree.
-     _shRepairPart settles what two agreeing reads can settle and marks the rest
-     _fxwarn; those are the ones that need a human and the paper. Members used to
-     see this notice on the open sheet, told to "fix it in the Sheet Editor" —
-     a door they don't have. It lives here now.
-     Reads DISPATCH_DATA directly: no table to provision, nothing to fetch. */
+
+     DISMISSAL: a flag is cleared by its SIGNATURE — the sheet key plus the exact
+     repairs and warn state on it — not by the key alone. So clearing a row hides
+     that finding, but if the sheet is re-read and comes back with a different
+     problem (or the same date throws a NEW one), it surfaces again. Clearing can
+     never blind the desk to something it hasn't seen. */
+  const _kmfKey=function(){ try{ return (typeof K==="function")?K('sheetseen'):'shadowhook_sheetseen'; }
+                            catch(e){ return 'shadowhook_sheetseen'; } };
+  function kmfSeen(){ try{ return JSON.parse(localStorage.getItem(_kmfKey())||'{}')||{}; }catch(e){ return {}; } }
+  function kmfSave(o){ try{ localStorage.setItem(_kmfKey(),JSON.stringify(o)); }catch(e){} }
+  function kmfSig(r){ return r.k+'|'+(r.warn?'W':'-')+'|'+((r.fx||[]).join(',')); }
+
   window.kmSheetFlags=function(){
     const out=$('kmSheetFlags'); if(!out)return;
     const pill=$('kmSheetN');
@@ -27011,13 +27018,42 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
       out.innerHTML='<span style="color:var(--ember)">couldn’t read the sheets: '+esc(e.message||'')+'</span>';
       return;
     }
-    const bad=rows.filter(function(r){return r.warn;});
+    rows.forEach(function(r){ r.sig=kmfSig(r); });
+
+    /* Keep the cleared list capped by AGE, not by what's on screen. Pruning
+       anything not currently present looked tidy but meant a sheet that changed
+       and changed back lost its dismissal and came around again. 300 entries is
+       years of boards and a few KB. */
+    let seen=kmfSeen();
+    const sigs=Object.keys(seen);
+    if(sigs.length>300){
+      const keep={};
+      sigs.map(function(s){ return [s,+seen[s]||0]; })
+          .sort(function(a,b){ return b[1]-a[1]; })
+          .slice(0,300).forEach(function(p){ keep[p[0]]=p[1]; });
+      seen=keep; kmfSave(seen);
+    }
+
+    const open=rows.filter(function(r){ return !seen[r.sig]; });
+    const cleared=rows.length-open.length;
+    const bad=open.filter(function(r){ return r.warn; });
     if(pill){ pill.textContent=bad.length; pill.style.display=bad.length?'':'none'; }
+
     if(!rows.length){
       out.innerHTML='<span style="color:var(--steel)">every sheet on this device squares with its own columns.</span>';
       return;
     }
-    out.innerHTML=rows.map(function(r){
+    if(!open.length){
+      out.innerHTML='<span style="color:var(--steel)">all clear — '+cleared+' flag'+(cleared===1?'':'s')
+        +' cleared. Any of them comes back if that sheet is re-read and still doesn’t square.</span>'
+        +'<button class="btn-ghost" id="kmSheetUndo" style="width:100%;padding:5px 0;font-size:11px;color:var(--steel);margin-top:6px">↺ show them again</button>';
+      /* bind HERE — this branch returns before the handlers at the foot of the
+         function, so the undo button was rendered dead. */
+      const u0=$('kmSheetUndo');
+      if(u0)u0.addEventListener('click',function(){ kmfSave({}); kmSheetFlags(); });
+      return;
+    }
+    out.innerHTML=open.map(function(r){
       const hot=r.warn;
       return '<div style="border:1px solid '+(hot?'rgba(224,73,46,.4)':'var(--line-soft)')
         +';border-radius:10px;padding:8px 10px;margin-bottom:6px">'
@@ -27033,8 +27069,27 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
             +'. Check the paper, then fix it in the Sheet Editor.</div>':'')
         +(r.fx?'<div class="sub" style="margin-top:4px;line-height:1.5;color:var(--steel)">'
             +'⚙ reconciled off the sheet’s own columns: '+esc(r.fx.join(' · '))+'</div>':'')
+        +'<button class="btn-ghost km-sflag" data-sig="'+esc(r.sig)+'" style="margin-top:6px;padding:3px 10px;font-size:10.5px;color:var(--ok)">✓ seen</button>'
         +'</div>';
-    }).join('');
+    }).join('')
+    +'<button class="btn-line" id="kmSheetAll" style="width:100%;padding:9px 0;font-size:11.5px;margin-top:2px">✓ Clear all '+open.length+'</button>' 
+    +(open.filter(function(r){return !r.warn;}).length&&bad.length
+      ?'<button class="btn-ghost" id="kmSheetRep" style="width:100%;padding:6px 0;font-size:11px;color:var(--steel);margin-top:4px">✓ clear the repaired only — keep the '+bad.length+' that won’t square</button>':'')
+    +(cleared?'<div style="margin-top:6px;font-size:10px;color:var(--steel);opacity:.8">'+cleared
+        +' already cleared — back if the sheet changes</div>':'');
+
+    const one=function(sigs){ const s=kmfSeen(), t=Date.now();
+      sigs.forEach(function(x){ s[x]=t; }); kmfSave(s); kmSheetFlags(); };
+    const all=$('kmSheetAll');
+    if(all)all.addEventListener('click',function(){ one(open.map(function(r){return r.sig;})); });
+    const rep=$('kmSheetRep');
+    if(rep)rep.addEventListener('click',function(){
+      one(open.filter(function(r){return !r.warn;}).map(function(r){return r.sig;})); });
+    const undo=$('kmSheetUndo');
+    if(undo)undo.addEventListener('click',function(){ kmfSave({}); kmSheetFlags(); });
+    out.querySelectorAll('button.km-sflag').forEach(function(b){
+      b.addEventListener('click',function(){ one([b.dataset.sig]); });
+    });
   };
 
 
