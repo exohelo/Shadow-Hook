@@ -680,14 +680,14 @@ html.daylight .heist{background:rgba(64,54,38,.6)}
 .wire-runaway b{color:var(--copper-hi)}
 .rw-l{display:block;font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;line-height:1.5}
 .rw-n{display:block;font-size:10.5px;letter-spacing:.02em;white-space:nowrap;line-height:1.5;margin-top:2px}
-/* #ff — the bell and Share share one row. #myOdds keeps its id so renderMyOdds
-   is untouched; :empty collapses it when there is no card on file, and .hold
-   gives the "no opening card" message its own full-width line. */
-.wire-btns{position:relative;z-index:1;display:flex;flex-wrap:wrap;gap:8px;margin-top:13px}
-.wire-btns #myOdds{flex:1 1 auto;min-width:0;display:flex}
-.wire-btns #myOdds:empty{display:none}
-.wire-btns #myOdds.hold{flex:1 1 100%;display:block}
-.wire-btns .ob{margin-top:0}
+/* #wirebtns(aug24) — the .wire-btns row is retired with the two buttons it held.
+   #myOdds keeps its id (renderMyOdds writes into it) and now stands on its own:
+   empty in the normal case and hidden by :empty, a full-width dashed panel when
+   the odds are holding. .ob / .ob-sub / .ff-share below are left in place — they
+   style a bell and a Share button that nothing renders today, and they are what
+   either one would need if it comes back. */
+#myOdds{position:relative;z-index:1;display:block}
+#myOdds:empty{display:none}
 .ff-share{flex:0 1 auto;white-space:nowrap}
 /* #baby — the call bot's own disclaimer, worn like a bib */
 .wire-baby{position:relative;z-index:1;margin-top:10px;padding:7px 10px;border:1px dashed rgba(220,214,201,.22);border-radius:12px;
@@ -2390,10 +2390,17 @@ window.DEVLOG=(function(){
              #liverecalc tick is the refresh now. The bell keeps its id, its
              handler and its classes; it just shares a row with Share. -->
         <div class="ff-you" id="ffYou" style="display:none"></div>
-        <div class="wire-btns">
-          <div id="myOdds"></div>
-          <button type="button" id="shareCallBtn" onclick="shareCall()" class="btn-line gold ff-share">⤴ Share</button>
-        </div>
+        <!-- #wirebtns(aug24) — THE BELL AND SHARE ARE OFF THE CALL.
+             "Notify me" moved to the profile, where it turns out it already was:
+             Profile → 🔔 Alerts → "The board" is the SAME setting, on the same
+             K("notify") key (ALERT_KINDS.board), so nothing had to be rebuilt —
+             the wire card was simply a second door onto one switch. Share is
+             retired for now; shareCall() is untouched and still on window, so
+             it only needs a button wherever it lands next.
+             #myOdds stays: it is also where "your odds are holding" prints when
+             the board before this one hasn't been sealed. It renders empty the
+             rest of the time and :empty hides it. -->
+        <div id="myOdds"></div>
 
         <!-- ══════════ #ff — FUTURE FORECAST, merged into the call ══════════
              One card, not two. The call above answers "how far does the board
@@ -8603,17 +8610,25 @@ function letterCatch(L){
    movement gives the odds; the ±1-letter band becomes a logistic spread so the % degrades
    smoothly instead of flipping 100/0 at the edge. ESTIMATE — sharpens as crowd data lands. */
 function renderMyOdds(startId, moved){
-  const el=document.getElementById('myOdds'); if(!el)return;
+  /* #wirebtns(aug24) — el MAY BE ABSENT and that must not stop the work. This used
+     to bail on a missing #myOdds, which was safe only while the element was the
+     whole point of the function. It isn't: everything below computes window._lastOdds
+     and ends in pushOddsAlert(), which is what actually reaches the member's phone.
+     Bailing early would have silently killed board alerts for everyone the moment
+     the bell came off the card. The element is now optional; the maths is not. */
+  const el=document.getElementById('myOdds');
   const my=myBoardId();
-  if(!my){el.className='';el.innerHTML='';return;}   /* no in-app messaging — alerts are opt-in via the bell once verified */
+  if(!my){ if(el){el.className='';el.innerHTML='';} return; }   /* alerts are opt-in via the profile switch once verified */
   /* #pending(aug10) — "you have a 78% chance of getting a job" is measured as
      the distance from the opening card to yours. With no opening card there is
      no distance, and a percentage here is worse than none: this is the number a
      hand decides whether to drive to the hall on. */
   if(!startId){
-    el.className='hold';   /* #ff — the holding message takes the whole row */
-    el.innerHTML='<div class="odds-hold">Your odds are holding — the board before this one hasn’t been sealed, '
-      +'so there’s no opening card to measure your number from yet.</div>';
+    if(el){
+      el.className='hold';   /* #ff — the holding message takes the whole row */
+      el.innerHTML='<div class="odds-hold">Your odds are holding — the board before this one hasn’t been sealed, '
+        +'so there’s no opening card to measure your number from yet.</div>';
+    }
     return;
   }
   const idx=c=>AZ.indexOf(c);
@@ -8652,9 +8667,8 @@ function renderMyOdds(startId, moved){
   window._lastOdds={pct:pct,word:word,reached:Math.round(p*100),catch:Math.round(catchRate*100),inLine:inLine,anchored:anchored,dist:Math.round(d*10)/10};
   /* per the Keymaster: the % is NOT shown in the app — it travels only in the phone alert.
      Only the bell (the required permission switch) renders here. */
-  el.className='';   /* #ff \u2014 drop any .hold left by a previous render */
-  el.innerHTML='<button class="btn-line gold ob" id="oddsBell" type="button" onclick="toggleOddsAlerts()"><span class="ob-ic">\uD83D\uDD14</span> <span class="ob-t">Notify me</span></button>';
-  renderBell();
+  if(el){ el.className=''; el.innerHTML=''; }   /* #ff \u2014 drop any .hold left by a previous render */
+  renderBell();   /* no-op while no bell is rendered; keeps a re-added one honest */
   pushOddsAlert(false);
 }
 window.renderMyOdds=renderMyOdds;
