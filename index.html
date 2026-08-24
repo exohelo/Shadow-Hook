@@ -2380,6 +2380,8 @@ window.DEVLOG=(function(){
     color:#ff2d7a;filter:drop-shadow(0 0 12px rgba(255,45,122,.4));font-variant-numeric:tabular-nums}
   .ff-you .yp{font-family:'IBM Plex Mono',monospace;font-size:8.5px;letter-spacing:.04em;
     color:var(--warn);margin-top:3px}
+  .ff-you .yp.cool{color:var(--steel)}
+  .ff-you .yw{max-width:100%}
   .ff-you.cool{border-color:var(--line);background:var(--well)}
   .ff-you.cool .yw,.ff-you.cool .yn{color:var(--steel);filter:none}
   html.daylight .ff-you.cool{background:var(--well)}
@@ -8334,6 +8336,10 @@ window.renderMyOdds=renderMyOdds;
   var DAYS=30, SHARP_MIN=0.30;     /* below this the last seal tells us nothing */
   var BANDS=[{k:0,w:"DARK",lo:0},{k:1,w:"COLD",lo:.02},{k:2,w:"LONG SHOT",lo:.09},
              {k:3,w:"TOSS UP",lo:.18},{k:4,w:"GOOD SHOT",lo:.28},{k:5,w:"SUIT UP",lo:.45}];
+  /* what counts as "a board you're in" — GOOD SHOT or better. ONE constant, used
+     by the hero AND the strip: split them and the card can say "not this one"
+     while pointing at this one. */
+  var UP_BAND=4;
 
   function bandOf(p){ var b=BANDS[0]; for(var i=0;i<BANDS.length;i++) if(p>=BANDS[i].lo)b=BANDS[i]; return b; }
   function pctOf(v){ return (v>0&&v<0.005)?"<1%":Math.round(v*100)+"%"; }
@@ -8494,33 +8500,73 @@ window.renderMyOdds=renderMyOdds;
     var hero=null,hi=-1,ha=0,i,j;
     outer: for(i=0;i<rows.length;i++) for(j=0;j<2;j++){
       var sl=rows[i].slots[j];
-      if(!sl.done&&sl.band.k>=3){ hero=rows[i]; hi=i; ha=j; break outer; }
+      if(!sl.done&&sl.band.k>=UP_BAND){ hero=rows[i]; hi=i; ha=j; break outer; }
     }
     /* YOU ON THIS BOARD — the pending slot's own figure, so the strip and the
        first week row below can never quote different numbers for one board. */
     var pmNow=(typeof callSlot!=="undefined")&&String(callSlot).slice(-2)==="PM";
     var mine=rows[0]&&rows[0].slots[pmNow?1:0];
+    /* The strip always answers "when am I working". If you're in the call on the
+       board above, it reads that board. If you're not, it jumps to the next one
+       you ARE in rather than reporting a cold number and leaving you to hunt.
+       Same >=TOSS UP threshold the hero uses, so the two can't disagree. */
+    var upNow=!!(mine&&!mine.done&&mine.band.k>=UP_BAND);
     var you=$ff('ffYou');
     if(you){
-      if(mine&&!mine.done){
-        you.style.display='';
-        /* When the last board isn't sealed, renderMyOdds refuses to give a number
-           and prints "your odds are holding" directly below this. The forecast
-           runs on a provisional anchor on purpose — so say which this is, or the
-           two lines contradict each other on the same screen. */
-        you.className='ff-you'+((mine.band.k>=4&&F.confirmed)?'':' cool');
+      /* renderMyOdds refuses a number off an unsealed anchor and prints "your odds
+         are holding" directly below this; the forecast runs provisionally on
+         purpose. Say which this is or the two lines contradict each other. */
+      var prov=F.confirmed?'':'<div class="yp">◆ provisional — off an unsealed card</div>';
+      you.style.display='';
+      if(upNow){
+        you.className='ff-you'+((mine.band.k>=UP_BAND&&F.confirmed)?'':' cool');
         you.innerHTML='<div><div class="yl">You on this board</div>'
-          +'<div class="yw">'+mine.band.w+'</div>'
-          +(F.confirmed?'':'<div class="yp">◆ provisional — off an unsealed card</div>')+'</div>'
+          +'<div class="yw">'+mine.band.w+'</div>'+prov+'</div>'
           +'<div class="yn">'+pctOf(mine.reach)+'</div>';
-      }else{ you.style.display='none'; }
+      }else if(hero){
+        var hb=hero.slots[ha];
+        you.className='ff-you'+((hb.band.k>=UP_BAND&&F.confirmed)?'':' cool');
+        you.innerHTML='<div><div class="yl">'+(ha===0?"☀":"🌙")+' Next one you\u2019re in</div>'
+          +'<div class="yw">'+hero.dow.toUpperCase()+" "+(hero.date.getMonth()+1)+"/"+hero.dom
+            +' · '+hb.band.w+'</div>'
+          +'<div class="yp cool">'+(mine&&!mine.done
+                ? 'not this one · '+pctOf(mine.reach)
+                : 'this board has run')
+            +' — '+relDay(hero.date)+'</div>'+prov+'</div>'
+          +'<div class="yn">'+pctOf(hb.reach)+'</div>';
+      }else{
+        /* Nothing clears GOOD SHOT in thirty days. "Nothing warm" is true but
+           useless — name the best board on the month instead, and say plainly
+           that it doesn't reach the bar. A thin month is still a month. */
+        var bi=-1,bj=0,bv=-1,q,z;
+        for(q=0;q<rows.length;q++)for(z=0;z<2;z++){
+          var sq=rows[q].slots[z];
+          if(!sq.done&&sq.reach>bv){ bv=sq.reach; bi=q; bj=z; }
+        }
+        var bb=(bi>=0)?rows[bi].slots[bj]:null;
+        you.className='ff-you cool';
+        if(bb&&bb.band.k>=1){
+          you.innerHTML='<div><div class="yl">'+(bj===0?"☀":"🌙")+' Your best shot this month</div>'
+            +'<div class="yw">'+rows[bi].dow.toUpperCase()+" "+(rows[bi].date.getMonth()+1)+"/"+rows[bi].dom
+              +' · '+bb.band.w+'</div>'
+            +'<div class="yp cool">nothing reaches GOOD SHOT — '+relDay(rows[bi].date)+'</div>'
+            +prov+'</div><div class="yn">'+pctOf(bb.reach)+'</div>';
+        }else{
+          you.innerHTML='<div><div class="yl">The month is dark</div>'
+            +'<div class="yw">nothing on the board reaches you</div>'+prov+'</div>'
+            +'<div class="yn">—</div>';
+        }
+      }
     }
 
     /* The peek only earns its place when your next one ISN'T the board above —
        otherwise folding the tail would just repeat the strip. */
+    /* Folded, the peek only earns its place when the strip is showing THIS board
+       and your next one is a later one. In the other states the strip already
+       carries the hero, so a peek would just say it twice. */
     var pk=$ff('ffPeek'), heroIsNow=(hero&&hi===0&&ha===(pmNow?1:0));
     if(pk){
-      if(hero&&!heroIsNow){
+      if(hero&&upNow&&!heroIsNow){
         pk.className='ff-peek'+(ha===1?' night':'');
         pk.innerHTML='<div class="ff-glyph">'+(ha===0?"☀":"🌙")+'</div><div class="ff-main">'
           +'<div class="ff-rtop">'+hero.dow.toUpperCase()+" "+(hero.date.getMonth()+1)+"/"+hero.dom
@@ -8533,7 +8579,7 @@ window.renderMyOdds=renderMyOdds;
           +'<div class="ff-rtop">NOTHING WARM <span class="ff-when">in the month</span></div>'
           +'<div class="ff-rline">open it for the rhythm</div></div>';
       }else{ pk.className='ff-peek'; pk.innerHTML=''; pk.style.display='none'; }
-      if(hero&&!heroIsNow)pk.style.display='';
+      if(hero&&upNow&&!heroIsNow)pk.style.display='';
       if(!hero)pk.style.display='';
     }
     /* a seal that moved your next one earns a dot on the caret */
