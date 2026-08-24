@@ -10057,8 +10057,11 @@ function xpSheet(d,label){
        flag the one shape that can't be auto-fixed instead of printing nonsense */
     if(d&&d._fx&&d._fx.length)
       h+='<div class="xp-mem" style="color:var(--steel)">\u2699 reconciled off the sheet\u2019s own columns: '+acEsc(d._fx.join(' \u00b7 '))+'</div>';
-    if(d&&d._fxwarn)
-      h+='<div class="xp-mem" style="color:var(--ember)">&#9888; the sheet\u2019s stated total reads LOWER than its own boards add up to \u2014 one of the two is a misread the columns couldn\u2019t settle. Check the paper; fix it in the Sheet Editor.</div>';
+    /* #kmflag \u2014 the _fxwarn notice is NOT printed here any more. It asked a
+       member to "check the paper" and "fix it in the Sheet Editor" \u2014 neither of
+       which a member has. It now rides in Command Center \u2192 The Sheet Flags,
+       where the hand who can actually settle it will see it. The flag itself is
+       untouched on the sheet object; only the public rendering is gone. */
     const mem=t.members.filter(x=>x[1]>0);
     if(mem.length)h+='<div class="xp-mem">\u26bf Members only: '+mem.map(([k,n])=>'<b>'+acEsc(k)+' '+n+'</b>').join(' \u00b7 ')+' \u2014 registered work, not on the casual board</div>';
   }
@@ -25786,6 +25789,41 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
     <div class="card-h" style="margin-top:4px">The Alarms <span class="pill red" id="kmAlarmN" style="display:none">0</span></div>
     <div id="kmAlarms" class="sub" style="line-height:1.7;margin-bottom:14px">—</div>
 
+    <!-- #kmflag — SHEETS THAT DON'T SQUARE. Every sheet on this device whose
+         stated total and its own columns disagree by more than the repair pass
+         could settle. This used to print on the open sheet for every member,
+         wearing instructions only a Keymaster can follow. Reads DISPATCH_DATA
+         straight off the device — no table, no round trip, works offline. -->
+    <div class="card-h" style="margin-top:4px">The Sheet Flags <span class="pill red" id="kmSheetN" style="display:none">0</span></div>
+    <div id="kmSheetFlags" class="sub" style="line-height:1.7;margin-bottom:14px">—</div>
+
+    <!-- #kmbots — RUN THE BOTS. Two GitHub Actions the Keymaster kicks by hand:
+         the dispatch board bot (re-reads today's PDF off ilwu13.com) and
+         hall-line-leftoff. The token is NEVER in this file — the app is a public
+         static page, so anything hardcoded here is readable by anyone. It's typed
+         in once below and lives only in this device's localStorage, behind the
+         keymaster door. Use a fine-grained PAT scoped to Actions:write on this
+         repo alone, with an expiry. -->
+    <div class="card-h" style="margin-top:4px">The Bots <span class="pill gold" id="kmBotState" style="display:none">—</span></div>
+    <div id="kmBotsWrap" class="sub" style="line-height:1.7;margin-bottom:14px">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+        <button class="btn-line gold" id="kmBotPdf" type="button" style="flex:1 1 100%;padding:11px">⟳ Re-read today’s dispatch PDF</button>
+        <button class="btn-line" id="kmBotHall" type="button" style="flex:1 1 100%;padding:11px">⟳ Run hall-line-leftoff</button>
+      </div>
+      <div id="kmBotLog" style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;line-height:1.6;color:var(--steel);min-height:1.6em"></div>
+      <details class="fold" style="margin-top:8px">
+        <summary>the key</summary>
+        <p class="sub" style="margin:6px 0;line-height:1.55">A <b>fine-grained</b> personal access token, Repository&nbsp;access → this repo only, Permissions → <b>Actions: Read and write</b>. Give it an expiry. It stays on this phone and is never sent anywhere but api.github.com.</p>
+        <input class="field" id="kmGhRepo" placeholder="owner/repo" autocomplete="off" spellcheck="false" style="margin-bottom:6px">
+        <input class="field" id="kmGhPat" type="password" placeholder="github_pat_… (paste once)" autocomplete="off" spellcheck="false" style="margin-bottom:6px">
+        <div style="display:flex;gap:6px">
+          <button class="btn-line" id="kmGhSave" type="button" style="padding:8px">Save the key</button>
+          <button class="btn-line red" id="kmGhWipe" type="button" style="padding:8px">Forget it</button>
+        </div>
+      </details>
+    </div>
+
+
     <!-- #mailbag(aug13) — every Send Word submission (numbers · terminals · maps · bad data · ideas)
          in ONE inbox, newest first, with a ✓ handled toggle. Same member_wire table the
          member sheets read — this is the cross-member view the Keymaster never had. -->
@@ -26065,6 +26103,8 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
     if($('kmBull'))$('kmBull').value=f.bulletin||'';
     kmPulse();
     try{kmAlarms();}catch(e){}   /* #alarms — what jammed, first thing you see */
+    try{kmSheetFlags();}catch(e){} /* #kmflag — sheets whose numbers don't square */
+    try{kmBots();}catch(e){}       /* #kmbots — the manual workflow triggers */
     try{kmMail();}catch(e){}     /* #mailbag — what the hands sent in */
     try{kmStock();}catch(e){}    /* #stockroom — vendor gear waiting for the word */
     try{kmTraffic();}catch(e){}  /* #pulse2 — who's coming through the door */
@@ -26945,6 +26985,168 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
         :('alarms failed: '+esc(e.message));
     }
   };
+
+  /* ═══════════ #kmflag — THE SHEET FLAGS ═══════════
+     Sheets on this device whose stated total and their own columns disagree.
+     _shRepairPart settles what two agreeing reads can settle and marks the rest
+     _fxwarn; those are the ones that need a human and the paper. Members used to
+     see this notice on the open sheet, told to "fix it in the Sheet Editor" —
+     a door they don't have. It lives here now.
+     Reads DISPATCH_DATA directly: no table to provision, nothing to fetch. */
+  window.kmSheetFlags=function(){
+    const out=$('kmSheetFlags'); if(!out)return;
+    const pill=$('kmSheetN');
+    let rows=[];
+    try{
+      const D=(typeof DISPATCH_DATA!=="undefined"&&DISPATCH_DATA)||{};
+      Object.keys(D).sort().reverse().forEach(function(k){
+        const d=D[k]; if(!d||typeof d!=="object")return;
+        const warn=!!d._fxwarn, fx=(d._fx&&d._fx.length)?d._fx:null;
+        if(!warn&&!fx)return;
+        let stated=null,summed=null;
+        try{ const t=sheetTotals(d); if(t){stated=t.stated;summed=t.summed;} }catch(e){}
+        rows.push({k:k,warn:warn,fx:fx,stated:stated,summed:summed});
+      });
+    }catch(e){
+      out.innerHTML='<span style="color:var(--ember)">couldn’t read the sheets: '+esc(e.message||'')+'</span>';
+      return;
+    }
+    const bad=rows.filter(function(r){return r.warn;});
+    if(pill){ pill.textContent=bad.length; pill.style.display=bad.length?'':'none'; }
+    if(!rows.length){
+      out.innerHTML='<span style="color:var(--steel)">every sheet on this device squares with its own columns.</span>';
+      return;
+    }
+    out.innerHTML=rows.map(function(r){
+      const hot=r.warn;
+      return '<div style="border:1px solid '+(hot?'rgba(224,73,46,.4)':'var(--line-soft)')
+        +';border-radius:10px;padding:8px 10px;margin-bottom:6px">'
+        +'<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'
+          +'<span class="pill '+(hot?'red':'gold')+'">'+(hot?'WON’T SQUARE':'REPAIRED')+'</span>'
+          +'<span class="mono" style="color:var(--copper-hi)">'+esc(r.k)+'</span></div>'
+        +(hot?'<div class="sub" style="margin-top:4px;line-height:1.55;color:var(--bone)">'
+            +'the stated total reads LOWER than its own boards add up to — one of the two is a '
+            +'misread the columns couldn’t settle'
+            +((r.stated!=null&&r.summed!=null)
+               ?' (<b>'+Number(r.stated).toLocaleString()+'</b> stated vs <b>'
+                 +Number(r.summed).toLocaleString()+'</b> summed)':'')
+            +'. Check the paper, then fix it in the Sheet Editor.</div>':'')
+        +(r.fx?'<div class="sub" style="margin-top:4px;line-height:1.5;color:var(--steel)">'
+            +'⚙ reconciled off the sheet’s own columns: '+esc(r.fx.join(' · '))+'</div>':'')
+        +'</div>';
+    }).join('');
+  };
+
+
+  /* ═══════════ #kmbots — RUN THE BOTS ═══════════
+     Kicks a GitHub Actions workflow by hand, so a bad OCR read can be re-run
+     without opening the Actions tab.
+
+     ON THE KEY: this app is a public static page. A token written into the file
+     would be readable by anyone who views source, and would let them run — and
+     with a classic PAT, rewrite — the workflows. So it is never in the file. The
+     Keymaster pastes it once and it lives in this device's localStorage only.
+
+     Workflows are resolved BY NAME through the API rather than by filename, so
+     renaming a file doesn't break the buttons and nothing has to be guessed. */
+  const KMB_PDF="Dispatch board bot", KMB_HALL="hall-line-leftoff";
+  const _kmbKey=function(n){ try{ return (typeof K==="function")?K(n):("shadowhook_"+n); }catch(e){ return "shadowhook_"+n; } };
+  function kmbGet(n,d){ try{ return localStorage.getItem(_kmbKey(n))||d; }catch(e){ return d; } }
+  function kmbSet(n,v){ try{ localStorage.setItem(_kmbKey(n),v); }catch(e){} }
+  function kmbLog(msg,tone){
+    const el=$('kmBotLog'); if(!el)return;
+    const c=tone==='bad'?'var(--ember)':tone==='good'?'var(--ok)':'var(--steel)';
+    el.innerHTML='<span style="color:'+c+'">'+msg+'</span>';
+  }
+  function kmbBusy(on,label){
+    ['kmBotPdf','kmBotHall'].forEach(function(id){ const b=$(id); if(b)b.disabled=!!on; });
+    const s=$('kmBotState');
+    if(s){ s.textContent=label||''; s.style.display=label?'':'none'; }
+  }
+  async function kmbApi(path,opts){
+    const repo=(kmbGet('ghrepo','')||'').trim(), pat=(kmbGet('ghpat','')||'').trim();
+    if(!repo) throw new Error('no repo set — open “the key” and enter owner/repo');
+    if(!pat)  throw new Error('no key on this device — open “the key” below and paste one');
+    const r=await fetch('https://api.github.com/repos/'+repo+'/actions'+path,
+      Object.assign({headers:{'Accept':'application/vnd.github+json','Authorization':'Bearer '+pat,
+                              'X-GitHub-Api-Version':'2022-11-28'}},opts||{}));
+    if(r.status===401) throw new Error('GitHub refused the key — it’s wrong, or it expired');
+    if(r.status===403) throw new Error('the key lacks Actions write on this repo');
+    if(r.status===404) throw new Error('repo or workflow not found — check owner/repo, and that the key can see it');
+    if(r.status===422){ let m=''; try{ m=(await r.json()).message||''; }catch(e){}
+      throw new Error(/workflow_dispatch/i.test(m)
+        ? 'that workflow has no manual trigger yet — add “workflow_dispatch:” under its “on:” in the YAML'
+        : (m||'GitHub wouldn’t take it (422)')); }
+    if(!r.ok) throw new Error('GitHub said '+r.status);
+    return r.status===204?null:r.json();
+  }
+  async function kmbFind(name){
+    const list=await kmbApi('/workflows',null);
+    const all=(list&&list.workflows)||[];
+    const hit=all.find(function(w){ return String(w.name).toLowerCase()===name.toLowerCase(); })
+           || all.find(function(w){ return String(w.path||'').toLowerCase().indexOf(name.toLowerCase().replace(/\s+/g,'-'))>=0; });
+    if(!hit) throw new Error('no workflow named “'+name+'” — found: '+(all.map(function(w){return w.name;}).join(' · ')||'none'));
+    return hit;
+  }
+  async function kmbRun(name){
+    kmbBusy(true,'RUNNING');
+    kmbLog('finding “'+name+'”…');
+    try{
+      const wf=await kmbFind(name);
+      const ref=kmbGet('ghref','main');
+      kmbLog('kicking '+esc(wf.name)+' on '+esc(ref)+'…');
+      await kmbApi('/workflows/'+wf.id+'/dispatches',
+        {method:'POST',body:JSON.stringify({ref:ref})});
+      kmbLog('✓ '+esc(wf.name)+' started — GitHub takes a few seconds to pick it up', 'good');
+      try{ toast('⟳ '+wf.name+' started'); }catch(e){}
+      setTimeout(function(){ kmbWatch(wf); },6000);
+    }catch(err){
+      kmbLog('✗ '+esc(err.message||String(err)),'bad');
+      try{ toast('✗ '+err.message); }catch(e){}
+      kmbBusy(false,'');
+    }
+  }
+  async function kmbWatch(wf){
+    try{
+      const r=await kmbApi('/workflows/'+wf.id+'/runs?per_page=1',null);
+      const run=r&&r.workflow_runs&&r.workflow_runs[0];
+      if(!run){ kmbBusy(false,''); return; }
+      const done=run.status==='completed';
+      const ok=run.conclusion==='success';
+      kmbLog((done?(ok?'✓ ':'✗ '):'· ')+esc(wf.name)+' — '+esc(run.status)
+             +(run.conclusion?' · '+esc(run.conclusion):'')
+             +' <a href="'+esc(run.html_url)+'" target="_blank" rel="noopener" style="color:var(--copper-hi)">open the run ↗</a>',
+             done?(ok?'good':'bad'):'');
+      if(!done){ setTimeout(function(){ kmbWatch(wf); },7000); }
+      else { kmbBusy(false,''); }
+    }catch(e){ kmbBusy(false,''); }
+  }
+  window.kmBots=function(){
+    const rp=$('kmGhRepo'), pk=$('kmGhPat');
+    if(rp&&!rp.value) rp.value=kmbGet('ghrepo','');
+    if(pk) pk.placeholder = kmbGet('ghpat','') ? 'a key is saved on this device' : 'github_pat_… (paste once)';
+    const have=!!(kmbGet('ghrepo','')&&kmbGet('ghpat',''));
+    if(!have) kmbLog('no key on this device yet — open “the key” below');
+    else kmbLog('ready · '+esc(kmbGet('ghrepo','')));
+  };
+  (function(){
+    const sv=$('kmGhSave'), wp=$('kmGhWipe'), pdf=$('kmBotPdf'), hall=$('kmBotHall');
+    if(sv)sv.addEventListener('click',function(){
+      const rp=$('kmGhRepo'), pk=$('kmGhPat');
+      const repo=((rp&&rp.value)||'').trim().replace(/^https?:\/\/github\.com\//,'').replace(/\.git$/,'').replace(/\/+$/,'');
+      if(!/^[\w.-]+\/[\w.-]+$/.test(repo)){ kmbLog('✗ repo should read owner/repo','bad'); return; }
+      kmbSet('ghrepo',repo);
+      if(pk&&pk.value.trim()){ kmbSet('ghpat',pk.value.trim()); pk.value=''; }
+      kmbLog('✓ saved on this device','good'); kmBots();
+    });
+    if(wp)wp.addEventListener('click',function(){
+      kmbSet('ghpat',''); const pk=$('kmGhPat'); if(pk)pk.value='';
+      kmbLog('key wiped from this device','good'); kmBots();
+    });
+    if(pdf)pdf.addEventListener('click',function(){ kmbRun(KMB_PDF); });
+    if(hall)hall.addEventListener('click',function(){ kmbRun(KMB_HALL); });
+  })();
+
   const kal=$('kmAlarms');
   if(kal)kal.addEventListener('click',async function(e){
     const b=e.target.closest('button.km-alarm');if(!b)return;
