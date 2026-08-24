@@ -1326,9 +1326,19 @@ html.daylight .btn{box-shadow:inset 0 1px 0 rgba(255,255,255,.5)}
 .wkd-page{position:absolute;top:0;left:0;right:0;visibility:hidden;padding-bottom:6px;
   will-change:transform;backface-visibility:hidden}
 .wkd-page.cur{visibility:visible}
-.wkd-dots{display:flex;justify-content:center;flex-wrap:wrap;gap:5px;padding:11px 0 2px}
-.wkd-dots i{width:5px;height:5px;border-radius:3px;background:var(--line);transition:.22s}
-.wkd-dots i.on{width:15px;background:var(--copper-hi);box-shadow:0 0 7px rgba(238,180,107,.55)}
+/* #weekyear(aug24) — a dot per week stopped working the moment the deck ran the
+   whole year: thirty-five dots is a smear, and thumbing to March one swipe at a
+   time is worse. The row is a RAIL now — it shows where in the year you are, and
+   you tap or drag it to land anywhere in one move. touch-action:none so a scrub
+   never turns into a page scroll. */
+.wkd-rail{position:relative;height:18px;margin:10px 1px 0;cursor:pointer;touch-action:none}
+.wkd-rail::before{content:"";position:absolute;left:0;right:0;top:50%;height:3px;margin-top:-1.5px;
+  border-radius:3px;background:var(--line)}
+.wkd-rail i{position:absolute;top:50%;height:5px;margin-top:-2.5px;border-radius:3px;
+  background:var(--copper-hi);box-shadow:0 0 8px rgba(238,180,107,.55);
+  transition:left .2s cubic-bezier(.22,.61,.36,1),width .2s}
+.wkd-rail.scrub i{transition:none}
+.wkd-rail:focus-visible{outline:2px solid var(--copper-hi);outline-offset:3px;border-radius:6px}
 .wkd-hint{text-align:center;font-family:'IBM Plex Mono',monospace;font-size:8.5px;letter-spacing:.13em;
   color:var(--steel);text-transform:uppercase;opacity:.72;padding:2px 0 0}
 #ratHrs.tk-hero{font-size:52px;color:var(--copper-hi)}
@@ -2253,8 +2263,8 @@ window.DEVLOG=(function(){
           <button type="button" class="wkd-arw" id="wkNext" aria-label="Newer week">›</button>
         </div>
         <div class="wkd-view" id="wkView"><!-- one .wkd-page per pay week, built by the deck engine --></div>
-        <div class="wkd-dots" id="wkDots" aria-hidden="true"></div>
-        <div class="wkd-hint" id="wkHint" style="display:none">‹ drag sideways for past weeks ›</div>
+        <div class="wkd-rail" id="wkRail" role="slider" tabindex="0" aria-label="Week of the year"><i></i></div>
+        <div class="wkd-hint" id="wkHint" style="display:none">drag right for earlier weeks · tap the rail to jump</div>
         <!-- #paymove(aug13) — DISPUTE PAY moved up here from The Year card, by request:
              a wrong check is a THIS-WEEK problem, and it's caught reading this week's
              numbers — the button belongs where the eye lands on them. Roy rides along. -->
@@ -6645,24 +6655,38 @@ const wkEnd=new Date(wkStart);wkEnd.setDate(wkStart.getDate()+6);wkEnd.setHours(
    So the card body is a DECK: one clipping window, one page per pay week, drag-to-turn
    on the same engine the board deck runs (#onedeck / #markswipe2 — the page follows
    your finger, the neighbour slides in beside it, past ~¼ width commits, else it snaps
-   back). Pages sit CHRONOLOGICALLY, oldest on the left and this week on the right, so
-   pulling the card RIGHT walks backwards through the book the way a calendar reads.
+   back).
 
-   Depth: always 4 weeks back so there's something to turn to on a fresh book, and out
-   to however far the log actually reaches, capped at 11 (a quarter — past that, the
-   year card is the right instrument). Every page recomputes from DOCKETS on every log
-   change, exactly as the old single-week renderWeek did, so the take always reflects
-   what's sealed right now.
+   DIRECTION, written down because it is the first thing anyone checks: THE PAST IS ON
+   THE LEFT. Drag the card to the RIGHT and last week comes in from the left, the way a
+   calendar reads and the way you'd deal cards backwards off a pile. Dragging left walks
+   forward again toward this week, and rubber-bands once there's no more week to reach.
+
+   #weekyear(aug24) — THE DECK RUNS THE YEAR, AND EVERY WEEK CARRIES ITS REAL NUMBER.
+   The first cut floored the deck at four weeks back and named the pages relatively —
+   "3 WEEKS BACK". That is fine in January and useless in August: a hand chasing the
+   week that paid short in March can neither name it nor reach it. The deck now spans
+   WEEK 1 OF THE YEAR — the pay week holding January 1st — through this one, and each
+   page says which week of the year it is. A pay week belongs to the year its FRIDAY
+   lands in, so the week straddling New Year (Sat 12/27 → Fri 1/2) is week 1 of the new
+   year rather than week 53 of the old: the same year the check for it is dated into.
+   When Jan 1 falls on a Saturday, week 1 is exactly Jan 1–7.
+
+   Thirty-odd pages is too many to paint up front and far too many to thumb through one
+   swipe at a time, so two things give: pages paint LAZILY — the one you're on plus its
+   two neighbours, all of them marked stale and repainted when the log changes — and the
+   dot row became a RAIL you tap or drag to land anywhere in the year in one move.
 
    wkStart / wkEnd above still mean THIS week, untouched, for anything else reading them. */
 (function(){
   const view=document.getElementById('wkView');
   if(!view){ window.renderWeek=function(){}; return; }   // markup gone — stay quiet, don't take the script down
-  const dotsEl=document.getElementById('wkDots'), relEl=document.getElementById('wkRel'),
+  const railEl=document.getElementById('wkRail'), relEl=document.getElementById('wkRel'),
         spanEl=document.getElementById('weekSpan'), hintEl=document.getElementById('wkHint'),
         prevB=document.getElementById('wkPrev'),   nextB=document.getElementById('wkNext');
+  const railI=railEl?railEl.querySelector('i'):null;
   const EASE='transform .27s cubic-bezier(.22,.61,.36,1)', WKMS=604800000;
-  let pages=[],N=0,cur=0,curK=0,busy=false,x0=null,y0=null,dx=0,active=false,axis=0,dir=0,W=1,tgt=-1;
+  let pages=[],dirty=[],N=0,cur=0,curK=0,busy=false,x0=null,y0=null,dx=0,active=false,axis=0,dir=0,W=1,tgt=-1;
   const w=()=>view.clientWidth||320;
   const kOf=p=>N-1-p, pOf=k=>N-1-k;        // DOM left→right runs OLDEST → THIS WEEK
 
@@ -6674,21 +6698,35 @@ const wkEnd=new Date(wkStart);wkEnd.setDate(wkStart.getDate()+6);wkEnd.setHours(
     const dd=new Date(chk);dd.setDate(chk.getDate()-1);        // Thursday before — direct deposit
     return {s,e,chk,dd};
   }
+  /* WHICH WEEK OF WHICH YEAR. The week is owned by the year its Friday falls in; week 1
+     of that year is the pay week holding its January 1st. Both ends of the arithmetic sit
+     at local midnight, so an hour of DST drift can never round a week the wrong way. */
+  function wkNum(ws){
+    const fri=new Date(ws); fri.setDate(ws.getDate()+6);
+    const Y=fri.getFullYear(), a=wkStartOf(new Date(Y,0,1));
+    return {n:Math.round((ws-a)/WKMS)+1, yr:Y};
+  }
+  const THISYR=wkNum(wkStart).yr;
   const md=d=>(d.getMonth()+1)+"/"+d.getDate();
   const payD=d=>d.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
-  const relLbl=k=>k===0?'THIS WEEK':k===1?'LAST WEEK':k+' WEEKS BACK';
   const stopLbl=k=>k===0?"THIS WEEK'S TAKE":k===1?"LAST WEEK'S TAKE":"THAT WEEK'S TAKE";
+  /* WEEK 35 · THIS WEEK / WEEK 34 · LAST WEEK / WEEK 12 · 23 BACK  (+ 'yy off-year) */
+  function wkTag(k){
+    const W2=wkNum(span(k).s);
+    return 'WEEK '+W2.n+(W2.yr!==THISYR?(" '"+String(W2.yr).slice(2)):"")
+      +' · '+(k===0?'THIS WEEK':k===1?'LAST WEEK':k+' BACK');
+  }
 
-  /* how far back the deck goes — a floor of 4, then as far as the book actually runs */
+  /* how far back the deck reaches: week 1 of this year at least, further if the log does */
   function depth(){
+    let n=Math.max(1,wkNum(wkStart).n-1);       /* every week of the year so far */
     let oldest=null;
     try{DOCKETS.forEach(j=>{if(j&&typeof j.date==="string"&&j.date.length>=10&&(!oldest||j.date<oldest))oldest=j.date;});}catch(e){}
-    let n=4;
     if(oldest){try{
       const k=Math.round((wkStart-wkStartOf(new Date(oldest+"T12:00")))/WKMS);
-      if(isFinite(k)&&k>n)n=k;
+      if(isFinite(k)&&k>n)n=k;                  /* a book older than January keeps its weeks */
     }catch(e){}}
-    return Math.max(1,Math.min(n,11))+1;
+    return Math.min(n,159)+1;                   /* three years of turning is the hard stop */
   }
 
   /* THE CURRENT WEEK'S PAGE KEEPS THE OLD IDS (weekGross / weekNet / ddDate / checkDate /
@@ -6721,19 +6759,34 @@ const wkEnd=new Date(wkStart);wkEnd.setDate(wkStart.getDate()+6);wkEnd.setHours(
       '</div>'+
       '<div'+(k===0?' id="weekJobs"':'')+' class="tk-jobs">'+rows+'</div>';
   }
+  /* #weekyear — nothing paints until it is about to be seen. A page marked stale by a
+     log change repaints the moment it comes up, so a week you never open costs nothing. */
+  function ensure(p){ if(p<0||p>=N||!dirty[p])return; dirty[p]=false; paint(p); }
+  function ensureNear(){ ensure(cur); ensure(cur-1); ensure(cur+1); }
 
   /* the furniture around the window follows whichever week is showing */
   function chrome(){
     const k=kOf(cur), S=span(k);
     if(spanEl)spanEl.textContent=md(S.s)+" – "+md(S.e);
     if(relEl){
-      relEl.textContent=relLbl(k)+(k>0?" ↺":"");
+      relEl.textContent=wkTag(k)+(k>0?" ↺":"");
       relEl.classList.toggle('back',k>0);
       relEl.title=k>0?"Back to this week":"";
     }
     if(prevB)prevB.disabled=(cur<=0);
     if(nextB)nextB.disabled=(cur>=N-1);
-    if(dotsEl){const ds=dotsEl.children;for(let i=0;i<ds.length;i++)ds[i].classList.toggle('on',i===cur);}
+    railPos();
+  }
+  function railPos(){
+    if(!railEl||!railI)return;
+    const rw=railEl.clientWidth||0; if(!rw)return;
+    const tw=Math.max(14,rw/N);
+    railI.style.width=tw+'px';
+    railI.style.left=(N>1?(cur/(N-1))*(rw-tw):0)+'px';
+    railEl.setAttribute('aria-valuemin','1');
+    railEl.setAttribute('aria-valuemax',String(N));
+    railEl.setAttribute('aria-valuenow',String(cur+1));
+    railEl.setAttribute('aria-valuetext',wkTag(kOf(cur)));
   }
   function hugH(pg){const h=(pg||pages[cur]||{}).offsetHeight;if(h)view.style.height=h+'px';}
 
@@ -6746,21 +6799,21 @@ const wkEnd=new Date(wkStart);wkEnd.setDate(wkStart.getDate()+6);wkEnd.setHours(
     const n=depth();
     if(n===N)return false;
     const keepK=Math.min(curK,n-1);
-    N=n;
+    N=n; dirty=new Array(N).fill(true);
     let h='';for(let i=0;i<N;i++)h+='<div class="wkd-page" data-k="'+kOf(i)+'"></div>';
     view.innerHTML=h;
     pages=Array.prototype.slice.call(view.querySelectorAll('.wkd-page'));
-    if(dotsEl){let d='';for(let i=0;i<N;i++)d+='<i></i>';dotsEl.innerHTML=d;dotsEl.style.display=N>1?'flex':'none';}
     curK=keepK;cur=pOf(curK);tgt=-1;dir=0;busy=false;
     pages[cur].classList.add('cur');
-    try{if(_ro){_ro.disconnect();pages.forEach(pg=>_ro.observe(pg));}}catch(e){}
+    try{if(_ro){_ro.disconnect();_ro.observe(pages[cur]);}}catch(e){}
     return true;
   }
 
   window.renderWeek=function(){
     try{
       build();
-      for(let i=0;i<N;i++)paint(i);
+      for(let i=0;i<N;i++)dirty[i]=true;    /* the log moved — every week is stale until read */
+      ensureNear();
       chrome();showHint();
       if(!busy)hugH();
     }catch(e){try{console.error('[renderWeek] deck',e);}catch(_){}}
@@ -6768,7 +6821,7 @@ const wkEnd=new Date(wkStart);wkEnd.setDate(wkStart.getDate()+6);wkEnd.setHours(
 
   /* ── the drag — lifted from the board deck so the two windows feel identical ── */
   function drop(i){const pg=pages[i];if(!pg||i===cur)return;pg.classList.remove('cur');pg.style.transform='';pg.style.transition='';}
-  function prep(i,d){const pg=pages[i];pg.style.transition='';pg.style.transform='translateX('+(d===1?w():-w())+'px)';pg.classList.add('cur');return pg;}
+  function prep(i,d){ensure(i);const pg=pages[i];pg.style.transition='';pg.style.transform='translateX('+(d===1?w():-w())+'px)';pg.classList.add('cur');return pg;}
   function settle(commit){
     const W2=w(),d=dir,ti=tgt,a=pages[cur],pg=(ti>=0&&ti!==cur)?pages[ti]:null;
     if(commit&&pg){
@@ -6779,7 +6832,7 @@ const wkEnd=new Date(wkStart);wkEnd.setDate(wkStart.getDate()+6);wkEnd.setHours(
       let done=false;const fin=()=>{if(done)return;done=true;a.removeEventListener('transitionend',fin);
         a.classList.remove('cur');a.style.transform='';a.style.transition='';
         pg.style.transition='';pg.style.transform='';
-        cur=ti;curK=kOf(cur);tgt=-1;dir=0;busy=false;chrome();hugH();turned();};
+        cur=ti;curK=kOf(cur);tgt=-1;dir=0;busy=false;chrome();hugH();watch();turned();ensureNear();};
       a.addEventListener('transitionend',fin);setTimeout(fin,380);
     }else{
       a.style.transition=EASE;a.style.transform='translateX(0px)';
@@ -6787,19 +6840,31 @@ const wkEnd=new Date(wkStart);wkEnd.setDate(wkStart.getDate()+6);wkEnd.setHours(
       setTimeout(()=>{if(pg)drop(ti);a.style.transition='';a.style.transform='';tgt=-1;dir=0;},300);
     }
   }
-  /* arrows / dots / programmatic jump — the same slide as a completed drag, any distance */
+  /* arrows / ↺ / programmatic jump — the same slide as a completed drag, any distance */
   function go(i){
     if(busy||i===cur||i<0||i>=N)return;
     if(tgt>=0)drop(tgt);
     dir=i>cur?1:-1;tgt=i;prep(i,dir);void pages[i].offsetWidth;settle(true);
   }
   window._wkGo=go;
+  /* the rail lands you somewhere far off with no slide — thirty weeks of animation
+     to cross the year would be theatre, and scrubbing has to track the thumb */
+  function jump(i){
+    if(busy||i===cur||i<0||i>=N)return;
+    if(tgt>=0)drop(tgt);
+    ensure(i);
+    const a=pages[cur];a.classList.remove('cur');a.style.transform='';a.style.transition='';
+    const pg=pages[i];pg.classList.add('cur');pg.style.transform='';pg.style.transition='';
+    cur=i;curK=kOf(cur);tgt=-1;dir=0;chrome();hugH();watch();turned();ensureNear();
+  }
+  window._wkJump=jump;
 
   function grab(cx,cy){if(busy)return false;x0=cx;y0=cy;dx=0;active=true;axis=0;dir=0;W=w();return true;}
   function move(cx,cy,ev){
     if(!active||x0==null)return;
     const mx=cx-x0,my=cy-y0;
     if(axis===0){if(Math.abs(mx)<8&&Math.abs(my)<8)return;axis=(Math.abs(mx)>Math.abs(my)*1.2)?1:-1;if(axis!==1){active=false;return;}}
+    /* mx>0 — the finger is travelling RIGHT — pulls in cur-1, the week BEFORE this one */
     const want=mx<0?1:-1,ti=cur+want,a=pages[cur];
     if(ti<0||ti>=N){if(tgt>=0)drop(tgt);tgt=-1;dir=0;dx=mx*0.3;a.style.transform='translateX('+dx+'px)';if(ev&&ev.cancelable)ev.preventDefault();return;}   // rubber-band at the ends
     if(dir!==want||tgt!==ti){if(tgt>=0&&tgt!==ti)drop(tgt);dir=want;tgt=ti;prep(ti,want);}
@@ -6823,16 +6888,46 @@ const wkEnd=new Date(wkStart);wkEnd.setDate(wkStart.getDate()+6);wkEnd.setHours(
   window.addEventListener('mouseup',up);
   if(prevB)prevB.addEventListener('click',()=>go(cur-1));
   if(nextB)nextB.addEventListener('click',()=>go(cur+1));
-  if(relEl)relEl.addEventListener('click',()=>{if(kOf(cur)>0)go(N-1);});   // ↺ — one tap home from eleven weeks out
+  if(relEl)relEl.addEventListener('click',()=>{if(kOf(cur)>0)go(N-1);});   // ↺ — one tap home from thirty weeks out
+
+  /* ── the rail: the whole year under one thumb ──────────────────────────── */
+  let scrub=false;
+  function railTo(cx){
+    if(!railEl)return;
+    const r=railEl.getBoundingClientRect(); if(!r.width)return;
+    const t=Math.min(1,Math.max(0,(cx-r.left)/r.width));
+    jump(Math.round(t*(N-1)));
+  }
+  if(railEl){
+    railEl.addEventListener('touchstart',e=>{scrub=true;railEl.classList.add('scrub');railTo(e.touches[0].clientX);if(e.cancelable)e.preventDefault();},{passive:false});
+    railEl.addEventListener('touchmove',e=>{if(scrub){railTo(e.touches[0].clientX);if(e.cancelable)e.preventDefault();}},{passive:false});
+    railEl.addEventListener('touchend',()=>{scrub=false;railEl.classList.remove('scrub');},{passive:true});
+    railEl.addEventListener('touchcancel',()=>{scrub=false;railEl.classList.remove('scrub');},{passive:true});
+    railEl.addEventListener('mousedown',e=>{scrub=true;railEl.classList.add('scrub');railTo(e.clientX);e.preventDefault();});
+    window.addEventListener('mousemove',e=>{if(scrub)railTo(e.clientX);});
+    window.addEventListener('mouseup',()=>{if(scrub){scrub=false;railEl.classList.remove('scrub');}});
+    railEl.addEventListener('keydown',e=>{
+      if(e.key==='ArrowLeft'){go(cur-1);e.preventDefault();}
+      else if(e.key==='ArrowRight'){go(cur+1);e.preventDefault();}
+      else if(e.key==='Home'){jump(0);e.preventDefault();}
+      else if(e.key==='End'){jump(N-1);e.preventDefault();}
+    });
+  }
+  window.addEventListener('resize',()=>{try{railPos();}catch(e){}});
 
   /* the window follows the live page: re-renders, font loads, rotations, the Take tab
-     coming into view (a hidden parent measures 0 — the guard in hugH just waits) */
+     coming into view (a hidden parent measures 0 — the guard in hugH just waits).
+     #weekyear — only the SHOWING page is observed; watching thirty-odd absolutely
+     positioned pages fired a storm of callbacks on every paint for no gain. */
   let _ro=null;
-  try{_ro=new ResizeObserver(()=>{if(!busy)hugH();});}catch(e){window.addEventListener('resize',()=>{if(!busy)hugH();});}
+  function watch(){ try{ if(_ro){_ro.disconnect();_ro.observe(pages[cur]);} }catch(e){} }
+  /* the rail measures 0 while the Take tab is still hidden, so it lays itself out on
+     the same beat the window does — the first time the card actually has a width */
+  try{_ro=new ResizeObserver(()=>{if(!busy){hugH();railPos();}});}catch(e){window.addEventListener('resize',()=>{if(!busy){hugH();railPos();}});}
   window.renderWeek();
-  try{if(_ro)pages.forEach(pg=>_ro.observe(pg));}catch(e){}
-  setTimeout(()=>{if(!busy)hugH();},0);
-  window.addEventListener('load',()=>setTimeout(()=>{if(!busy)hugH();},80));
+  watch();
+  setTimeout(()=>{if(!busy){hugH();railPos();}},0);
+  window.addEventListener('load',()=>setTimeout(()=>{if(!busy){hugH();railPos();}},80));
 })();
 
 /* six-month rule — the pill stays in the header; the countdown moved to its own
