@@ -1298,7 +1298,39 @@ html.daylight .btn{box-shadow:inset 0 1px 0 rgba(255,255,255,.5)}
 .tk-stoplbl{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.28em;color:var(--copper);opacity:.85}
 .tk-hero{font-family:'Anton',sans-serif;line-height:.94;letter-spacing:.01em;margin-top:2px;
   filter:drop-shadow(0 0 18px rgba(238,180,107,.42));animation:wirePulse 2.6s ease-in-out infinite}
-#weekGross.tk-hero{font-size:54px}
+#weekGross.tk-hero,.wkd-gross.tk-hero{font-size:54px}
+/* ── #weekswipe(aug24) — THE WEEK DECK: one window, one page per pay week ──
+   Same window grammar as the board deck (#onedeck): pages ride translateX through
+   a clipping frame, the frame's height glides to hug whichever week is showing, and
+   touch-action:pan-y leaves vertical scrolling native while WE own the horizontal
+   drag. Pages sit CHRONOLOGICALLY — oldest on the left, this week on the right —
+   so pulling the card to the right walks backwards the way a calendar reads. */
+.wkd-nav{display:flex;align-items:center;gap:8px;margin:3px 0 1px}
+.wkd-arw{flex:none;width:30px;height:30px;display:flex;align-items:center;justify-content:center;
+  border:1px solid var(--line-soft);border-radius:9px;background:var(--well);color:var(--copper-hi);
+  font-family:'Barlow Condensed',sans-serif;font-size:20px;line-height:1;cursor:pointer;padding:0;transition:.15s;
+  -webkit-appearance:none;appearance:none;-webkit-tap-highlight-color:transparent}
+.wkd-arw:active{transform:translateY(1px)}
+.wkd-arw[disabled]{opacity:.26;cursor:default;color:var(--steel)}
+.wkd-rel{flex:1;min-width:0;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:9.5px;
+  font-weight:600;letter-spacing:.17em;color:var(--copper-hi);text-transform:uppercase;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:6px 2px;border-radius:9px;
+  border:1px solid transparent;background:none;transition:.15s;
+  -webkit-appearance:none;appearance:none;-webkit-tap-highlight-color:transparent}
+.wkd-rel.back{color:var(--steel);border-color:var(--line-soft);background:var(--well);cursor:pointer}
+.wkd-rel.back:active{transform:translateY(1px)}
+.wkd-view{position:relative;overflow:hidden;touch-action:pan-y;cursor:grab;
+  user-select:none;-webkit-user-select:none;
+  transition:height .3s cubic-bezier(.22,.61,.36,1)}
+.wkd-view.grabbing{cursor:grabbing}
+.wkd-page{position:absolute;top:0;left:0;right:0;visibility:hidden;padding-bottom:6px;
+  will-change:transform;backface-visibility:hidden}
+.wkd-page.cur{visibility:visible}
+.wkd-dots{display:flex;justify-content:center;flex-wrap:wrap;gap:5px;padding:11px 0 2px}
+.wkd-dots i{width:5px;height:5px;border-radius:3px;background:var(--line);transition:.22s}
+.wkd-dots i.on{width:15px;background:var(--copper-hi);box-shadow:0 0 7px rgba(238,180,107,.55)}
+.wkd-hint{text-align:center;font-family:'IBM Plex Mono',monospace;font-size:8.5px;letter-spacing:.13em;
+  color:var(--steel);text-transform:uppercase;opacity:.72;padding:2px 0 0}
 #ratHrs.tk-hero{font-size:52px;color:var(--copper-hi)}
 #ratHrs.tk-hero span{font-family:'Barlow Condensed',sans-serif}
 .tk-moves{font-family:'Barlow Condensed',sans-serif;font-size:14.5px;color:var(--bone);letter-spacing:.02em;margin-top:3px}
@@ -2204,19 +2236,25 @@ window.DEVLOG=(function(){
     <div class="screen-sub" id="todayLine">—</div>
 
     <div class="card takecard">
+      <!-- #weekswipe(aug24) — THE WEEK TURNS BACK. This card was a window on the CURRENT
+           pay week only: last week's take vanished the moment Saturday rolled, which is
+           exactly the week a hand is arguing about when they reach for DISPUTE PAY. The
+           body is a drag-to-turn DECK now, on the same engine as the board deck
+           (#onedeck / #markswipe2 feel — the page follows your finger, the neighbour
+           slides in beside it, past ~¼ width commits, else it snaps back). Pages run
+           chronologically, oldest on the left, this week on the right. Arrows do the
+           same slide for a thumb that doesn't want to drag. Dispute Pay + Roy stay
+           OUTSIDE the deck — same phone call whatever week you're reading. -->
       <div class="card-h">The Week <span class="sl">//</span> Sat → Fri <span class="tag" id="weekSpan">—</span></div>
       <div class="card-b">
-        <div class="tk-top"><span class="wire-src est" id="weekSrc">◆ ESTIMATE · PRE-TAX</span></div>
-        <div class="tk-stage">
-          <div class="tk-stoplbl">THIS WEEK'S TAKE</div>
-          <div class="big money copper-txt tk-hero" id="weekGross">$0</div>
-          <div class="tk-moves">est. gross · <b id="weekNet">$0</b> net after the bite</div>
+        <div class="wkd-nav">
+          <button type="button" class="wkd-arw" id="wkPrev" aria-label="Older week">‹</button>
+          <button type="button" class="wkd-rel" id="wkRel" aria-label="Week shown">THIS WEEK</button>
+          <button type="button" class="wkd-arw" id="wkNext" aria-label="Newer week">›</button>
         </div>
-        <div class="tk-paystrip">
-          <div><span class="tk-k">DIRECT DEPOSIT</span><b id="ddDate">—</b></div>
-          <div><span class="tk-k">PAPER CHECK</span><b id="checkDate">—</b></div>
-        </div>
-        <div id="weekJobs" class="tk-jobs"></div>
+        <div class="wkd-view" id="wkView"><!-- one .wkd-page per pay week, built by the deck engine --></div>
+        <div class="wkd-dots" id="wkDots" aria-hidden="true"></div>
+        <div class="wkd-hint" id="wkHint" style="display:none">‹ drag sideways for past weeks ›</div>
         <!-- #paymove(aug13) — DISPUTE PAY moved up here from The Year card, by request:
              a wrong check is a THIS-WEEK problem, and it's caught reading this week's
              numbers — the button belongs where the eye lands on them. Roy rides along. -->
@@ -6570,31 +6608,206 @@ function estPay(j){
 const now=nowLA();   /* #201 — the hall's day (Long Beach), so the ledger, pay-week and next-board pick agree on every device */
 document.getElementById('todayLine').textContent=DOW[now.getDay()]+" · "+now.toLocaleDateString(undefined,{month:'long',day:'numeric',year:'numeric'});
 // pay week Sat→Fri
-const wkStart=new Date(now);wkStart.setDate(now.getDate()-((now.getDay()+1)%7));wkStart.setHours(0,0,0,0);
+function wkStartOf(d){const s=new Date(d);s.setDate(s.getDate()-((s.getDay()+1)%7));s.setHours(0,0,0,0);return s;}
+const wkStart=wkStartOf(now);
 const wkEnd=new Date(wkStart);wkEnd.setDate(wkStart.getDate()+6);wkEnd.setHours(23,59,59,999); /* #50 — include ALL of Friday; at 00:00 the week's last day was silently excluded */
-document.getElementById('weekSpan').textContent=(wkStart.getMonth()+1)+"/"+wkStart.getDate()+" – "+(wkEnd.getMonth()+1)+"/"+wkEnd.getDate();
-// pay lands the following week: direct deposit Thursday, paper check Friday
-const chk=new Date(wkEnd);chk.setDate(chk.getDate()+7);            // following Friday — paper check
-const dd=new Date(chk);dd.setDate(chk.getDate()-1);                // Thursday before — direct deposit
-document.getElementById('checkDate').textContent=chk.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
-document.getElementById('ddDate').textContent=dd.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
 
-/* The Week recomputes from DOCKETS every time the log changes (add / edit / strike),
-   so the take always reflects exactly what's sealed right now. */
-function renderWeek(){
-  const wkJobs=DOCKETS.filter(j=>{const d=new Date(j.date+"T12:00");return d>=wkStart&&d<=wkEnd});
-  let wg=0;const wj=document.getElementById('weekJobs');
-  wj.innerHTML="";
-  wkJobs.sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))).forEach(j=>{const p=estPay(j);wg+=p.gross;
-    const label=(j.ship&&j.ship!=="\u2014")?j.ship:j.terminal;
-    wj.insertAdjacentHTML('beforeend','<div class="jobrow"><div class="d mono">'+j.date.slice(5).replace("-","/")+'</div><div class="n"><b>'+label+'</b><span>'+j.terminal+' · '+j.shift+' · '+p.note+'</span></div><div class="amt">'+fmt$(p.gross)+'</div></div>');
-  });
-  if(!wkJobs.length)wj.innerHTML='<p class="sub">No jobs sealed this week yet. The board turns twice a day.</p>';
-  document.getElementById('weekGross').textContent=fmt$(wg);
-  document.getElementById('weekNet').textContent=fmt$(wg*(1-.218));
-}
-window.renderWeek=renderWeek;
-renderWeek();
+/* ═══ #weekswipe(aug24) — THE WEEK, AND EVERY WEEK BEHIND IT ═══
+   The Take showed ONE week — the current one — and last week's numbers vanished the
+   moment Saturday turned. But a hand reaching for DISPUTE PAY is almost never arguing
+   about the week they're standing in; they're arguing about the one that just paid out.
+   So the card body is a DECK: one clipping window, one page per pay week, drag-to-turn
+   on the same engine the board deck runs (#onedeck / #markswipe2 — the page follows
+   your finger, the neighbour slides in beside it, past ~¼ width commits, else it snaps
+   back). Pages sit CHRONOLOGICALLY, oldest on the left and this week on the right, so
+   pulling the card RIGHT walks backwards through the book the way a calendar reads.
+
+   Depth: always 4 weeks back so there's something to turn to on a fresh book, and out
+   to however far the log actually reaches, capped at 11 (a quarter — past that, the
+   year card is the right instrument). Every page recomputes from DOCKETS on every log
+   change, exactly as the old single-week renderWeek did, so the take always reflects
+   what's sealed right now.
+
+   wkStart / wkEnd above still mean THIS week, untouched, for anything else reading them. */
+(function(){
+  const view=document.getElementById('wkView');
+  if(!view){ window.renderWeek=function(){}; return; }   // markup gone — stay quiet, don't take the script down
+  const dotsEl=document.getElementById('wkDots'), relEl=document.getElementById('wkRel'),
+        spanEl=document.getElementById('weekSpan'), hintEl=document.getElementById('wkHint'),
+        prevB=document.getElementById('wkPrev'),   nextB=document.getElementById('wkNext');
+  const EASE='transform .27s cubic-bezier(.22,.61,.36,1)', WKMS=604800000;
+  let pages=[],N=0,cur=0,curK=0,busy=false,x0=null,y0=null,dx=0,active=false,axis=0,dir=0,W=1,tgt=-1;
+  const w=()=>view.clientWidth||320;
+  const kOf=p=>N-1-p, pOf=k=>N-1-k;        // DOM left→right runs OLDEST → THIS WEEK
+
+  /* one pay week, k weeks back from the current one, plus the two dates it pays on */
+  function span(k){
+    const s=new Date(wkStart);s.setDate(wkStart.getDate()-7*k);s.setHours(0,0,0,0);
+    const e=new Date(s);e.setDate(s.getDate()+6);e.setHours(23,59,59,999);
+    const chk=new Date(e);chk.setDate(e.getDate()+7);          // following Friday — paper check
+    const dd=new Date(chk);dd.setDate(chk.getDate()-1);        // Thursday before — direct deposit
+    return {s,e,chk,dd};
+  }
+  const md=d=>(d.getMonth()+1)+"/"+d.getDate();
+  const payD=d=>d.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
+  const relLbl=k=>k===0?'THIS WEEK':k===1?'LAST WEEK':k+' WEEKS BACK';
+  const stopLbl=k=>k===0?"THIS WEEK'S TAKE":k===1?"LAST WEEK'S TAKE":"THAT WEEK'S TAKE";
+
+  /* how far back the deck goes — a floor of 4, then as far as the book actually runs */
+  function depth(){
+    let oldest=null;
+    try{DOCKETS.forEach(j=>{if(j&&typeof j.date==="string"&&j.date.length>=10&&(!oldest||j.date<oldest))oldest=j.date;});}catch(e){}
+    let n=4;
+    if(oldest){try{
+      const k=Math.round((wkStart-wkStartOf(new Date(oldest+"T12:00")))/WKMS);
+      if(isFinite(k)&&k>n)n=k;
+    }catch(e){}}
+    return Math.max(1,Math.min(n,11))+1;
+  }
+
+  /* THE CURRENT WEEK'S PAGE KEEPS THE OLD IDS (weekGross / weekNet / ddDate / checkDate /
+     weekSrc). Theme sheets and any later hook that reaches for them by id still land on
+     the week they were always about; the sibling pages carry the classes instead. */
+  function paint(p){
+    const pg=pages[p]; if(!pg)return;
+    const k=kOf(p), S=span(k), ID=n=>k===0?' id="'+n+'"':'';
+    let g=0,rows='';
+    const list=DOCKETS.filter(j=>{try{const d=new Date(j.date+"T12:00");return d>=S.s&&d<=S.e;}catch(e){return false;}})
+                      .sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
+    list.forEach(j=>{try{
+      const pay=estPay(j); g+=pay.gross;
+      const label=(j.ship&&j.ship!=="\u2014")?j.ship:j.terminal;
+      rows+='<div class="jobrow"><div class="d mono">'+j.date.slice(5).replace("-","/")+'</div><div class="n"><b>'+label+'</b><span>'+j.terminal+' · '+j.shift+' · '+pay.note+'</span></div><div class="amt">'+fmt$(pay.gross)+'</div></div>';
+    }catch(e){}});
+    if(!rows) rows = k===0
+      ? '<p class="sub">No jobs sealed this week yet. The board turns twice a day.</p>'
+      : '<p class="sub">No jobs sealed that week — nothing on the book between '+md(S.s)+' and '+md(S.e)+'.</p>';
+    pg.innerHTML =
+      '<div class="tk-top"><span class="wire-src est"'+ID('weekSrc')+'>◆ ESTIMATE · PRE-TAX</span></div>'+
+      '<div class="tk-stage">'+
+        '<div class="tk-stoplbl">'+stopLbl(k)+'</div>'+
+        '<div class="big money copper-txt tk-hero wkd-gross"'+ID('weekGross')+'>'+fmt$(g)+'</div>'+
+        '<div class="tk-moves">est. gross · <b'+ID('weekNet')+'>'+fmt$(g*(1-.218))+'</b> net after the bite</div>'+
+      '</div>'+
+      '<div class="tk-paystrip">'+
+        '<div><span class="tk-k">DIRECT DEPOSIT</span><b'+ID('ddDate')+'>'+payD(S.dd)+'</b></div>'+
+        '<div><span class="tk-k">PAPER CHECK</span><b'+ID('checkDate')+'>'+payD(S.chk)+'</b></div>'+
+      '</div>'+
+      '<div'+(k===0?' id="weekJobs"':'')+' class="tk-jobs">'+rows+'</div>';
+  }
+
+  /* the furniture around the window follows whichever week is showing */
+  function chrome(){
+    const k=kOf(cur), S=span(k);
+    if(spanEl)spanEl.textContent=md(S.s)+" – "+md(S.e);
+    if(relEl){
+      relEl.textContent=relLbl(k)+(k>0?" ↺":"");
+      relEl.classList.toggle('back',k>0);
+      relEl.title=k>0?"Back to this week":"";
+    }
+    if(prevB)prevB.disabled=(cur<=0);
+    if(nextB)nextB.disabled=(cur>=N-1);
+    if(dotsEl){const ds=dotsEl.children;for(let i=0;i<ds.length;i++)ds[i].classList.toggle('on',i===cur);}
+  }
+  function hugH(pg){const h=(pg||pages[cur]||{}).offsetHeight;if(h)view.style.height=h+'px';}
+
+  /* ONE HAND TURNED IT ONCE, THE HINT'S DONE ITS JOB — remembered across sessions */
+  let hinted=false; try{hinted=localStorage.getItem('wk_turned')==='1';}catch(e){}
+  function showHint(){if(hintEl)hintEl.style.display=(!hinted&&N>1)?'block':'none';}
+  function turned(){if(hinted)return;hinted=true;try{localStorage.setItem('wk_turned','1');}catch(e){}showHint();}
+
+  function build(){
+    const n=depth();
+    if(n===N)return false;
+    const keepK=Math.min(curK,n-1);
+    N=n;
+    let h='';for(let i=0;i<N;i++)h+='<div class="wkd-page" data-k="'+kOf(i)+'"></div>';
+    view.innerHTML=h;
+    pages=Array.prototype.slice.call(view.querySelectorAll('.wkd-page'));
+    if(dotsEl){let d='';for(let i=0;i<N;i++)d+='<i></i>';dotsEl.innerHTML=d;dotsEl.style.display=N>1?'flex':'none';}
+    curK=keepK;cur=pOf(curK);tgt=-1;dir=0;busy=false;
+    pages[cur].classList.add('cur');
+    try{if(_ro){_ro.disconnect();pages.forEach(pg=>_ro.observe(pg));}}catch(e){}
+    return true;
+  }
+
+  window.renderWeek=function(){
+    try{
+      build();
+      for(let i=0;i<N;i++)paint(i);
+      chrome();showHint();
+      if(!busy)hugH();
+    }catch(e){try{console.error('[renderWeek] deck',e);}catch(_){}}
+  };
+
+  /* ── the drag — lifted from the board deck so the two windows feel identical ── */
+  function drop(i){const pg=pages[i];if(!pg||i===cur)return;pg.classList.remove('cur');pg.style.transform='';pg.style.transition='';}
+  function prep(i,d){const pg=pages[i];pg.style.transition='';pg.style.transform='translateX('+(d===1?w():-w())+'px)';pg.classList.add('cur');return pg;}
+  function settle(commit){
+    const W2=w(),d=dir,ti=tgt,a=pages[cur],pg=(ti>=0&&ti!==cur)?pages[ti]:null;
+    if(commit&&pg){
+      busy=true;
+      hugH(pg);                                   // height glides to the incoming week alongside the slide
+      a.style.transition=EASE;pg.style.transition=EASE;
+      a.style.transform='translateX('+(d===1?-W2:W2)+'px)';pg.style.transform='translateX(0px)';
+      let done=false;const fin=()=>{if(done)return;done=true;a.removeEventListener('transitionend',fin);
+        a.classList.remove('cur');a.style.transform='';a.style.transition='';
+        pg.style.transition='';pg.style.transform='';
+        cur=ti;curK=kOf(cur);tgt=-1;dir=0;busy=false;chrome();hugH();turned();};
+      a.addEventListener('transitionend',fin);setTimeout(fin,380);
+    }else{
+      a.style.transition=EASE;a.style.transform='translateX(0px)';
+      if(pg){pg.style.transition=EASE;pg.style.transform='translateX('+(d===1?W2:-W2)+'px)';}
+      setTimeout(()=>{if(pg)drop(ti);a.style.transition='';a.style.transform='';tgt=-1;dir=0;},300);
+    }
+  }
+  /* arrows / dots / programmatic jump — the same slide as a completed drag, any distance */
+  function go(i){
+    if(busy||i===cur||i<0||i>=N)return;
+    if(tgt>=0)drop(tgt);
+    dir=i>cur?1:-1;tgt=i;prep(i,dir);void pages[i].offsetWidth;settle(true);
+  }
+  window._wkGo=go;
+
+  function grab(cx,cy){if(busy)return false;x0=cx;y0=cy;dx=0;active=true;axis=0;dir=0;W=w();return true;}
+  function move(cx,cy,ev){
+    if(!active||x0==null)return;
+    const mx=cx-x0,my=cy-y0;
+    if(axis===0){if(Math.abs(mx)<8&&Math.abs(my)<8)return;axis=(Math.abs(mx)>Math.abs(my)*1.2)?1:-1;if(axis!==1){active=false;return;}}
+    const want=mx<0?1:-1,ti=cur+want,a=pages[cur];
+    if(ti<0||ti>=N){if(tgt>=0)drop(tgt);tgt=-1;dir=0;dx=mx*0.3;a.style.transform='translateX('+dx+'px)';if(ev&&ev.cancelable)ev.preventDefault();return;}   // rubber-band at the ends
+    if(dir!==want||tgt!==ti){if(tgt>=0&&tgt!==ti)drop(tgt);dir=want;tgt=ti;prep(ti,want);}
+    dx=mx;a.style.transform='translateX('+dx+'px)';
+    pages[ti].style.transform='translateX('+((dir===1?W:-W)+dx)+'px)';
+    if(ev&&ev.cancelable)ev.preventDefault();
+  }
+  function up(){
+    if(!active)return;active=false;view.classList.remove('grabbing');
+    if(axis!==1){x0=null;if(tgt>=0)drop(tgt);tgt=-1;dir=0;return;}
+    settle(Math.abs(dx)>Math.min(80,W*0.25)&&tgt>=0);x0=null;dx=0;axis=0;
+  }
+  view.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;const t=e.touches[0];grab(t.clientX,t.clientY);},{passive:true});
+  view.addEventListener('touchmove',e=>{const t=e.touches[0];if(t)move(t.clientX,t.clientY,e);},{passive:false});
+  view.addEventListener('touchend',up,{passive:true});
+  view.addEventListener('touchcancel',up,{passive:true});
+  /* a mouse gets the same grab on the desk — nothing in this window is clickable, so
+     there's no tap to steal, and the 8px threshold keeps a plain click a plain click */
+  view.addEventListener('mousedown',e=>{if(e.button!==0)return;if(grab(e.clientX,e.clientY))view.classList.add('grabbing');});
+  window.addEventListener('mousemove',e=>{if(active)move(e.clientX,e.clientY,e);});
+  window.addEventListener('mouseup',up);
+  if(prevB)prevB.addEventListener('click',()=>go(cur-1));
+  if(nextB)nextB.addEventListener('click',()=>go(cur+1));
+  if(relEl)relEl.addEventListener('click',()=>{if(kOf(cur)>0)go(N-1);});   // ↺ — one tap home from eleven weeks out
+
+  /* the window follows the live page: re-renders, font loads, rotations, the Take tab
+     coming into view (a hidden parent measures 0 — the guard in hugH just waits) */
+  let _ro=null;
+  try{_ro=new ResizeObserver(()=>{if(!busy)hugH();});}catch(e){window.addEventListener('resize',()=>{if(!busy)hugH();});}
+  window.renderWeek();
+  try{if(_ro)pages.forEach(pg=>_ro.observe(pg));}catch(e){}
+  setTimeout(()=>{if(!busy)hugH();},0);
+  window.addEventListener('load',()=>setTimeout(()=>{if(!busy)hugH();},80));
+})();
 
 /* six-month rule — the pill stays in the header; the countdown moved to its own
    alert strip under the header so it can't crowd the layout, and it only fires
@@ -25115,7 +25328,7 @@ html.daylight .wire-stop,html.daylight .tk-hero,html.daylight .heat.hot,
 html.daylight .dclock,html.daylight .beta-badge{filter:none !important}
 html.daylight #scr-ledger .tk-meter .bar,html.daylight #scr-ledger .tk-meter .bar i{box-shadow:none}
 html.daylight #scr-ledger .race-tile .v,html.daylight #scr-dockets .detail .stat .v,
-html.daylight #scr-ledger #yGross,html.daylight #weekGross,html.daylight #ratHrs,
+html.daylight #scr-ledger #yGross,html.daylight #weekGross,html.daylight .wkd-gross,html.daylight #ratHrs,
 html.daylight #predStop,html.daylight #recentBoards .rb-range .rb-arrow,
 html.daylight .dl-pay b,html.daylight .dl-tot-n,html.daylight .dl-ttl,
 html.daylight .rh-target,html.daylight .six-days.hot,html.daylight #njAdd,
