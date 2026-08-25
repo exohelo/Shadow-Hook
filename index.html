@@ -8779,7 +8779,22 @@ window.renderMyOdds=renderMyOdds;
     var from=new Date((typeof nd2!=="undefined"&&nd2)?nd2.getTime():Date.now());
     var startPM=(typeof callSlot!=="undefined")&&String(callSlot).slice(-2)==="PM";
 
-    var key=[anchor,my,ymdOf(from),startPM?1:0,confirmed?1:0,Math.floor(Date.now()/300000)].join("|");
+    /* #ffidle(aug24) — WAS: …,Math.floor(Date.now()/300000)]. That bucket threw the memo
+       away every five minutes whether or not a single input had moved, so any repredict()
+       landing after a bucket roll paid the full 60-slot convolution — 135ms of blocked
+       main thread at 4x throttle — to recompute an identical answer. Key on what the
+       forecast is actually made of instead. window._v4dbg is the engine's own input
+       snapshot and publishCall() refreshes it immediately before this runs inside
+       repredict(), so it is exactly "have the predictions been updated". */
+    var eng="";
+    try{ var _v=window._v4dbg;
+         if(_v) eng=[_v.source,_v.cas,_v.ch,_v.totEwma,_v.mom,_v.lastNight,_v.shutdown?1:0,
+                     (_v.cats||[]).join("+"),(_v.att?_v.att.mult:"")].join("~"); }catch(e){}
+    /* a slow safety valve, not a refresh timer: something the snapshot doesn't cover
+       (a weekday rolling over, a learned table settling) can still move, so allow at
+       most one recompute per half hour when every visible input is unchanged. */
+    var valve=Math.floor(Date.now()/1800000);
+    var key=[anchor,my,ymdOf(from),startPM?1:0,confirmed?1:0,eng,valve].join("|");
     if(_memo&&_memoKey===key) return _memo;
 
     var D=new Array(BINS); for(var b=0;b<BINS;b++)D[b]=0;
@@ -8854,7 +8869,7 @@ window.renderMyOdds=renderMyOdds;
      shut forever with nothing left to tap. Clear the key and stay open. */
   try{ localStorage.removeItem("ff_fold"); }catch(e){}
   try{ var g=localStorage.getItem("ff_page"); if(g==="1")ST.page=1; }catch(e){}
-  var _lastHero="";
+  var _lastHero="", _lastPaint="";   /* #ffidle — what is currently drawn */
 
   function $ff(id){ return document.getElementById(id); }
 
@@ -8872,6 +8887,10 @@ window.renderMyOdds=renderMyOdds;
     card.classList.toggle('shut',!ST.open);
 
     if(!F){
+      /* #ffidle — the empty state also fills ffWeekRows (with one .ff-empty child), so
+         the paint guard below would happily "match" a stale signature against it and
+         refuse to redraw the real forecast when the card comes back. Clear it here. */
+      _lastPaint="";
       /* no card on file, or no opening card yet — say which, don't go blank */
       var why="";
       try{ why=(typeof myBoardId==="function"&&myBoardId())?"waiting on an opening card":"add your card to see your forecast"; }catch(e){ why="waiting on an opening card"; }
@@ -8888,6 +8907,21 @@ window.renderMyOdds=renderMyOdds;
     }
 
     var rows=F.rows;
+
+    /* #ffidle(aug24) — SAME PICTURE, NO REPAINT. Even on a memo hit this rebuilt ~12KB
+       of innerHTML across the week rows and 32 month cells and then called _ffHug(),
+       which reads offsetHeight on both pages — two forced layouts. Signature what is
+       about to be drawn and bail when it matches what is already on screen. The DOM
+       children check keeps this honest: if anything else wiped the card, the signature
+       may still match but there is nothing painted, so fall through and draw. */
+    var _sig="";
+    try{ _sig=F.card+"|"+F.anchor+"|"+(F.confirmed?1:0)+"|"+(ST.open?1:0)+"|"
+        +rows.map(function(r){return r.ymd+":"+r.slots.map(function(sl){
+            return (sl.done?"d":"")+Math.round(sl.reach*1000)+"."+sl.band.k;}).join("/");}).join(","); }
+    catch(e){ _sig=""; }
+    var _wr0=$ff('ffWeekRows');
+    if(_sig && _sig===_lastPaint && _wr0 && _wr0.children.length) return;
+    _lastPaint=_sig;
 
     /* no stamp any more — the wire card's own "Starting on <card>" line and its
        source chip sit right above and already say what this ran off. */
@@ -11286,6 +11320,19 @@ async function dwPull(){
     const r=await window.SB.from('drop_wire').select('*').eq('k',k);
     if(r&&!r.error&&Array.isArray(r.data)){
       window.DW[k]=r.data;
+      /* #ffidle(aug24) — THIS PULL RAN THE WHOLE ENGINE EVERY TIME, CHANGED OR NOT.
+         dwPull fires on a 45s interval AND on every drop_wire realtime event, and it
+         called repredict() unconditionally — so a quiet board still re-figured the
+         call and re-ran the 30-day forecast ~80 times an hour off data that had not
+         moved a row. Measured at 4x throttle: a forecast recompute is 135ms of blocked
+         main thread. Signature the rows and cascade only on a real change; an unchanged
+         pull now costs one string compare. cid is the upsert conflict key, so it is
+         stable per drop, and sorting makes the signature order-independent. */
+      let _sig=k+"#";
+      try{ _sig+=r.data.map(x=>String(x.cid)+"|"+x.n+"|"+x.cat).sort().join(","); }
+      catch(e){ _sig=k+"#"+Date.now(); }   /* unreadable rows — treat as changed */
+      if(_sig===window.__dwSig) return;    /* nothing moved: no commit, no re-render, no re-figure */
+      window.__dwSig=_sig;
       try{dropCommit();}catch(e){}
       try{renderDropLog();}catch(e){}
       try{renderRecentBoards();}catch(e){}
