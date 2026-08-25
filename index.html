@@ -12228,7 +12228,17 @@ function renderDockets(){
         +'<div class="jl-port-tiles">'
           +'<div class="jl-tile"><b>'+esc(t.berths)+'</b><span>BERTH</span></div>'
           +'<div class="jl-tile"><b>'+esc(_gate)+'</b><span>CHECK-IN</span></div>'
-          +'<div class="jl-tile'+(_mapIn?' live':'')+'"><b>'+(_mapIn?'✓':'…')+'</b><span>YARD MAP</span></div>'
+          /* #startile(aug24) — was a YARD MAP ✓/… tile, which said the same thing as the
+             MAP IN VAULT pill three lines above it and cost a third of the tile row to
+             repeat it. The job's START is the number a hand actually needs off this card
+             and it was nowhere on the port block. Falls back to the shift when no start
+             was recorded — shift is always set, so the tile is never empty — and the
+             label names whichever it is showing rather than lying about it. */
+          +(function(){
+              var _st=j.start?fmtStartLong(j.start):"";
+              if(_st) return '<div class="jl-tile"><b>'+esc(_st)+'</b><span>'+(j.flex?'FLEX START':'JOB START')+'</span></div>';
+              return '<div class="jl-tile"><b>'+esc(j.shift||'—')+'</b><span>SHIFT</span></div>';
+            })()
         +'</div>'
         +gateCardHTML(t,j,_pg)
       +'</div>';
@@ -12358,6 +12368,14 @@ function startTraits(start, shift){
 }
 /* #39 — compact start time for the job log, e.g. "7A" / "5P" */
 function fmtStart(s){ const h=parseInt(s.slice(0,2),10); return (h%12||12)+(h>=12?"P":"A"); }
+/* #startile(aug24) — the same clock with its minutes on, for the PORT INTEL tile where
+   there is room for them. Starts are stored on the hour ("HH:00"), but slice(-2) reads
+   the minutes off either shape the app has ever written — "07:00" and "0800" both. */
+function fmtStartLong(s){
+  try{ const h=parseInt(String(s).slice(0,2),10); if(isNaN(h))return "";
+       const m=String(s).slice(-2); return (h%12||12)+":"+(/^\d\d$/.test(m)?m:"00")+(h>=12?"P":"A"); }
+  catch(e){ return ""; }
+}
 /* #27 correction — the form takes hour + AM/PM only (no minutes); stored internally as "HH:00" */
 function njGetStart(){
   const hr=document.getElementById('njStartHr').value; if(!hr)return "";
