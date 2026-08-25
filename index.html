@@ -4649,6 +4649,57 @@ function wipeAcct(){try{localStorage.removeItem('shadowhook_account')}catch(e){}
 const savedAcct=loadAcct();
 let ACCT_ID=(savedAcct&&savedAcct.id)?savedAcct.id:"anon";
 function K(s){return "shadowhook_"+s+"_"+ACCT_ID;}
+/* ═══ #idle(aug24) — A NEW VISIT, OR THE SAME SITTING? ═══
+   Folds that reset on every launch punish the hand who checks the app eight times
+   during a dispatch window; folds that never reset quietly carry a choice made last
+   week into this morning. Neither is what "opening the app" means. The honest test is
+   whether they STEPPED AWAY: stamp the last time the app was in their hands, and on
+   boot ask how long the gap was. Under the threshold this is the same sitting and
+   every remembered state stands. Over it, the house defaults come back.
+   FOUR HOURS clears the gap between the morning board and the night board — an 8pm
+   check and a 5:30am check read as two visits — while ten glances across a 6:30–9:00
+   window all count as one. The stamp is refreshed while the app is open so a long
+   session followed by a quick relaunch is never mistaken for an absence.
+   NOTE: this deliberately does NOT touch _pendClosed (the dispatch sheet / SHIPS ON
+   DECK / WEEK'S AVERAGES). That is in-memory only and already re-opens on every fresh
+   launch — which is exactly the "if they're working I always want it open" rule. */
+const IDLE_RESET_MS = 4*60*60*1000;
+var _steppedAway = false;
+(function(){
+  try{
+    var k=K("lastseen"), prev=parseInt(localStorage.getItem(k)||"0",10);
+    _steppedAway = !(prev>0) || (Date.now()-prev) >= IDLE_RESET_MS;
+    var stamp=function(){ try{ localStorage.setItem(K("lastseen"), String(Date.now())); }catch(e){} };
+    stamp();
+    /* keep it warm while they are actually here, so the gap measures ABSENCE and not
+       the length of the session itself */
+    document.addEventListener('visibilitychange',function(){ if(!document.hidden)stamp(); });
+    window.addEventListener('focus',stamp);
+    setInterval(stamp,60000);
+  }catch(e){ _steppedAway=false; }
+})();
+function steppedAway(){ return _steppedAway; }
+window.steppedAway=steppedAway;
+
+/* #opentab(aug24) — WHERE THE APP OPENS. It was hardcoded to 'dockets' in all three
+   boot paths. Now: a docket already sealed for today means they are ON the job, and
+   the log is what they came for — that beats everything. Otherwise, if dispatch is
+   actually running, open on the board, which is the screen that answers "am I in it".
+   Outside both, the log again. liveWindow() is the narrow 6:30–9:00 / 16:30–19:00
+   call window, not the wider drop window, so "dispatch is running" means the board is
+   genuinely moving right now. */
+function openingTab(){
+  try{
+    if(typeof DOCKETS!=="undefined" && typeof todayISO==="function"){
+      var t=todayISO();
+      for(var i=0;i<DOCKETS.length;i++){ var d=DOCKETS[i];
+        if(d && d.date===t) return 'dockets'; }        /* working today */
+    }
+  }catch(e){}
+  try{ if(typeof liveWindow==="function" && liveWindow()) return 'board'; }catch(e){}
+  return 'dockets';
+}
+window.openingTab=openingTab;
 /* #markspay(aug16) — "THIS CARD'S RECORD OF WHAT IT HAS PAID FOR IS GONE."
    Keyed by K('markspaid') — the payment record, NOT the wall — and set the moment any
    reader finds that key holding something other than a real array: the empty string,
@@ -6251,7 +6302,7 @@ function localEnter(){
   if(savedAcct.name)document.getElementById('meName').textContent=prettyName(savedAcct.name);   /* #gateorder — card-proper on screen */
   if(savedAcct.id)document.getElementById('meCircle').textContent="Circle I · "+savedAcct.id;
   document.getElementById('gatePage').style.display="none";
-  bootScreen(()=>enterApp('dockets'),true);
+  bootScreen(()=>enterApp(openingTab()),true);
 }
 /* on open: if a backend session is live, restore the account from the server
    (this is what makes it the SAME account on every device). Otherwise fall back
@@ -6327,7 +6378,7 @@ function localEnter(){
           a.since=prof.since||a.since||todayISO();
           saveAcct(a);
         }
-        bootScreen(()=>enterApp('dockets'),true);
+        bootScreen(()=>enterApp(openingTab()),true);
         return;
       }
     }catch(e){ console.warn('session restore failed', e); }
@@ -6515,7 +6566,7 @@ function finishEnter(handle, pa, balance){
         .then(r=>{ if(!r.error){ localStorage.setItem('shadowhook_vouched','1'); localStorage.removeItem('shadowhook_crew_pending'); } });
     } }catch(e){}
   document.getElementById('gatePage').style.display="none";
-  bootScreen(()=>enterApp('dockets'));
+  bootScreen(()=>enterApp(openingTab()));
 }
 /* #marks2 — the voucher's side: count the hands who verified on your word. Lantern
    Bearer at 1, Torch Bearer at 5, Beacon at 10 — read from the same invisible room. */
@@ -8887,12 +8938,20 @@ window.renderMyOdds=renderMyOdds;
   }
 
   /* ── state ────────────────────────────────────────────────────────────── */
-  var ST={open:true,page:0};
   /* #ffbtn(aug24) — the fold is remembered again. It stopped being read when the
      "AND AFTER THAT" divider was retired, because nothing was left to reopen a shut
      tail; the strip is that control now, and it renders in EVERY state including the
-     no-forecast one, so a stored "0" can always be undone by a tap. */
-  try{ var f=localStorage.getItem("ff_fold"); if(f!==null)ST.open=(f==="1"); }catch(e){}
+     no-forecast one, so a stored "0" can always be undone by a tap.
+     #idle(aug24) — and the house default is now SHUT. The call above the tail is what
+     a hand opens the app for; the strip still reads "next one you're in" while the
+     tail is folded, so nothing is lost by starting closed. Opening it holds for the
+     rest of the sitting — steppedAway() only reports true after four hours away, so
+     checking the app eight times across a dispatch window never re-folds it. */
+  var ST={open:false,page:0};
+  try{
+    if(steppedAway()) localStorage.removeItem("ff_fold");   /* new visit — back to the default */
+    else { var f=localStorage.getItem("ff_fold"); if(f!==null)ST.open=(f==="1"); }
+  }catch(e){}
   try{ var g=localStorage.getItem("ff_page"); if(g==="1")ST.page=1; }catch(e){}
   var _lastHero="", _lastPaint="";   /* #ffidle — what is currently drawn */
 
@@ -8953,7 +9012,9 @@ window.renderMyOdds=renderMyOdds;
             return (sl.done?"d":"")+Math.round(sl.reach*1000)+"."+sl.band.k;}).join("/");}).join(","); }
     catch(e){ _sig=""; }
     var _wr0=$ff('ffWeekRows');
-    if(_sig && _sig===_lastPaint && _wr0 && _wr0.children.length) return;
+    /* #idle(aug24) — the children check only applies when the tail is OPEN; folded,
+       those rows are deliberately empty and would defeat the early-out forever. */
+    if(_sig && _sig===_lastPaint && (!ST.open || (_wr0 && _wr0.children.length))) return;
     _lastPaint=_sig;
 
     /* no stamp any more — the wire card's own "Starting on <card>" line and its
@@ -9055,6 +9116,15 @@ window.renderMyOdds=renderMyOdds;
     var hkey=hero?(hi+"|"+ha):"none";
     if(_lastHero&&_lastHero!==hkey){ card.classList.remove('moved'); void card.offsetWidth; card.classList.add('moved'); }
     _lastHero=hkey;
+
+    /* #idle(aug24) — FOLDED, THE BOARDS ARE NOT BUILT. .shut only sets the fold's
+       grid-template-rows to 0fr, so both boards were still being assembled — 7 week
+       rows and 32 month cells, ~12KB of innerHTML — into a box of zero height on every
+       render. They are built on the first render after it opens instead.
+       To be clear about what this does NOT save: forecast() still runs, because the
+       strip's "next one you're in" is read off the same 30-day pass. The saving is the
+       DOM build and _ffHug's two forced layouts, not the engine. */
+    if(!ST.open){ if(window._ffHug)try{window._ffHug()}catch(e){} return; }
 
     /* ── THE WEEK ── */
     var wr=$ff('ffWeekRows');
