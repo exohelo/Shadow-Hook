@@ -7091,6 +7091,22 @@ function winKey(){const w=liveWindow();return w?nowLA().toDateString()+"_"+w:nul
    call can't jump anybody else's reel — and a bad row already sitting on the
    wire is quarantined on load instead of poisoning every phone that boots. */
 const LOF_LETTERS=3;                 // the line of fire: the called letter + the next 3
+/* #lofopen(aug24) — THE FIRST CALL OF A WINDOW NEEDS A WIDER LINE, and without one
+   the reel DEADLOCKED. lofAnchor() falls back to OPENP() — the board's PREDICTED
+   opening card — when no call has landed yet, and the 3-letter gate was then applied
+   to it as though it were a confirmed call. It isn't: the opening card is a guess made
+   before the window, and by the time the first hand finishes a job and scans a slip the
+   board has normally walked several letters past it. So the first scan came back "far"
+   and was HELD; nothing posted; the anchor never advanced; every later scan that window
+   was measured against the same unmoved opening card and held too. Reproduced: opening
+   F5031, scans K/M/N/P — all four held, reel dark all morning, the member watching a
+   scan they made do nothing.
+   The Aug 6 rule is untouched where it was earned: measured from a CONFIRMED call the
+   line is still 3 letters, so one far hand still cannot jump a board genuinely sitting
+   on B. This wider bound applies ONLY to the unconfirmed opening card, and only until
+   the window's first real call lands. Boards move 2-7 letters on a normal day
+   (SLOTSTATS avgmv 0.4-6.7); 8 covers that without letting an 18-letter jump through. */
+const LOF_OPEN_LETTERS=8;            // …measured from the opening card, before any call is confirmed
 let farHold=[];                      // held calls — {pos, ts, win, src:'local'|'wire'}
 function lofJump(from,to){           // letters forward from one card's letter to another's (wraps A→Z→A)
   try{const j=((AZ.indexOf(String(to).charAt(0))-AZ.indexOf(String(from).charAt(0)))+26)%26;return isNaN(j)?99:j}catch(e){return 99}
@@ -7108,7 +7124,7 @@ function submitLiveCall(pos){ // no identity attached — a position IS a worker
       if(n>=100)unlockBadge(bixLate("Oracle")); }catch(e){} }
   else if(r==="far"){                                    /* #lof — the red flag, said out loud */
     try{const p=String(pos||'').toUpperCase().trim(),a=lofAnchor(),d=a?lofJump(a,p):null;
-      toast("⚠ HELD — board's at "+(a||"the gate")+(d!=null?" and "+p+" is "+d+" letters out of the line of fire":"")+". It posts only if the board works up close.");}catch(e){}
+      toast("⚠ HELD — board's at "+(a||"the gate")+(d!=null?" and "+p+" is "+d+" letters out, past the "+((lastCall&&lastCall.pos)?LOF_LETTERS:LOF_OPEN_LETTERS)+"-letter line of fire":"")+". It posts only if the board works up close.");}catch(e){}
   }
   return r;
 }
@@ -7123,7 +7139,11 @@ function applyLiveCall(pos,ts,src){
   if(posVal(pos)<0)return false;
   if(lastCall&&posVal(pos)<=posVal(lastCall.pos))return "behind"; // valid scan, but the board is already past it
   const a=lofAnchor();
-  if(a&&lofJump(a,pos)>LOF_LETTERS){   /* #lof — past the line: hold it, flag it, don't post it */
+  /* #lofopen(aug24) — which witness is the anchor? A confirmed call is a fact about
+     where the board IS; OPENP() is only where it was predicted to start. Gate them
+     differently — see LOF_OPEN_LETTERS. */
+  const lofLim=(lastCall&&lastCall.pos)?LOF_LETTERS:LOF_OPEN_LETTERS;
+  if(a&&lofJump(a,pos)>lofLim){   /* #lof — past the line: hold it, flag it, don't post it */
     const wk=winKey();
     farHold=farHold.filter(h=>h.win===wk&&posVal(h.pos)>(lastCall?posVal(lastCall.pos):-1)); // stale windows + passed cards drop out
     if(!farHold.some(h=>h.pos===pos)){
@@ -9893,13 +9913,26 @@ function renderYear(){
      A stub carrying HOURS but no gross/net passed that test, so gross and net were
      set to 0 and the docket fallback never ran: the card showed real hours beside
      $0 / $0. Each figure now falls back on its own. */
-  let eG=0, eH=0;
+  let eG=0, eH=0, eGsince=0, dkSince=0;
   const yr=String(new Date().getFullYear());
+  /* #stubstack(aug24) — A SYNCED STUB USED TO FREEZE THIS CARD. gross/net were a hard
+     swap: `sG>0 ? sG : eG`, so once a member synced a paystub every docket they sealed
+     afterwards changed the week's take and the jobs count while Gross/Net YTD sat
+     dead on the stub figure until the NEXT stub. The stamp said "synced from <date>
+     stub" and was read, reasonably, as a source note rather than "this number stopped".
+     Hours already had the honest shape — baseHoursOnBook() + sealedHoursSince(thru) —
+     and money now matches it: the stub is the figure paid THROUGH its pay date, and
+     dockets sealed after that date add their estimate on top. Nothing double-counts,
+     because the cutoff is the stub's own date. */
+  const _S0=STUB||{};
+  const sThru=(typeof _S0.date==="string"&&/^\d{4}-\d{2}-\d{2}$/.test(_S0.date))?_S0.date:null;
   /* #dkshape(aug15) — same unguarded read as sealedHoursSince had, plus estPay()
      runs per docket with no net of its own. One bad row used to abort this whole
      function — and this function is called BARE at the bottom of the block. */
   DOCKETS.filter(j=>j&&typeof j.date==="string"&&j.date.startsWith(yr))
-         .forEach(j=>{try{const p=estPay(j);eG+=p.gross;eH+=p.hrs;}catch(e){}});
+         .forEach(j=>{try{const p=estPay(j);eG+=p.gross;eH+=p.hrs;
+           if(sThru&&j.date>sThru){eGsince+=p.gross;dkSince++;}   /* #stubstack — sealed after the stub */
+         }catch(e){}});
   /* #onehours(aug13) — ONE HOURS FIGURE IN THE APP: the book. The stub's typed
      experience-hours used to render here as "Hours paid" — a LIFETIME figure inside
      a YTD card, forever a few hours off the book and impossible to explain at a
@@ -9907,17 +9940,26 @@ function renderYear(){
      (gross/net — dollars the book has no opinion on); this tile is HOURS LOGGED,
      year-scoped off the sealed dockets, the same witness as "jobs logged" beside it. */
   const S=STUB||{}, sG=+S.gross||0, sN=+S.net||0;
-  const gross = sG>0 ? sG : eG;
-  const net   = sN>0 ? sN : (sG>0 ? sG*(1-0.218) : eG*(1-0.218));
+  /* #stubstack — tax the added dockets at the member's OWN observed rate when the stub
+     carries both figures; the flat 0.218 stays the fallback for a stub that doesn't. */
+  const _bite = (sG>0&&sN>0) ? (sN/sG) : (1-0.218);
+  const gross = sG>0 ? sG+eGsince : eG;
+  const net   = sN>0 ? sN+eGsince*_bite : (sG>0 ? (sG+eGsince)*(1-0.218) : eG*(1-0.218));
   const hrs   = eH;
   const fromStub = (sG>0||sN>0);
   const partial  = fromStub && (sG<=0||sN<=0);
+  /* a stub with no readable pay date can't say what it covers, so nothing stacks on it
+     — say that out loud rather than showing a number that quietly never moves */
+  const stubUndated = fromStub && !sThru;
   const g=document.getElementById('yGross'); if(g)g.textContent=fmt$(gross);
   const n=document.getElementById('yNet');   if(n)n.textContent=fmt$(net);
   const h=document.getElementById('yHrs');    if(h)h.textContent=Math.round(hrs).toLocaleString();
   const stamp=document.getElementById('stubStamp');
   if(stamp){
-    if(fromStub){stamp.textContent="synced from "+fmtStubDate(STUB.date)+" stub"+(partial?" \u00b7 the rest estimated from your log":""); stamp.classList.add("gold");}
+    if(fromStub){stamp.textContent="synced from "+fmtStubDate(STUB.date)+" stub"
+        +(dkSince>0?" + "+dkSince+" docket"+(dkSince===1?"":"s")+" sealed since":"")
+        +(stubUndated?" \u00b7 no pay date on it, so sealed dockets can't stack":"")
+        +(partial?" \u00b7 the rest estimated from your log":""); stamp.classList.add("gold");}
     else{stamp.textContent="no paystub synced — showing logged estimate"; stamp.classList.remove("gold");}
   }
   // #63 + #truehrs — the pay-bump ladder runs on CAREER hours: the official posting
