@@ -2730,15 +2730,12 @@ window.DEVLOG=(function(){
       </div>
       <button class="dl-slam" id="dropAdd" type="button">⚡ LOG THE DROP</button>
       <div id="dropList" class="dl-list"></div>
-      <!-- #118 — NO FLOP: the official call that ends dispatch. One entry matters: where it left off. -->
-      <div id="noflopWrap" class="dl-flop">
-        <div class="dl-flop-h"><span class="flag">⚑</span>HEARD “NO FLOP”?</div>
-        <label class="lbl" for="noflopEnd">Last ID called — where it left off</label>
-        <input class="field" id="noflopEnd" placeholder="e.g. C4985" autocapitalize="characters" maxlength="6" autocomplete="off">
-        <div class="field-msg" id="noflopMsg"></div>
-        <button class="dl-slam ember" id="noflopBtn" type="button">⚑ NO FLOP — Dispatch Is Over</button>
-        <p class="dl-fine">the “go home” call — seals the board · the wire confirms &amp; pays</p>
-      </div>
+      <!-- #nfoff(aug24) — the NO FLOP panel is retired from the Drop Log. Boards now seal
+           from another hand's wire post (sbLoadBoardWire) or the Keymaster's board sheet
+           (saveBoardResult); this device no longer makes the call itself. noFlopSeal() is
+           untouched and still on window — it opens with `if(!inp||!msg)return`, so with the
+           inputs gone it is a safe no-op — and the delegation hook at the foot of the page
+           still routes to it, so it only needs a form wherever it lands next. -->
     </div>
 
     <div class="card" style="display:none">
@@ -11420,12 +11417,11 @@ function renderBabyFeed(){
        throw must not blank the other branches (that ate the boot render once) */
     /* #nocw(aug2) — the Count Window branch is gone with its card; the Drop Log and
        the NO FLOP seal are the only inputs left on the board, so the hint rides those. */
+    /* #nfoff(aug24) — the "seal the board below" branch is gone with the panel it
+       pointed at. The Drop Log is the only input left on the board, so the hint rides
+       that window alone rather than promising a jackpot with no button to earn it. */
     if(typeof dropWindowOpen==="function"&&dropWindowOpen()){
       t=' <b>Feed me:</b> the Drop Log is live below — every call you catch sharpens this call, and the wire pays ⬡.';
-    } else if(typeof noflopWindowOpen==="function"&&noflopWindowOpen()){
-      let sealed=false;
-      try{const r=RECENT.find(x=>x.date+"_"+x.slot===dropKey());sealed=!!(r&&(r.end||r.over));}catch(e){}
-      if(!sealed) t=' <b>Feed me:</b> heard the “no flop” call? Seal the board below — first hand on the wire takes the jackpot ⚡.';
     }
     bf.innerHTML=t;
   }catch(e){}
@@ -11437,29 +11433,16 @@ function renderDropLog(){
   try{const hc=document.getElementById('hudChip'); if(hc)hc.style.display=dropWindowOpen()?'':'none';
       if(!dropWindowOpen()&&window._hudInt)hudClose();}catch(e){}
   const card=document.getElementById('dropCard'); if(!card)return;
-  const _dw=dropWindowOpen(), _nf=noflopWindowOpen();
-  /* #118d — the NO FLOP card exists to end dispatch EARLY, not to stand as a trophy.
-     Once this window's board is sealed — the Hall Line record, any hand on the wire,
-     or your own press — the whole section folds away instead of parking a dead
-     SEALED button for hours. The toast + the Recent Boards row are the record. */
-  let _sr=null; try{_sr=RECENT.find(x=>x.date+"_"+x.slot===dropKey())||null;}catch(e){}
-  const _sealed=!!(_sr&&(_sr.end||_sr.over));
-  const _nfOn=_nf&&!_sealed;
-  card.style.display=(_dw||_nfOn)?'':'none';
-  try{Array.from(card.children).forEach(el=>{ el.style.display=(el.id==='noflopWrap')?(_nfOn?'':'none'):(_dw?'':'none'); });}catch(e){}
-  if(!(_dw||_nfOn))return;
-  /* #118b — board already sealed (by you, a reload, or any hand on the wire):
-     the button stands down and shows the call. A new window resets it. */
-  try{
-    const _sb=document.getElementById('noflopBtn'), _si=document.getElementById('noflopEnd');
-    if(_sb&&_si){
-      /* #noflop0 — a HELD board keeps the held wording through every re-render
-         (this runs on the 45s pull and the 60s tick, and used to stomp it back). */
-      const _hc=(typeof heldCard==="function")?heldCard(_sr):null;
-      if(_sr&&_sr.end){_sb.disabled=true;_sb.textContent=_hc?("⚑ HELD ON "+_hc+" — BOARD DID NOT MOVE"):("⚑ SEALED AT "+_sr.end+" — ON THE WIRE");_si.disabled=true;if(!_si.value)_si.value=_sr.end;}
-      else{_sb.disabled=false;_sb.textContent="⚑ NO FLOP — Dispatch Is Over";_si.disabled=false;}
-    }
-  }catch(e){}
+  /* #nfoff(aug24) — this card used to open for EITHER window: the drop window, or the
+     NO FLOP window with every child but #noflopWrap hidden. With the panel retired that
+     second case would have parked an EMPTY card on screen for hours — the card visible,
+     all of its children display:none. The Drop Log is the only thing in here now, so it
+     rides the drop window alone. The board-sealed lookup and the button's own
+     sealed/held wording went with it; the Recent Boards row is the record. */
+  const _dw=dropWindowOpen();
+  card.style.display=_dw?'':'none';
+  try{Array.from(card.children).forEach(el=>{ el.style.display=_dw?'':'none'; });}catch(e){}
+  if(!_dw)return;
   const el=document.getElementById('dropList');
   const u=dropUnion();
   /* #dl2 — animate only what CHANGED: total pops when it moves, the newest row
