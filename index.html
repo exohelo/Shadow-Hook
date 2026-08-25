@@ -9524,7 +9524,25 @@ function applyDaylight(){
      night at 9 AM inside a container or to day at 2 AM under a floodlight,
      which is exactly the unpredictability the fixed window is here to remove. */
 })();
-function notifyPrefOn(){ try{return localStorage.getItem(K("notify"))==="1"}catch(e){return false} }
+/* ═══ #boardon(aug24) — THE BOARD BELL RIDES ON BY DEFAULT ═══
+   A FUNCTION, not a const, and declared here rather than beside ALERT_KINDS 9,000 lines
+   below: function declarations hoist completely, a const does not, and notifyPrefOn()
+   is read from renderMyOdds during startup. A temporal-dead-zone throw there would make
+   the board bell read OFF for the whole session — the same trap #fix3(bucks) documents.
+   ONE definition, because there are TWO readers of this key and they were about to
+   disagree: alertOn('board') goes through ALERT_KINDS.dflt, while notifyPrefOn() read
+   the key raw and returned false whenever it was absent. Flipping only the ALERT_KINDS
+   default would have lit the profile switch while pushOddsAlert(), maybeLivePing() and
+   the Lookout all still refused to send — a switch that says ON and a phone that stays
+   silent. Both now come through here.
+   Turning it off writes "0", and an explicit "0" always beats the default — so "on
+   until turned off" is exactly what it does. */
+function boardAlertDefault(){ return true; }
+function notifyPrefOn(){
+  try{ const v=localStorage.getItem(K("notify"));
+       return v==null ? boardAlertDefault() : v==="1"; }
+  catch(e){ return boardAlertDefault(); }
+}
 function setNotifyPref(v){ try{localStorage.setItem(K("notify"), v?"1":"0")}catch(e){} }
 function renderBell(){
   const el=document.getElementById('oddsBell'); if(!el)return;
@@ -29662,7 +29680,7 @@ window.shareCall=shareCall;
    firing-line alert has always had. Chat replies are the case that most wants
    real push, and the trigger below is already shaped to feed it.               */
 const ALERT_KINDS={
-  board:{key:'notify',      dflt:false},   /* the original bell — same key it always used */
+  board:{key:'notify',      dflt:boardAlertDefault()},   /* the original bell — same key it always used · #boardon(aug24): on until turned off, and boardAlertDefault() is the ONLY place that is decided */
   chat: {key:'notify_chat', dflt:true },   /* PUBLIC rooms (#alerts3 — private rooms + DMs split off, each its own switch) */
   chatpriv:{key:'notify_chatpriv',dflt:true},   /* #alerts3(aug13) — invite-only rooms */
   dm:   {key:'notify_dm',   dflt:true },        /* #alerts3(aug13) — direct messages */
@@ -29837,8 +29855,14 @@ function alPaint(){
     const row=document.getElementById('alStoreRow'); if(row)row.style.display=km?'':'none';
     [['alBoard','board'],['alChat','chat'],['alPriv','chatpriv'],['alDm','dm'],['alStore','store']].forEach(([id,kind])=>{
       const b=document.getElementById(id); if(!b)return;
-      b.classList.toggle('on',alertOn(kind)&&(typeof Notification!=='undefined'&&Notification.permission==='granted'));
-      b.setAttribute('aria-checked',alertOn(kind)?'true':'false');
+      /* #boardon(aug24) — one state, read once. These two lines used to disagree: the
+         class needed permission, aria-checked did not. With a default of ON that gap
+         becomes visible — a hand who has never granted notifications would see an
+         off-looking switch that announces itself as checked. What both should report is
+         whether the alert can ACTUALLY reach them. */
+      const _live=alertOn(kind)&&(typeof Notification!=='undefined'&&Notification.permission==='granted');
+      b.classList.toggle('on',_live);
+      b.setAttribute('aria-checked',_live?'true':'false');
     });
     const n=document.getElementById('alNote');
     if(n){
