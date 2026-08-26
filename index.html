@@ -7313,8 +7313,74 @@ function lofAnchor(){                // where the line of fire is measured from
   if(lastCall&&lastCall.pos)return lastCall.pos;
   try{return OPENP()}catch(e){return null}
 }
-function submitLiveCall(pos){ // no identity attached — a position IS a worker's number
+/* ===== #tape(aug26) — THE SCAN TAPE: EVERY SWIPE, NOT JUST THE ONES THAT MOVED =====
+   THE COMPLAINT: "only one person updates from the scan — more than one swipe is
+   happening." Both halves were true. lwPush() was reachable from exactly one
+   branch — `if(r===true)` — so a swipe reached the server ONLY if it walked the
+   board forward. Everything else died on the phone that made it:
+     · "behind"  — posVal(pos) <= posVal(lastCall.pos). Board order beats scan
+                   order by design, so a hand called at S4979 who finishes AFTER
+                   the hand at S4983 reports a card the reel is already past. On a
+                   busy board most swipes arrive out of board order, so most swipes
+                   are "behind" — invisible, uncounted, unrecoverable. (And the
+                   `<=` means two hands on the SAME card lose the second one.)
+     · "far"     — past the line of fire, parked in farHold, which is a plain
+                   in-memory array. Gone on reload, gone at window close.
+     · bad card  — posVal < 0, returns false, silence.
+   THE FIX IS A SECOND WIRE, NOT A CHANGE TO THE FIRST. live_wire still carries
+   only the calls that move the reel — the Aug 6 line-of-fire rule was earned the
+   hard way and is not being loosened. scan_tape carries EVERY swipe with the
+   verdict on it and where the board stood at the time. The reel behaves exactly
+   as it did; the difference is that nothing is thrown away silently any more.
+   Local swipes only: applyLiveCall also runs on wire replays, and recording those
+   would have every phone re-writing every other phone's swipe, forever. */
+function stPush(pos,outcome,boardAt,src){
+  try{ if(!window.SB)return;
+    const a=(typeof loadAcct==="function"&&loadAcct())||{};
+    window.SB.from('scan_tape').insert({
+      k:winKey()||'off-window', pos:String(pos||'').toUpperCase().trim(),
+      ts:Date.now(), outcome:outcome, board_at:boardAt||null,
+      by:a.id||'', by_handle:a.handle||'a hand', src:src||'scan'
+    }).then(function(){try{stCountRefresh(true);}catch(e){}},function(){});
+  }catch(e){}
+}
+/* #tape — THE CREW SEES COUNTS, NEVER NAMES. Reading scan_tape is crown-only, so
+   a member could not watch the swipes land at all without this: a security-definer
+   function that returns tallies with no identity in them. The live board stays a
+   board and does not become a list of who is standing where. */
+window.ST_COUNT=null; let _stCountAt=0,_stCountBusy=false;
+async function stCountRefresh(force){
+  try{
+    if(!window.SB)return null;
+    if(!force&&Date.now()-_stCountAt<9000)return window.ST_COUNT;   /* hudTick runs at 1s; this does not */
+    if(_stCountBusy)return window.ST_COUNT;
+    _stCountBusy=true;
+    const r=await window.SB.rpc('scan_tape_count',{p_k:winKey()||'off-window'});
+    _stCountBusy=false; _stCountAt=Date.now();
+    window.ST_COUNT=(r&&!r.error&&(Array.isArray(r.data)?r.data[0]:r.data))||null;
+    try{stCountPaint();}catch(e){}
+    return window.ST_COUNT;
+  }catch(e){_stCountBusy=false;return window.ST_COUNT;}
+}
+function stCountPaint(){
+  try{
+    const el=document.getElementById('hudTape'); if(!el)return;
+    const c=window.ST_COUNT;
+    if(!c||!(+c.swipes>0)){el.innerHTML='';return;}
+    const s1=+c.swipes,h1=+c.hands,bits=[];
+    if(+c.behind>0)bits.push(c.behind+' behind the reel');
+    if(+c.held>0)bits.push(c.held+' held');
+    if(+c.bad>0)bits.push(c.bad+' bad card'+(+c.bad===1?'':'s'));
+    el.innerHTML='<b>'+s1+'</b> swipe'+(s1===1?'':'s')+' · <b>'+h1+'</b> hand'+(h1===1?'':'s')
+      +' · <b>'+c.posted+'</b> moved the board'
+      +(bits.length?'<span class="dim"><br>'+bits.join(' · ')+' — all on the tape</span>':'');
+  }catch(e){}
+}
+window.stCountRefresh=stCountRefresh;
+function submitLiveCall(pos,src){ // the reel takes no identity — the TAPE does, and only the crown reads it
+  const _was=(lastCall&&lastCall.pos)||null;                    /* where the board stood when this landed */
   const r=applyLiveCall(pos,Date.now(),'local');
+  try{ stPush(pos, r===true?'posted':(r==='far'?'held':(r==='behind'?'behind':'bad')), _was, src||'scan'); }catch(e){}
   if(r===true){ try{lwPush(lastCall.pos);}catch(e){}   /* #onewire — and every other phone hears it */
     /* #marks2 — a call that actually MOVED the board is a board call on the record */
     try{ const n=tallyAdd('bcalls');
@@ -7322,7 +7388,7 @@ function submitLiveCall(pos){ // no identity attached — a position IS a worker
       if(n>=100)unlockBadge(bixLate("Oracle")); }catch(e){} }
   else if(r==="far"){                                    /* #lof — the red flag, said out loud */
     try{const p=String(pos||'').toUpperCase().trim(),a=lofAnchor(),d=a?lofJump(a,p):null;
-      toast("⚠ HELD — board's at "+(a||"the gate")+(d!=null?" and "+p+" is "+d+" letters out, past the "+((lastCall&&lastCall.pos)?LOF_LETTERS:LOF_OPEN_LETTERS)+"-letter line of fire":"")+". It posts only if the board works up close.");}catch(e){}
+      toast("⚠ HELD — board's at "+(a||"the gate")+(d!=null?" and "+p+" is "+d+" letters out, past the "+((lastCall&&lastCall.pos)?LOF_LETTERS:LOF_OPEN_LETTERS)+"-letter line of fire":"")+". It posts only if the board works up close — and it IS on the tape either way.");}catch(e){}
   }
   return r;
 }
@@ -7378,8 +7444,16 @@ function lwPush(pos){
 async function sbLoadLiveCalls(){
   try{
     if(!window.SB||!liveWindow())return;
-    const r=await window.SB.from('live_wire').select('pos,ts').eq('k',winKey()).order('id',{ascending:false}).limit(40);
-    if(r&&!r.error&&Array.isArray(r.data))r.data.forEach(x=>{try{applyLiveCall(x.pos,+x.ts||Date.now());}catch(e){}});
+    /* #replay(aug26) — THIS RAN THE WINDOW BACKWARDS. order('id',desc) hands back
+       newest-first, and the loop applied them in that order: the newest call was
+       measured against OPENP() — the board's PREDICTED opening card — and if it
+       was more than LOF_OPEN_LETTERS out it was HELD, then every older call came
+       back "behind" and was discarded. A phone joining mid-dispatch could sit
+       dark on a board that had been walking all morning. Fetch newest-first (so a
+       long window isn't truncated from the wrong end), then WALK them oldest to
+       newest, which is what the line-of-fire gate was built to receive. */
+    const r=await window.SB.from('live_wire').select('pos,ts').eq('k',winKey()).order('id',{ascending:false}).limit(300);
+    if(r&&!r.error&&Array.isArray(r.data))r.data.slice().reverse().forEach(x=>{try{applyLiveCall(x.pos,+x.ts||Date.now());}catch(e){}});
   }catch(e){}
 }
 setTimeout(function(){try{sbLoadLiveCalls();}catch(e){}},1500);   /* #onewire — a phone opened mid-dispatch catches up on where the board is */
@@ -13170,7 +13244,7 @@ document.getElementById('njAdd').onclick=()=>{
   const id=myBoardId();
   /* #lof — only a docket dated TODAY speaks for today's board. Backlogging an old
      slip during a live window is exactly how a hand 18 letters out threw the count. */
-  if(id&&liveWindow()&&date===todayISO())submitLiveCall(id);   // out of hours: just do nothing, no notice needed
+  if(id&&liveWindow()&&date===todayISO())submitLiveCall(id,'docket');   // out of hours: just do nothing, no notice needed
   njClearForm();
   checkMarks();
   drawWG();
@@ -20205,7 +20279,7 @@ function sealScan(p){
   DOCKETS.push(j);saveDK();renderDockets();drawWG();checkMarks();
   // feed the live board off the member's own dispatch number; silent when dispatch isn't running.
   const id=myBoardId()||p.pos;
-  if(w&&id&&j.date===todayISO())submitLiveCall(id);   /* #lof — an old slip scanned late says nothing about where today's board is */
+  if(w&&id&&j.date===todayISO())submitLiveCall(id,'slip');   /* #lof — an old slip scanned late says nothing about where today's board is */
 }
 function scanHandOff(p){
   gotoTab('dockets');
@@ -27102,6 +27176,13 @@ html.arcade .hud-pos{color:var(--neon);text-shadow:0 0 22px rgba(77,226,255,.7),
 .hud-you b{font-family:'Anton',sans-serif;font-size:19px;letter-spacing:.04em}
 html.arcade .hud-you.near{border-color:rgba(182,255,61,.6);box-shadow:0 0 22px rgba(182,255,61,.25)}
 .hud-stop{margin-top:6px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--steel)}
+/* #tape(aug26) — the swipe count under the reel. A board that has not moved in ten
+   minutes but has taken nine swipes is a working board, and the hands should be able
+   to see that instead of assuming the app ate their scan. Counts only, never names. */
+.hud-tape{margin-top:11px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;letter-spacing:.03em;color:var(--steel);text-align:center;line-height:1.6}
+.hud-tape b{color:var(--copper-hi)}
+html.arcade .hud-tape b{color:var(--neon2)}
+.hud-tape .dim{opacity:.6;font-size:10.5px}
 .hud-foot{display:flex;flex-direction:column;gap:10px}
 .hud-scan{display:flex;gap:8px}
 .hud-scan input{flex:1;background:var(--well);border:1px solid var(--line);border-radius:12px;color:var(--bone);
@@ -27549,6 +27630,11 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
     <div id="kmStock" class="sub" style="line-height:1.7;margin-bottom:14px">—</div>
 
     <!-- #pulse2(aug13) — FOOTFALL: devices through the door, by day. Run PULSE.sql once. -->
+    <div class="card-h" style="margin-top:4px">The Scan Tape <span class="pill gold" id="kmTapeN" style="display:none">0</span></div>
+    <div class="sub" style="margin:-2px 0 8px;font-size:11px;line-height:1.6">Every swipe that landed — moved the board or not. <b style="color:#d8a544">behind the reel</b> is normal, not a lost scan: board order beats scan order, so a hand called earlier who finishes later reports a card the board is already past.</div>
+    <input class="field" id="kmTapeFind" placeholder="filter — card, handle, outcome, board" style="margin-bottom:6px">
+    <div id="kmTape" class="sub" style="max-height:300px;overflow-y:auto;line-height:1.7;margin-bottom:14px">—</div>
+
     <div class="card-h" style="margin-top:4px">The Traffic</div>
     <div id="kmTraffic" class="sub" style="line-height:1.8;margin-bottom:14px">counting footsteps…</div>
 
@@ -27820,6 +27906,7 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
     try{kmBots();}catch(e){}       /* #kmbots — the manual workflow triggers */
     try{kmMail();}catch(e){}     /* #mailbag — what the hands sent in */
     try{kmStock();}catch(e){}    /* #stockroom — vendor gear waiting for the word */
+    try{kmTape();}catch(e){}     /* #tape — every swipe, moved the board or not */
     try{kmTraffic();}catch(e){}  /* #pulse2 — who's coming through the door */
     try{kmRoster();}catch(e){}
     try{kmApps();}catch(e){}     /* #amb — pending crown requests ride along */
@@ -29087,6 +29174,69 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
     }
   };
 
+  /* ═══════════ #tape(aug26) — THE SCAN TAPE ═══════════
+     The crown's answer to "is anybody else even swiping?". Every row live_wire
+     never saw, with the verdict on it and where the reel stood at the time.
+     Reading it is crown-only by RLS — the crew gets the counts in the HUD. */
+  window.kmTape=async function(){
+    const out=$('kmTape'), n=$('kmTapeN'); if(!out)return;
+    out.textContent='reading the tape…';
+    if(!window.SB){out.textContent='backend off — the tape is unreachable';return;}
+    try{
+      const r=await window.SB.from('scan_tape').select('*').order('id',{ascending:false}).limit(200);
+      if(r&&r.error){
+        out.innerHTML='<span style="color:var(--ember)">'
+          +(/does not exist|relation|schema/i.test(r.error.message||'')
+              ? 'the tape isn\u2019t built yet — run SCAN-TAPE.sql in Supabase (one paste)'
+              : esc(r.error.message))+'</span>';
+        if(n)n.style.display='none';
+        return;
+      }
+      window.__kmTapeRows=(r&&r.data)||[];
+      if(n){n.textContent=window.__kmTapeRows.length;n.style.display=window.__kmTapeRows.length?'':'none';}
+      kmTapePaint();
+    }catch(e){out.innerHTML='<span style="color:var(--ember)">tape failed: '+esc(e.message)+'</span>';}
+  };
+  function kmTapePaint(){
+    const out=$('kmTape'); if(!out)return;
+    const q=(($('kmTapeFind')||{}).value||'').trim().toLowerCase();
+    let rows=window.__kmTapeRows||[];
+    if(q)rows=rows.filter(x=>((x.pos||'')+' '+(x.by_handle||'')+' '+(x.outcome||'')+' '+(x.src||'')+' '+(x.k||'')).toLowerCase().indexOf(q)>=0);
+    if(!rows.length){out.innerHTML='<span style="color:var(--steel)">'+(q?'nothing on the tape matches that':'no swipes on the tape yet')+'</span>';return;}
+    const WORD={posted:'moved the board',behind:'behind the reel',held:'held — past the line of fire',bad:'bad card'};
+    const COL ={posted:'#9fd18a',behind:'#d8a544',held:'#e0492e',bad:'#8a8f96'};
+    let html='',lastK=null;
+    rows.forEach(function(x){
+      if(x.k!==lastK){
+        lastK=x.k;
+        const grp=rows.filter(y=>y.k===x.k);
+        const hands=new Set(grp.map(y=>y.by||y.by_handle)).size;
+        const moved=grp.filter(y=>y.outcome==='posted').length;
+        html+='<div style="margin:12px 0 4px;font-family:\'IBM Plex Mono\',monospace;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--steel)">'
+          +esc(x.k)+' · '+grp.length+' swipe'+(grp.length===1?'':'s')+' · '+hands+' hand'+(hands===1?'':'s')+' · '+moved+' moved it</div>';
+      }
+      const t=new Date(+x.ts||0);
+      const hh=(t.getHours()%12||12)+':'+String(t.getMinutes()).padStart(2,'0')+(t.getHours()<12?'a':'p');
+      /* two lines per swipe. One cramped flex row put the verdict, the handle and
+         the source in a fight over a phone's width and the source lost every time. */
+      html+='<div style="padding:6px 0;border-bottom:1px solid var(--line-soft)">'
+        +'<div style="display:flex;gap:8px;align-items:baseline">'
+          +'<span class="mono" style="flex:none;font-size:10px;color:var(--steel)">'+hh+'</span>'
+          +'<b class="mono" style="flex:none;color:var(--copper-hi);font-size:13.5px">'+esc(x.pos||'—')+'</b>'
+          +'<span style="flex:1"></span>'
+          +'<span style="flex:none;font-size:11px;color:var(--copper-hi)">'+esc(x.by_handle||'a hand')+'</span>'
+        +'</div>'
+        +'<div style="font-size:11.5px;line-height:1.45;color:'+(COL[x.outcome]||'var(--steel)')+'">'+(WORD[x.outcome]||esc(x.outcome||'—'))
+          +(x.board_at?'<span style="color:var(--steel)"> · reel was '+esc(x.board_at)+'</span>':'')
+          +(x.src?'<span style="color:var(--steel)"> · '+esc(x.src)+'</span>':'')
+        +'</div>'
+        +'</div>';
+    });
+    out.innerHTML=html;
+  }
+  window.kmTapePaint=kmTapePaint;
+  try{const _tf=$('kmTapeFind'); if(_tf)_tf.addEventListener('input',function(){try{kmTapePaint();}catch(e){}});}catch(e){}
+
   /* ═══════════ #ccdiag(aug15) — kmDiag(): the whole desk, checked ═══════════
      Open the console on the live site (signed in as the Keymaster) and type:
        kmDiag()
@@ -29117,6 +29267,7 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
     await probe('hall_line_log','run shadowhook_fixes.sql');
     await probe('board_wire','run noflop_wire.sql');
     await probe('drop_wire','run DROP-WIRE-VOID.sql (the Keymaster strike columns)','cid,k,n,cat,void_reason,void_by,void_at');
+    await probe('scan_tape','run SCAN-TAPE.sql (the swipe record)');
     await probe('board_week','run BOARDS-WEEK.sql (the week board view)');
     await probe('bucks_book','run BUCKS-BANK.sql');
     await probe('buck_ledger','the server-side ledger — MEMBER-BOOK.sql reads it');
@@ -29646,6 +29797,8 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
     <div class="hud-next" id="hudNext">waiting on the first scan…</div>
     <div class="hud-you" id="hudYou" style="display:none"></div>
     <div class="hud-stop" id="hudStop"></div>
+    <!-- #tape(aug26) — proof the crew is swiping even when the reel sits still -->
+    <div class="hud-tape" id="hudTape"></div>
   </div>
   <div class="hud-foot">
     <div class="hud-scan">
@@ -29662,6 +29815,7 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
   function el(id){return document.getElementById(id)}
   window.hudOpen=function(){ const h=el('hudMode'); if(!h)return; h.style.display='flex';
     try{buzz(20)}catch(e){} hudTick();
+    try{stCountRefresh(true);}catch(e){}   /* #tape — the count is live the moment it opens */
     if(window._hudInt)clearInterval(window._hudInt); window._hudInt=setInterval(hudTick,1000); };
   window.hudClose=function(){ const h=el('hudMode'); if(h)h.style.display='none';
     if(window._hudInt){clearInterval(window._hudInt);window._hudInt=null;} };
@@ -29704,13 +29858,14 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
     }catch(e){}
     try{ const o=window._lastStageO;
       el('hudStop').textContent=o?('the call says it stops at '+String.fromCharCode(65+((o.base+o.med)%26))+' · '+o.pmove+'% to move'):''; }catch(e){}
+    try{ stCountRefresh(false); stCountPaint(); }catch(e){}   /* #tape — throttled inside; the paint is free */
   }
   const sg=el('hudScanGo'), si=el('hudScan');
   if(sg&&si){ const go=()=>{ const v=(si.value||'').toUpperCase().trim(); if(!v)return;
-      let r=false; try{r=submitLiveCall(v)}catch(e){}
+      let r=false; try{r=submitLiveCall(v,'hud')}catch(e){}
       if(r===true){ si.value=''; try{buzz(25)}catch(e){} try{toast('📡 '+v+' on the wire')}catch(e){} hudTick(); }
       else if(r==='far'){ si.value=''; try{buzz([30,40,30])}catch(e){} hudTick(); }   /* #lof — held, not an error: submitLiveCall already raised the red flag */
-      else if(r==='behind'){ si.value=''; try{toast('Board already past '+v)}catch(e){} }
+      else if(r==='behind'){ si.value=''; try{toast('Board already past '+v+' — logged on the tape')}catch(e){} hudTick(); }
       else { si.style.borderColor='var(--ember)'; setTimeout(()=>si.style.borderColor='',900); } };
     sg.addEventListener('click',go);
     si.addEventListener('keydown',e=>{if(e.key==='Enter')go();});
