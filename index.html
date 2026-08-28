@@ -4305,6 +4305,43 @@ window.DEVLOG=(function(){
     </div>
   </div>
 
+  <style>
+  /* #48i — the Pier 400 stage is the light banner plate; opaque guide backdrop in both themes */
+  #p4Guide{background:rgba(11,13,15,.94)}
+  html.daylight #p4Guide{background:rgba(240,242,245,.97)}
+  </style>
+  <!-- #48i — APM TERMINALS · PIER 400 · interactive yard viewer · the posted emergency map, berths TI 400-405 -->
+  <div class="yiw" id="p4w">
+    <div class="yi-top">
+      <button class="yi-back" id="p4Back" type="button" aria-label="Back">&#8249;</button>
+      <div class="yi-id"><span class="ico">&#128506;</span><div><b id="p4Name">APM TERMINALS &#183; PIER 400</b><span id="p4Sub">&#8212;</span></div></div>
+      <button class="yi-guidebtn" id="p4GuideBtn" type="button">&#128214; GUIDE</button>
+    </div>
+    <div class="yi-search">
+      <input id="p4Search" placeholder="Find a row, berth or spot &#8212; A 04, K 02, Berth 401, chassis pit&#8230;" autocomplete="off">
+      <div class="yi-sug" id="p4Sug"></div>
+    </div>
+    <div class="yi-vp" id="p4Vp">
+      <button class="yi-reset" id="p4Reset" type="button">&#10530; FIT</button>
+      <button class="yi-legend-btn" id="p4LegBtn" type="button">&#9776; LEGEND</button>
+      <div class="yi-stage" id="p4Stage"></div>
+      <div class="yi-hint">PINCH ZOOM &#183; DRAG &#183; TAP A SPOT &#183; DOUBLE-TAP</div>
+      <div class="yi-legend" id="p4Legend"><div class="lgc">
+        <h4>Pier 400 Legend</h4><div id="p4LegList"></div>
+        <button class="close" id="p4LegClose" type="button">Close</button>
+      </div></div>
+      <div class="yi-guide" id="p4Guide"><div class="ygc">
+        <div class="yg-top"><b>PIER 400 EMERGENCY GUIDE</b><button id="p4GuideClose" type="button">&#10005;</button></div>
+        <div class="yg-body" id="p4GuideBody"></div>
+      </div></div>
+      <div class="yi-info" id="p4Info">
+        <button class="close-i" id="p4InfoClose" type="button">&#10005;</button>
+        <div class="ih"><span class="swatch" id="p4Sw"></span><span class="nm" id="p4InfoNm">&#8212;</span><span class="cat" id="p4InfoCat"></span></div>
+        <div class="desc" id="p4InfoDesc"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- send word to the keymaster -->
   <div class="sheet" id="wordSheet">
     <div class="sheet-card" style="text-align:left">
@@ -26025,6 +26062,533 @@ window.addEventListener('resize',()=>{if($e('evw').classList.contains('on'))evFi
 })();
 </script>
 
+<script>
+/* #48i — APM TERMINALS · PIER 400 · interactive vector yard map (2500 Navy Way, Terminal Island) */
+/* ============ APM TERMINALS — interactive redraw of the posted EMERGENCY MAP ============
+   Vector redraw of the wall banner "APM TERMINALS · 2500 NAVY WAY · EMERGENCY MAP", in the
+   sign's own landscape layout and colors: white plate · light-blue water · the Automated Yard
+   across the whole west end · the grounded grid in columns 01 / 03 / 04 / 05, rows A through N
+   with the K/L pairs and M 01 · the wheeled/blue bands · Berth 401 and the wharf under the
+   cranes · Power Equipment Parking, Labor Parking and the Ⓐ assembly areas · the North Gate
+   truck entrance · the rail yard (NO TRUCK ACCESS) and Navy Way · the P & R rows over the
+   828 Chassis Pit · the south end — South Gates, South In Gate, Admin, V 88, the reefer rows,
+   Maint, Customs Portal, Out Gate and Return To Terminal · the marked green/orange routes ·
+   and the sign's own LEGEND and EMERGENCY panel.
+   The banner is sun-bleached and printed coarse: some row numbers in the south end and the
+   berth numbers west of 401 are unreadable on the sign itself. Those spots say so instead of
+   guessing. Hooks into openYardMap(): APM (Maersk · Pier 400) opens this; nothing else moves. */
+(function(){
+"use strict";
+const VBW=3000, VBH=2000;
+
+const APZ={
+  op:"APM", name:"APM TERMINALS \u00b7 PIER 400", sub:"2500 Navy Way \u00b7 Terminal Island \u00b7 Berths TI 400\u2013405",
+  vb:[0,0,VBW,VBH],
+  cats:{
+    gr   :{c:"#f0e7c4",s:"#6b5c33",lc:"#33301c",t:"GROUNDED ROW",d:"Grounded container row \u2014 boxes stacked on the deck. Rows are lettered A\u2013N and numbered by column."},
+    whl  :{c:"#a6d9ef",s:"#1d3a5c",lc:"#12293f",t:"WHEELED / BLUE BAND",d:"Blue band on the sign \u2014 wheeled or chassis-borne boxes between the grounded rows."},
+    reef :{c:"#a6d9ef",s:"#1d3a5c",lc:"#12293f",t:"REEFER ROW",d:"Reefer row in the south yard \u2014 plugged refrigerated boxes. Row numbers are worn off this copy of the sign."},
+    srow :{c:"#c3e5d9",s:"#2c6b5c",lc:"#173b32",t:"SOUTH YARD ROW",d:"South-end yard row. Row numbers are worn off this copy of the sign."},
+    auto :{c:"#e9e3d4",s:"#a89f88",lc:"#6b6558",t:"AUTOMATED YARD",d:"The automated yard \u2014 machines work these blocks. Nobody walks or drives in here without clearance and an escort."},
+    berth:{c:"#efece4",s:"#55524a",lc:"#33302a",t:"WHARF / BERTH",d:"Wharf apron under the cranes. Stokes baskets and access ladders are along the apron \u2014 stay out from under the hook."},
+    fac  :{c:"#bfe0f2",s:"#1d3a55",lc:"#0f2337",t:"FACILITY",d:"Terminal building."},
+    tan  :{c:"#e8dcb4",s:"#6b5c33",lc:"#3d3418",t:"YARD BLOCK",d:"Marked yard block on the sign."},
+    park :{c:"#ffffff",s:"#3a3730",lc:"#26241e",t:"PARKING",d:"Parking area."},
+    asm  :{c:"#1e9e50",s:"#0d3f1c",lc:"#ffffff",t:"ASSEMBLY AREA",d:"Assembly area \u24b6. If you are evacuated, come here and stay put until you are counted."},
+    gate :{c:"#ffffff",s:"#26241e",lc:"#26241e",t:"GATE / LANES",d:"Gate and truck lanes."},
+    rail :{c:"#f2f0ea",s:"#55524a",lc:"#33302a",t:"RAIL YARD",d:"Rail yard \u2014 NO TRUCK ACCESS. Trains are built and worked here."},
+    chass:{c:"#ffffff",s:"#3a3730",lc:"#26241e",t:"CHASSIS",d:"Chassis storage / pit \u2014 skeletals that carry the boxes over the road."},
+    road :{c:"#f4f2ea",s:"#55524a",lc:"#33302a",t:"ROAD",d:"Terminal road. Obey posted signs and traffic direction."}
+  },
+  legend:[["gr","Grounded row \u2014 A\u2013N by column"],["whl","Blue band \u2014 wheeled"],
+    ["reef","Reefer rows \u2014 south end"],["srow","South yard rows"],
+    ["auto","Automated Yard \u2014 no entry"],["berth","Wharf / berths"],
+    ["asm","Assembly area \u24b6"],["rail","Rail yard \u2014 no trucks"],
+    ["fac","Building"],["chass","Chassis"],["gate","Gates & lanes"],["park","Parking"]],
+  spots:[]
+};
+
+/* ============================ SPOTS ============================ */
+(function(){
+  const S=APZ.spots;
+  const add=(id,label,cat,x,y,w,h,extra)=>{S.push(Object.assign({id,label:label||id,cat,x:Math.round(x),y:Math.round(y),w:Math.round(w),h:Math.round(h)},extra||{}));};
+
+  /* ---- the grounded grid: columns 05 / 04 / 03 / 01, west to east ---- */
+  const COL={"05":[1080,250],"04":[1355,250],"03":[1630,250],"01":[1905,320]};
+  const RY ={A:420,B:477,C:534,D:591,E:648,F:718,G:775,H:832,J:889};
+  const RH=42;
+  const grounded=(row,col,extra)=>{const c=COL[col];
+    add(row+col,row+" "+col+" GROUNDED","gr",c[0],RY[row],c[1],RH,
+      Object.assign({lb:row+" "+col+" GROUNDED",fs:15,
+        desc:"Grounded row "+row+" "+col+" \u2014 column "+col+", row "+row+". Marked GROUNDED on the sign."},extra||{}));};
+
+  ["A","B","C","D","E","F","G","H","J"].forEach(r=>{grounded(r,"04");grounded(r,"03");grounded(r,"01");});
+  ["F","G","H","J"].forEach(r=>grounded(r,"05"));
+
+  /* blue wheeled bands between the J and M rows in 05 / 04 / 03 */
+  [0,1,2].forEach(i=>{
+    const y=950+i*57;
+    add("W04-"+i,"WHEELED BAND","whl",COL["04"][0],y,COL["04"][1],RH,{nolabel:true,
+      desc:"Blue band between the J and M rows in column 04 \u2014 wheeled boxes. The row number on the sign is worn off."});
+    add("W03-"+i,"WHEELED BAND","whl",COL["03"][0],y,COL["03"][1],RH,{nolabel:true,
+      desc:"Blue band between the J and M rows in column 03 \u2014 wheeled boxes. The row number on the sign is worn off."});
+  });
+  add("W05","WHEELED BAND","whl",COL["05"][0],950,COL["05"][1],RH,{nolabel:true,
+    desc:"Blue band under J 05 \u2014 wheeled boxes. The row number on the sign is worn off."});
+
+  /* K / L pairs and M 01 in the 01 column */
+  add("K02","K 02 GROUNDED","gr",1905,950,180,RH,{fs:14,desc:"Grounded row K 02 \u2014 paired with K 01 alongside it."});
+  add("K01","K 01 GROUNDED","gr",2098,950,127,RH,{fs:13,desc:"Grounded row K 01 \u2014 the short east row, paired with K 02."});
+  add("L02","L 02 GROUNDED","gr",1905,1007,180,RH,{fs:14,desc:"Grounded row L 02 \u2014 paired with L 01 alongside it."});
+  add("L01","L 01 GROUNDED","gr",2098,1007,127,RH,{fs:13,desc:"Grounded row L 01 \u2014 the short east row, paired with L 02."});
+  add("M01","M 01","gr",1905,1064,320,RH,{fs:15,desc:"Row M 01 \u2014 the wide row at the foot of the 01 column, above the Gen Set line."});
+
+  /* M / N rows in 04 and 03 */
+  grounded("M","04");grounded("N","04");grounded("M","03");grounded("N","03");
+  S.filter(s=>/^(M|N)0[34]$/.test(s.id)).forEach(s=>{s.y=(s.id[0]==="M")?1128:1185;});
+  S.filter(s=>s.id==="N04"||s.id==="N03").forEach(s=>{s.arrowW=true;});
+
+  /* ---- the automated yard ---- */
+  add("AUTO","AUTOMATED YARD","auto",360,340,700,820,{nolabel:true,hull:true,
+    desc:"The Automated Yard \u2014 the whole west end of Pier 400. Automated stacking cranes and machine lanes. Do not enter on foot or by truck."});
+
+  /* ---- wharf / berths ---- */
+  add("B401","BERTH 401","berth",1560,300,660,66,{fs:20,
+    desc:"Berth 401 \u2014 the east end of the wharf, closest to the North Gate. The berth numbers west of 401 are covered on this copy of the sign."});
+  add("BW","BERTH \u2014 NUMBER COVERED","berth",620,300,930,66,{fs:17,lb:"BERTH",
+    desc:"Wharf west of Berth 401. The berth number is covered by the Automated Yard overlay on this copy of the sign \u2014 Pier 400 runs 401 through 406 west along the face."});
+  add("BNW","BERTH \u2014 NORTHWEST FACE","berth",392,430,150,300,{nolabel:true,ang:-42,
+    desc:"The angled northwest face of the wharf. Cranes, AEDs and access ladders are marked along it on the sign."});
+
+  /* ---- east end: gate, parking, gen set ---- */
+  add("PEP","POWER EQUIPMENT PARKING","park",2270,350,240,260,{lb2:true,label2:"POWER|EQUIPMENT|PARKING",fs:19,
+    desc:"Power Equipment Parking \u2014 where the yard machines are parked at the head of the terminal."});
+  add("PEP2","POWER EQUIP. PARKING","park",2250,900,90,230,{nolabel:true,
+    desc:"Second power equipment parking strip, alongside the 01 column."});
+  add("LABN","LABOR PARKING","park",2372,700,172,420,{lb2:true,label2:"LABOR|PARKING",fs:20,
+    desc:"Labor parking at the north end \u2014 and the marked assembly area \u24b6 for this end of the terminal."});
+  add("ASMN","ASSEMBLY AREA \u24b6 \u2014 NORTH","asm",2435,742,80,80,{nolabel:true,
+    desc:"Assembly area \u24b6 at the north labor parking. If you are evacuated from the north end, come here and remain until you are accounted for."});
+  add("NGATE","NORTH GATE \u2014 TRUCK ENTRANCE","gate",2150,1120,90,180,{nolabel:true,
+    desc:"North Gate \u2014 the truck entrance, highlighted yellow on the sign. Oversize trucks use the lanes east of it."});
+  add("GENSET","GEN SET","gate",1900,1136,240,44,{fs:16,
+    desc:"Gen Set line \u2014 generator sets for reefer boxes, at the foot of the 01/03 columns."});
+  add("DAN","DRIVER'S ASSISTANCE \u2014 NORTH","gate",1900,1190,180,58,{nolabel:true,
+    desc:"Driver's assistance window (?) at the north end, with a telephone and restroom alongside \u2014 marked on the sign below the N rows."});
+  add("OSZN","OVERSIZE TRUCKS \u2014 NORTH","gate",2200,1370,150,70,{nolabel:true,
+    desc:"Oversize truck lanes at the North Gate approach."});
+
+  /* ---- rail yard + Navy Way ---- */
+  add("RAIL","RAIL YARD \u2014 NO TRUCK ACCESS","rail",1300,1285,950,265,{nolabel:true,ghost:true,
+    desc:"The rail yard \u2014 NO TRUCK ACCESS, marked twice on the sign. Trains are built and worked here on the R1\u2013R4 tracks."});
+  add("NAVY","NAVY WAY","road",760,1552,1490,44,{nolabel:true,
+    desc:"Navy Way \u2014 the road along the south side of the rail yard, running east to the gates. 2500 Navy Way is the terminal address."});
+
+  /* ---- P & R rows and the chassis pit ---- */
+  add("P09","P 09 GROUNDED","gr",470,1290,390,44,{fs:16,desc:"Grounded row P 09 \u2014 west of the rail yard, under the automated yard."});
+  add("P08","P 08 GROUNDED","gr",890,1290,390,44,{fs:16,desc:"Grounded row P 08 \u2014 west of the rail yard, alongside P 09."});
+  add("R09","R 09 GROUNDED","gr",470,1360,390,44,{fs:16,arrowW:true,desc:"Grounded row R 09 \u2014 green arrow on the sign points west along this row."});
+  add("R08","R 08 GROUNDED","gr",890,1360,390,44,{fs:16,arrowW:true,desc:"Grounded row R 08 \u2014 green arrow on the sign points west along this row."});
+  add("PIT828","828 CHASSIS PIT","chass",470,1430,810,80,{fs:22,
+    desc:"828 Chassis Pit \u2014 chassis storage and repair pit, between the R rows and the south gates."});
+
+  /* ---- south end ---- */
+  add("SGATES","SOUTH GATES","gate",640,1598,220,58,{fs:17,
+    desc:"South Gates \u2014 with the driver's assistance window (?) and a telephone marked alongside."});
+  add("SIN","SOUTH IN GATE","gate",980,1594,270,58,{fs:17,
+    desc:"South In Gate \u2014 the in-lanes at the south end of the terminal."});
+  add("V88","V 88 \u2014 FLIP / DOG","tan",660,1674,240,120,{lb2:true,label2:"V 88|FLIP / DOG",fs:18,
+    desc:"The V 88 block at the south end. The second line is printed FLIPIDOG on this copy \u2014 the slash between FLIP and DOG has filled in. Yard block, marked in tan on the sign."});
+  add("ADMIN","ADMIN BLDG","fac",1000,1676,96,104,{lb2:true,label2:"ADMIN|BLDG",fs:14,
+    desc:"Administration building, with a first aid kit, an AED and a restroom marked around it on the sign."});
+  add("LABS","LABOR PARKING \u2014 SOUTH","park",1130,1670,300,110,{lb2:true,label2:"LABOR|PARKING",fs:17,
+    desc:"Labor parking at the south end, by the Admin building \u2014 and the second marked assembly area \u24b6."});
+  add("ASMS","ASSEMBLY AREA \u24b6 \u2014 SOUTH","asm",1338,1690,72,72,{nolabel:true,
+    desc:"Assembly area \u24b6 at the south labor parking. Evacuated from the south end? Come here and stay until you are counted."});
+  add("WASH","WASH RAMP / M&R","fac",400,1806,168,84,{lb2:true,label2:"WASH RAMP|M &amp; R",fs:13,
+    desc:"Wash ramp and the M&R line at the southwest corner \u2014 the lettering is largely worn off this copy of the sign."});
+  add("MAINT","MAINT BLDG","fac",700,1806,92,110,{lb2:true,label2:"MAINT|BLDG",fs:13,
+    desc:"Maintenance building, with an AED and a restroom marked at it. One of the 'you are here' markers on this copy of the sign sits here."});
+  add("OUT","OUT GATE","gate",1418,1672,96,216,{nolabel:true,
+    desc:"Out Gate \u2014 the exit lanes at the southeast corner, called out in yellow on the sign."});
+  add("CUST","CUSTOMS PORTAL","gate",1146,1892,244,46,{fs:15,
+    desc:"Customs portal on the way out \u2014 the radiation portal every box passes through leaving the terminal."});
+  add("RTT","RETURN TO TERMINAL","gate",1560,1806,180,84,{nolabel:true,
+    desc:"Return to terminal \u2014 the loop back in from the out gate, marked at the bottom right of the sign."});
+  add("WALL","WALL STREET","road",600,1596,32,320,{nolabel:true,
+    desc:"Wall Street \u2014 the road down the west side of the south end."});
+
+  /* south yard rows \u2014 numbers worn off the sign */
+  const srow=(id,txt,cat,x,y,w,h)=>add(id,txt,cat,x,y,w,h,{nolabel:true,desc:
+    "South-end yard row. The printed row number is worn off this copy of the sign \u2014 read it off the row sign in the yard."});
+  [0,1].forEach(c=>{const x=812+c*320;
+    srow("SR"+c+"a","SOUTH YARD ROW","srow",x,1792,300,32);
+    srow("SR"+c+"b","REEFER ROW","reef",x,1830,300,32);
+    srow("SR"+c+"c","REEFER ROW","reef",x,1868,300,32);
+  });
+
+  APZ.byId={}; APZ.spots.forEach(s=>APZ.byId[s.id]=s);
+})();
+
+/* ============================ FURNITURE ============================ */
+const INK='#17191d', PLATE='#fdfcf8', GREY='#c9c6bd', WATER='#8fd0ef',
+      RED='#e02b20', YEL='#f2e63b', GRN='#1e9e50', ORG='#f0871f', SAND='#e9e3d4';
+const TXT=(x,y,s,size,opt)=>{const o=opt||{};return `<text x="${x}" y="${y}" fill="${o.c||INK}" font-family="${o.mono?"'IBM Plex Mono',monospace":"'Barlow Condensed',sans-serif"}" font-weight="${o.w||700}" font-size="${size}" letter-spacing="${o.ls!==undefined?o.ls:0.4}" text-anchor="${o.a||'middle'}" ${o.r?`transform="rotate(${o.r} ${x} ${y})"`:''} ${o.o?`opacity="${o.o}"`:''} style="pointer-events:none">${s}</text>`;};
+const AIC={
+  hyd :(x,y)=>`<rect x="${x-5}" y="${y-5}" width="10" height="10" fill="${RED}"/>`,
+  aed :(x,y)=>`<g><rect x="${x-11}" y="${y-11}" width="22" height="22" fill="#fff"/><path d="M${x},${y+8} C${x-11},${y-1} ${x-8},${y-8} ${x-3.5},${y-8} C${x-1},${y-8} ${x},${y-6} ${x},${y-5} C${x},${y-6} ${x+1},${y-8} ${x+3.5},${y-8} C${x+8},${y-8} ${x+11},${y-1} ${x},${y+8} Z" fill="${RED}"/><path d="M${x+1.8},${y-4.6} L${x-2.6},${y+0.6} L${x+0.4},${y+0.6} L${x-1.8},${y+5.2}" stroke="#fff" stroke-width="1.5" fill="none"/></g>`,
+  aid :(x,y,k)=>{const r=k||9;return `<g><circle cx="${x}" cy="${y}" r="${r+1.5}" fill="#fff" stroke="${GRN}" stroke-width="1.2"/><path d="M${x-r*0.34},${y-r*0.9} h${r*0.68} v${r*0.56} h${r*0.56} v${r*0.68} h-${r*0.56} v${r*0.56} h-${r*0.68} v-${r*0.56} h-${r*0.56} v-${r*0.68} h${r*0.56} z" fill="${GRN}"/></g>`;},
+  asm :(x,y,k)=>{const r=k||16;return `<g><rect x="${x-r}" y="${y-r}" width="${r*2}" height="${r*2}" rx="2" fill="${GRN}" stroke="#0d3f1c" stroke-width="1.2"/><text x="${x}" y="${y+r*0.55}" text-anchor="middle" fill="#fff" font-family="'Barlow Condensed',sans-serif" font-weight="700" font-size="${r*1.7}">A</text></g>`;},
+  Rb  :(x,y)=>`<g><rect x="${x-9}" y="${y-9}" width="18" height="18" rx="1.5" fill="${INK}"/><text x="${x}" y="${y+5}" text-anchor="middle" fill="#fff" font-family="'Barlow Condensed',sans-serif" font-weight="700" font-size="14">R</text></g>`,
+  q   :(x,y)=>`<g><rect x="${x-10}" y="${y-10}" width="20" height="20" rx="1.5" fill="${INK}"/><text x="${x}" y="${y+6}" text-anchor="middle" fill="#fff" font-family="'Barlow Condensed',sans-serif" font-weight="700" font-size="16">?</text></g>`,
+  ph  :(x,y)=>`<path d="M${x-8},${y-8} q5,-3 8,1 l2,4 q1,3 -2,4 q-1,4 3,7 q3,4 7,3 q1,-3 4,-2 l4,2 q4,3 1,8 q-4,4 -10,1 q-9,-4 -14,-12 q-5,-8 -3,-16 Z" fill="${INK}"/>`,
+  stok:(x,y)=>`<g><rect x="${x-6}" y="${y-13}" width="12" height="26" rx="5" fill="#fff" stroke="${INK}" stroke-width="1.6"/><path d="M${x-6},${y-8} h12 M${x-6},${y-3} h12 M${x-6},${y+2} h12 M${x-6},${y+7} h12" stroke="${INK}" stroke-width="1.4"/></g>`,
+  here:(x,y)=>`<circle cx="${x}" cy="${y}" r="13" fill="${GRN}"/>`,
+  no  :(x,y,k)=>{const r=k||11;return `<g><circle cx="${x}" cy="${y}" r="${r}" fill="none" stroke="${RED}" stroke-width="3.4"/><path d="M${x-r*0.7},${y+r*0.7} L${x+r*0.7},${y-r*0.7}" stroke="${RED}" stroke-width="3.4"/></g>`;}
+};
+const ARRW=(x,y,len,col,wid)=>{const L=len||44,c=col||GRN,w=wid||5;
+  return `<g style="pointer-events:none"><path d="M${x+L},${y} L${x},${y} M${x},${y} L${x+13},${y-9} M${x},${y} L${x+13},${y+9}" stroke="${c}" stroke-width="${w}" fill="none" stroke-linecap="round" stroke-linejoin="round"/></g>`;};
+const track=(d,w)=>`<path d="${d}" fill="none" stroke="${INK}" stroke-width="${w||3}" stroke-dasharray="1.6 4.4"/><path d="${d}" fill="none" stroke="${INK}" stroke-width="0.9"/>`;
+const plaque=(x,y,w,h,lines,fs)=>{let g=`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="8" fill="#fff" stroke="${INK}" stroke-width="2.4"/>`;
+  lines.forEach((L,i)=>{g+=TXT(x+w/2,y+h/2+(i-(lines.length-1)/2)*(fs+3)+fs*0.34,L,fs,{ls:1});});return g;};
+
+const LAND="M620,300 L2210,300 L2320,344 L2420,470 L2520,690 L2560,900 L2530,1120 L2450,1300 L2350,1430 L2250,1520 L2180,1560 "+
+           "L1560,1580 L1540,1622 L1520,1800 L1440,1900 L1250,1952 L700,1930 L500,1862 L395,1740 L350,1560 L335,1150 L345,760 L390,520 Z";
+
+function apBase(){
+  let g='';
+  /* plate + grommets */
+  g+=`<rect x="4" y="4" width="${VBW-8}" height="${VBH-8}" fill="${PLATE}" stroke="${INK}" stroke-width="3"/>`;
+  /* title strip */
+  g+=`<rect x="16" y="16" width="${VBW-32}" height="86" fill="#fff" stroke="${INK}" stroke-width="3"/>`;
+  g+=TXT(60,78,'APM TERMINALS',44,{a:'start',ls:1});
+  g+=`<path d="M700,62 l46,-26 M716,74 l46,-26" stroke="${ORG}" stroke-width="7" stroke-linecap="round"/>`;
+  g+=TXT(786,80,'Lifting Global Trade.',22,{a:'start',c:'#c96a12',w:600,ls:0.6});
+  g+=TXT(1500,80,'2500 NAVY WAY',52,{ls:2});
+  g+=TXT(VBW-60,80,'EMERGENCY MAP',52,{a:'end',ls:2});
+  /* water */
+  g+=`<rect x="8" y="104" width="${VBW-16}" height="${VBH-112}" fill="${WATER}"/>`;
+  /* land */
+  g+=`<path d="${LAND}" fill="${PLATE}" stroke="${INK}" stroke-width="3.4"/>`;
+  /* automated-yard sand fill (the west end reads tan on the sign) */
+  g+=`<path d="M620,300 L1300,300 L1300,1275 L470,1275 L470,1520 L350,1520 L335,1150 L345,760 L390,520 Z" fill="${SAND}" opacity=".85"/>`;
+  /* tyre-mark ghosting, like the bleached original */
+  g+=`<path d="M700,470 C1000,700 900,1000 640,1180" stroke="#b9b1a0" stroke-width="6" fill="none" opacity=".45"/>`;
+  g+=`<path d="M1160,760 C1140,860 1180,930 1240,1010" stroke="#b9b1a0" stroke-width="5" fill="none" opacity=".4"/>`;
+  /* brown blocks at the southwest corner of the automated yard */
+  [[366,1592,52,190],[428,1592,40,190],[478,1576,28,150]].forEach(b=>{
+    g+=`<rect x="${b[0]}" y="${b[1]}" width="${b[2]}" height="${b[3]}" fill="#b8873a" stroke="#7a5a25" stroke-width="1.4"/>`;});
+  /* north arrow */
+  g+=`<g transform="translate(2760,470)"><path d="M0,-90 L0,60" stroke="${INK}" stroke-width="5"/><path d="M0,-92 L-16,-46 L0,-58 L16,-46 Z" fill="${INK}"/><path d="M-26,10 h52" stroke="${INK}" stroke-width="5"/><path d="M-14,-16 h28" stroke="${INK}" stroke-width="5"/></g>`;
+  return g;
+}
+
+function apHulls(){
+  let g='';
+  /* ships alongside, bow east — three hulls across the face */
+  const hull=(x,y,w,h)=>`<path d="M${x},${y} L${x+w-h*0.9},${y} Q${x+w},${y+h/2} ${x+w-h*0.9},${y+h} L${x},${y+h} Z" fill="#fff" stroke="${INK}" stroke-width="2.6"/>`;
+  g+=hull(700,180,520,96)+hull(1290,178,460,96)+hull(1840,176,470,96);
+  [730,1320,1870].forEach(x0=>{for(let i=0;i<6;i++){g+=`<rect x="${x0+i*66}" y="${186}" width="46" height="80" fill="none" stroke="${INK}" stroke-width="1.8"/>`;}});
+  /* northwest face ship */
+  g+=`<g transform="rotate(-42 470 470)">${hull(300,410,330,84)}</g>`;
+  return g;
+}
+function apCranes(){
+  let g='';
+  const crane=(x,y)=>`<g style="pointer-events:none"><rect x="${x-16}" y="${y-4}" width="32" height="54" fill="none" stroke="${INK}" stroke-width="2.6"/><path d="M${x-16},${y+14} h32 M${x-16},${y+30} h32 M${x},${y-4} v54" stroke="${INK}" stroke-width="2"/></g>`;
+  [700,790,880,1010,1100,1240,1340,1450,1600,1700,1810,1930,2040,2150].forEach(x=>{g+=crane(x,306);});
+  return g;
+}
+
+function apBase2(){
+  let g='';
+  /* ---- rail: the fan off the northeast, down and west into the rail yard ---- */
+  for(let i=0;i<7;i++){
+    g+=track(`M${2330+i*26},${420+i*10} C ${2460+i*14},${760+i*12} ${2380+i*10},${1180+i*8} ${2150-i*22},${1330+i*30}`,2.6);
+  }
+  for(let i=0;i<6;i++){ g+=track(`M2200,${1310+i*40} L1310,${1318+i*40}`,2.6); }
+  g+=track(`M2160,1500 L900,1512`,2.6);
+  ["R1","R2","R3","R4"].forEach((r,i)=>{g+=TXT(2260,1352+i*40,r,17,{c:'#33302a'});});
+  /* rail-yard plaque, twice like the sign */
+  g+=plaque(1420,1380,430,86,['Rail Yard','NO TRUCK ACCESS'],27);
+  g+=AIC.no(1452,1423)+AIC.no(1818,1423);
+  /* ---- Navy Way ---- */
+  g+=`<path d="M780,1566 L2230,1548" stroke="${INK}" stroke-width="3"/>`;
+  [1000,1500,2000].forEach(x=>{g+=TXT(x,1590,'NAVY WAY',18,{ls:2,c:'#33302a'});});
+  g+=TXT(1290,1620,'NOT TO SCALE',15,{ls:1.4,c:'#55524a'});
+  /* ---- Wall Street ---- */
+  g+=`<path d="M616,1596 L616,1912" stroke="${INK}" stroke-width="2.4" stroke-dasharray="10 7"/>`;
+  g+=TXT(605,1742,'WALL STREET',16,{r:-90,ls:1.6,c:'#33302a'});
+  /* ---- high lane plaque ---- */
+  g+=plaque(1560,150,430,80,['High lane','NO TRUCK ACCESS'],25);
+  g+=AIC.no(1592,190)+AIC.no(1958,190);
+  /* ---- truck entrance callout ---- */
+  g+=plaque(2300,150,420,84,['TRUCK ENTRANCE','NORTH GATE'],28);
+  g+=`<path d="M2720,192 L2810,240" stroke="${INK}" stroke-width="3"/><path d="M2810,240 l-22,-4 l8,-10 Z" fill="${INK}"/>`;
+  /* ---- no-truck-access plaque, south service road ---- */
+  g+=plaque(70,1452,360,50,['NO TRUCK ACCESS'],23);
+  g+=AIC.no(104,1477)+AIC.no(396,1477);
+  /* ---- oversize trucks + return to terminal + out gate callouts ---- */
+  g+=plaque(2380,1470,240,76,['OVERSIZE','TRUCKS'],23);
+  g+=`<path d="M2380,1508 L2280,1470" stroke="${INK}" stroke-width="3"/><path d="M2280,1470 l22,2 l-8,10 Z" fill="${INK}"/>`;
+  g+=plaque(1556,1806,186,84,['RETURN TO','TERMINAL'],21);
+  g+=`<path d="M1556,1848 L1470,1878" stroke="${INK}" stroke-width="3"/><path d="M1470,1878 l18,-12 l4,12 Z" fill="${INK}"/>`;
+  g+=TXT(1448,1936,'CUSTOMS',15,{a:'start',ls:1,c:'#33302a'});
+  /* the scale line + lane numbers along the bottom */
+  [['1600',860],['1700',980],['1800',1100]].forEach(n=>{
+    g+=`<rect x="${n[1]-32}" y="1908" width="64" height="28" fill="#fff" stroke="${INK}" stroke-width="1.8"/>`+TXT(n[1],1928,n[0],16,{ls:1});});
+  g+=TXT(462,1928,'SCALE LINE',16,{ls:1.2,c:'#33302a'});
+  g+=`<rect x="1390" y="1740" width="30" height="62" fill="#fff" stroke="${INK}" stroke-width="1.6"/>`+TXT(1405,1771,'1100',15,{r:-90,ls:1});
+  return g;
+}
+
+/* the marked routes on the sign — green/yellow band, orange line, green arrows */
+function apRoutes(){
+  let g='';
+  const gy=d=>`<path d="${d}" fill="none" stroke="${YEL}" stroke-width="34" stroke-linejoin="round"/><path d="${d}" fill="none" stroke="${GRN}" stroke-width="24" stroke-linejoin="round"/>`;
+  g+=gy('M640,1248 L1900,1248');
+  g+=gy('M528,1300 L528,1772');
+  const org=d=>`<path d="${d}" fill="none" stroke="${ORG}" stroke-width="13" stroke-linejoin="round"/>`;
+  g+=org('M480,1418 L1290,1418 L1290,1330 L2300,1330');
+  return g;
+}
+
+/* the little safety icons scattered over the sign */
+function apIcons(){
+  let g='';
+  const HYD=[[600,352],[1080,352],[1560,352],[2040,352],[2260,352],[352,700],[352,1000],[352,1300],
+    [1060,420],[1340,420],[1620,420],[1900,420],[2225,420],[1060,600],[1620,600],[2225,600],
+    [1060,900],[1340,900],[1900,900],[2225,900],[1060,1120],[1620,1120],[2225,1120],
+    [470,1280],[880,1280],[1290,1280],[470,1420],[1290,1420],[2260,1300],
+    [800,1560],[1200,1560],[1700,1560],[2100,1560],[560,1660],[980,1660],[1420,1660],
+    [700,1780],[1100,1780],[1440,1790],[860,1900],[1240,1900],[1360,1770]];
+  HYD.forEach(p=>{g+=AIC.hyd(p[0],p[1]);});
+  const AED=[[1180,330],[520,560],[350,860],[2290,650],[2300,1430],[1090,1720],[900,1800]];
+  AED.forEach(p=>{g+=AIC.aed(p[0],p[1]);});
+  const AID=[[2270,700],[2255,830],[2330,1440],[1060,1650]];
+  AID.forEach(p=>{g+=AIC.aid(p[0],p[1]);});
+  const RST=[[700,382],[352,1080],[2262,470],[2258,760],[2300,1450],[1122,1712],[762,1824],[1940,1219]];
+  RST.forEach(p=>{g+=AIC.Rb(p[0],p[1]);});
+  const PH=[[2262,404],[2258,800],[2340,1452],[1006,1662],[2036,1221],[920,1656]];
+  PH.forEach(p=>{g+=AIC.ph(p[0],p[1]);});
+  [[820,352],[900,352],[1160,352],[1440,352],[1720,352],[1990,352],[2130,352]].forEach(p=>{g+=AIC.stok(p[0],p[1]);});
+  g+=AIC.q(1990,1219)+AIC.q(920,1614);
+  g+=AIC.here(636,1866)+AIC.here(880,1614);
+  g+=AIC.asm(2475,782,26)+AIC.asm(1374,1726,26);
+  /* green west arrows on the rows that carry them */
+  [[1355,1206],[1630,1206],[500,1382],[920,1382]].forEach(p=>{g+=ARRW(p[0],p[1],54);});
+  /* gate call-outs, highlighted yellow like the sign */
+  g+=`<rect x="2148" y="1118" width="96" height="186" fill="${YEL}" stroke="${GRN}" stroke-width="4" rx="10"/>`;
+  g+=`<path d="M2196,1420 L2196,1310" stroke="#175c2a" stroke-width="8"/><path d="M2196,1300 l-11,22 l22,0 Z" fill="#175c2a"/>`;
+  g+=`<rect x="2100" y="1420" width="230" height="86" fill="${YEL}" stroke="${GRN}" stroke-width="4" rx="10"/>`;
+  g+=TXT(2215,1452,'NORTH',26,{ls:1.4})+TXT(2215,1486,'GATE',26,{ls:1.4});
+  g+=`<rect x="1426" y="1680" width="80" height="72" fill="${YEL}" stroke="${GRN}" stroke-width="4" rx="8"/>`;
+  g+=`<path d="M1500,1720 L1572,1706" stroke="#175c2a" stroke-width="8"/><path d="M1582,1704 l-22,-10 l4,18 Z" fill="#175c2a"/>`;
+  g+=`<rect x="1580" y="1666" width="160" height="76" fill="${YEL}" stroke="${GRN}" stroke-width="4" rx="8"/>`;
+  g+=TXT(1660,1698,'OUT',24,{ls:1.4})+TXT(1660,1730,'GATE',24,{ls:1.4});
+  return g;
+}
+
+/* the sign's own legend + emergency panel */
+function apPanels(){
+  let g='';
+  const X=1780,Y=1636,W=640,H=304;
+  g+=`<rect x="${X}" y="${Y}" width="${W}" height="${H}" fill="#fff" stroke="${INK}" stroke-width="3"/>`;
+  g+=TXT(X+W/2,Y+46,'LEGEND:',30,{ls:2});
+  const L=[['here','YOU ARE HERE'],['asm','ASSEMBLY AREA'],['aid','FIRST AID KIT'],['hyd','FIRE HYDRANT'],['Rb','RESTROOM']];
+  const R=[['ph','TELEPHONE'],['stok','STOKES BASKET'],['q',"DRIVER'S ASSISTANCE"],['aed','AED']];
+  L.forEach((it,i)=>{const y=Y+92+i*44;
+    g+=(it[0]==='asm'?AIC.asm(X+42,y,13):it[0]==='aid'?AIC.aid(X+42,y,10):it[0]==='here'?`<circle cx="${X+42}" cy="${y}" r="12" fill="${GRN}"/>`:AIC[it[0]](X+42,y));
+    g+=TXT(X+72,y+8,it[1],21,{a:'start',ls:0.8});});
+  R.forEach((it,i)=>{const y=Y+92+i*44;
+    g+=AIC[it[0]](X+352,y);g+=TXT(X+384,y+8,it[1],21,{a:'start',ls:0.8});});
+  const EX=X+W+16,EW=VBW-40-EX;
+  g+=`<rect x="${EX}" y="${Y}" width="${EW}" height="${H}" fill="#fff" stroke="${INK}" stroke-width="3"/>`;
+  g+=TXT(EX+EW/2,Y+52,'EMERGENCY \u2014 CALL 911',30,{c:RED,ls:1.2});
+  ['FOR FIRE DEPARTMENT, PARAMEDIC,','OR POLICE DISPATCH.','APM EMERGENCY RADIO CHANNEL #16'].forEach((s,i)=>{
+    g+=TXT(EX+EW/2,Y+92+i*32,s,20,{ls:0.6});});
+  g+=TXT(EX+EW/2,Y+210,'FOR SAFETY OFFICE, CALL: (310) 221-4270',20,{ls:0.6});
+  g+=TXT(EX+EW/2,Y+248,'FOR SECURITY 24 HOURS, CALL: (310) 221-4589',20,{ls:0.6});
+  /* revision plate, bottom left of the sign */
+  g+=`<rect x="150" y="1940" width="240" height="34" fill="#fff" stroke="${INK}" stroke-width="2"/>`;
+  g+=TXT(270,1965,'REVISION DATE: 11-1-1\u2014',17,{ls:1});
+  [[30,140],[VBW/2,130],[VBW-30,140],[30,VBH-30],[VBW/2,VBH-24],[VBW-30,VBH-30]].forEach(p=>{
+    g+=`<circle cx="${p[0]}" cy="${p[1]}" r="9" fill="#cac6bc" stroke="#8a867c" stroke-width="1.8"/><circle cx="${p[0]}" cy="${p[1]}" r="2.8" fill="#8a867c"/>`;});
+  /* the two big area labels */
+  g+=TXT(760,700,'Automated Yard',62,{c:'#7d786c',w:600,ls:1});
+  return g;
+}
+
+/* ================= viewer engine ================= */
+const p4={x:0,y:0,scale:1,min:.2,max:6,sel:null};
+function $p4(id){return document.getElementById(id);}
+
+function apRender(){
+  const st=$p4('p4Stage');if(!st)return;const vb=APZ.vb;let shapes='';
+  APZ.spots.forEach(sp=>{
+    const cat=APZ.cats[sp.cat]||APZ.cats.fac;
+    const cx=sp.x+sp.w/2, cy=sp.y+sp.h/2;
+    const rx=sp.hull?14:3;
+    const fo=sp.ghost?0.06:1, so=sp.ghost?0.22:0.95;
+    let label='';
+    if(!sp.nolabel&&!sp.ghost){
+      const lc=cat.lc||'#26241e', lb=sp.lb||sp.label;
+      if(sp.lb2){
+        const parts=(sp.label2||sp.label).split('|');
+        const fs=sp.fs||Math.min(sp.h*0.4,15);
+        label=parts.map((p,i)=>`<text x="${cx}" y="${cy+(i-(parts.length-1)/2)*(fs+2)}" dy="0.34em" text-anchor="middle" fill="${lc}" font-family="'Barlow Condensed',sans-serif" font-weight="700" font-size="${fs}" letter-spacing="0.4" style="pointer-events:none">${p}</text>`).join('');
+      } else {
+        const fs=sp.fs||Math.max(9,Math.min(sp.w/(lb.length*0.54),sp.h*0.62,16));
+        label=`<text x="${cx}" y="${cy}" dy="0.34em" text-anchor="middle" fill="${lc}" font-family="'Barlow Condensed',sans-serif" font-weight="700" font-size="${(+fs).toFixed(1)}" letter-spacing="0.3" style="pointer-events:none">${lb}</text>`;
+      }
+    }
+    const rect=`<rect x="${sp.x}" y="${sp.y}" width="${sp.w}" height="${sp.h}" rx="${rx}" fill="${cat.c}" fill-opacity="${fo}" stroke="${cat.s}" stroke-width="${sp.hull?2.2:1.8}" stroke-opacity="${so}" ${sp.dash?'stroke-dasharray="8 5"':''}/>`;
+    shapes+=`<g class="sp" data-id="${sp.id}"${sp.ang?` transform="rotate(${sp.ang} ${cx} ${cy})"`:''}>${rect}${label}</g>`;
+  });
+  st.innerHTML=`<svg width="${vb[2]}" height="${vb[3]}" viewBox="${vb.join(' ')}" xmlns="http://www.w3.org/2000/svg">${apBase()}${apHulls()}${apBase2()}${apRoutes()}${shapes}${apCranes()}${apIcons()}${apPanels()}</svg>`;
+}
+function apApply(){const st=$p4('p4Stage');if(st)st.style.transform=`translate(${p4.x}px,${p4.y}px) scale(${p4.scale})`;}
+function apFit(){
+  const vp=$p4('p4Vp');if(!vp||!vp.clientWidth)return;const vb=APZ.vb;
+  const s=Math.min(vp.clientWidth/vb[2],vp.clientHeight/vb[3])*0.97;
+  p4.scale=s;p4.min=s*.85;p4.max=Math.max(s*10,5);
+  p4.x=(vp.clientWidth-vb[2]*s)/2;p4.y=(vp.clientHeight-vb[3]*s)/2;apApply();
+}
+function apZoomAt(pt,f){const r=$p4('p4Vp').getBoundingClientRect();const px=pt.x-r.left,py=pt.y-r.top;
+  const ns=Math.min(p4.max,Math.max(p4.min,p4.scale*f)),k=ns/p4.scale;
+  p4.x=px-(px-p4.x)*k;p4.y=py-(py-p4.y)*k;p4.scale=ns;}
+function apCenterOn(sp,zoom){const vp=$p4('p4Vp');const ns=zoom||Math.max(p4.min*2.6,Math.min(p4.max,1.2));p4.scale=ns;
+  const cx=sp.x+sp.w/2,cy=sp.y+sp.h/2;p4.x=vp.clientWidth/2-cx*ns;p4.y=vp.clientHeight/2-cy*ns;apApply();}
+function apSelect(id,center){
+  const sp=APZ.byId[id];if(!sp)return;p4.sel=id;
+  document.querySelectorAll('#p4Stage .sp').forEach(g=>g.classList.toggle('sel',g.dataset.id===id));
+  const cat=APZ.cats[sp.cat]||APZ.cats.fac;
+  $p4('p4Sw').style.background=cat.s;$p4('p4InfoNm').textContent=sp.label;
+  $p4('p4InfoCat').textContent=cat.t;$p4('p4InfoDesc').textContent=sp.desc||cat.d;
+  $p4('p4Info').classList.add('on');if(center)apCenterOn(sp);
+}
+function apCloseInfo(){$p4('p4Info').classList.remove('on');
+  document.querySelectorAll('#p4Stage .sp').forEach(g=>g.classList.remove('sel'));p4.sel=null;}
+function apDoSearch(q){
+  const sug=$p4('p4Sug');q=q.trim().toLowerCase();
+  if(!q){sug.classList.remove('on');sug.innerHTML='';return;}
+  const norm=s=>s.toLowerCase().replace(/[\s-]+/g,'');const qn=q.replace(/[\s-]+/g,'');
+  const score=s=>{const id=norm(s.id),lb=norm(s.label);
+    if(id===qn||lb===qn)return 0;if(id.startsWith(qn)||lb.startsWith(qn))return 1;
+    if(lb.includes(qn))return 2;if(id.includes(qn))return 3;return 9;};
+  const hits=APZ.spots.map(s=>[s,score(s)]).filter(a=>a[1]<9)
+    .sort((a,b)=>a[1]-b[1]).slice(0,8).map(a=>a[0]);
+  if(!hits.length){sug.classList.remove('on');sug.innerHTML='';return;}
+  sug.innerHTML=hits.map(s=>{const c=APZ.cats[s.cat]||APZ.cats.fac;
+    return `<button data-id="${s.id}"><span class="dot" style="background:${c.s}"></span>${s.label}<span class="t">${c.t}</span></button>`;}).join('');
+  sug.classList.add('on');
+}
+
+/* ================= APM TERMINAL GUIDE (off the sign) ================= */
+function apRenderGuide(){
+  return `
+    <div class="yg-safe">&#9888; <b>EMERGENCY &#8212; CALL 911</b> for fire department, paramedic or police dispatch &#183; APM emergency radio <b>channel #16</b> &#183; Safety office <b>(310) 221-4270</b> &#183; Security, 24 hours <b>(310) 221-4589</b></div>
+    <h5 class="yg-h">&#128737; IF THE HORN GOES</h5>
+    <dl class="yg-terms">
+      <dt>Two assembly areas &#9410;</dt><dd>One at the <b>north labor parking</b>, up by the power equipment parking at the head of the terminal. One at the <b>south labor parking</b>, next to the Admin building. Supervision will send you to one of them &#8212; go, and stay put until you are counted.</dd>
+      <dt>Call it in</dt><dd>911 for fire, paramedic or police. Radio traffic goes on <b>channel #16</b>. The safety office and 24-hour security numbers are on the sign and in the bar above.</dd>
+      <dt>AEDs &amp; first aid</dt><dd>AEDs are hung along the wharf, at the northwest face, at the head of the terminal by the power equipment parking, and at the south end by Admin and the Maint building. First aid kits are marked with the green cross &#8212; Admin, the north labor parking and the out-gate corner.</dd>
+      <dt>Stokes baskets</dt><dd>Along the wharf apron, at the cranes &#8212; the same as every dock in this harbor. That is how a hurt man comes down off a ship.</dd>
+    </dl>
+    <h5 class="yg-h ok">&#128667; TRUCKS &amp; TRAFFIC</h5>
+    <ul class="yg-ul do">
+      <li><b>North Gate</b> is the truck entrance &#8212; highlighted yellow at the head of the terminal, off Navy Way. Oversize trucks use the lanes east of it.</li>
+      <li><b>South In Gate</b> takes you into the south end; the <b>Out Gate</b> and the customs portal are at the southeast corner, with <b>Return To Terminal</b> looping back in.</li>
+      <li><b>NO TRUCK ACCESS</b> is posted three times: the <b>rail yard</b>, the <b>high lane</b> at the berth, and the south service road along the water.</li>
+      <li>The <b>Automated Yard</b> is the whole west end. Machines work it. Nobody goes in there without clearance.</li>
+      <li>The green and orange lines on the sign are the marked routes through the middle of the terminal &#8212; the green band across the top of the P rows and down the west side, the orange line along the chassis pit and the rail yard.</li>
+    </ul>
+    <h5 class="yg-h">&#129517; FINDING YOUR WAY</h5>
+    <dl class="yg-terms">
+      <dt>The grounded grid</dt><dd>Four columns numbered <b>05 &#183; 04 &#183; 03 &#183; 01</b>, west to east, off the berth. Rows are lettered <b>A</b> down through <b>N</b>. Column 05 only carries F&#8211;J. Columns 04 and 03 run A&#8211;J, then the blue wheeled bands, then M and N. Column 01 runs A&#8211;J, then the <b>K 01 / K 02</b> and <b>L 01 / L 02</b> pairs, and <b>M 01</b> across the foot of it.</dd>
+      <dt>P and R rows</dt><dd>South of the automated yard and west of the rail yard: <b>P 09 &#183; P 08</b> over <b>R 09 &#183; R 08</b>, with the <b>828 Chassis Pit</b> under them.</dd>
+      <dt>The south end</dt><dd>Across Navy Way: South Gates and the South In Gate, Admin, the <b>V 88</b> block, labor parking with the second assembly area, the reefer rows, Maint and the wash ramp, then the customs portal and the out gate.</dd>
+      <dt>Berths</dt><dd><b>Berth 401</b> is the east end of the face, by the North Gate. The berth numbers west of it are covered by the Automated Yard overlay on this copy of the sign.</dd>
+    </dl>
+    <p class="yg-src">Traced from the posted APM TERMINALS &#183; 2500 NAVY WAY &#183; EMERGENCY MAP banner (revision date 11-1-1&#8212;, last digit worn). The banner is sun-bleached and coarsely printed: the reefer and south-yard row numbers, the berth numbers west of 401, and parts of the wash ramp / M&amp;R lettering cannot be read off it, and those spots say so rather than guess. Read the row sign in the yard, and obey posted signs and your foreman.</p>`;
+}
+
+/* ---- open / close, wired into the app's yard-map flow ---- */
+function openApmYard(op,label){
+  $p4('p4Name').textContent=APZ.name;
+  $p4('p4Sub').textContent=label&&label!==APZ.op?label+' \u00b7 2500 Navy Way':APZ.sub;
+  apRender();apCloseInfo();
+  $p4('p4Search').value='';$p4('p4Sug').classList.remove('on');
+  $p4('p4Legend').classList.remove('on');$p4('p4Guide').classList.remove('on');
+  $p4('p4w').classList.add('on');
+  requestAnimationFrame(()=>{apFit();requestAnimationFrame(apFit);});
+}
+function closeApmYard(){$p4('p4w').classList.remove('on');}
+window.openApmYard=openApmYard;window.closeApmYard=closeApmYard;
+
+try{ if(typeof YARD_MAPS!=='undefined'){ YARD_MAPS["APM"]={interactive:true,apm:true,note:"interactive \u2014 the Pier 400 emergency map, row by row; \ud83d\udcd6 for the emergency info"}; } }catch(e){}
+(function(){const orig=window.openYardMap;
+  window.openYardMap=function(op,label){
+    if(op==='APM')return openApmYard(op,label);
+    if(typeof orig==='function')return orig(op,label);
+  };})();
+try{ if(typeof renderPorts==='function'){ const s=document.getElementById('portSearch'); renderPorts(s?s.value:""); } }catch(e){}
+try{ if(typeof renderDockets==='function') renderDockets(); }catch(e){}
+
+/* ---- event wiring ---- */
+$p4('p4Back').addEventListener('click',closeApmYard);
+$p4('p4Reset').addEventListener('click',apFit);
+$p4('p4LegBtn').addEventListener('click',()=>{
+  const icons=[["here","You are here"],["asm","Assembly area \u24b6"],["aid","First aid kit"],["aed","AED"],
+               ["hyd","Fire hydrant"],["Rb","Restroom"],["ph","Telephone"],["stok","Stokes basket"],["q","Driver's assistance"]];
+  $p4('p4LegList').innerHTML=APZ.legend.map(([k,name])=>{const c=APZ.cats[k];
+    return `<div class="lg"><span class="dot" style="background:${c.c};border:1.5px solid ${c.s}"></span>${name}</div>`;}).join('')
+    +icons.map(ic=>`<div class="lg"><span class="dot" style="background:none;border:0;position:relative"><svg width="26" height="26" viewBox="-14 -14 28 28" style="position:absolute;left:-5px;top:-5px">${ic[0]==='asm'?AIC.asm(0,0,10):ic[0]==='aid'?AIC.aid(0,0,8):AIC[ic[0]](0,0)}</svg></span>${ic[1]}</div>`).join('');
+  $p4('p4Legend').classList.add('on');
+});
+$p4('p4LegClose').addEventListener('click',()=>$p4('p4Legend').classList.remove('on'));
+$p4('p4GuideBtn').addEventListener('click',()=>{const gb=$p4('p4GuideBody');if(!gb.dataset.built){gb.innerHTML=apRenderGuide();gb.dataset.built="1";}$p4('p4Guide').classList.add('on');});
+$p4('p4GuideClose').addEventListener('click',()=>$p4('p4Guide').classList.remove('on'));
+$p4('p4InfoClose').addEventListener('click',apCloseInfo);
+const p4SearchEl=$p4('p4Search');
+p4SearchEl.addEventListener('input',e=>apDoSearch(e.target.value));
+$p4('p4Sug').addEventListener('click',e=>{const b=e.target.closest('button[data-id]');if(!b)return;
+  p4SearchEl.value='';$p4('p4Sug').classList.remove('on');apSelect(b.dataset.id,true);});
+
+/* ---- pan / pinch / tap engine ---- */
+(function(){
+  const vp=$p4('p4Vp');if(!vp)return;
+  const pts=new Map();let lastDist=0,lastMid=null,lastTap=0,downT=null,moved=0;
+  vp.addEventListener('pointerdown',e=>{
+    if(e.target.closest&&e.target.closest('.yi-info,.yi-legend,.yi-guide,.yi-reset,.yi-legend-btn'))return;
+    vp.setPointerCapture(e.pointerId);pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(pts.size===1){downT=e.target;moved=0;const now=Date.now();
+      if(now-lastTap<300){if(p4.scale>p4.min*1.7)apFit();else{apZoomAt({x:e.clientX,y:e.clientY},2.3);apApply();}lastTap=0;downT=null;}
+      else lastTap=now;}
+    if(pts.size===2){const a=[...pts.values()];lastDist=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y);
+      lastMid={x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2};downT=null;}
+  });
+  vp.addEventListener('pointermove',e=>{if(!pts.has(e.pointerId))return;const p=pts.get(e.pointerId);
+    if(pts.size===1){const dx=e.clientX-p.x,dy=e.clientY-p.y;moved+=Math.abs(dx)+Math.abs(dy);p4.x+=dx;p4.y+=dy;apApply();}
+    p.x=e.clientX;p.y=e.clientY;
+    if(pts.size===2){const a=[...pts.values()];const d=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y);
+      const mid={x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2};
+      if(lastDist>0)apZoomAt(mid,d/lastDist);
+      if(lastMid){p4.x+=mid.x-lastMid.x;p4.y+=mid.y-lastMid.y;}
+      lastDist=d;lastMid=mid;apApply();}
+  });
+  const up=e=>{
+    if(pts.size===1&&downT&&moved<8){const g=downT.closest&&downT.closest('.sp');if(g)apSelect(g.dataset.id);}
+    pts.delete(e.pointerId);lastDist=0;lastMid=null;downT=null;
+  };
+  vp.addEventListener('pointerup',up);vp.addEventListener('pointercancel',up);
+  vp.addEventListener('wheel',e=>{e.preventDefault();apZoomAt({x:e.clientX,y:e.clientY},e.deltaY<0?1.15:.87);apApply();},{passive:false});
+})();
+window.addEventListener('resize',()=>{if($p4('p4w').classList.contains('on'))apFit();});
+})();
+
+</script>
+
 
 
 <style id="textsizeCSS">
@@ -30696,6 +31260,8 @@ window.shareCall=shareCall;
                 because the gesture is supposed to replace it. Hard to leave, easy to
                 edge-swipe clean out of the app. All three ride the list now. */
              ['paw','paBack'],['fxw','fxBack'],['evw','evBack'],
+             /* #48i — Pier 400 rides the list from the day it landed */
+             ['p4w','p4Back'],
              ['gearView','gearBack']];
 
   var EDGE=28,          // how far in from the edge a drag may start (px)
