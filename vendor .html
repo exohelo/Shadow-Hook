@@ -1083,6 +1083,12 @@ function orderCard(o){
   const shippedIds=its.filter(i=>i.status==='shipped').map(i=>i.id);
   const contact = ME.km
     ? '<div class="sub" style="margin-top:2px">'+esc(o.buyer_name||'—')+' · '+esc(o.buyer_email||'')+(o.buyer_phone?' · '+esc(o.buyer_phone):'')+'</div>' : '';
+  /* #burn(aug29) — the member hit DELETE FUCK'EN EVERYTHING. Their name is already off this
+     order; the settler (WIPE-MESSAGES.sql) clears the rest the moment the last line lands or
+     a refund is marked. The Keymaster reads the flag off select('*'); vendors just see the
+     cancelled lines. */
+  const closed = (ME.km&&o.purge_when_settled)
+    ? '<div class="sub" style="color:#e8967a;margin-top:6px">☠ Member deleted their account. Cancelled lines: refund in Stripe if it was paid — mark it REFUNDED and this record clears itself. Live lines: ship them; the address clears when the last one lands.</div>' : '';
   const shipbox = st
     ? '<div class="shipbox"><b style="letter-spacing:.08em;font-size:11px;color:var(--steel)">SHIP TO</b><br>'
       +esc(shipToText(st)).replace(/\n/g,'<br>')
@@ -1103,7 +1109,7 @@ function orderCard(o){
   return '<div class="card"><div class="card-h"><span class="mono" style="color:var(--copper-hi)">'+esc(o.code)+'</span>'
     +(PAY_PILL[o.payment_status]||'')
     +'<span class="tag">'+day(o.created_at)+(ME.km?'<br>'+money(o.total_usd)+' · house '+money(Number(o.total_usd||0)-orderTake(o)):'')+'</span></div>'
-    +'<div class="card-b">'+contact+shipbox+lines
+    +'<div class="card-b">'+contact+closed+shipbox+lines
     +(!ME.km?'<div class="sub" style="margin-top:9px">Your take (cut + S&amp;H): <b class="mono" style="color:var(--copper-hi)">'+money(take)+'</b> — owed once it ships.</div>':'')
     +(o.payment_status==='refunded'?'<div class="sub" style="color:#e8967a;margin-top:8px">⚠ Refunded — do not ship.</div>':'')
     +(actions.length?'<div class="stat-row">'+actions.join('')+'</div>':'')
