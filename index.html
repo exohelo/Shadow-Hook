@@ -394,9 +394,9 @@ html.daylight .dayBtn{box-shadow:0 5px 14px rgba(70,56,30,.2)}
 .nav button{background:none;border:0;cursor:pointer;color:var(--steel);display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 0;font-size:9px;letter-spacing:.1em;text-transform:uppercase;font-weight:600}
 .nav button .ico{font-size:17px;line-height:1}
 .nav button.on{color:var(--copper-hi)}
-.nav button.locked{opacity:.38}   /* #guest — shut until there's a handle; the tap still lands and explains */
-.nav button.locked .ico{position:relative}
-.nav button.locked .ico::after{content:"🔒";position:absolute;right:-9px;top:-5px;font-size:9px;filter:grayscale(1)}
+/* #gateonly(aug31) — the padlocked-tab styles are retired with the guest browse mode.
+   The tab bar itself only exists once you're through the gate. */
+html.at-gate .nav{display:none}
 .nav button.on .ico{filter:drop-shadow(0 0 8px rgba(238,180,107,.5))}
 /* #maydayred — the MAYDAY tab's colour is set at the very BOTTOM of this sheet,
    after every skin. Search #maydayred to find it.
@@ -4963,14 +4963,14 @@ try{
    handle on this device. Take one at the gate and everything opens the same second. */
 function isGuest(){ try{ const a=loadAcct(); return !(a&&a.handle); }catch(e){ return true; } }
 window.isGuest=isGuest;
-const GUEST_TABS={board:1,mayday:1};
+/* #gateonly(aug31) — the "Who goes there?" popup and the padlocked tabs are gone: a
+   casual without a handle never gets past the gate, so there is nothing to explain
+   inside the app. guestWall stays as the last line under the write guards — if a
+   handle-less session ever does reach a write, it is refused quietly and sent to the
+   gate, without a dialog. */
 function guestWall(){
   if(!isGuest())return false;
-  try{
-    shConfirm("Take a handle first. Verify your card at the gate and the whole Order opens — log your jobs, talk on the wire, earn Port Bucks, buy from the Armory. Until then you can watch the board and read the forecast, and that's it.",
-      function(){ try{ if(typeof goGateForHandle==='function')goGateForHandle(); }catch(e){} },
-      {title:"Who goes there?",icon:"🎭",okText:"Take a handle",noText:"Just looking"});
-  }catch(e){ try{ toast('Take a handle at the gate first'); }catch(_){} }
+  try{ if(typeof goGateForHandle==='function')goGateForHandle(); }catch(e){}
   return true;
 }
 window.guestWall=guestWall;
@@ -5090,7 +5090,6 @@ window.steppedAway=steppedAway;
    call window, not the wider drop window, so "dispatch is running" means the board is
    genuinely moving right now. */
 function openingTab(){
-  try{ if(typeof isGuest==='function'&&isGuest())return 'board'; }catch(e){}   /* #guest — a guest opens on the one screen that's theirs */
   try{
     if(typeof DOCKETS!=="undefined" && typeof todayISO==="function"){
       var t=todayISO();
@@ -6013,7 +6012,7 @@ const HOLIDAYS_26=["2026-01-01","2026-07-05","2026-07-28","2026-09-07","2026-11-
 
 /* ================= BOOT + GATE ================= */
 /* #81 — returning members never see the gate page flash: straight to the loading screen */
-if(!(savedAcct&&savedAcct.handle))document.getElementById('gatePage').classList.add('on'); // first-timers go to the gate
+if(!(savedAcct&&savedAcct.handle)){ document.getElementById('gatePage').classList.add('on'); try{document.documentElement.classList.add('at-gate');}catch(e){} }   // first-timers go to the gate — no tab bar until they're through
 
 const nameEl=document.getElementById('fullName'),idEl=document.getElementById('workId');
 const HA=["MAD","BLACK","SALTY","ONE-EYED","IRON","RED","GRIM","DEADEYE","BARNACLE","CUTLASS","SQUALL","HALF-HITCH"];
@@ -6422,13 +6421,7 @@ function validHandle(h){return /^[A-Za-z0-9_\-]{3,20}$/.test(h)}
    to do that: it lives here now, above its only reader. */
 let alertsLoaded=false;
 function gotoTab(name){
-  /* #guest — the Wire and MAYDAY are the guest's whole world; any other tab is the gate word */
-  if(typeof isGuest==='function'&&isGuest()&&!GUEST_TABS[name]){
-    guestWall();
-    const cur=document.querySelector('.screen.on'), curName=cur?String(cur.id||'').replace('scr-',''):'';
-    name=GUEST_TABS[curName]?curName:'board';
-  }
-  try{ const g=(typeof isGuest==='function'&&isGuest()); document.querySelectorAll('.nav button').forEach(function(x){ x.classList.toggle('locked',!!(g&&!GUEST_TABS[x.dataset.scr])); }); }catch(e){}
+  /* #gateonly(aug31) — every tab is open: you only get here with a handle. */
   /* #shop — a product page is a mode, not a screen. Leaving the Armory with one
      open left gearShop, gearView and armoryHead pinned by inline styles, so
      coming back landed on the old product with the balance card still hidden and
@@ -6450,8 +6443,17 @@ function gotoTab(name){
   if(name==='ports'){try{renderHarborBoard();}catch(e){}}
   if(name==='board'){try{openPendingSheet();}catch(e){}}   // #93 — the Wire opens with the pending dispatch sheet showing
 }
+/* #gateonly(aug31) — the gate and the tab bar are opposites: while the gate is up the
+   bar is gone, and it appears the moment a casual is through. One switch, called from
+   both doors, and it reads the gate itself so a path that forgets still lands right. */
+function atGate(on){
+  try{ if(on===undefined){ const g=document.getElementById('gatePage'); on=!!(g&&getComputedStyle(g).display!=='none'); }
+    document.documentElement.classList.toggle('at-gate',!!on); }catch(e){}
+}
+window.atGate=atGate;
 function enterApp(tab){
   document.getElementById('gatePage').style.display="none";
+  atGate(false);
   document.getElementById('app').classList.add('on');
   gotoTab(tab);window.scrollTo(0,0);
   try{setTimeout(function(){try{processPendingShare()}catch(e){}},900);}catch(e){}   // #share-in — a clip shared in before sign-in floats now
@@ -6800,7 +6802,11 @@ function localEnter(){
               else{ a0.handle=null; saveAcct(a0); }   /* no name until the gate gives one that holds */
             }
           }catch(e){}
-          if(!fixed){ try{ noHandleNotice(); }catch(e){} }   /* #floornoname — a session with nobody behind it is told so */
+          /* #gateonly(aug31) — no handle, no app. A session with nobody behind it used
+             to land inside with the tabs padlocked and a "Who goes there?" popup; the
+             gate says the same thing better, and the tab bar only appears once you're
+             in. Hold here — the gate is already on screen. */
+          if(!fixed){ try{ const gp=document.getElementById('gatePage'); if(gp){gp.style.display=''; gp.classList.add('on');} document.getElementById('app').style.display='none'; atGate(true); }catch(e){} return; }
         }
         bootScreen(()=>enterApp(openingTab()),true);
         return;
@@ -6879,7 +6885,7 @@ function signedOutNotice(){
     });
     d.querySelector('#soGo').addEventListener('click',()=>{
       shConfirm("Signing in on this device means passing the gate again — your full name as printed on your PMA card, and your dispatch #. Everything already logged on this device stays put.",
-        ()=>{ try{ const gp=document.getElementById('gatePage'); gp.style.display=""; gp.classList.add('on');
+        ()=>{ try{ atGate(true); const gp=document.getElementById('gatePage'); gp.style.display=""; gp.classList.add('on');
                    document.getElementById('app').style.display="none"; window.scrollTo(0,0); }catch(e){} },
         {title:"Sign in",icon:"⚓",okText:"Take me to the gate"});
     });
@@ -6894,35 +6900,16 @@ function signedOutNotice(){
    take a handle. The strip is the same shape as the signed-out one; only one ever shows. */
 function goGateForHandle(){
   try{ const gp=document.getElementById('gatePage'); gp.style.display=""; gp.classList.add('on');
-       document.getElementById('app').style.display="none"; window.scrollTo(0,0); }catch(e){}
+       document.getElementById('app').style.display="none"; atGate(true); window.scrollTo(0,0); }catch(e){}
   try{ const fs=document.getElementById('floorSheet'); if(fs)fs.classList.remove('on'); }catch(e){}
 }
 window.goGateForHandle=goGateForHandle;
-function noHandleNotice(){
-  try{
-    if(!window.SB||!window.__shkUid) return;               // not a session: the signed-out notice has that case
-    const a=loadAcct(); if(a&&a.handle) return;             // named — nothing to say
-    if(document.getElementById('soNote')) return;
-    const app=document.getElementById('app'); if(!app) return;
-    const d=document.createElement('div'); d.id='soNote';
-    d.innerHTML='<i class="so-ic">🎭</i>'
-      +'<span class="so-txt"><b>The hall can’t see who you are</b>'
-      +'<span>You’re signed in, but no card or handle is on the record — the ONLINE roster shows you as NO HANDLE YET. Verify your card and take a handle.</span></span>'
-      +'<button type="button" id="soGo">Take a handle</button>';
-    app.insertBefore(d, app.firstChild);
-    try{ document.documentElement.classList.add('so-open'); }catch(e){}
-    if(typeof soClear==='function'){ soClear(d); [400,1500,3000].forEach(function(ms){ window.setTimeout(function(){ soClear(d); }, ms); }); }
-    d.querySelector('#soGo').addEventListener('click',goGateForHandle);
-    /* once a session, the word itself — the strip stays until the handle exists */
-    if(!sessionStorage.getItem('shk_nohandle_told')){
-      try{ sessionStorage.setItem('shk_nohandle_told','1'); }catch(e){}
-      setTimeout(function(){ try{
-        shConfirm("You’re signed in, but the Order doesn’t know you yet — no card on the record, no handle. On the floor you read as NO HANDLE YET, and nobody can open a wire to you. Verify your card at the gate and take a handle.",
-          goGateForHandle,{title:"Who goes there?",icon:"🎭",okText:"Take a handle",noText:"Later"});
-      }catch(e){} },2600);
-    }
-  }catch(e){ console.warn('noHandleNotice', e); }
-}
+/* #gateonly(aug31) — RETIRED. A signed-in session with no handle used to land inside
+   the app wearing a strip and a "Who goes there?" popup, with the tabs padlocked.
+   That whole browse-without-a-name mode is gone: the gate holds them instead, and the
+   tab bar only appears once they're through it. Kept as a no-op so any older caller
+   still resolves. */
+function noHandleNotice(){}
 window.noHandleNotice=noHandleNotice;
 
 /* #32 — Take My Place: lock the handle, set the passcode, board through the loading screen */
@@ -18433,15 +18420,63 @@ function paintAvatars(){
   try{ document.querySelectorAll('[data-avuid]').forEach(el=>{ const u=avatarOf(el.getAttribute('data-avuid')); const has=!!el.querySelector('img.avimg');
     if(u&&!has)el.innerHTML='<img class="avimg" src="'+esc(u)+'" alt="" data-fb="🎭" onerror="this.outerHTML=this.dataset.fb">'; }); }catch(e){}
 }
-function squareAvatar(file,size){   /* center-crop to a square, shrink, JPEG */
-  return new Promise((res,rej)=>{ const r=new FileReader(); r.onerror=rej;
-    r.onload=()=>{ const img=new Image(); img.onerror=rej; img.onload=()=>{ try{
-      const sq=Math.min(img.width,img.height); const c=document.createElement('canvas'); c.width=c.height=size;
-      c.getContext('2d').drawImage(img,(img.width-sq)/2,(img.height-sq)/2,sq,sq,0,0,size,size);
-      c.toBlob(b=>b?res(b):rej(Object.assign(new Error('no blob'),{code:'DECODE'})),'image/jpeg',.86); }catch(e){rej(Object.assign(e||new Error('crop'),{code:'DECODE'}));} };
-      img.onerror=()=>rej(Object.assign(new Error('decode'),{code:'DECODE'})); img.src=r.result; };
-    r.onerror=()=>rej(Object.assign(new Error('read'),{code:'DECODE'}));
-    r.readAsDataURL(file); });
+/* #avfit(aug31) — READ THE PHOTO, THEN SQUARE IT WITHOUT WARPING.
+   createImageBitmap decodes straight off the file (no 20 MB data-URL detour), honours
+   the phone's EXIF rotation, and copes with a 48-megapixel shot; an <img> is the
+   fallback. The square is then made one of two ways, never by stretching:
+     · fill — scale the whole photo down in proportion, take the centred square (crop)
+     · fit  — scale it down until the whole photo fits, dark bars on the short side
+   The picker shows the result before anything uploads. */
+function decodePicture(file){
+  const bad=msg=>Object.assign(new Error(msg||'decode'),{code:'DECODE'});
+  const viaImg=()=>new Promise((res,rej)=>{ let u=''; try{u=URL.createObjectURL(file);}catch(e){return rej(bad('read'));}
+    const img=new Image(); img.onload=()=>res(img); img.onerror=()=>{ try{URL.revokeObjectURL(u)}catch(e){} rej(bad()); }; img.src=u; });
+  if(window.createImageBitmap){
+    return createImageBitmap(file,{imageOrientation:'from-image'}).catch(()=>createImageBitmap(file)).catch(()=>viaImg());
+  }
+  return viaImg();
+}
+function squareFrom(src,size,mode){   /* src: ImageBitmap or <img> · mode 'fill' (crop) | 'fit' (bars) */
+  const w=src.width||src.naturalWidth, h=src.height||src.naturalHeight;
+  if(!(w>0&&h>0))throw Object.assign(new Error('empty'),{code:'DECODE'});
+  const c=document.createElement('canvas'); c.width=c.height=size; const g=c.getContext('2d');
+  g.imageSmoothingEnabled=true; g.imageSmoothingQuality='high';
+  if(mode==='fit'){ g.fillStyle='#0f1113'; g.fillRect(0,0,size,size); const k=Math.min(size/w,size/h), dw=Math.round(w*k), dh=Math.round(h*k);
+    g.drawImage(src,0,0,w,h,Math.round((size-dw)/2),Math.round((size-dh)/2),dw,dh); }
+  else { const sq=Math.min(w,h); g.drawImage(src,Math.round((w-sq)/2),Math.round((h-sq)/2),sq,sq,0,0,size,size); }
+  return c;
+}
+function canvasBlob(c,q){ return new Promise((res,rej)=>{ try{ c.toBlob(b=>b?res(b):rej(Object.assign(new Error('no blob'),{code:'DECODE'})),'image/jpeg',q||.86); }catch(e){ rej(Object.assign(e,{code:'DECODE'})); } }); }
+/* the preview: see the square before it goes anywhere, pick crop or whole-photo */
+async function avatarCompose(file){
+  if(typeof guestWall==='function'&&guestWall())return;
+  let src;
+  try{ src=await decodePicture(file); }
+  catch(e){ const heic=/heic|heif/i.test((file&&file.type)||'')||/\.hei[cf]$/i.test((file&&file.name)||'');
+    toast(heic?'This browser can’t read HEIC photos — on iPhone set Camera → Formats → Most Compatible, or pick a JPG':'Couldn’t read that picture — try a JPG or PNG'); return; }
+  let mode='fill';
+  let sh=document.getElementById('avPrevSheet');
+  if(!sh){ sh=document.createElement('div'); sh.className='sheet'; sh.id='avPrevSheet'; sh.style.zIndex='94'; document.body.appendChild(sh);
+    sh.addEventListener('click',e=>{ if(e.target===sh)sh.classList.remove('on'); }); }
+  sh.innerHTML='<div class="sheet-card" style="text-align:left">'
+    +'<div class="big" style="font-size:20px;letter-spacing:.06em;text-align:center">YOUR PICTURE</div>'
+    +'<p class="sub" style="margin:6px 0 12px;text-align:center">Scaled down in proportion — never stretched. Fill takes the middle square; Fit keeps the whole photo.</p>'
+    +'<div style="display:flex;justify-content:center;margin:2px 0 14px"><canvas id="avPrevC" width="256" height="256" style="width:168px;height:168px;border-radius:50%;border:2px solid rgba(238,180,107,.5);box-shadow:0 8px 24px rgba(0,0,0,.45);background:#0a0b0d"></canvas></div>'
+    +'<div class="lbseg" style="margin:0 0 12px"><button type="button" data-avmode="fill" style="padding:10px 4px;font-size:11.5px">◼ Fill · crop to the square</button><button type="button" data-avmode="fit" style="padding:10px 4px;font-size:11.5px">▭ Fit · whole photo</button></div>'
+    +'<button class="btn" id="avUse" type="button">✓ USE THIS PICTURE</button>'
+    +'<button class="btn-ghost" id="avPrevNo" type="button" style="width:100%;margin-top:10px;border:0;color:#586067">Never mind</button></div>';
+  const cv=sh.querySelector('#avPrevC');
+  const paint=()=>{ try{ const c=squareFrom(src,256,mode); cv.getContext('2d').drawImage(c,0,0); }catch(e){} };
+  sh.querySelectorAll('[data-avmode]').forEach(b=>{ b.classList.toggle('on',b.dataset.avmode===mode);
+    b.addEventListener('click',()=>{ mode=b.dataset.avmode; sh.querySelectorAll('[data-avmode]').forEach(x=>x.classList.toggle('on',x.dataset.avmode===mode)); paint(); }); });
+  sh.querySelector('#avPrevNo').addEventListener('click',()=>{ sh.classList.remove('on'); try{ if(src&&src.close)src.close(); }catch(e){} });
+  sh.querySelector('#avUse').addEventListener('click',async()=>{
+    const btn=sh.querySelector('#avUse'); btn.disabled=true; btn.textContent='SETTING…';
+    let blob=null; try{ blob=await canvasBlob(squareFrom(src,256,mode),.86); }catch(e){ toast(avatarFailMsg(e,'crop')); btn.disabled=false; btn.textContent='✓ USE THIS PICTURE'; return; }
+    const ok=await avatarUpload(blob);
+    if(ok){ sh.classList.remove('on'); try{ if(src&&src.close)src.close(); }catch(e){} } else { btn.disabled=false; btn.textContent='✓ USE THIS PICTURE'; }
+  });
+  paint(); sh.classList.add('on');
 }
 /* #avatar — say WHAT went wrong, not "check your connection" for everything; the
    Keymaster gets the raw reason in THE ALARMS (error_log) too */
@@ -18459,13 +18494,11 @@ function avatarFailMsg(e,stage){
   if(/failed to fetch|networkerror|network request failed|load failed/i.test(m))return 'The wire didn’t answer — try again in a moment';
   return 'Couldn’t set the picture — '+(m?m.slice(0,80):'unknown error');
 }
-async function avatarUpload(file){
-  if(typeof guestWall==='function'&&guestWall())return;
-  if(!(window.SB&&window.__shkUid)){ toast('Sign in to set a picture'); return; }
-  toast('📷 Setting your picture…');
-  let stage='crop';
+async function avatarUpload(blob){   /* blob: the finished 256×256 JPEG from avatarCompose */
+  if(typeof guestWall==='function'&&guestWall())return false;
+  if(!(window.SB&&window.__shkUid)){ toast('Sign in to set a picture'); return false; }
+  let stage='upload';
   try{
-    const blob=await squareAvatar(file,256);
     const old=myAvatar();
     const path='avatars/'+window.__shkUid+'-'+Date.now().toString(36)+'.jpg';
     stage='upload';
@@ -18480,8 +18513,10 @@ async function avatarUpload(file){
     try{ const k=String(old||'').match(/\/chat-media\/(avatars\/[^?#]+)/); if(k)window.SB.storage.from('chat-media').remove([decodeURIComponent(k[1])]).catch(()=>{}); }catch(e){}   /* the last one goes */
     paintAvatars(); try{renderSocialFeed();}catch(e){}
     toast('📷 That’s you now');
+    return true;
   }catch(e){
     toast(avatarFailMsg(e,stage));
+    return false;
   }
 }
 async function avatarRemove(){
@@ -18513,7 +18548,7 @@ function avatarChooser(){
   const pick=cam=>{ sh.classList.remove('on');
     let i=document.getElementById('avFile');
     if(!i){ i=document.createElement('input'); i.type='file'; i.id='avFile'; i.accept='image/*'; i.hidden=true; document.body.appendChild(i);
-      i.addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; e.target.value=''; if(f)avatarUpload(f); }); }
+      i.addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; e.target.value=''; if(f)avatarCompose(f); }); }
     if(cam)i.setAttribute('capture','user'); else i.removeAttribute('capture');
     i.value=''; i.click(); };
   sh.querySelector('#avShoot').addEventListener('click',()=>pick(true));
