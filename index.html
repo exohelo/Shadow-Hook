@@ -1045,6 +1045,23 @@ textarea.field{resize:vertical;min-height:110px;line-height:1.45}
 /* ===== #hub — the TikTok-style full-page STORY VIEWER ===== */
 #storyViewer{position:fixed;top:var(--tbH,0px);left:0;right:0;bottom:max(var(--nvH,0px),var(--kb,0px));z-index:85;background:#000;display:none}   /* #hdr2/#stories2 — framed by the live header AND the tab bar · #ioskb — the talk drawer clears the floating keyboard */
 #storyViewer.on{display:block}
+#storyViewer.over{z-index:97}   /* #clanclips — opened from the clan sheet (91): play over it, hand back to it on close */
+/* the squad's gameplay reel inside the clan sheet */
+.cclips{display:flex;gap:9px;overflow-x:auto;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity;padding:2px 1px 8px;margin:0 -1px;scrollbar-width:none}
+.cclips::-webkit-scrollbar{display:none}
+.cclip{scroll-snap-align:start;position:relative;flex:none;width:112px;height:150px;border-radius:13px;overflow:hidden;cursor:pointer;background:#0a0b0d;border:1px solid var(--line-soft)}
+.cclip:active{transform:scale(.98)}
+.cclip img,.cclip video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none}
+.cclip .cc-play{position:absolute;top:44%;left:50%;transform:translate(-50%,-50%);width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff;padding-left:3px;background:rgba(0,0,0,.45);border:1.5px solid rgba(255,255,255,.8);pointer-events:none}
+.cclip .cc-grad{position:absolute;left:0;right:0;bottom:0;height:58%;background:linear-gradient(transparent,rgba(0,0,0,.85));pointer-events:none}
+.cclip .cc-by{position:absolute;left:8px;right:8px;bottom:8px;color:#fff;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:10px;font-weight:600;text-shadow:0 1px 4px rgba(0,0,0,.8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
+.cclip .cc-by span{display:block;font-weight:400;font-size:9px;opacity:.8;margin-top:1px}
+.cclip .cc-x{position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:7px;border:1px solid rgba(205,75,42,.5);background:rgba(0,0,0,.5);color:var(--ember);font-size:11px;line-height:1;cursor:pointer}
+.cclip .cc-x.arm{width:auto;padding:0 6px;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:9px;letter-spacing:.06em;background:rgba(205,75,42,.4);color:#fff}
+.cclip.add{border-style:dashed;border-color:rgba(238,180,107,.4);background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--copper-hi)}
+.cclip.add .cc-plus{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;color:#fff;background:linear-gradient(180deg,var(--copper-hi),var(--copper))}
+.cclip.add b{font-family:'Anton',sans-serif;font-size:12px;letter-spacing:.03em;text-align:center;padding:0 8px;line-height:1.15}
+.cclip.add.busy{opacity:.55;pointer-events:none}
 #svTrack{height:100%;overflow-y:scroll;scroll-snap-type:y mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none;overscroll-behavior:contain}   /* #hdrlock — no chain-scroll to the page */
 #svTrack::-webkit-scrollbar{display:none}
 .sv-page{position:relative;height:100%;scroll-snap-align:start;scroll-snap-stop:always;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 16px;overflow:hidden}
@@ -1095,6 +1112,13 @@ textarea.field{resize:vertical;min-height:110px;line-height:1.45}
   background:linear-gradient(184deg,var(--plate-2),var(--plate));border-top:1px solid rgba(238,180,107,.45);
   border-radius:18px 18px 0 0;box-shadow:0 -16px 44px rgba(0,0,0,.55);transition:height .28s cubic-bezier(.2,.8,.2,1)}
 #storyViewer.cm .sv-cpanel{display:flex;animation:svcUp .3s cubic-bezier(.2,.9,.3,1)}
+/* #talkgrab(aug31) — the grab bar, and the drawer riding the finger */
+.svc-grab{flex:none;padding:8px 0 3px;cursor:grab;touch-action:none}
+.svc-grab i{display:block;width:44px;height:5px;border-radius:3px;background:rgba(220,214,201,.3);margin:0 auto}
+.svc-head{touch-action:none;cursor:grab}
+.svc-head .svc-close{cursor:pointer}
+.sv-cpanel.dragging{animation:none!important;transition:none!important;will-change:transform}
+.sv-cpanel.settle{animation:none!important;transition:transform .22s cubic-bezier(.2,.8,.2,1)!important}
 @keyframes svcUp{from{transform:translateY(24%);opacity:.4}to{transform:none;opacity:1}}
 .svc-head{flex:none;display:flex;align-items:center;gap:9px;padding:11px 14px 9px;border-bottom:1px solid var(--line-soft)}
 .svc-head b{font-family:'Anton',sans-serif;font-size:15px;letter-spacing:.08em;color:var(--bone)}
@@ -4041,7 +4065,9 @@ window.DEVLOG=(function(){
       <button class="sv-x" id="svSound" type="button" aria-label="Sound" style="margin-left:auto">🔊</button>
     </div>
     <div id="svTrack"></div>
-    <div class="sv-cpanel">
+    <div class="sv-cpanel" id="svcPanel">
+      <!-- #talkgrab(aug31) — drag it down, or fling it sideways: the drawer follows the finger and goes -->
+      <div class="svc-grab" id="svcGrab" aria-hidden="true"><i></i></div>
       <div class="svc-head">
         <b>THE TALK</b><span class="svc-n" id="svcCount"></span>
         <button class="svc-close" id="svcClose" type="button" aria-label="Close the talk">✕</button>
@@ -18470,7 +18496,7 @@ function svPageHTML(s,i){
       +'</div>'
       +'<div class="sv-cap"><div class="sv-h">🎭 '+esc(s.by)+'</div>'
         +(capTxt&&capTxt.trim()?'<div class="sv-note">'+esc(capTxt)+'</div>':'')
-        +'<div class="sv-t">'+(k==='vid'?'🎬':'📸')+' from a casual\'s camera · '+agoShort(s.ts)+'</div></div>'
+        +'<div class="sv-t">'+(s.srcLine?esc(s.srcLine):((k==='vid'?'🎬':'📸')+' from a casual\'s camera'))+' · '+agoShort(s.ts)+'</div></div>'
       +hint
     +'</div>';
   }
@@ -18516,21 +18542,26 @@ function svPageHTML(s,i){
     +hint
   +'</div>';
 }
-let _svListLen=0;
-function openStoryViewer(startIdx){
-  _svList=storiesFeed();
-  if(!_svList.length)_svList=DEMO_STORIES.slice();   // #stories2 — empty wall → the demo reel plays, never the share popup
-  else _svList=_svList.slice();
+let _svListLen=0,_svNoStream=false;   /* #clanclips — a handed-in list plays alone: no waterfront stream after it */
+function openStoryViewer(startIdx,list){
+  if(list&&list.length){ _svList=list.slice(); _svNoStream=true; }   /* #clanclips — e.g. a clan's gameplay */
+  else{
+    _svNoStream=false;
+    _svList=storiesFeed();
+    if(!_svList.length)_svList=DEMO_STORIES.slice();   // #stories2 — empty wall → the demo reel plays, never the share popup
+    else _svList=_svList.slice();
+  }
   _svListLen=_svList.length;
   const v=document.getElementById('storyViewer'), track=document.getElementById('svTrack');
   if(!v||!track)return;
+  v.classList.toggle('over',!!(list&&list.length));   /* #clanclips — above the clan sheet it was opened from */
   track.innerHTML=_svList.map(svPageHTML).join('');
   v.classList.add('on'); v.setAttribute('aria-hidden','false'); document.body.style.overflow='hidden';
   svBind(track);
   try{svcCounts();}catch(e){}   /* #stories5 — 💬 badges for the reel */
   try{likesLoad(_svList.map(s=>String(s.id))).then(()=>{ _svList.forEach(s=>{const pg=track.querySelector('.sv-page[data-si] [data-like="'+esc(String(s.id))+'"]');if(pg)svLikeUI(pg.closest('.sv-page'),s.id);}); }).catch(()=>{});}catch(e){}   /* #social2 — real ❤ counts */
   _fedStart=_svList.length;                 // #stream — everything past here is wire-fed
-  try{svBotKick();}catch(e){}               // #stream — lay the road before anyone swipes to it
+  if(!_svNoStream)try{svBotKick();}catch(e){}   // #stream — lay the road before anyone swipes to it (not after a squad's clips)
   const idx=Math.max(0,Math.min(_svList.length-1,startIdx||0));
   /* #stories9 — position + first play run SYNCHRONOUSLY, still inside the tap:
      that's the gesture window where the browser allows SOUND. The rAF pass
@@ -18577,7 +18608,7 @@ function closeStoryViewer(){
   const v=document.getElementById('storyViewer'); if(!v)return;
   try{closeComments();}catch(e){}   /* #stories5 */
   svHush();                         /* #stories7 — a closed viewer says NOTHING */
-  v.classList.remove('on'); v.setAttribute('aria-hidden','true');
+  v.classList.remove('on','over'); v.setAttribute('aria-hidden','true');
   document.body.style.overflow='';   /* #hall — the Hall is a page now, not an overlay: the viewer was the only scroll lock */
 }
 /* ===== #stories8 — SOUND ON: every play tries UNMUTED first (the tile tap and
@@ -18966,6 +18997,64 @@ async function svcSend(media){
 })();
 
 
+/* ===== #talkgrab(aug31) — CLOSE THE TALK BY HAND =====
+   The drawer follows the finger: drag it DOWN (from the grab bar or the header
+   anywhere; from the thread only when it's scrolled to the top) or FLING IT
+   SIDEWAYS from anywhere but the typing line — past the threshold it leaves, short
+   of it it settles back. Two roads in: touch events (non-passive, so the pull-down
+   isn't eaten by the list's own scroll) and pointer events for a mouse — the old
+   swipe-to-close was touch-only, which is why it never answered on a desktop. ===== */
+(function(){
+  const panel=document.getElementById('svcPanel'); if(!panel)return;
+  const list=document.getElementById('stcList');
+  let g=null,dragged=false;   /* the live gesture: {x,y,t,mode,handle} · dragged: the finger moved, so the tap that follows isn't a tap */
+  const inBar=t=>!!(t&&t.closest&&t.closest('.svc-bar, .svc-reply, .svc-x, .svc-re, .svc-close, .svc-media, video'));
+  const onHandle=t=>!!(t&&t.closest&&t.closest('.svc-grab, .svc-head'));
+  const start=(x,y,target)=>{ if(inBar(target))return false; dragged=false; g={x:x,y:y,t:Date.now(),mode:null,handle:onHandle(target),lx:x,ly:y,lt:Date.now()}; return true; };
+  const move=(x,y)=>{
+    if(!g)return false;
+    const dx=x-g.x, dy=y-g.y;
+    if(Math.abs(dx)+Math.abs(dy)>6)dragged=true;
+    if(!g.mode){
+      if(Math.abs(dx)>12&&Math.abs(dx)>Math.abs(dy)*1.4)g.mode='x';
+      else if(dy>12&&dy>Math.abs(dx)*1.4&&(g.handle||!list||list.scrollTop<=0))g.mode='y';
+      else if(Math.abs(dy)>12&&!g.handle)return false;   /* a plain scroll of the thread — not ours */
+      if(g.mode)panel.classList.add('dragging');
+    }
+    if(!g.mode)return false;
+    g.lx=x;g.ly=y;g.lt=Date.now();
+    panel.style.transform=(g.mode==='y')?('translateY('+Math.max(0,dy)+'px)'):('translateX('+dx+'px)');
+    return true;
+  };
+  const end=(x,y)=>{
+    if(!g)return; const G=g; g=null;
+    if(!G.mode){ panel.classList.remove('dragging'); return; }
+    const dx=x-G.x, dy=y-G.y, dt=Math.max(1,Date.now()-G.t);
+    const fast=(G.mode==='y'?dy:Math.abs(dx))/dt>0.45;   /* px per ms — a flick */
+    const gone=(G.mode==='y')?(dy>100||(dy>36&&fast)):(Math.abs(dx)>90||(Math.abs(dx)>30&&fast));
+    panel.classList.remove('dragging'); panel.classList.add('settle');
+    if(gone){
+      panel.style.transform=(G.mode==='y')?'translateY(110%)':('translateX('+(dx<0?'-':'')+'110%)');
+      setTimeout(()=>{ try{closeComments();}catch(e){} panel.classList.remove('settle'); panel.style.transform=''; },200);
+    }else{
+      panel.style.transform='';
+      setTimeout(()=>panel.classList.remove('settle'),240);
+    }
+  };
+  /* touch — the pull-down has to beat the thread's own scroll, so touchmove is non-passive */
+  panel.addEventListener('touchstart',e=>{ const t=e.touches[0]; start(t.clientX,t.clientY,e.target); },{passive:true});
+  panel.addEventListener('touchmove',e=>{ const t=e.touches[0]; if(move(t.clientX,t.clientY)&&e.cancelable)e.preventDefault(); },{passive:false});
+  panel.addEventListener('touchend',e=>{ const t=e.changedTouches[0]; end(t.clientX,t.clientY); },{passive:true});
+  panel.addEventListener('touchcancel',()=>{ g=null; panel.classList.remove('dragging'); panel.style.transform=''; },{passive:true});
+  /* mouse — a desktop drag, same rules */
+  panel.addEventListener('pointerdown',e=>{ if(e.pointerType!=='mouse'||e.button!==0)return; if(!start(e.clientX,e.clientY,e.target))return;
+    const mv=ev=>{ if(move(ev.clientX,ev.clientY))ev.preventDefault(); };
+    const up=ev=>{ window.removeEventListener('pointermove',mv); window.removeEventListener('pointerup',up); window.removeEventListener('pointercancel',up); end(ev.clientX,ev.clientY); };
+    window.addEventListener('pointermove',mv); window.addEventListener('pointerup',up); window.addEventListener('pointercancel',up); });
+  /* the grab bar on its own is a plain tap-to-close too */
+  const grab=document.getElementById('svcGrab'); if(grab)grab.addEventListener('click',()=>{ if(dragged)return; try{closeComments();}catch(e){} });
+})();
+
 /* ===== #stream — THE SHADOW HOOK KEEPS THE REEL ROLLING =====
    The crew's stories are usually a handful; the reel shouldn't dead-end on the
    last one. So once you swipe past what the casuals have shared, waterfront clips
@@ -19069,7 +19158,7 @@ async function svBotKick(){
 /* nearing the end -> lay more road. Walks to the next page of the SAME query
    while there is one, then rotates to the next query. */
 async function svBotMore(){
-  if(_botBusy)return;
+  if(_botBusy||_svNoStream)return;   /* #clanclips — a handed-in list ends where it ends */
   if(_svList.length>=200)return;                 // hard stop: nobody swipes 200 deep
   _botBusy=true;
   try{
@@ -20426,6 +20515,8 @@ function openClanSheet(id){
     +'<p class="sub" style="margin:0 0 4px;text-align:center">'+(clanCross(c)?'🌐 <b style="color:var(--ok)">Cross-play</b> — any platform can join':(CLAN_PICON[c.platforms]||'')+' <b style="color:var(--bone)">'+esc(CLAN_PNAME[c.platforms]||c.platforms)+' only</b>')+'</p>'
     +(c.blurb?'<p class="sub" style="margin:0 0 8px;text-align:center;font-style:italic">“'+esc(c.blurb)+'”</p>':'')
     +'<div class="evt-meta" style="display:flex;gap:12px;justify-content:center;margin:4px 0 10px;font-family:\'Inter\',system-ui,-apple-system,\'Segoe UI\',Roboto,sans-serif;font-size:11.5px;color:var(--steel)">'+(clanPlatLine(c)||'<span>no platforms yet</span>')+'</div>'
+    /* #clanclips(aug31) — GAMEPLAY: the squad's clips, clanmates only; painted when the load lands */
+    +(inn?'<div class="lbl" style="display:flex;align-items:center;gap:8px">🎬 Gameplay <span id="clanClipN" class="sub" style="font-size:10.5px;letter-spacing:.06em"></span></div><div id="clanClips" class="cclips"><div class="cclip add"><div class="cc-plus">＋</div><b>Upload a clip</b></div></div>':'')
     +'<div class="lbl">The roster</div>'
     +'<div style="max-height:250px;overflow-y:auto;margin-bottom:12px">'+members+'</div>'
     +'<div class="stat-row" style="display:flex;flex-direction:column;gap:8px">'
@@ -20445,8 +20536,119 @@ function openClanSheet(id){
   sh.querySelectorAll('[data-ccrown]').forEach(b=>b.addEventListener('click',()=>{ const uid=b.getAttribute('data-ccrown'), h=b.getAttribute('data-ch')||'them';
     shConfirm('Hand '+c.name+' to '+h+'? They become the leader — the clan and its room are theirs, and you stay on as a clanmate.',()=>handOverClan(c.id,uid,h),{title:'Hand over the clan?',icon:'👑',okText:'Hand it over'}); }));
   sh.classList.add('on');
+  if(inn){ clanClipsPaint(c.id); sbLoadClanClips(c.id).then(()=>clanClipsPaint(c.id)); }   /* #clanclips */
 }
 window.openClanSheet=openClanSheet;
+
+/* ═══ #clanclips(aug31) — 🎬 GAMEPLAY · clanmates upload clips of their play ═══
+   A row in clan_clips (CLANS-SETUP.sql) per clip, the file in the chat-media bucket
+   under clans/<clan_id>/. Clanmates only — row security, same as the tags. Tap a
+   tile → the full-page viewer plays the squad's reel (likes and the talk ride
+   along, keyed 'clip-<id>'); the uploader or the leader can strike one. */
+let CLAN_CLIPS={};   /* clan_id → rows */
+const CLIP_MAX_MB=60;
+async function sbLoadClanClips(clanId){
+  if(!(window.SB&&window.__shkUid))return;
+  try{
+    const r=await window.SB.from('clan_clips').select('id,clan_id,owner,handle,url,kind,caption,created_at').eq('clan_id',clanId).order('created_at',{ascending:false}).limit(60);
+    if(r.error){ if(!/does not exist|schema cache|42P01/i.test(r.error.message||''))console.warn('[clips]',r.error.message); else CLAN_CLIPS[clanId]=null; return; }
+    CLAN_CLIPS[clanId]=r.data||[];
+  }catch(e){ console.warn('[clips] load',e); }
+}
+function clipAsStory(x){   /* a clip in the shape the viewer already knows */
+  const c=clanById(x.clan_id);
+  return {id:'clip-'+x.id,by:x.handle||'a clanmate',by_id:'',url:x.url,note:x.caption||'',plat:x.kind==='image'?'hook-img':'hook-vid',ts:x.created_at?new Date(x.created_at).getTime():0,mine:x.owner===window.__shkUid,
+    srcLine:'🎮 gameplay · '+(c?c.name:'the clan')+(c&&c.game?' · '+c.game:'')};
+}
+function clanClipsPaint(clanId){
+  const host=document.getElementById('clanClips'); if(!host)return;
+  const c=clanById(clanId), rows=CLAN_CLIPS[clanId], mine=!!(c&&clanMine(c));
+  const n=document.getElementById('clanClipN');
+  if(n)n.textContent=rows===null?'run CLANS-SETUP.sql':(rows&&rows.length?rows.length+' clip'+(rows.length===1?'':'s')+' · clanmates only':'clanmates only');
+  let html='<div class="cclip add" data-cadd="'+esc(clanId)+'"><div class="cc-plus">＋</div><b>Upload a clip</b></div>';
+  (rows||[]).forEach((x,i)=>{
+    const poster=(x.kind==='image')?x.url:(_thumbCache()[String(x.url)]||'');
+    if(x.kind!=='image'&&!poster)try{makeVideoThumb(x.url)}catch(e){}
+    html+='<div class="cclip" data-cplay="'+i+'">'
+      +(poster?'<img src="'+esc(String(poster))+'" alt="" loading="lazy">':'<video src="'+esc(String(x.url))+'#t=0.1" muted playsinline preload="metadata"></video>')
+      +(x.kind==='image'?'':'<div class="cc-play">▶</div>')+'<div class="cc-grad"></div>'
+      +'<div class="cc-by">'+esc(x.handle||'a clanmate')+'<span>'+(x.caption?esc(x.caption):agoShort(x.created_at?new Date(x.created_at).getTime():0))+'</span></div>'
+      +((x.owner===window.__shkUid||mine)?'<button type="button" class="cc-x" data-cdelclip="'+esc(x.id)+'" aria-label="Strike this clip">✕</button>':'')
+    +'</div>';
+  });
+  host.innerHTML=html;
+  host.querySelectorAll('[data-cadd]').forEach(el=>el.addEventListener('click',()=>clanClipPick(clanId)));
+  host.querySelectorAll('[data-cplay]').forEach(el=>el.addEventListener('click',e=>{ if(e.target.closest('button'))return;
+    const list=(CLAN_CLIPS[clanId]||[]).map(clipAsStory); try{openStoryViewer(+el.getAttribute('data-cplay'),list);}catch(err){} }));
+  host.querySelectorAll('[data-cdelclip]').forEach(b=>b.addEventListener('click',async e=>{ e.stopPropagation();
+    if(!b.classList.contains('arm')){ b.classList.add('arm'); b.textContent='sure?'; setTimeout(()=>{ if(b.isConnected){b.classList.remove('arm');b.textContent='✕';} },2400); return; }
+    b.disabled=true; await clanClipDelete(clanId,b.getAttribute('data-cdelclip')); }));
+}
+function clanClipPick(clanId){
+  if(typeof guestWall==='function'&&guestWall())return;
+  const c=clanById(clanId); if(!c||!clanIn(c)){ toast('Join the clan first'); return; }
+  if(CLAN_CLIPS[clanId]===null){ toast('The wire has no clip table yet — run CLANS-SETUP.sql'); return; }
+  let i=document.getElementById('clanClipFile');
+  if(!i){ i=document.createElement('input'); i.type='file'; i.id='clanClipFile'; i.accept='video/*,image/*'; i.hidden=true; document.body.appendChild(i);
+    i.addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; const cid=i.dataset.clan; e.target.value=''; if(f&&cid)clanClipCompose(cid,f); }); }
+  i.dataset.clan=clanId; i.value=''; i.click();
+}
+function clanClipCompose(clanId,file){
+  if(!file)return;
+  if(file.size>CLIP_MAX_MB*1048576){ toast('That clip is over '+CLIP_MAX_MB+' MB — trim it down first'); return; }
+  const kind=(file.type&&file.type.startsWith('video'))?'video':'image';
+  let blob=''; try{blob=URL.createObjectURL(file);}catch(e){}
+  let sh=document.getElementById('clipSheet');
+  if(!sh){ sh=document.createElement('div'); sh.className='sheet'; sh.id='clipSheet'; sh.style.zIndex='95'; document.body.appendChild(sh);
+    sh.addEventListener('click',e=>{ if(e.target===sh)sh.classList.remove('on'); }); }
+  sh.innerHTML='<div class="sheet-card" style="text-align:left">'
+    +'<div class="big" style="font-size:20px;letter-spacing:.06em;text-align:center">🎬 GAMEPLAY</div>'
+    +'<p class="sub" style="margin:6px 0 12px;text-align:center">For the squad — clanmates only.</p>'
+    +'<div class="sty-compose-prev">'+(kind==='video'?'<video src="'+esc(blob)+'" autoplay muted loop playsinline></video>':'<img src="'+esc(blob)+'" alt="">')+'</div>'
+    +'<span class="lbl">Call it (optional)</span>'
+    +'<input class="field" id="clipCap" placeholder="e.g. 1v4 clutch · ranked" maxlength="140" style="margin-bottom:14px">'
+    +'<button class="btn" id="clipPost" type="button">🎬 POST IT TO THE SQUAD</button>'
+    +'<button class="btn-ghost" id="clipNo" type="button" style="width:100%;margin-top:10px;border:0;color:#586067">Never mind</button></div>';
+  sh.querySelector('#clipNo').addEventListener('click',()=>sh.classList.remove('on'));
+  sh.querySelector('#clipPost').addEventListener('click',async()=>{
+    const btn=sh.querySelector('#clipPost'); btn.disabled=true; btn.textContent='UPLOADING…';
+    const ok=await clanClipUpload(clanId,file,kind,(sh.querySelector('#clipCap').value||'').trim().slice(0,140),blob);
+    if(ok)sh.classList.remove('on'); else { btn.disabled=false; btn.textContent='🎬 POST IT TO THE SQUAD'; }
+  });
+  sh.classList.add('on');
+}
+async function clanClipUpload(clanId,file,kind,caption,blobUrl){
+  if(!(window.SB&&window.__shkUid)){ toast('Sign in to upload'); return false; }
+  try{
+    const ext=((file.name||'').split('.').pop()||(kind==='video'?'mp4':'jpg')).toLowerCase().replace(/[^a-z0-9]/g,'')||'bin';
+    const path='clans/'+String(clanId).replace(/[^a-zA-Z0-9_-]/g,'_')+'/'+chatUUID()+'.'+ext;
+    const up=await window.SB.storage.from('chat-media').upload(path,typedUploadBody(file,ext,kind),{contentType:mediaMime(file,ext,kind),upsert:true});
+    if(up.error)throw up.error;
+    const pub=window.SB.storage.from('chat-media').getPublicUrl(path);
+    const url=pub&&pub.data&&pub.data.publicUrl; if(!url)throw new Error('no public url');
+    const r=await window.SB.from('clan_clips').insert({clan_id:clanId,owner:window.__shkUid,handle:chatMyHandle(),url:url,kind:kind,caption:caption||null});
+    if(r.error)throw r.error;
+    if(kind==='video'&&blobUrl)try{makeVideoThumb(blobUrl,url)}catch(e){}
+    await sbLoadClanClips(clanId); clanClipsPaint(clanId);
+    toast('🎬 Posted — the squad sees it');
+    return true;
+  }catch(e){
+    const m=String((e&&e.message)||e||'');
+    try{console.warn('[clips] upload failed:',m);}catch(_){}
+    toast(/does not exist|42P01|schema cache/i.test(m)?'The wire has no clip table yet — run CLANS-SETUP.sql':/row-level security|policy|42501/i.test(m)?'The wire refused it — are you still in the clan?':/payload|too large|413|exceeded/i.test(m)?'Too big for the wire — trim the clip down':'Upload failed — check your connection');
+    return false;
+  }
+}
+async function clanClipDelete(clanId,id){
+  if(!(window.SB&&window.__shkUid))return;
+  try{
+    const x=(CLAN_CLIPS[clanId]||[]).find(r=>String(r.id)===String(id));
+    const r=await window.SB.from('clan_clips').delete().eq('id',id); if(r.error)throw r.error;
+    try{ const k=x&&String(x.url||'').match(/\/chat-media\/(clans\/[^?#]+)/); if(k)window.SB.storage.from('chat-media').remove([decodeURIComponent(k[1])]).catch(()=>{}); }catch(e){}
+    CLAN_CLIPS[clanId]=(CLAN_CLIPS[clanId]||[]).filter(r=>String(r.id)!==String(id));
+    clanClipsPaint(clanId); toast('✕ Clip struck');
+  }catch(e){ toast('Couldn’t strike it — check your connection'); clanClipsPaint(clanId); }
+}
 
 /* ═══ #keys(aug29) — 🗝 PRIVATE ROOMS WITH A DOOR ═══
    A private room used to be a label: it sat on the floor and the only key was
@@ -20808,7 +21010,7 @@ try{renderHallStats();}catch(e){}
   const sv=document.getElementById('storyViewer'), svt=document.getElementById('svTrack');
   if(sv&&svt){let sx=null,sy=null;
     sv.addEventListener('touchstart',e=>{const t=e.touches[0];
-      if(e.target.closest('.svc-bar')){sx=null;return;}
+      if(e.target.closest('.svc-bar, .sv-cpanel')){sx=null;return;}   /* #talkgrab — the drawer has its own hands */
       sx=t.clientX;sy=t.clientY;},{passive:true});
     sv.addEventListener('touchend',e=>{if(sx==null)return;const t=e.changedTouches[0];
       const dx=t.clientX-sx,dy=t.clientY-sy;
