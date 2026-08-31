@@ -28992,6 +28992,7 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
       if(r.error)throw r.error;
       _roster=r.data||[];
       try{await kmAmbLoad();}catch(e2){} /* #amb — the crowns ride the same pull; the roster still paints if this leg fails */
+      try{await kmGhostLoad();}catch(e4){} /* #ghosts — logins with no place on the record ride along too */
       try{await kmWireLoad();}catch(e3){} /* #mempage — report counts ride along too */
       kmRosterDraw();
       /* #book — PAINT FIRST, DECORATE AFTER. The scan is an aggregate over every
@@ -29106,7 +29107,34 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
       +'</div>'
       +'<div class="sub" style="margin-top:6px;line-height:1.7">☠ '+keys+' key'+(keys===1?'':'s')+' · 🎖 '+crowns+' crown'+(crowns===1?'':'s')+' · 🔨 '+banned+' banned'
       +(newest?' · ⚓ newest hand: <b style="color:var(--bone)">'+esc(newest)+'</b>'+(newestT?' <span style="color:var(--steel)">('+new Date(newestT).toLocaleDateString([],{month:'short',day:'numeric'})+')</span>':''):'')
-      +'</div>';
+      +'</div>'
+      +kmGhostLine();   /* #ghosts */
+  }
+  /* ═══ #ghosts(aug29) — LOGINS WITH NOBODY BEHIND THEM. The roster counts profiles, so a
+     login that never got one (a claim that stalled at the gate; a vendor or ambassador
+     invited onto the deck) is invisible here while still very much on the server. The
+     km_ghosts() desk (WIPE-MESSAGES.sql) counts them and tells the two kinds apart: a
+     @shadowhook.com address is a card that stalled — it repairs itself the next time
+     that hand comes through the gate — a real address is an invite. Tap for the list. */
+  let _ghosts=null;
+  async function kmGhostLoad(){
+    _ghosts=null;
+    const r=await window.SB.rpc('km_ghosts');
+    if(r&&!r.error&&r.data&&typeof r.data==='object')_ghosts=r.data;
+    else if(r&&r.error&&/could not find|PGRST202|schema cache/i.test(String(r.error.message||'')+String(r.error.code||'')))_ghosts={missing:true};
+  }
+  function kmGhostLine(){
+    if(!_ghosts)return '';
+    if(_ghosts.missing)return '<div class="sub" style="margin-top:4px;color:var(--steel)">🎭 ghost count needs WIPE-MESSAGES.sql (km_ghosts)</div>';
+    const n=+_ghosts.n||0, st=+_ghosts.stalled||0, inv=+_ghosts.invited||0;
+    if(!n)return '<div class="sub" style="margin-top:4px;color:var(--steel)">🎭 every login has a place on the record</div>';
+    const rows=(_ghosts.rows||[]).map(g=>'<div style="display:flex;gap:8px;justify-content:space-between;padding:4px 0;border-top:1px solid var(--line-soft)"><span class="mono" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">'+esc(g.email||'')+'</span>'
+      +'<span class="mono" style="flex:none;font-size:10.5px;color:var(--steel)">'+(g.seen?'seen '+new Date(g.seen).toLocaleDateString([],{month:'short',day:'numeric'}):'never signed in')+'</span></div>').join('');
+    return '<div class="sub" id="kmGhostLine" role="button" tabindex="0" style="margin-top:4px;line-height:1.7;cursor:pointer" onclick="var l=document.getElementById(\'kmGhostList\');if(l)l.hidden=!l.hidden">'
+      +'🎭 <b style="color:var(--bone)">'+n+'</b> login'+(n===1?'':'s')+' with no place on the record — '
+      +'<span style="color:var(--copper-hi)">'+st+' stalled at the gate</span> · '+inv+' invited (vendors / ambassadors) <span style="color:var(--steel)">▾</span></div>'
+      +'<div id="kmGhostList" hidden style="margin:2px 0 6px;padding:4px 10px;background:var(--well);border:1px solid var(--line-soft);border-radius:10px;max-height:190px;overflow-y:auto">'+rows
+      +'<p class="sub" style="margin:6px 0 2px;font-size:11px">A stalled card fixes itself the next time that hand comes through the gate. An invite stays a guest: the Wire and MAYDAY, nothing else.</p></div>';
   }
   const kf=$('kmFind'); if(kf)kf.addEventListener('input',kmRosterDraw);
   const kr=$('kmRoster');
