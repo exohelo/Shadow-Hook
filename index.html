@@ -18418,21 +18418,42 @@ function squareAvatar(file,size){   /* center-crop to a square, shrink, JPEG */
     r.onload=()=>{ const img=new Image(); img.onerror=rej; img.onload=()=>{ try{
       const sq=Math.min(img.width,img.height); const c=document.createElement('canvas'); c.width=c.height=size;
       c.getContext('2d').drawImage(img,(img.width-sq)/2,(img.height-sq)/2,sq,sq,0,0,size,size);
-      c.toBlob(b=>b?res(b):rej(new Error('no blob')),'image/jpeg',.86); }catch(e){rej(e);} }; img.src=r.result; };
+      c.toBlob(b=>b?res(b):rej(Object.assign(new Error('no blob'),{code:'DECODE'})),'image/jpeg',.86); }catch(e){rej(Object.assign(e||new Error('crop'),{code:'DECODE'}));} };
+      img.onerror=()=>rej(Object.assign(new Error('decode'),{code:'DECODE'})); img.src=r.result; };
+    r.onerror=()=>rej(Object.assign(new Error('read'),{code:'DECODE'}));
     r.readAsDataURL(file); });
+}
+/* #avatar — say WHAT went wrong, not "check your connection" for everything; the
+   Keymaster gets the raw reason in THE ALARMS (error_log) too */
+function avatarFailMsg(e,stage){
+  const m=String((e&&(e.message||e.error||e.msg))||e||''), code=String((e&&(e.code||e.statusCode||e.status))||'');
+  try{ if(typeof shkAlert==='function')shkAlert('avatar:'+stage,m||code,''); }catch(_){}
+  try{ console.warn('[avatar]',stage,code,m,e); }catch(_){}
+  if(code==='DECODE')return 'Couldn’t read that picture — try a JPG or PNG';
+  if(/avatar_url|PGRST204|42703|schema cache/i.test(m))return 'The wire has no picture column yet — run BOARD-SETUP.sql';
+  if(/bucket not found/i.test(m))return 'No chat-media bucket on the wire — run BOARD-SETUP.sql (it makes one)';
+  if(/row-level security|policy|42501|unauthorized|not allowed|403/i.test(m+code))return 'The wire refused the upload (bucket rule) — run BOARD-SETUP.sql';
+  if(/mime|content.?type|not supported/i.test(m))return 'That file type isn’t allowed on the bucket — try a JPG or PNG';
+  if(/too large|payload|413|exceeded|maximum size/i.test(m+code))return 'Too big for the wire — pick a smaller picture';
+  if(/jwt|expired|401|invalid token/i.test(m+code))return 'Session expired — pass the gate again';
+  if(/failed to fetch|networkerror|network request failed|load failed/i.test(m))return 'The wire didn’t answer — try again in a moment';
+  return 'Couldn’t set the picture — '+(m?m.slice(0,80):'unknown error');
 }
 async function avatarUpload(file){
   if(typeof guestWall==='function'&&guestWall())return;
   if(!(window.SB&&window.__shkUid)){ toast('Sign in to set a picture'); return; }
   toast('📷 Setting your picture…');
+  let stage='crop';
   try{
     const blob=await squareAvatar(file,256);
     const old=myAvatar();
     const path='avatars/'+window.__shkUid+'-'+Date.now().toString(36)+'.jpg';
+    stage='upload';
     const up=await window.SB.storage.from('chat-media').upload(path,blob,{contentType:'image/jpeg',upsert:false});
     if(up.error)throw up.error;
     const pub=window.SB.storage.from('chat-media').getPublicUrl(path);
     const url=pub&&pub.data&&pub.data.publicUrl; if(!url)throw new Error('no public url');
+    stage='profile';
     const r=await window.SB.from('profiles').update({avatar_url:url}).eq('id',window.__shkUid);
     if(r.error)throw r.error;
     AVATARS[window.__shkUid]=url; try{localStorage.setItem(K('avatar'),url);}catch(e){}
@@ -18440,8 +18461,7 @@ async function avatarUpload(file){
     paintAvatars(); try{renderSocialFeed();}catch(e){}
     toast('📷 That’s you now');
   }catch(e){
-    const m=String((e&&e.message)||e||''); try{console.warn('[avatar]',m);}catch(_){}
-    toast(/avatar_url|column|42703|schema cache/i.test(m)?'The wire has no picture column yet — run BOARD-SETUP.sql':'Couldn’t set the picture — check your connection');
+    toast(avatarFailMsg(e,stage));
   }
 }
 async function avatarRemove(){
@@ -18454,7 +18474,7 @@ async function avatarRemove(){
     document.querySelectorAll('[data-avuid="'+window.__shkUid+'"] img.avimg').forEach(i=>i.remove());
     paintAvatars(); try{renderSocialFeed();}catch(e){}
     toast('Picture removed — back to the mask');
-  }catch(e){ toast('Couldn’t remove it — check your connection'); }
+  }catch(e){ toast(avatarFailMsg(e,'remove')); }
 }
 function profileSealPaint(){ const el=document.getElementById('pfSeal'); if(!el)return; const u=myAvatar(); el.innerHTML=u?'<img class="avimg" src="'+esc(u)+'" alt="">':'⚓'; el.classList.toggle('has',!!u); }
 function avatarChooser(){
