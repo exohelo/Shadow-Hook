@@ -1131,6 +1131,12 @@ textarea.field{resize:vertical;min-height:110px;line-height:1.45}
 .svc-bar input{flex:1;min-width:0;background:var(--well);border:1px solid var(--line);border-radius:99px;padding:11px 16px;color:var(--bone);font-family:inherit;font-size:16px;outline:none}
 .svc-bar input:focus{border-color:rgba(201,128,63,.55)}
 .svc-bar button{flex:none;width:42px;height:42px;border-radius:50%;border:1px solid rgba(238,180,107,.5);background:linear-gradient(184deg,var(--btn-hi),var(--btn-lo));color:var(--copper-hi);font-size:15px;cursor:pointer}
+/* #talkmedia(aug31) — ＋ / GIF on the talk line, and the media a comment carries */
+.svc-bar button.svc-att{width:36px;height:36px;border-radius:10px;border:1px solid var(--line);background:var(--plate);color:var(--copper-hi);font-size:17px;line-height:1}
+.svc-bar button.svc-att.gif{font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:9.5px;letter-spacing:.08em;font-weight:700}
+.svc-bar button.svc-att:active{background:rgba(238,180,107,.14);transform:none}
+.svc-media{display:block;max-width:220px;max-height:260px;width:auto;height:auto;border-radius:12px;border:1px solid var(--line-soft);margin-top:5px;background:#000}
+.svc-row.re .svc-media{max-width:190px}
 .svc-bar button:active{transform:translateY(1px)}
 /* ===== #stories4 — IN-APP EMBEDS: the platform's own player, framed on the story page ===== */
 /* #stories9 — FULLSCREEN STAGE: portrait players run edge-to-edge, no frame at all */
@@ -4044,6 +4050,10 @@ window.DEVLOG=(function(){
       <!-- #reply(aug31) — ↩ Reply on a comment arms this strip; the next send threads under that comment -->
       <div class="svc-reply" id="svcReplyBar" hidden><span class="ic">↩</span><span>Replying to <b id="svcReplyTo"></b></span><button type="button" id="svcReplyX" aria-label="Cancel reply">✕</button></div>
       <div class="svc-bar">
+        <!-- #talkmedia(aug31) — a photo, a clip or a GIF answers too, same roads as the chatroom -->
+        <button type="button" class="svc-att" id="svcAtt" aria-label="Add a photo or video">＋</button>
+        <button type="button" class="svc-att gif" id="svcGif" aria-label="Send a GIF">GIF</button>
+        <input type="file" id="svcFile" accept="image/*,video/*" hidden>
         <input id="svcInput" type="text" placeholder="Say your piece…" maxlength="300" autocomplete="off">
         <button id="svcSend" type="button" aria-label="Send">➤</button>
       </div>
@@ -17416,17 +17426,19 @@ async function runGifQuery(term){
     gifNote('Couldn’t reach GIPHY. Your key may be over its daily limit — try later, or ⚙ change key. You can still paste a GIF link below.');
   }
 }
-let _gifBusy=false;
+let _gifBusy=false,_gifTarget=null;   /* #talkmedia — _gifTarget: where a pick goes when it isn't the chatroom */
 function sendGif(url){
   if(_gifBusy)return; // #fix3(bucks) — the picker stays hit-testable while it fades; one tap, one charge
   if(!/^https?:\/\/\S+/i.test(url)){toast('That doesn’t look like a link');return;}
+  if(_gifTarget){ const go=_gifTarget; _gifTarget=null; _gifBusy=true; setTimeout(()=>{_gifBusy=false;},600); closeGifPicker(); try{go(String(url));}catch(e){} return; }
   if(CREDITS<GIF_COST){closeGifPicker();openBrokeSheet(GIF_COST);return;}   // #76/#77 — show the funds sheet unobstructed
   if(!payCredits(GIF_COST,'GIF',true))return;                              // #61 — quiet 1 ⬡ deduction
   _gifBusy=true; setTimeout(()=>{_gifBusy=false;},600);
   chatOutbound({kind:'gif', url:String(url), cost:GIF_COST});              // #chat-live — share to the room
   closeGifPicker();
 }
-function openGifPicker(){
+function openGifPicker(onPick){
+  _gifTarget=(typeof onPick==='function')?onPick:null;   /* #talkmedia — a caller can claim the pick */
   const sh=_gifSheet||(_gifSheet=buildGifSheet());
   const has=!!GIPHY_KEY;
   gifShowView(has);
@@ -17437,7 +17449,7 @@ function openGifPicker(){
   if(has){runGifQuery(sh.querySelector('#gifQ').value.trim());}           // trending on open (or re-run last search)
   else{const ki=sh.querySelector('#gifKeyIn');if(ki){ki.value=GIPHY_KEY;setTimeout(()=>{try{ki.focus()}catch(e){}},60);}}
 }
-function closeGifPicker(){if(_gifSheet)_gifSheet.classList.remove('on');}
+function closeGifPicker(){if(_gifSheet)_gifSheet.classList.remove('on'); _gifTarget=null;}
 /* #gifout — the standalone GIF button in the send bar IS the picker's door now */
 (function(){ const b=document.getElementById('gifBtn'); if(b)b.addEventListener('click',()=>{try{openGifPicker();}catch(e){}}); })();
 /* #chatface — the ＋ attach menu opens Camera / Photo or Video / GIF (replaces the old
@@ -18768,6 +18780,9 @@ function svcRow(c){
     +'<div class="svc-av">🎭</div>'
     +'<div class="svc-b"><div class="svc-h">'+esc(c.by_handle||'a casual')+'<time>'+agoShort(c.ts)+'</time></div>'
     +'<div class="svc-t">'+(re&&c.reply_handle?'<span class="svc-at">↩ '+esc(c.reply_handle)+'</span>':'')+esc(c.body||'')+'</div>'
+    +(c.url?(c.kind==='video'
+        ?'<video class="svc-media" src="'+esc(String(c.url))+'" controls playsinline preload="metadata"></video>'
+        :'<img class="svc-media" src="'+esc(String(c.url))+'" alt="" loading="lazy">'):'')
     +'<div class="svc-foot"><button type="button" class="svc-re" data-cre="'+esc(String(c.reply_to||c.id))+'" data-creh="'+esc(c.by_handle||'a casual')+'">↩ Reply</button></div></div>'
     +(own?'<button class="svc-x" data-cdel="'+esc(String(c.id))+'"'+(c.local?' data-loc="1"':'')+' aria-label="Strike comment">✕</button>':'')
   +'</div>';
@@ -18798,16 +18813,16 @@ function svcHeadCount(){
 async function svcLoad(id){
   _svcId=String(id);
   const list=document.getElementById('stcList');if(!list)return;
-  const loc=(_svcStore()[_svcId]||[]).map(c=>({id:c.id,by_handle:c.by_handle,body:c.body,ts:c.ts,local:true,reply_to:c.reply_to||null,reply_handle:c.reply_handle||''}));
+  const loc=(_svcStore()[_svcId]||[]).map(c=>({id:c.id,by_handle:c.by_handle,body:c.body,ts:c.ts,local:true,reply_to:c.reply_to||null,reply_handle:c.reply_handle||'',kind:c.kind||'text',url:c.url||''}));
   let rows=[];
   if(window.SB){
     try{
       /* #reply — the thread columns ride along when BOARD-SETUP.sql has run; an older
          table answers "column does not exist", so the plain read is the fallback */
-      let r=await window.SB.from('story_comments').select('id,owner,by_handle,body,created_at,reply_to,reply_handle').eq('story_id',_svcId).order('created_at',{ascending:true}).limit(300);
-      if(r.error&&/reply_to|reply_handle|column|42703/i.test(r.error.message||'')){ _svcNoThread=true;
+      let r=await window.SB.from('story_comments').select('id,owner,by_handle,body,created_at,reply_to,reply_handle,kind,url').eq('story_id',_svcId).order('created_at',{ascending:true}).limit(300);
+      if(r.error&&/reply_to|reply_handle|kind|url|column|42703/i.test(r.error.message||'')){ _svcNoThread=true;
         r=await window.SB.from('story_comments').select('id,owner,by_handle,body,created_at').eq('story_id',_svcId).order('created_at',{ascending:true}).limit(300); }
-      if(!r.error&&r.data&&_svcId===String(id))rows=r.data.map(c=>({id:c.id,owner:c.owner,by_handle:c.by_handle,body:c.body,ts:c.created_at?new Date(c.created_at).getTime():0,reply_to:c.reply_to||null,reply_handle:c.reply_handle||''}));
+      if(!r.error&&r.data&&_svcId===String(id))rows=r.data.map(c=>({id:c.id,owner:c.owner,by_handle:c.by_handle,body:c.body,ts:c.created_at?new Date(c.created_at).getTime():0,reply_to:c.reply_to||null,reply_handle:c.reply_handle||'',kind:c.kind||'text',url:c.url||''}));
       else if(r.error)console.warn('[talk] load:',r.error.message,'— run STORY-COMMENTS-SETUP.sql');
     }catch(e){}
   }
@@ -18842,9 +18857,11 @@ function closeComments(){
   const i=document.getElementById('svcInput');if(i)try{i.blur()}catch(e){}
   svcSettle();
 }
-async function svcSend(){
+async function svcSend(media){
+  /* #talkmedia — media = {kind:'image'|'video'|'gif', url, file?}: the words in the line
+     ride along as the caption (optional); with no media the words are the comment */
   const inp=document.getElementById('svcInput');if(!inp||!_svcId)return;
-  const body=(inp.value||'').trim().slice(0,300);if(!body)return;
+  const body=(inp.value||'').trim().slice(0,300);if(!body&&!media)return;
   if(!payCredits(MSG_COST,'comment',true))return;                // #free — 0 now
   inp.value='';
   const sid=_svcId, ts=Date.now(), tmp='c'+ts.toString(36)+Math.floor(Math.random()*1e6).toString(36);
@@ -18852,7 +18869,8 @@ async function svcSend(){
   const list=document.getElementById('stcList');
   const emptyEl=list&&list.querySelector('.svc-empty');if(emptyEl)emptyEl.remove();
   const wired=!!(window.SB&&window.__shkUid);
-  const rowHTML=svcRow({id:tmp,owner:window.__shkUid,by_handle:chatMyHandle(),body:body,ts:ts,local:!wired,pend:wired,reply_to:rp?rp.id:null,reply_handle:rp?rp.h:''});   /* owner: so your ✕ is there before the reload */
+  const mk=media?media.kind:'text', murl=media?String(media.url||''):'';
+  const rowHTML=svcRow({id:tmp,owner:window.__shkUid,by_handle:chatMyHandle(),body:body,ts:ts,local:!wired,pend:wired,reply_to:rp?rp.id:null,reply_handle:rp?rp.h:'',kind:mk,url:murl});   /* owner: so your ✕ is there before the reload */
   if(list){
     /* a reply lands under the last reply of its thread (or under the parent); a fresh comment at the end */
     let anchor=null;
@@ -18861,16 +18879,35 @@ async function svcSend(){
     const nu=list.querySelector('[data-crid="'+tmp+'"]'); if(nu)try{nu.scrollIntoView({block:'nearest'})}catch(e){} else list.scrollTop=list.scrollHeight;
   }
   svcHeadCount();
-  const holdLocal=()=>{const o=_svcStore();(o[sid]=o[sid]||[]).push({id:tmp,by_handle:chatMyHandle(),body:body,ts:ts,reply_to:rp?rp.id:null,reply_handle:rp?rp.h:''});_svcSave(o);};
+  /* a file that never left the phone can't be held (its blob URL dies on relaunch); a GIF link can */
+  const holdLocal=()=>{ if(media&&media.file)return; const o=_svcStore();(o[sid]=o[sid]||[]).push({id:tmp,by_handle:chatMyHandle(),body:body,ts:ts,reply_to:rp?rp.id:null,reply_handle:rp?rp.h:'',kind:mk,url:murl});_svcSave(o);};
   if(wired){
     try{
+      let url=murl;
+      if(media&&media.file){   /* a photo or clip: land it in storage first, under talk/ */
+        const file=media.file, ext=((file.name||'').split('.').pop()||(mk==='video'?'mp4':'jpg')).toLowerCase().replace(/[^a-z0-9]/g,'')||'bin';
+        const path='talk/'+chatUUID()+'.'+ext;
+        const up=await window.SB.storage.from('chat-media').upload(path,typedUploadBody(file,ext,mk),{contentType:mediaMime(file,ext,mk),upsert:true});
+        if(up.error)throw up.error;
+        const pub=window.SB.storage.from('chat-media').getPublicUrl(path);
+        url=pub&&pub.data&&pub.data.publicUrl; if(!url)throw new Error('no public url');
+      }
       const base={story_id:sid,owner:window.__shkUid,by_id:ACCT_ID,by_handle:chatMyHandle(),body:body};
-      let r=(rp&&!_svcNoThread)?await window.SB.from('story_comments').insert(Object.assign({reply_to:rp.id,reply_handle:rp.h},base)):null;
-      if(!r||(r.error&&/reply_to|reply_handle|column|42703/i.test(r.error.message||''))){ if(r)_svcNoThread=true; r=await window.SB.from('story_comments').insert(base); }   /* older table: it still lands, just unthreaded */
+      const extra=Object.assign({},(rp?{reply_to:rp.id,reply_handle:rp.h}:{}),(media?{kind:mk,url:url}:{}));
+      let r=(Object.keys(extra).length&&!_svcNoThread)?await window.SB.from('story_comments').insert(Object.assign({},extra,base)):null;
+      if(!r||(r.error&&/reply_to|reply_handle|kind|url|column|42703/i.test(r.error.message||''))){
+        if(r)_svcNoThread=true;
+        if(media)throw new Error('The wire’s talk table can’t carry media yet — run BOARD-SETUP.sql');   /* words without the picture would misrepresent the send */
+        r=await window.SB.from('story_comments').insert(base); }   /* older table: words still land, just unthreaded */
       if(r.error)throw r.error;
       const el=list&&list.querySelector('[data-crid="'+tmp+'"]');if(el)el.classList.remove('pend');
     }catch(e){
       try{console.warn('[talk] send failed:',(e&&e.message)||e);}catch(_){}
+      if(media&&media.file){   /* #talkmedia — nothing landed: take the row back and say why */
+        const el=list&&list.querySelector('[data-crid="'+tmp+'"]'); if(el)el.remove(); svcHeadCount();
+        toast(/BOARD-SETUP/.test(String(e&&e.message))?String(e.message):'Upload failed — check your connection');
+        return;
+      }
       holdLocal();
       const el=list&&list.querySelector('[data-crid="'+tmp+'"]');
       if(el){el.classList.remove('pend');const x=el.querySelector('.svc-x');if(x)x.setAttribute('data-loc','1');}
@@ -18889,7 +18926,7 @@ async function svcSend(){
 (function(){   // #stories5 — drawer wiring
   const on=(id,ev,fn)=>{const e=document.getElementById(id);if(e)e.addEventListener(ev,fn);};
   on('svcClose','click',closeComments);
-  on('svcSend','click',svcSend);
+  on('svcSend','click',()=>svcSend());   /* #talkmedia — no event object riding in as `media` */
   const sb=document.getElementById('svcSend');if(sb)sb.addEventListener('mousedown',e=>e.preventDefault());   // keep the keyboard up through a send
   const ci=document.getElementById('svcInput');
   if(ci){
@@ -18902,6 +18939,13 @@ async function svcSend(){
   const tr=document.getElementById('svTrack');
   if(tr)tr.addEventListener('transitionend',e=>{if(e.propertyName==='height'){svcSettle();try{svUpdateIx()}catch(_){}}});
   on('svcReplyX','click',()=>svcReplyTo(null));   /* #reply */
+  /* #talkmedia — ＋ → the phone's picker; GIF → the GIPHY sheet, its pick routed here */
+  on('svcAtt','click',()=>{ if(typeof guestWall==='function'&&guestWall())return; const f=document.getElementById('svcFile'); if(f){f.value='';f.click();} });
+  on('svcFile','change',e=>{ const f=e.target.files&&e.target.files[0]; e.target.value=''; if(!f||!_svcId)return;
+    const kind=(f.type&&f.type.startsWith('video'))?'video':'image';
+    let u=''; try{u=URL.createObjectURL(f);}catch(_){}
+    svcSend({kind:kind,url:u,file:f}); });
+  on('svcGif','click',()=>{ if(typeof guestWall==='function'&&guestWall())return; try{openGifPicker(u=>{ const gm=(typeof gifMediaUrl==='function'&&gifMediaUrl(u))||u; svcSend({kind:'gif',url:gm}); });}catch(e){} });
   const sl=document.getElementById('stcList');
   if(sl)sl.addEventListener('click',async e=>{
     const re=e.target.closest('[data-cre]');   /* #reply — arm the strip, focus the line */
@@ -18911,7 +18955,9 @@ async function svcSend(){
       setTimeout(()=>{if(b.isConnected){b.classList.remove('arm');b.textContent='✕';}},2200);return;}
     const id=b.getAttribute('data-cdel');
     if(b.getAttribute('data-loc')||/^c[0-9a-z]/.test(String(id))){const o=_svcStore();o[_svcId]=(o[_svcId]||[]).filter(c=>String(c.id)!==String(id));_svcSave(o);}
-    else if(window.SB){try{await window.SB.from('story_comments').delete().eq('id',id);}catch(e){}}
+    else if(window.SB){try{await window.SB.from('story_comments').delete().eq('id',id);}catch(e){}
+      try{ const m=b.closest('.svc-row')&&b.closest('.svc-row').querySelector('.svc-media'); const src=m&&(m.getAttribute('src')||''); const k=src&&src.match(/\/chat-media\/(talk\/[^?#]+)/);
+        if(k)window.SB.storage.from('chat-media').remove([decodeURIComponent(k[1])]).catch(()=>{}); }catch(e){} }   /* #talkmedia — the file goes with the comment */
     const row=b.closest('.svc-row');if(row)row.remove();
     svcHeadCount();
     const list=document.getElementById('stcList');
