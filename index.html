@@ -3229,11 +3229,11 @@ window.DEVLOG=(function(){
         <div class="card-h">Spread the Word <span class="tag">every casual makes the board smarter</span></div>
         <div class="card-b">
           <p class="sub" style="margin-bottom:12px">Know a casual still walking in blind? Mark them.</p>
-          <button class="btn" id="shareBtn" type="button">⚓ Share the Order</button>
+          <button class="btn" id="shareBtn" data-share="btn" type="button">⚓ Share the Order</button>
           <div style="display:flex;gap:10px;margin-top:10px">
-            <a class="btn-line" id="shareSms" href="#">💬 Text</a>
-            <a class="btn-line" id="shareMail" href="#">✉ Email</a>
-            <button class="btn-line" id="shareCopy" type="button">⧉ Copy Link</button>
+            <a class="btn-line" id="shareSms" data-share="sms" href="#">💬 Text</a>
+            <a class="btn-line" id="shareMail" data-share="mail" href="#">✉ Email</a>
+            <button class="btn-line" id="shareCopy" data-share="copy" type="button">⧉ Copy Link</button>
           </div>
         </div>
       </div>
@@ -4568,6 +4568,19 @@ window.DEVLOG=(function(){
       <!-- ═══ #dm(aug13) — DIRECT MESSAGES: privacy lives HERE, with identity (approved
            off the v2 sample). Who can reach you, the requests waiting, the friends who
            always can. Hidden until a signed-in session — wires ride the account. -->
+      <!-- #sharepf(aug31) — SPREAD THE WORD on the profile, by request. The same four roads
+           as the card on the Social tab; both copies share one set of bindings (data-share). -->
+      <div class="albox" id="shareBox">
+        <h4>📣 Spread the Word</h4>
+        <p class="alnote">Know a casual still walking in blind? Mark them. Every casual makes the board smarter — and your first share pays <b style="color:var(--copper-hi)">+25 ⬡</b>.</p>
+        <button class="btn" data-share="btn" type="button" style="width:100%">⚓ Share the Order</button>
+        <div style="display:flex;gap:8px;margin-top:9px">
+          <a class="btn-line" data-share="sms" href="#" style="flex:1;padding:11px 4px;font-size:11.5px;letter-spacing:.06em;white-space:nowrap">💬 Text</a>
+          <a class="btn-line" data-share="mail" href="#" style="flex:1;padding:11px 4px;font-size:11.5px;letter-spacing:.06em;white-space:nowrap">✉ Email</a>
+          <button class="btn-line" data-share="copy" type="button" style="flex:1;padding:11px 4px;font-size:11.5px;letter-spacing:.06em;white-space:nowrap">⧉ Copy Link</button>
+        </div>
+      </div>
+
       <div class="albox" id="dmPrivBox" style="display:none">
         <h4>✉ Direct Messages</h4>
         <p class="alnote">Who can open a wire with you. Friends are the standing exception.</p>
@@ -21554,16 +21567,18 @@ function shareCrewURL(){
     if(h&&/^[A-Za-z0-9_\-]{3,20}$/.test(h))return SHARE_URL+"/?crew="+encodeURIComponent(String(h).toUpperCase()); }catch(e){}
   return SHARE_URL;
 }
+/* #sharepf(aug31) — the card lives in TWO places now (the Social tab and the profile), so
+   every road is wired by data-share, not by id: one set of handlers, every copy. */
 function _shareWire(){
   const u=shareCrewURL();
-  try{document.getElementById('shareSms').href="sms:?&body="+encodeURIComponent(SHARE_TXT+u);}catch(e){}
-  try{document.getElementById('shareMail').href="mailto:?subject="+encodeURIComponent("The Order of The Shadow Hook")+"&body="+encodeURIComponent(SHARE_TXT+u);}catch(e){}
+  document.querySelectorAll('[data-share="sms"]').forEach(a=>{try{a.href="sms:?&body="+encodeURIComponent(SHARE_TXT+u);}catch(e){}});
+  document.querySelectorAll('[data-share="mail"]').forEach(a=>{try{a.href="mailto:?subject="+encodeURIComponent("The Order of The Shadow Hook")+"&body="+encodeURIComponent(SHARE_TXT+u);}catch(e){}});
 }
 _shareWire(); setTimeout(_shareWire,3000);   // re-arm once the account settles at boot
-document.getElementById('shareBtn').addEventListener('click',async()=>{
+document.querySelectorAll('[data-share="btn"]').forEach(b=>b.addEventListener('click',async()=>{
   if(navigator.share){try{await navigator.share({title:"The Order of The Shadow Hook",text:SHARE_TXT,url:shareCrewURL()});shareReward()}catch(e){}}
-  else document.getElementById('shareCopy').click();
-});
+  else{ const box=b.closest('.card,.albox'); const cp=(box&&box.querySelector('[data-share="copy"]'))||document.querySelector('[data-share="copy"]'); if(cp)cp.click(); }
+}));
 /* #fix2(bucks) — the +25 used to hang off shareCopy ALONE, ungated and outside its own
    try/catch: every tap of "⧉ Copy Link" minted 25 ⬡, forever, whether the clipboard
    write worked or not — roughly 150 ⬡ a second, and nothing was ever shared. The other
@@ -21579,14 +21594,13 @@ function shareReward(){
   try{ localStorage.setItem(K('sharepaid'),'1'); }catch(e){}
   addCredits(PAY.SHARE,"spread the word");
 }
-document.getElementById('shareSms').addEventListener('click',()=>setTimeout(shareReward,800));
-document.getElementById('shareMail').addEventListener('click',()=>setTimeout(shareReward,800));
-document.getElementById('shareCopy').addEventListener('click',async()=>{
+document.querySelectorAll('[data-share="sms"],[data-share="mail"]').forEach(a=>a.addEventListener('click',()=>setTimeout(shareReward,800)));
+document.querySelectorAll('[data-share="copy"]').forEach(b=>b.addEventListener('click',async()=>{
   let copied=false;
-  try{await navigator.clipboard.writeText(SHARE_TXT+shareCrewURL());document.getElementById('shareCopy').textContent="✓ Copied";copied=true}
+  try{await navigator.clipboard.writeText(SHARE_TXT+shareCrewURL());b.textContent="✓ Copied";copied=true}
   catch(e){prompt("Copy the link:",shareCrewURL())}
   if(copied)shareReward();
-});
+}));
 /* ===== MAYDAY: verified port emergency lines ===== */
 const EMERGENCY=[
  ["LA Port Police — Dispatch","San Pedro / Wilmington / TI side · 24 hrs","3107323500","(310) 732-3500"],
