@@ -1920,6 +1920,13 @@ html.daylight .jl-gate{background:linear-gradient(180deg,rgba(214,138,74,.12),rg
 .prof-seal{flex:none;width:52px;height:52px;border-radius:14px;display:flex;align-items:center;justify-content:center;
   font-size:26px;color:var(--copper-hi);background:radial-gradient(circle at 50% 30%,rgba(58,49,33,.92),rgba(20,17,13,.95));
   border:1px solid rgba(238,180,107,.5);box-shadow:0 0 16px rgba(238,180,107,.28),inset 0 1px 0 rgba(244,227,194,.25)}
+.prof-sealwrap{position:relative;flex:none}
+.prof-seal{overflow:hidden;cursor:pointer;padding:0;font-family:inherit}
+.prof-seal.has{background:#0a0b0d}
+.pf-cam{position:absolute;right:-6px;bottom:-6px;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;background:var(--copper-hi);border:2px solid var(--plate);pointer-events:none;box-shadow:0 2px 6px rgba(0,0,0,.4)}
+/* #avatar — a picture in any of the app's avatar slots */
+.avimg{display:block;width:100%;height:100%;object-fit:cover;border-radius:inherit}
+.bp-av,.bc-av,.sv-av,.svc-av,.msg .av{overflow:hidden}
 .prof-name{font-family:'Anton',sans-serif;font-size:21px;letter-spacing:.03em;color:var(--bone);line-height:1.05;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .prof-name:empty::before{content:"BROTHERHOOD";color:var(--steel)}
@@ -3272,24 +3279,8 @@ window.DEVLOG=(function(){
     <div id="hallView" style="display:none"><!-- #soc1 — hidden until the Hall pill is tapped -->
       <div class="hall-stats" id="hubStats"></div>
       <div id="socialFeed"></div>
-      <!-- #sharemove(aug13) — SPREAD THE WORD moved here from the Order view, by request.
-           It sits AFTER #socialFeed, whose renderer ends on the Gatherings section — so
-           this card reads as "under Gatherings" while living safely OUTSIDE the feed's
-           innerHTML wipe (renderSocialFeed rebuilds #socialFeed wholesale; anything
-           static inside it would be destroyed on the first re-render). Same ids, so
-           the share bindings ride along untouched. -->
-      <div class="card" style="margin-top:14px">
-        <div class="card-h">Spread the Word <span class="tag">every casual makes the board smarter</span></div>
-        <div class="card-b">
-          <p class="sub" style="margin-bottom:12px">Know a casual still walking in blind? Mark them.</p>
-          <button class="btn" id="shareBtn" data-share="btn" type="button">⚓ Share the Order</button>
-          <div style="display:flex;gap:10px;margin-top:10px">
-            <a class="btn-line" id="shareSms" data-share="sms" href="#">💬 Text</a>
-            <a class="btn-line" id="shareMail" data-share="mail" href="#">✉ Email</a>
-            <button class="btn-line" id="shareCopy" data-share="copy" type="button">⧉ Copy Link</button>
-          </div>
-        </div>
-      </div>
+      <!-- #sharecut(aug31) — the SPREAD THE WORD card is off the Hall, by request; it lives on
+           the profile now (#shareBox). The share roads are wired by data-share, so nothing else moves. -->
     </div>
 
     <!-- #hall — VIEW 2: THE ORDER — race · circles · marks · boards · share -->
@@ -4567,7 +4558,8 @@ window.DEVLOG=(function(){
   <div class="sheet" id="profileSheet" role="dialog" aria-modal="true" aria-label="Your account">
     <div class="sheet-card" style="text-align:left">
       <div class="prof-head">
-        <div class="prof-seal">⚓</div>
+        <!-- #avatar(aug31) — the seal IS your picture: tap it to take one, pick one, or drop it -->
+        <div class="prof-sealwrap"><button type="button" class="prof-seal" id="pfSeal" aria-label="Your picture — tap to change">⚓</button><span class="pf-cam" aria-hidden="true">📷</span></div>
         <div style="min-width:0;flex:1">
           <div class="prof-name" id="pfName"></div>
           <div class="prof-handle" id="pfHandle">—</div>
@@ -16663,9 +16655,13 @@ function renderChatRow(row){
     let h=0;for(let i=0;i<hs.length;i++)h=(h*31+hs.charCodeAt(i))>>>0;   // stable per-handle hue
     avStyle=' style="background:hsl('+(h%360)+',42%,42%);color:#fff;border-color:transparent"';
   }
+  /* #avatar — a casual with a picture wears it here too (self rows: your own) */
+  const avUid=self?(window.__shkUid||''):(row.owner||'');
+  const avPic=(typeof avatarOf==='function')?avatarOf(avUid):'';
+  if(avPic){ avChar='<img class="avimg" src="'+esc(avPic)+'" alt="" data-fb="'+esc(avChar)+'" onerror="this.outerHTML=this.dataset.fb">'; avStyle=' data-avuid="'+esc(avUid)+'" style="background:#0a0b0d;border-color:transparent"'; }
   feed.insertAdjacentHTML('beforeend',
     '<div class="msg'+(self?' self':'')+(owned?' owned':'')+(grouped?' grouped':'')+'" data-cid="'+esc(String(row.id))+'">'
-    +'<div class="av"'+avStyle+'>'+esc(avChar)+'</div>'
+    +'<div class="av"'+avStyle+'>'+(avPic?avChar:esc(avChar))+'</div>'
     +'<div class="bd"><div class="who">'+who+' <time>'+t+'</time>'+edTag+'</div>'+inner+acts+'</div></div>');
   try{rxPaint(String(row.id));}catch(e){}   /* #react — chips ride in the moment the bubble lands */
   _lastMsgWho=senderKey;_lastMsgSelf=self;_lastMsgT=(d&&!isNaN(d.getTime()))?d.getTime():Date.now();
@@ -17659,6 +17655,7 @@ async function sbLoadSocial(){
     if(rr.error||gg.error){console.warn('[social] load:',(rr.error||gg.error).message,'— run SOCIAL-SETUP.sql');return;}
     ALL_ROOMS=rr.data||[]; ALL_GATHS=gg.data||[];
     try{ await sbLoadClans(); }catch(e){}   /* #clans — the gamer wing rides the same pull */
+    try{ await sbLoadAvatars(); }catch(e){}   /* #avatar — everyone's picture, one small read */
     try{ await sbLoadRoomKeys(); roomKeysSub(); }catch(e){}   /* #keys — who holds a key, who's asking */
     /* #clean1 — key-ring hygiene: a joined-room key whose room no longer exists on
        the server is a key to a demolished door (deleted rooms used to haunt the
@@ -18388,9 +18385,108 @@ async function deleteStory(id){
     renderSocialFeed();return true;
   }catch(e){toast("Couldn't strike it — check your connection");return false;}
 }
+/* ═══ #avatar(aug31) — PROFILE PICTURES ═══
+   profiles.avatar_url (BOARD-SETUP.sql) holds a small square JPEG the casual
+   picked, landed in chat-media under avatars/<uid>-<stamp>.jpg (a fresh path per
+   pick — no overwrite, so no cache to bust; the old file is removed after). avatar_board is a definer view of
+   id + avatar_url so everyone can paint everyone's picture without opening the
+   profiles table. Every avatar slot carries data-avuid, so a late load fills it. */
+let AVATARS={}; try{AVATARS=JSON.parse(localStorage.getItem('shadowhook_avatars')||'{}')||{};}catch(e){}
+function myAvatar(){ try{ return (window.__shkUid&&AVATARS[window.__shkUid])||localStorage.getItem(K('avatar'))||''; }catch(e){ return ''; } }
+function avatarOf(uid){ if(!uid)return ''; if(uid===window.__shkUid)return myAvatar(); return AVATARS[uid]||''; }
+function avatarHTML(uid,fallback){ const u=avatarOf(uid); fallback=fallback||'🎭';   /* a picture that won't load falls back to the mask, never to a blank */
+  return u?'<img class="avimg" src="'+esc(u)+'" alt="" loading="lazy" data-fb="'+esc(fallback)+'" onerror="this.outerHTML=this.dataset.fb">':fallback; }
+function avSlot(cls,uid,fallback,extra){ return '<div class="'+cls+'" data-avuid="'+esc(String(uid||''))+'"'+(extra||'')+'>'+avatarHTML(uid,fallback)+'</div>'; }
+async function sbLoadAvatars(){
+  if(!window.SB)return;
+  try{
+    const r=await window.SB.from('avatar_board').select('id,avatar_url').limit(3000);
+    if(r.error){ if(!/does not exist|schema cache|42P01/i.test(r.error.message||''))console.warn('[avatar]',r.error.message); return; }
+    const m={}; (r.data||[]).forEach(x=>{ if(x.avatar_url)m[x.id]=x.avatar_url; }); AVATARS=m;
+    try{localStorage.setItem('shadowhook_avatars',JSON.stringify(m));}catch(e){}
+    if(window.__shkUid){ try{ if(m[window.__shkUid])localStorage.setItem(K('avatar'),m[window.__shkUid]); else localStorage.removeItem(K('avatar')); }catch(e){} }
+    paintAvatars();
+  }catch(e){}
+}
+function paintAvatars(){
+  try{profileSealPaint();}catch(e){}
+  try{ document.querySelectorAll('[data-avuid]').forEach(el=>{ const u=avatarOf(el.getAttribute('data-avuid')); const has=!!el.querySelector('img.avimg');
+    if(u&&!has)el.innerHTML='<img class="avimg" src="'+esc(u)+'" alt="" data-fb="🎭" onerror="this.outerHTML=this.dataset.fb">'; }); }catch(e){}
+}
+function squareAvatar(file,size){   /* center-crop to a square, shrink, JPEG */
+  return new Promise((res,rej)=>{ const r=new FileReader(); r.onerror=rej;
+    r.onload=()=>{ const img=new Image(); img.onerror=rej; img.onload=()=>{ try{
+      const sq=Math.min(img.width,img.height); const c=document.createElement('canvas'); c.width=c.height=size;
+      c.getContext('2d').drawImage(img,(img.width-sq)/2,(img.height-sq)/2,sq,sq,0,0,size,size);
+      c.toBlob(b=>b?res(b):rej(new Error('no blob')),'image/jpeg',.86); }catch(e){rej(e);} }; img.src=r.result; };
+    r.readAsDataURL(file); });
+}
+async function avatarUpload(file){
+  if(typeof guestWall==='function'&&guestWall())return;
+  if(!(window.SB&&window.__shkUid)){ toast('Sign in to set a picture'); return; }
+  toast('📷 Setting your picture…');
+  try{
+    const blob=await squareAvatar(file,256);
+    const old=myAvatar();
+    const path='avatars/'+window.__shkUid+'-'+Date.now().toString(36)+'.jpg';
+    const up=await window.SB.storage.from('chat-media').upload(path,blob,{contentType:'image/jpeg',upsert:false});
+    if(up.error)throw up.error;
+    const pub=window.SB.storage.from('chat-media').getPublicUrl(path);
+    const url=pub&&pub.data&&pub.data.publicUrl; if(!url)throw new Error('no public url');
+    const r=await window.SB.from('profiles').update({avatar_url:url}).eq('id',window.__shkUid);
+    if(r.error)throw r.error;
+    AVATARS[window.__shkUid]=url; try{localStorage.setItem(K('avatar'),url);}catch(e){}
+    try{ const k=String(old||'').match(/\/chat-media\/(avatars\/[^?#]+)/); if(k)window.SB.storage.from('chat-media').remove([decodeURIComponent(k[1])]).catch(()=>{}); }catch(e){}   /* the last one goes */
+    paintAvatars(); try{renderSocialFeed();}catch(e){}
+    toast('📷 That’s you now');
+  }catch(e){
+    const m=String((e&&e.message)||e||''); try{console.warn('[avatar]',m);}catch(_){}
+    toast(/avatar_url|column|42703|schema cache/i.test(m)?'The wire has no picture column yet — run BOARD-SETUP.sql':'Couldn’t set the picture — check your connection');
+  }
+}
+async function avatarRemove(){
+  if(!(window.SB&&window.__shkUid))return;
+  try{
+    const old=myAvatar();
+    const r=await window.SB.from('profiles').update({avatar_url:null}).eq('id',window.__shkUid); if(r.error)throw r.error;
+    try{ const k=String(old||'').match(/\/chat-media\/(avatars\/[^?#]+)/); if(k)window.SB.storage.from('chat-media').remove([decodeURIComponent(k[1])]).catch(()=>{}); }catch(e){}
+    delete AVATARS[window.__shkUid]; try{localStorage.removeItem(K('avatar'));}catch(e){}
+    document.querySelectorAll('[data-avuid="'+window.__shkUid+'"] img.avimg').forEach(i=>i.remove());
+    paintAvatars(); try{renderSocialFeed();}catch(e){}
+    toast('Picture removed — back to the mask');
+  }catch(e){ toast('Couldn’t remove it — check your connection'); }
+}
+function profileSealPaint(){ const el=document.getElementById('pfSeal'); if(!el)return; const u=myAvatar(); el.innerHTML=u?'<img class="avimg" src="'+esc(u)+'" alt="">':'⚓'; el.classList.toggle('has',!!u); }
+function avatarChooser(){
+  if(typeof guestWall==='function'&&guestWall())return;
+  let sh=document.getElementById('avSheet');
+  if(!sh){ sh=document.createElement('div'); sh.className='sheet'; sh.id='avSheet'; sh.style.zIndex='94'; document.body.appendChild(sh);
+    sh.addEventListener('click',e=>{ if(e.target===sh)sh.classList.remove('on'); }); }
+  const has=!!myAvatar();
+  sh.innerHTML='<div class="sheet-card" style="text-align:left">'
+    +'<div class="big" style="font-size:20px;letter-spacing:.06em;text-align:center">YOUR PICTURE</div>'
+    +'<p class="sub" style="margin:8px 0 14px;text-align:center">Shows beside your handle on the board, in the talk and in the rooms. Cropped square, kept small — change it or drop it anytime.</p>'
+    +'<button class="btn" id="avShoot" type="button">📷 Take one now</button>'
+    +'<button class="btn-line gold" id="avPick" type="button" style="width:100%;margin-top:10px">🖼 From your gallery</button>'
+    +(has?'<button class="btn-line red" id="avDrop" type="button" style="width:100%;margin-top:10px">✕ Remove the picture</button>':'')
+    +'<button class="btn-ghost" id="avNo" type="button" style="width:100%;margin-top:10px;border:0;color:#586067">Never mind</button></div>';
+  const pick=cam=>{ sh.classList.remove('on');
+    let i=document.getElementById('avFile');
+    if(!i){ i=document.createElement('input'); i.type='file'; i.id='avFile'; i.accept='image/*'; i.hidden=true; document.body.appendChild(i);
+      i.addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; e.target.value=''; if(f)avatarUpload(f); }); }
+    if(cam)i.setAttribute('capture','user'); else i.removeAttribute('capture');
+    i.value=''; i.click(); };
+  sh.querySelector('#avShoot').addEventListener('click',()=>pick(true));
+  sh.querySelector('#avPick').addEventListener('click',()=>pick(false));
+  const d=sh.querySelector('#avDrop'); if(d)d.addEventListener('click',()=>{ sh.classList.remove('on'); avatarRemove(); });
+  sh.querySelector('#avNo').addEventListener('click',()=>sh.classList.remove('on'));
+  sh.classList.add('on');
+}
+(function(){ const b=document.getElementById('pfSeal'); if(b)b.addEventListener('click',()=>{ try{avatarChooser();}catch(e){} }); try{profileSealPaint();}catch(e){} })();
+
 function storiesFeed(){
-  const svr=ALL_STORIES.map(s=>({id:s.id,by:s.by_handle||'a casual',by_id:s.by_id,url:s.url,note:s.note||'',plat:s.platform||'',ts:s.created_at?new Date(s.created_at).getTime():0,mine:(s.by_id&&s.by_id===ACCT_ID)}));
-  const loc=MY_LOCAL_STORIES.filter(s=>!svr.some(x=>x.url===s.url&&(x.url||x.note===s.note))).map(s=>({id:s.id,by:s.by_handle||'you',by_id:s.by_id,url:s.url,note:s.note||'',plat:s.platform||'',ts:s.created_at?new Date(s.created_at).getTime():0,mine:true,local:true}));
+  const svr=ALL_STORIES.map(s=>({id:s.id,by:s.by_handle||'a casual',by_id:s.by_id,owner:s.owner||'',url:s.url,note:s.note||'',plat:s.platform||'',ts:s.created_at?new Date(s.created_at).getTime():0,mine:(s.by_id&&s.by_id===ACCT_ID)}));
+  const loc=MY_LOCAL_STORIES.filter(s=>!svr.some(x=>x.url===s.url&&(x.url||x.note===s.note))).map(s=>({id:s.id,by:s.by_handle||'you',by_id:s.by_id,owner:window.__shkUid||'',url:s.url,note:s.note||'',plat:s.platform||'',ts:s.created_at?new Date(s.created_at).getTime():0,mine:true,local:true}));
   return svr.concat(loc).sort((a,b)=>b.ts-a.ts);
 }
 
@@ -18462,7 +18558,7 @@ function svPageHTML(s,i){
         +'<div class="sd-tag">PLACEHOLDER CLIP</div>'
         +'<div class="sd-note">'+esc(s.note||'')+'</div>'
       +'</div>'
-      +'<div class="sv-rail"><div class="sv-av">🎭</div>'+likeBtn+cmBtn
+      +'<div class="sv-rail">'+avSlot('sv-av',s.owner,'🎭')+likeBtn+cmBtn
         +'<button data-share="__APP__"><span class="ic">⤴</span>Share</button>'
       +'</div>'
       +'<div class="sv-cap"><div class="sv-h">🎭 '+esc(s.by)+'</div>'
@@ -18483,7 +18579,7 @@ function svPageHTML(s,i){
     return '<div class="sv-page" data-si="'+i+'" style="--pc:'+tints[h%tints.length]+'">'
       +'<div class="sv-bg"></div><div class="sv-txtglow"></div><div class="sv-burst">❤</div>'
       +'<div class="sv-txtfull '+size+'"><div class="st-q">“</div><div class="st-t">'+esc(words).replace(/\n/g,'<br>')+'</div></div>'
-      +'<div class="sv-rail"><div class="sv-av">🎭</div>'+likeBtn+cmBtn
+      +'<div class="sv-rail">'+avSlot('sv-av',s.owner,'🎭')+likeBtn+cmBtn
         +'<button data-share="__APP__"><span class="ic">⤴</span>Share</button>'
       +'</div>'
       +'<div class="sv-cap"><div class="sv-h">🎭 '+esc(s.by)+'</div>'
@@ -18502,7 +18598,7 @@ function svPageHTML(s,i){
       :'<img class="sv-mediafull" src="'+u+'" alt="">';
     return '<div class="sv-page" data-si="'+i+'" style="--pc:#EEB46B">'
       +media+overHTML+'<div class="sv-shade top"></div><div class="sv-shade"></div><div class="sv-burst">❤</div>'
-      +'<div class="sv-rail"><div class="sv-av">🎭</div>'+likeBtn+cmBtn
+      +'<div class="sv-rail">'+avSlot('sv-av',s.owner,'🎭')+likeBtn+cmBtn
         +'<button data-share="'+(s.local?'__APP__':u)+'"><span class="ic">⤴</span>Share</button>'
 
       +'</div>'
@@ -18518,7 +18614,7 @@ function svPageHTML(s,i){
   const emb=storyEmbed(s.url);
   if(emb&&s._vshape)emb.shape=s._vshape;   // #vshape — a probed Short takes the portrait frame
   const rail='<div class="sv-rail">'
-      +'<div class="sv-av">'+(s.bot?'⚓':'🎭')+'</div>'+likeBtn+cmBtn
+      +(s.bot?'<div class="sv-av">⚓</div>':avSlot('sv-av',s.owner,'🎭'))+likeBtn+cmBtn
       +'<button data-share="'+u+'"><span class="ic">⤴</span>Share</button>'
       
     +'</div>';
@@ -18820,7 +18916,7 @@ function svcRow(c){
   const own=!!(c.local||(c.owner&&c.owner===window.__shkUid));
   const re=!!c.reply_to;   /* #reply — a reply sits indented under its parent and names who it answers */
   return '<div class="svc-row'+(c.pend?' pend':'')+(re?' re':'')+'" data-crid="'+esc(String(c.id))+'"'+(re?' data-cparent="'+esc(String(c.reply_to))+'"':'')+'>'
-    +'<div class="svc-av">🎭</div>'
+    +avSlot('svc-av',c.owner||(c.local?window.__shkUid:''),'🎭')
     +'<div class="svc-b"><div class="svc-h">'+esc(c.by_handle||'a casual')+'<time>'+agoShort(c.ts)+'</time></div>'
     +'<div class="svc-t">'+(re&&c.reply_handle?'<span class="svc-at">↩ '+esc(c.reply_handle)+'</span>':'')+esc(c.body||'')+'</div>'
     +(c.url?(c.kind==='video'
@@ -19258,7 +19354,7 @@ function _floorSheetRepaint(){
     /* #dm(aug13) — a roster row is a DOOR now: tap another casual → their card → a wire */
     const tap=(!p.me&&!p.nameless&&p.uid&&!/^anon-/.test(p.uid)&&typeof openDmCard==='function')?' role="button" data-dmuid="'+esc(p.uid)+'" data-dmh="'+esc(p.h)+'"':'';   /* no door onto a key that can't take a wire */
     return '<div'+tap+' class="floor-row" onclick="if(this.dataset.dmuid)try{openDmCard(this.dataset.dmuid,this.dataset.dmh)}catch(e){}" style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line-soft)'+((p.me||p.nameless)?'':';cursor:pointer')+'">'
-      +'<span style="flex:none;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:\'Anton\',sans-serif;font-size:14px;background:'+(p.nameless?'var(--well);border:1px dashed var(--line);color:var(--steel)':'hsl('+(hue%360)+',42%,42%);color:#fff')+'">'+esc(av)+'</span>'
+      +'<span'+((!p.nameless&&p.uid&&avatarOf(p.uid))?' data-avuid="'+esc(p.uid)+'"':'')+' style="flex:none;width:30px;height:30px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;font-family:\'Anton\',sans-serif;font-size:14px;background:'+(p.nameless?'var(--well);border:1px dashed var(--line);color:var(--steel)':'hsl('+(hue%360)+',42%,42%);color:#fff')+'">'+((!p.nameless&&p.uid&&avatarOf(p.uid))?avatarHTML(p.uid,esc(av)):esc(av))+'</span>'
       +'<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:\'Inter\',system-ui,-apple-system,\'Segoe UI\',Roboto,sans-serif;font-size:12.5px;color:'+(p.nameless?'var(--steel)':'var(--bone)')+'">'+esc(nm)+(p.me?' <span class="rtagme">YOU</span>':'')+'</span>'
       +(p.nameless
           ? (p.me?'<button type="button" class="pill" onclick="try{goGateForHandle()}catch(e){}" style="flex:none;cursor:pointer;color:var(--ember);border-color:rgba(224,73,46,.55);background:none;font-family:inherit">⚓ take a handle</button>'
@@ -20159,7 +20255,7 @@ function boardPostHTML(s,i,step){
   }
   const liked=storyLiked(s.id), n=storyLikeCount(s.id);
   return '<div class="bpost feedIn'+(s.mine?' mine':'')+'"'+step()+' data-bi="'+i+'" data-sid="'+esc(String(s.id))+'">'
-    +'<div class="bp-head"><div class="bp-av">🎭</div><div class="bp-who"><b>'+esc(s.by||'a casual')+'</b><span>'+agoShort(s.ts)+' · '+kindTxt+(s.local?' · on this phone':'')+'</span></div>'
+    +'<div class="bp-head">'+avSlot('bp-av',s.owner,'🎭')+'<div class="bp-who"><b>'+esc(s.by||'a casual')+'</b><span>'+agoShort(s.ts)+' · '+kindTxt+(s.local?' · on this phone':'')+'</span></div>'
       +(s.mine?'<button class="feed-inv feed-del" data-del="story" data-id="'+esc(String(s.id))+'" aria-label="Strike this post">✕</button>':'')+'</div>'
     +body
     +'<div class="bp-foot">'
@@ -20173,7 +20269,7 @@ function boardSectionHTML(step){
   const posts=storiesFeed();
   let html='<div class="fsec" id="boardSec"><div class="fsec-h"><span class="ttl">📣 The Board</span><span class="more">'+(posts.length?posts.length+' post'+(posts.length===1?'':'s'):'the open feed')+'</span></div>';
   /* the composer leads — a tap on the line says it in words; the icons shoot, pick, or paste */
-  html+='<div class="bcomp"><div class="bc-av">🎭</div>'
+  html+='<div class="bcomp">'+avSlot('bc-av',window.__shkUid,'🎭')
     +'<button type="button" class="bc-say" data-bnew="txt">Say something…</button>'
     +'<button type="button" class="bc-ic" data-bnew="shoot" aria-label="Shoot a photo or clip">📷</button>'
     +'<button type="button" class="bc-ic" data-bnew="pick" aria-label="From your gallery">🖼</button>'
@@ -23820,6 +23916,7 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
 
     $('pfName').textContent   = txt($('meName'))||a.name||"";
     $('pfHandle').textContent = "@"+(txt($('meHandle'))||a.handle||"—");
+    try{profileSealPaint();}catch(e){}   /* #avatar */
     $('pfCard').textContent   = card||"—";
     $('pfCircle').textContent = (circLabel&&circLabel.toLowerCase()!=="unverified")
                                   ? (circParts[0].trim()||circLabel) : "—";
