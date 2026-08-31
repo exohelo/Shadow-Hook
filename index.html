@@ -1059,6 +1059,7 @@ textarea.field{resize:vertical;min-height:110px;line-height:1.45}
 /* ===== #hub — the TikTok-style full-page STORY VIEWER ===== */
 #storyViewer{position:fixed;top:var(--tbH,0px);left:0;right:0;bottom:max(var(--nvH,0px),var(--kb,0px));z-index:85;background:#000;display:none}   /* #hdr2/#stories2 — framed by the live header AND the tab bar · #ioskb — the talk drawer clears the floating keyboard */
 #storyViewer.on{display:block}
+#storyViewer img,#storyViewer video{-webkit-user-drag:none;user-select:none;-webkit-user-select:none}
 #storyViewer.over{z-index:97}   /* #clanclips — opened from the clan sheet (91): play over it, hand back to it on close */
 /* the squad's gameplay reel inside the clan sheet */
 .cclips{display:flex;gap:9px;overflow-x:auto;-webkit-overflow-scrolling:touch;scroll-snap-type:x proximity;padding:2px 1px 8px;margin:0 -1px;scrollbar-width:none}
@@ -1210,6 +1211,16 @@ textarea.field{resize:vertical;min-height:110px;line-height:1.45}
 .sv-embedwrap.t{width:96%;height:min(62vh,540px)}
 .sv-embedwrap.s{width:96%;height:170px}
 .sv-embedwrap iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000}
+/* #svshield(aug31) — the gesture shield over a player */
+.sv-shield{position:absolute;inset:0;z-index:3;touch-action:pan-y;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.sv-shield.edge{inset:auto;background:transparent}
+.sv-shield.edge.t{top:0;left:0;right:0;height:22%}
+.sv-shield.edge.b{bottom:0;left:0;right:0;height:22%}
+.sv-shield.edge.l{top:22%;bottom:22%;left:0;width:16%}
+.sv-shield.edge.r{top:22%;bottom:22%;right:0;width:16%}
+.sv-shield .sv-flash{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) scale(.6);width:72px;height:72px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:28px;color:#fff;padding-left:5px;background:rgba(0,0,0,.45);border:2px solid rgba(255,255,255,.7);opacity:0;pointer-events:none;transition:opacity .18s,transform .18s}
+.sv-shield.show .sv-flash{opacity:1;transform:translate(-50%,-50%) scale(1)}
 /* ===== #stories2 — MEDIA STORIES: camera / gallery clips render full-bleed, TikTok style ===== */
 .sv-mediafull{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;background:#000}
 .sv-shade{position:absolute;left:0;right:0;bottom:0;height:46%;z-index:1;pointer-events:none;background:linear-gradient(transparent,rgba(0,0,0,.78))}
@@ -3405,6 +3416,15 @@ window.DEVLOG=(function(){
       <div class="card">
         <div class="card-h">Casual <span class="tag">online now</span></div>
         <div class="card-b" id="dmFind"></div>
+      </div>
+      <!-- #members(aug31) — EVERY casual on the record, by request: find anyone, online or not,
+           and open a wire. Rides the member_board view (BOARD-SETUP.sql). -->
+      <div class="card" id="dmMembersCard">
+        <div class="card-h">Members <span class="tag" id="dmMembersN">on the record</span></div>
+        <div class="card-b">
+          <input class="field" id="dmMemberQ" type="search" placeholder="Find a casual by handle…" autocomplete="off" spellcheck="false" style="margin-bottom:6px">
+          <div id="dmMembers"></div>
+        </div>
       </div>
       <p class="sub" style="text-align:center;margin:2px 0 14px">Who can reach <b style="color:var(--bone)">you</b> lives on your profile — tap the ⚓ up top.</p>
     </div>
@@ -18644,6 +18664,16 @@ function svPageHTML(s,i){
       +'<div class="sv-burst">❤</div>'
       +'<div class="sv-embedwrap '+emb.shape+'">'
         +'<iframe class="sv-embed" data-esrc="'+esc(emb.src)+'" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe>'
+        /* #svshield(aug31) — a swipe that STARTS on the player never reached the page:
+           the iframe keeps every touch and drag for itself, so up/down went nowhere and
+           a side swipe never closed the reel. A clear shield now sits over the player and
+           hands the gestures to the page. YouTube and TikTok are driven over their
+           postMessage APIs, so a tap on the shield is play/pause — nothing lost. The
+           players with no API (IG, FB, X, Spotify) keep their middle open for their own
+           controls; the shield is a frame around it, and swipes start there. */
+        +(/youtube\.com\/embed|tiktok\.com\/embed/.test(emb.src)
+            ?'<div class="sv-shield" data-shield="api"><span class="sv-flash">▶</span></div>'
+            :'<div class="sv-shield edge t"></div><div class="sv-shield edge b"></div><div class="sv-shield edge l"></div><div class="sv-shield edge r"></div>')
       +'</div>'
       +'<div class="sv-shade top"></div>'
       /* #openorig removed (aug13) \u2014 the crew wants people kept in the Hall, so no
@@ -18765,6 +18795,21 @@ function svCurrentEmbed(){
 function svYtCmd(f,func,args){
   try{if(f&&f.contentWindow)f.contentWindow.postMessage(JSON.stringify({event:'command',func:func,args:args||[]}),'*');}catch(e){}
 }
+/* #svshield — play/pause the embedded player under a shield, and say so for a beat */
+function svTogglePlay(shield){
+  const f=shield.parentElement&&shield.parentElement.querySelector('iframe.sv-embed'); if(!f)return;
+  const src=String(f.dataset.esrc||''); const paused=!!f._svPaused;
+  if(/youtube\.com\/embed/.test(src)){ if(paused){svYtCmd(f,'playVideo');} else {svYtCmd(f,'pauseVideo');} }
+  else if(/tiktok\.com\/embed/.test(src)){ if(paused){svTtCmd(f,'play');} else {svTtCmd(f,'pause');} }
+  else return;
+  f._svPaused=!paused;
+  const fl=shield.querySelector('.sv-flash'); if(fl){ fl.textContent=f._svPaused?'⏸':'▶'; fl.style.paddingLeft=f._svPaused?'0':'5px'; shield.classList.add('show'); clearTimeout(shield._t); shield._t=setTimeout(()=>shield.classList.remove('show'),650); }
+}
+function svPrev(){
+  const track=document.getElementById('svTrack');if(!track)return;
+  const i=Math.round(track.scrollTop/Math.max(1,track.clientHeight));
+  if(i>0)try{track.scrollTo({top:(i-1)*track.clientHeight,behavior:'smooth'});}catch(e){track.scrollTop=(i-1)*track.clientHeight;}
+}
 /* #autonext — a finished clip hands off to the next page on its own */
 function svNext(){
   const track=document.getElementById('svTrack');if(!track)return;
@@ -18780,6 +18825,9 @@ window.addEventListener('message',e=>{   // #autonext — YT says "ended" → ne
   try{
     if(typeof e.data!=='string'||e.data.indexOf('event')<0)return;
     const d=JSON.parse(e.data);
+    /* #svshield — keep the shield's idea of paused/playing in step with the player itself */
+    try{ const st=(d.event==='onStateChange')?d.info:(d.event==='infoDelivery'&&d.info&&typeof d.info.playerState==='number')?d.info.playerState:null;
+      if(st===1||st===2){ document.querySelectorAll('iframe.sv-embed').forEach(fr=>{ if(fr.contentWindow===e.source)fr._svPaused=(st===2); }); } }catch(_){}
     const ended=(d.event==='onStateChange'&&d.info===0)||(d.event==='infoDelivery'&&d.info&&d.info.playerState===0);
     if(!ended)return;
     const f=svCurrentEmbed();
@@ -18896,6 +18944,9 @@ function svBind(track){
     else if(v.muted&&_svSound)v.muted=false;   // #stories8 — the touch IS the gesture: sound comes alive
   }catch(e){}};
   track.onclick=async e=>{
+    /* #svshield — a tap on the shield toggles the player; a double tap still likes (below) */
+    const shield=e.target.closest('.sv-shield[data-shield="api"]');
+    if(shield){ try{svTogglePlay(shield);}catch(_){} }
     const dp=e.target.closest('[data-demoplay]');   // #stories2 — the demo reel's ▶ says what it is
     if(dp){try{toast('🎬 Placeholder clip — the real ones land when casuals start sharing')}catch(_){}return;}
     const vo=e.target.closest('[data-vopen]');   // #vidfail — a clip that wouldn't play: open the file directly
@@ -19504,12 +19555,56 @@ function dmEnter(){ /* the pill was tapped */
   const gate=document.getElementById('dmGate');
   const signed=!!(window.SB&&window.__shkUid);
   if(gate)gate.style.display=signed?'none':'';
-  if(signed){ if(!DM.ok)dmLoad(); else dmRenderAll(); dmSub(); }
+  if(signed){ if(!DM.ok)dmLoad(); else dmRenderAll(); dmSub(); try{sbLoadMembers();}catch(e){} }
   else dmRenderAll();
 }
+/* ═══ #members(aug31) — THE ROSTER OF THE ORDER ═══
+   Every casual with a handle, from member_board (id · handle · picture · circle ·
+   since — a definer view, so the profiles table itself stays shut). Online casuals
+   lead, then A–Z; type to find one; tap → the same card the ONLINE list opens. */
+let MEMBERS=[],_memShow=40,_memQ='';
+try{MEMBERS=JSON.parse(localStorage.getItem('shadowhook_members')||'[]')||[];}catch(e){}
+async function sbLoadMembers(){
+  if(!(window.SB&&window.__shkUid))return;
+  try{
+    const r=await window.SB.from('member_board').select('*').order('handle',{ascending:true}).limit(5000);
+    if(r.error){ if(!/does not exist|schema cache|42P01/i.test(r.error.message||''))console.warn('[members]',r.error.message); else MEMBERS=null; dmMembersPaint(); return; }
+    MEMBERS=(r.data||[]).filter(m=>m.handle);
+    try{localStorage.setItem('shadowhook_members',JSON.stringify(MEMBERS.map(m=>({id:m.id,handle:m.handle,circle:m.circle||null,since:m.since||null}))));}catch(e){}
+    (r.data||[]).forEach(m=>{ if(m.avatar_url)AVATARS[m.id]=m.avatar_url; });   /* pictures ride along */
+    dmMembersPaint();
+  }catch(e){ console.warn('[members] load',e); }
+}
+const CIRCLE_NAMES={1:'Initiate',2:'Deckhand',3:'Watchman',4:'Quartermaster',5:'Boatswain'};
+function memSince(d){ const m=String(d||'').match(/^(\d{4})-(\d{2})/); if(!m)return String(d||''); const MO=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return (MO[+m[2]-1]||m[2])+' '+m[1]; }
+function dmMembersPaint(){
+  const host=document.getElementById('dmMembers'), nEl=document.getElementById('dmMembersN'); if(!host)return;
+  if(MEMBERS===null){ host.innerHTML='<p class="sub">The roster needs BOARD-SETUP.sql on the wire.</p>'; if(nEl)nEl.textContent='on the record'; return; }
+  const on={}; ((typeof FLOOR!=='undefined'&&FLOOR.roster)||[]).forEach(p=>{ if(p.uid)on[p.uid]=p; });
+  const q=_memQ.trim().toLowerCase();
+  const all=MEMBERS.slice().sort((a,b)=>{ const oa=on[a.id]?0:1, ob=on[b.id]?0:1; return (oa-ob)||String(a.handle).localeCompare(String(b.handle)); });
+  const hit=q?all.filter(m=>String(m.handle).toLowerCase().indexOf(q)>=0):all;
+  if(nEl)nEl.textContent=MEMBERS.length?(MEMBERS.length.toLocaleString()+' on the record'):'on the record';
+  if(!MEMBERS.length){ host.innerHTML='<p class="sub">'+((window.SB&&window.__shkUid)?'Reading the roster…':'Sign in to see the roster.')+'</p>'; return; }
+  if(!hit.length){ host.innerHTML='<p class="sub">Nobody on the record by that handle.</p>'; return; }
+  const show=hit.slice(0,_memShow);
+  host.innerHTML=show.map(m=>{
+    const me=m.id===window.__shkUid, p=on[m.id];
+    const sub=me?'that’s you':p?('<span style="color:var(--ok)">● on now</span>'+(p.room?' · standing in '+esc(p.room):'')):(m.circle&&CIRCLE_NAMES[m.circle]?CIRCLE_NAMES[m.circle]:'')+(m.since?(m.circle&&CIRCLE_NAMES[m.circle]?' · ':'')+'since '+esc(memSince(m.since)):'');
+    return '<div role="button" style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line-soft);'+(me?'opacity:.7':'cursor:pointer')+'"'+(me?'':' onclick="openDmCard(\''+esc(m.id)+'\',\''+esc(m.handle)+'\')"')+'>'
+      +_dmAv(m.handle,m.id)
+      +'<span style="flex:1;min-width:0"><b style="display:block;font-family:\'Inter\',system-ui,-apple-system,\'Segoe UI\',Roboto,sans-serif;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(m.handle)+(DM.friends[m.id]?' <span class="pill" style="font-size:9px;padding:1px 6px;color:var(--copper-hi);border-color:rgba(238,180,107,.35)">⚓ friend</span>':'')+'</b>'
+      +'<span class="sub" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(sub||'send a message')+'</span></span>'
+      +(me?'':'<span class="pill" style="flex:none;color:var(--copper-hi);border-color:rgba(238,180,107,.35)">💬</span>')+'</div>';
+  }).join('')
+  +(hit.length>show.length?'<button type="button" class="btn-line" id="dmMemMore" style="width:100%;margin-top:10px">Show '+Math.min(40,hit.length-show.length)+' more · '+(hit.length-show.length)+' left</button>':'');
+  const more=host.querySelector('#dmMemMore'); if(more)more.addEventListener('click',()=>{ _memShow+=40; dmMembersPaint(); });
+}
+(function(){ const q=document.getElementById('dmMemberQ'); if(q)q.addEventListener('input',()=>{ _memQ=q.value||''; _memShow=40; dmMembersPaint(); }); })();
 /* ---- renders ---- */
-function _dmAv(h){let x=0;const s=String(h||'?');for(let i=0;i<s.length;i++)x=(x*31+s.charCodeAt(i))>>>0;
-  return '<span style="flex:none;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:\'Anton\',sans-serif;font-size:14px;background:hsl('+(x%360)+',42%,42%);color:#fff">'+esc(s.trim().charAt(0).toUpperCase()||'?')+'</span>';}
+function _dmAv(h,uid){let x=0;const s=String(h||'?');for(let i=0;i<s.length;i++)x=(x*31+s.charCodeAt(i))>>>0;
+  const pic=(uid&&typeof avatarOf==='function')?avatarOf(uid):'';   /* #avatar — a picture beats the letter */
+  return '<span'+(uid?' data-avuid="'+esc(uid)+'"':'')+' style="flex:none;width:32px;height:32px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;font-family:\'Anton\',sans-serif;font-size:14px;background:'+(pic?'#0a0b0d':'hsl('+(x%360)+',42%,42%)')+';color:#fff">'+(pic?avatarHTML(uid,esc(s.trim().charAt(0).toUpperCase()||'?')):esc(s.trim().charAt(0).toUpperCase()||'?'))+'</span>';}
 function dmRenderAll(){
   dmBadges();
   const inbox=document.getElementById('dmInbox');
@@ -19521,7 +19616,7 @@ function dmRenderAll(){
     inbox.innerHTML=uids.length?uids.map(u=>{
       const t=DM.threads[u], last=t.msgs[t.msgs.length-1]||{}, un=dmUnread(u);
       return '<div role="button" style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line-soft);cursor:pointer" onclick="openDmThread(\''+esc(u)+'\')">'
-        +_dmAv(dmPeerName(u))
+        +_dmAv(dmPeerName(u),u)
         +'<span style="flex:1;min-width:0"><b style="display:block;font-family:\'Inter\',system-ui,-apple-system,\'Segoe UI\',Roboto,sans-serif;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(dmPeerName(u))+(DM.friends[u]?' <span class="pill" style="color:var(--ok);border-color:rgba(127,174,106,.45)">friend</span>':'')+'</b>'
         +'<span class="sub" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(last.mine?'you: ':'')+esc(String(last.tx||'').slice(0,48))+'</span></span>'
         +(un?'<span style="flex:none;min-width:19px;height:19px;border-radius:10px;background:var(--ember);color:#fff;font-size:10.5px;font-weight:700;display:flex;align-items:center;justify-content:center">'+un+'</span>':'')
@@ -19534,7 +19629,7 @@ function dmRenderAll(){
     const R=((typeof FLOOR!=='undefined'&&FLOOR.roster)||[]).filter(p=>!p.me);
     find.innerHTML=R.length?R.map(p=>{
       return '<div role="button" style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line-soft);cursor:pointer" onclick="openDmCard(\''+esc(p.uid)+'\',\''+esc(p.h)+'\')">'
-        +_dmAv(p.h)
+        +_dmAv(p.h,p.uid)
         +'<span style="flex:1;min-width:0"><b style="display:block;font-family:\'Inter\',system-ui,-apple-system,\'Segoe UI\',Roboto,sans-serif;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(p.h)+(DM.friends[p.uid]?' <span class="pill" style="color:var(--ok);border-color:rgba(127,174,106,.45)">friend</span>':'')+'</b>'
         +'<span class="sub" style="display:block">'+(p.room?'standing in '+esc(p.room):'send a message')+'</span></span>'
         +'<span class="pill" style="flex:none;color:var(--copper-hi);border-color:rgba(238,180,107,.35)">💬</span></div>';
@@ -19543,6 +19638,7 @@ function dmRenderAll(){
   }
   try{dmProfileRefresh();}catch(e){}
   try{if(typeof _floorSheetRepaint==='function')_floorSheetRepaint();}catch(e){}
+  try{dmMembersPaint();}catch(e){}   /* #members — online dots follow the roster */
 }
 /* ---- the member card: DM or friend, gated honestly ---- */
 async function openDmCard(uid,h){
@@ -19555,7 +19651,7 @@ async function openDmCard(uid,h){
   }
   const name=h||dmPeerName(uid);
   const draw=(inner)=>{sh.innerHTML='<div class="sheet-card" style="text-align:left">'
-    +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">'+_dmAv(name).replace('32px','46px').replace('32px','46px').replace('font-size:14px','font-size:19px')
+    +'<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">'+_dmAv(name,uid).replace('32px','46px').replace('32px','46px').replace('font-size:14px','font-size:19px')
     +'<div style="min-width:0"><b style="font-size:15px">'+esc(name)+'</b><div class="sub">'+(DM.friends[uid]?'⚓ friend · ':'')+'online now</div></div></div>'
     +inner
     +'<button class="btn-ghost" style="width:100%;margin-top:10px;border:0;color:#586067" onclick="document.getElementById(\'dmCardSheet\').classList.remove(\'on\')">Close</button></div>';
@@ -19648,7 +19744,7 @@ function openDmThread(uid,h){
   try{document.getElementById('dmCardSheet')&&document.getElementById('dmCardSheet').classList.remove('on');}catch(e){}
   try{document.getElementById('floorSheet')&&document.getElementById('floorSheet').classList.remove('on');}catch(e){}
   v.querySelector('#dmTName').textContent=DM.openPeerH;
-  v.querySelector('#dmTAv').outerHTML='<span id="dmTAv">'+_dmAv(DM.openPeerH)+'</span>';
+  v.querySelector('#dmTAv').outerHTML='<span id="dmTAv">'+_dmAv(DM.openPeerH,DM.openPeer)+'</span>';
   v.querySelector('#dmTFriend').style.display=DM.friends[uid]?'':'none';
   v.style.display='flex';
   dmDrawThread(); dmMarkSeen(uid); dmRenderAll();
@@ -21136,6 +21232,24 @@ try{renderHallStats();}catch(e){}
      open, closes the reel otherwise. Pull-down at the very top still closes too.
      Swipes starting on the comment input don't count (text selection). */
   const sv=document.getElementById('storyViewer'), svt=document.getElementById('svTrack');
+  /* #svmouse(aug31) — the swipe roads were touch-only, so on a desktop nothing answered.
+     A mouse drag now does what a finger does: up/down for the next or previous page,
+     sideways to fold the talk or close the reel. Starts on anything but the controls. */
+  if(sv&&svt){
+    let mx=null,my=null,mt=0;
+    sv.addEventListener('pointerdown',e=>{ if(e.pointerType!=='mouse'||e.button!==0)return;
+      if(e.target.closest('button, input, textarea, a, .sv-cpanel, .sv-top'))return;
+      mx=e.clientX;my=e.clientY;mt=Date.now(); });
+    sv.addEventListener('pointerup',e=>{ if(e.pointerType!=='mouse'||mx==null)return;
+      const dx=e.clientX-mx,dy=e.clientY-my; mx=my=null;
+      if(Math.abs(dx)>75&&Math.abs(dx)>Math.abs(dy)*1.6){ if(sv.classList.contains('cm'))closeComments(); else closeStoryViewer(); return; }
+      if(Math.abs(dy)>60&&Math.abs(dy)>Math.abs(dx)*1.4){ if(dy<0)svNext(); else svPrev(); }
+    });
+    sv.addEventListener('pointercancel',()=>{mx=my=null;});
+    /* a mouse drag over a photo used to start a native image drag, which cancels the
+       pointer stream before pointerup — so the gesture never landed */
+    sv.addEventListener('dragstart',e=>{ e.preventDefault(); });
+  }
   if(sv&&svt){let sx=null,sy=null;
     sv.addEventListener('touchstart',e=>{const t=e.touches[0];
       if(e.target.closest('.svc-bar, .sv-cpanel')){sx=null;return;}   /* #talkgrab — the drawer has its own hands */
