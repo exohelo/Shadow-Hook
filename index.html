@@ -908,9 +908,6 @@ html.daylight .badge.earned{background:#fff;border-width:2px}
 .hcard .hc-stat b{color:var(--copper-hi);font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:800}
 .hcard .hc-stat .dot{flex:none;width:6px;height:6px;border-radius:50%;background:var(--ok);animation:floorPulse 2.6s infinite}
 .hcard .hc-stat .q{font-style:italic;opacity:.8}
-.hcard.create{border-style:dashed;border-color:rgba(238,180,107,.38);background:transparent}
-.hcard.create .hc-name{color:var(--copper-hi)}
-.hcard.create:active{background:rgba(238,180,107,.1)}
 /* the board — composer up top, posts below */
 .bcomp{display:flex;align-items:center;gap:8px;padding:9px 10px;margin:0 0 11px;border-radius:15px;background:linear-gradient(180deg,rgba(34,27,19,.5),rgba(13,11,9,.34));border:1px solid var(--line-soft)}
 .bcomp .bc-av{flex:none;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:17px;background:radial-gradient(circle at 34% 26%,rgba(238,180,107,.32),rgba(11,13,15,.6));border:1px solid rgba(238,180,107,.4)}
@@ -943,7 +940,7 @@ html.daylight .badge.earned{background:#fff;border-width:2px}
 .bpost.empty .bp-empty-ic{font-size:30px;opacity:.55}
 .bpost.empty b{font-family:'Anton',sans-serif;font-size:15px;letter-spacing:.06em;color:var(--bone)}
 .bpost.empty span{font-size:12px;color:var(--steel);line-height:1.45;max-width:280px}
-/* the tile sheets — LOBBIES · GATHERINGS · GAMERS: the list scrolls inside the card */
+/* the tile sheets — LOBBIES · GATHERINGS · CLANS: the list scrolls inside the card */
 #socSheet .sheet-card{display:flex;flex-direction:column;overflow:hidden;max-height:calc(88vh - var(--kb,0px));max-height:calc(88dvh - var(--kb,0px))}
 #socSheet .soc-list{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;margin:0 -6px;padding:2px 6px 6px}
 #socSheet .soc-list .fsec{margin:0}
@@ -1119,6 +1116,18 @@ textarea.field{resize:vertical;min-height:110px;line-height:1.45}
 .svc-empty b{font-family:'Anton',sans-serif;font-size:13px;letter-spacing:.1em;color:var(--bone)}
 .svc-empty span{font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase}
 .svc-bar{flex:none;display:flex;gap:8px;align-items:center;padding:9px 12px calc(10px + env(safe-area-inset-bottom));border-top:1px solid var(--line-soft)}
+/* #reply(aug31) — threaded talk: ↩ Reply on every comment, replies indented under their parent */
+.svc-foot{display:flex;align-items:center;gap:12px;margin-top:4px}
+.svc-re{background:none;border:0;padding:0;cursor:pointer;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:10px;letter-spacing:.06em;color:var(--copper-hi);font-weight:600}
+.svc-re:active{opacity:.6}
+.svc-row.re{margin-left:36px;margin-bottom:10px}
+.svc-row.re .svc-av{width:24px;height:24px;font-size:12px}
+.svc-row.re .svc-t .svc-at{color:var(--copper-hi);font-weight:600;margin-right:4px}
+.svc-reply{flex:none;display:flex;align-items:center;gap:8px;padding:7px 14px;border-top:1px solid var(--line-soft);background:rgba(238,180,107,.06);font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:11px;color:var(--steel)}
+.svc-reply[hidden]{display:none}
+.svc-reply .ic{color:var(--copper-hi)}
+.svc-reply b{color:var(--copper-hi);font-weight:600}
+.svc-reply button{margin-left:auto;width:26px;height:26px;border-radius:8px;border:1px solid var(--line);background:var(--plate);color:var(--steel);font-size:11px;cursor:pointer}
 .svc-bar input{flex:1;min-width:0;background:var(--well);border:1px solid var(--line);border-radius:99px;padding:11px 16px;color:var(--bone);font-family:inherit;font-size:16px;outline:none}
 .svc-bar input:focus{border-color:rgba(201,128,63,.55)}
 .svc-bar button{flex:none;width:42px;height:42px;border-radius:50%;border:1px solid rgba(238,180,107,.5);background:linear-gradient(184deg,var(--btn-hi),var(--btn-lo));color:var(--copper-hi);font-size:15px;cursor:pointer}
@@ -4032,6 +4041,8 @@ window.DEVLOG=(function(){
         <button class="svc-close" id="svcClose" type="button" aria-label="Close the talk">✕</button>
       </div>
       <div class="svc-list" id="stcList"></div>
+      <!-- #reply(aug31) — ↩ Reply on a comment arms this strip; the next send threads under that comment -->
+      <div class="svc-reply" id="svcReplyBar" hidden><span class="ic">↩</span><span>Replying to <b id="svcReplyTo"></b></span><button type="button" id="svcReplyX" aria-label="Cancel reply">✕</button></div>
       <div class="svc-bar">
         <input id="svcInput" type="text" placeholder="Say your piece…" maxlength="300" autocomplete="off">
         <button id="svcSend" type="button" aria-label="Send">➤</button>
@@ -18745,19 +18756,38 @@ function svBind(track){
    Comments ride `story_comments` (story_id is TEXT on purpose — real stories,
    the demo reel, everything can carry talk). No wire → held on this device.
    Talk isn't free: 1 ⬡ a comment, same as chat (#61). */
-let _svcId=null,_svcPendIdx=null;
+let _svcId=null,_svcPendIdx=null,_svcNoThread=false;   /* #reply — _svcNoThread: the wire's table predates threads */
 function _svcStore(){try{return JSON.parse(localStorage.getItem('shadowhook_stycmts')||'{}')}catch(e){return{}}}
 function _svcSave(o){try{localStorage.setItem('shadowhook_stycmts',JSON.stringify(o))}catch(e){}}
 function svcHold(){const t=document.getElementById('svTrack');if(t)_svcPendIdx=Math.round(t.scrollTop/Math.max(1,t.clientHeight));}
 function svcSettle(){const t=document.getElementById('svTrack');if(t&&_svcPendIdx!=null)t.scrollTop=_svcPendIdx*t.clientHeight;}
 function svcRow(c){
   const own=!!(c.local||(c.owner&&c.owner===window.__shkUid));
-  return '<div class="svc-row'+(c.pend?' pend':'')+'" data-crid="'+esc(String(c.id))+'">'
+  const re=!!c.reply_to;   /* #reply — a reply sits indented under its parent and names who it answers */
+  return '<div class="svc-row'+(c.pend?' pend':'')+(re?' re':'')+'" data-crid="'+esc(String(c.id))+'"'+(re?' data-cparent="'+esc(String(c.reply_to))+'"':'')+'>'
     +'<div class="svc-av">🎭</div>'
     +'<div class="svc-b"><div class="svc-h">'+esc(c.by_handle||'a casual')+'<time>'+agoShort(c.ts)+'</time></div>'
-    +'<div class="svc-t">'+esc(c.body||'')+'</div></div>'
+    +'<div class="svc-t">'+(re&&c.reply_handle?'<span class="svc-at">↩ '+esc(c.reply_handle)+'</span>':'')+esc(c.body||'')+'</div>'
+    +'<div class="svc-foot"><button type="button" class="svc-re" data-cre="'+esc(String(c.reply_to||c.id))+'" data-creh="'+esc(c.by_handle||'a casual')+'">↩ Reply</button></div></div>'
     +(own?'<button class="svc-x" data-cdel="'+esc(String(c.id))+'"'+(c.local?' data-loc="1"':'')+' aria-label="Strike comment">✕</button>':'')
   +'</div>';
+}
+/* #reply — thread order: each top-level comment by time, its replies (one level deep,
+   like Instagram) right under it by time. A reply whose parent was struck stands on
+   its own, still naming who it answered. */
+function svcThread(all){
+  const ids=new Set(all.map(c=>String(c.id)));
+  const tops=all.filter(c=>!c.reply_to||!ids.has(String(c.reply_to))).sort((a,b)=>a.ts-b.ts);
+  const kids={}; all.forEach(c=>{ if(c.reply_to&&ids.has(String(c.reply_to))){ (kids[String(c.reply_to)]=kids[String(c.reply_to)]||[]).push(c); } });
+  const out=[]; tops.forEach(t=>{ out.push(t); (kids[String(t.id)]||[]).sort((a,b)=>a.ts-b.ts).forEach(k=>out.push(k)); });
+  return out;
+}
+let _svcReply=null;   /* {id,h} — the comment the next send answers */
+function svcReplyTo(id,h){
+  _svcReply=id?{id:String(id),h:h||'a casual'}:null;
+  const bar=document.getElementById('svcReplyBar'),to=document.getElementById('svcReplyTo');
+  if(bar)bar.hidden=!_svcReply; if(to&&_svcReply)to.textContent=_svcReply.h;
+  if(_svcReply){ const i=document.getElementById('svcInput'); if(i){ try{i.focus()}catch(e){} } }
 }
 function svcHeadCount(){
   const list=document.getElementById('stcList'),cEl=document.getElementById('svcCount');
@@ -18768,17 +18798,21 @@ function svcHeadCount(){
 async function svcLoad(id){
   _svcId=String(id);
   const list=document.getElementById('stcList');if(!list)return;
-  const loc=(_svcStore()[_svcId]||[]).map(c=>({id:c.id,by_handle:c.by_handle,body:c.body,ts:c.ts,local:true}));
+  const loc=(_svcStore()[_svcId]||[]).map(c=>({id:c.id,by_handle:c.by_handle,body:c.body,ts:c.ts,local:true,reply_to:c.reply_to||null,reply_handle:c.reply_handle||''}));
   let rows=[];
   if(window.SB){
     try{
-      const r=await window.SB.from('story_comments').select('id,owner,by_handle,body,created_at').eq('story_id',_svcId).order('created_at',{ascending:true}).limit(200);
-      if(!r.error&&r.data&&_svcId===String(id))rows=r.data.map(c=>({id:c.id,owner:c.owner,by_handle:c.by_handle,body:c.body,ts:c.created_at?new Date(c.created_at).getTime():0}));
+      /* #reply — the thread columns ride along when BOARD-SETUP.sql has run; an older
+         table answers "column does not exist", so the plain read is the fallback */
+      let r=await window.SB.from('story_comments').select('id,owner,by_handle,body,created_at,reply_to,reply_handle').eq('story_id',_svcId).order('created_at',{ascending:true}).limit(300);
+      if(r.error&&/reply_to|reply_handle|column|42703/i.test(r.error.message||'')){ _svcNoThread=true;
+        r=await window.SB.from('story_comments').select('id,owner,by_handle,body,created_at').eq('story_id',_svcId).order('created_at',{ascending:true}).limit(300); }
+      if(!r.error&&r.data&&_svcId===String(id))rows=r.data.map(c=>({id:c.id,owner:c.owner,by_handle:c.by_handle,body:c.body,ts:c.created_at?new Date(c.created_at).getTime():0,reply_to:c.reply_to||null,reply_handle:c.reply_handle||''}));
       else if(r.error)console.warn('[talk] load:',r.error.message,'— run STORY-COMMENTS-SETUP.sql');
     }catch(e){}
   }
   if(_svcId!==String(id))return;   // scrolled on while loading
-  const all=rows.concat(loc).sort((a,b)=>a.ts-b.ts);
+  const all=svcThread(rows.concat(loc));
   list.innerHTML=all.length?all.map(svcRow).join(''):'<div class="svc-empty"><span class="ic">💬</span><b>QUIET SO FAR</b><span>say the first word</span></div>';
   list.scrollTop=list.scrollHeight;
   svcHeadCount();
@@ -18797,12 +18831,14 @@ async function svcCounts(){   // rail badges for every story on the reel
 function openComments(id){
   const v=document.getElementById('storyViewer');if(!v)return;
   svcHold();v.classList.add('cm');svcSettle();
+  svcReplyTo(null);   /* #reply */
   svcLoad(id);
 }
 function closeComments(){
   const v=document.getElementById('storyViewer');if(!v)return;
   if(!v.classList.contains('cm')){_svcId=null;return;}
   svcHold();v.classList.remove('cm','big');_svcId=null;
+  svcReplyTo(null);   /* #reply */
   const i=document.getElementById('svcInput');if(i)try{i.blur()}catch(e){}
   svcSettle();
 }
@@ -18812,15 +18848,25 @@ async function svcSend(){
   if(!payCredits(MSG_COST,'comment',true))return;                // #free — 0 now
   inp.value='';
   const sid=_svcId, ts=Date.now(), tmp='c'+ts.toString(36)+Math.floor(Math.random()*1e6).toString(36);
+  const rp=_svcReply; svcReplyTo(null);   /* #reply — this send answers rp, if set */
   const list=document.getElementById('stcList');
   const emptyEl=list&&list.querySelector('.svc-empty');if(emptyEl)emptyEl.remove();
   const wired=!!(window.SB&&window.__shkUid);
-  if(list){list.insertAdjacentHTML('beforeend',svcRow({id:tmp,by_handle:chatMyHandle(),body:body,ts:ts,local:!wired,pend:wired}));list.scrollTop=list.scrollHeight;}
+  const rowHTML=svcRow({id:tmp,owner:window.__shkUid,by_handle:chatMyHandle(),body:body,ts:ts,local:!wired,pend:wired,reply_to:rp?rp.id:null,reply_handle:rp?rp.h:''});   /* owner: so your ✕ is there before the reload */
+  if(list){
+    /* a reply lands under the last reply of its thread (or under the parent); a fresh comment at the end */
+    let anchor=null;
+    if(rp){ const fam=list.querySelectorAll('[data-crid="'+CSS.escape(rp.id)+'"],[data-cparent="'+CSS.escape(rp.id)+'"]'); anchor=fam.length?fam[fam.length-1]:null; }
+    if(anchor)anchor.insertAdjacentHTML('afterend',rowHTML); else list.insertAdjacentHTML('beforeend',rowHTML);
+    const nu=list.querySelector('[data-crid="'+tmp+'"]'); if(nu)try{nu.scrollIntoView({block:'nearest'})}catch(e){} else list.scrollTop=list.scrollHeight;
+  }
   svcHeadCount();
-  const holdLocal=()=>{const o=_svcStore();(o[sid]=o[sid]||[]).push({id:tmp,by_handle:chatMyHandle(),body:body,ts:ts});_svcSave(o);};
+  const holdLocal=()=>{const o=_svcStore();(o[sid]=o[sid]||[]).push({id:tmp,by_handle:chatMyHandle(),body:body,ts:ts,reply_to:rp?rp.id:null,reply_handle:rp?rp.h:''});_svcSave(o);};
   if(wired){
     try{
-      const r=await window.SB.from('story_comments').insert({story_id:sid,owner:window.__shkUid,by_id:ACCT_ID,by_handle:chatMyHandle(),body:body});
+      const base={story_id:sid,owner:window.__shkUid,by_id:ACCT_ID,by_handle:chatMyHandle(),body:body};
+      let r=(rp&&!_svcNoThread)?await window.SB.from('story_comments').insert(Object.assign({reply_to:rp.id,reply_handle:rp.h},base)):null;
+      if(!r||(r.error&&/reply_to|reply_handle|column|42703/i.test(r.error.message||''))){ if(r)_svcNoThread=true; r=await window.SB.from('story_comments').insert(base); }   /* older table: it still lands, just unthreaded */
       if(r.error)throw r.error;
       const el=list&&list.querySelector('[data-crid="'+tmp+'"]');if(el)el.classList.remove('pend');
     }catch(e){
@@ -18855,8 +18901,11 @@ async function svcSend(){
   }
   const tr=document.getElementById('svTrack');
   if(tr)tr.addEventListener('transitionend',e=>{if(e.propertyName==='height'){svcSettle();try{svUpdateIx()}catch(_){}}});
+  on('svcReplyX','click',()=>svcReplyTo(null));   /* #reply */
   const sl=document.getElementById('stcList');
   if(sl)sl.addEventListener('click',async e=>{
+    const re=e.target.closest('[data-cre]');   /* #reply — arm the strip, focus the line */
+    if(re){ svcReplyTo(re.getAttribute('data-cre'),re.getAttribute('data-creh')); return; }
     const b=e.target.closest('[data-cdel]');if(!b)return;
     if(!b.classList.contains('arm')){b.classList.add('arm');b.textContent='sure?';
       setTimeout(()=>{if(b.isConnected){b.classList.remove('arm');b.textContent='✕';}},2200);return;}
@@ -19028,18 +19077,18 @@ function renderHallStats(){
      per-room counts: a casual browsing the shelves is on the floor too, and the
      old sum-of-hashes counted nobody at all. "—" until the roster lands. */
   let onFloor=null;try{ if(floorKnown())onFloor=floorTotal(); }catch(e){}
-  let nClans=0;try{nClans=ALL_CLANS.length;}catch(e){}   /* #social2 — GAMERS took the Stories tile */
+  let nClans=0;try{nClans=ALL_CLANS.length;}catch(e){}   /* #social2 — CLANS took the Stories tile */
   let nGaths=0;try{nGaths=(typeof BUILTIN_GATHS!=='undefined'?BUILTIN_GATHS.length:0)+ALL_GATHS.length;}catch(e){}
   /* #floorwho(aug13) — ON THE FLOOR is a DOOR now: tap it to see who's standing
      where. role/tabindex so it reads as a button; the binding is delegated on the
      box (one listener, survives every innerHTML repaint). */
-  /* #social2(aug31) — every tile is a DOOR: LOBBIES, GATHERINGS and GAMERS open a
+  /* #social2(aug31) — every tile is a DOOR: LOBBIES, GATHERINGS and CLANS open a
      sheet with the whole list behind them (the page itself carries What's Hot and
      the board); ONLINE keeps opening the roster it always did. */
   box.innerHTML='<div class="st" data-soc="lobbies" role="button" tabindex="0" style="cursor:pointer"><b>'+nRooms.toLocaleString()+'</b><span>Lobbies ▸</span></div>'
     +'<div class="st" data-floorwho role="button" tabindex="0" style="cursor:pointer"><b>'+(onFloor==null?'—':onFloor.toLocaleString())+'</b><span>Online ▸</span></div>'
     +'<div class="st" data-soc="gaths" role="button" tabindex="0" style="cursor:pointer"><b>'+nGaths.toLocaleString()+'</b><span>Gatherings ▸</span></div>'
-    +'<div class="st" data-soc="gamers" role="button" tabindex="0" style="cursor:pointer"><b>'+nClans.toLocaleString()+'</b><span>Gamers ▸</span></div>';
+    +'<div class="st" data-soc="clans" role="button" tabindex="0" style="cursor:pointer"><b>'+nClans.toLocaleString()+'</b><span>Clans ▸</span></div>';
 }
 /* ═══ #floorwho(aug13) — WHO'S ON THE FLOOR. The tile opens this sheet: every casual
    with the app open right now, straight off the same presence roster the counts
@@ -19747,7 +19796,7 @@ window.dmDiag=dmDiag;
 /* ═══ #social2(aug31) — THE SOCIAL TAB, REDRAWN ═══
    The page used to be one long scroll: a stories reel, Trending, every room,
    every gathering, every clan. It reads in three bands now:
-     1. the four tiles up top are DOORS — LOBBIES · ONLINE · GATHERINGS · GAMERS —
+     1. the four tiles up top are DOORS — LOBBIES · ONLINE · GATHERINGS · CLANS —
         each opens a sheet with the full list (and the create row) behind it;
      2. 🔥 WHAT'S HOT — one side-swipe row mixing the liveliest rooms, the
         gatherings filling up, the biggest clans;
@@ -19914,12 +19963,8 @@ function hotSectionHTML(){
       +'<div class="hc-stat">'+stat+'</div>'
     +'</div>';
   });
-  /* the create flows ride the same full-size cards as everything else — a thumb-sized
-     target each, not three fine-print buttons squeezed into one card */
-  const mk=(k,ico,name,price)=>'<div class="hcard create" data-new="'+k+'"><div class="hc-kind">＋ START ONE</div><div class="hc-ico">'+ico+'</div><div class="hc-name">'+name+'</div><div class="hc-stat"><b>'+price+' ⬡</b></div></div>';
-  html+=mk('room','🗝','Open a Room',(circleLvl()>=5)?125:ROOM_COST)
-      +mk('gath','📣','Start a Gathering',(circleLvl()>=4)?100:GATH_COST)
-      +mk('clan','🎮','Start a Clan',clanPrice());
+  /* no create cards here: What's Hot FEATURES, it doesn't post — Open a Room, Start a
+     Gathering and Start a Clan live at the foot of their own tile sheets */
   html+='</div></div>';
   return html;
 }
@@ -19934,8 +19979,6 @@ function bindHot(host){
   host.querySelectorAll('.hcard[data-room]').forEach(el=>el.addEventListener('click',()=>{ openRoom(el.getAttribute('data-room'),el.getAttribute('data-ico')||'⚓',el.getAttribute('data-who')||''); }));
   host.querySelectorAll('.hcard[data-hgath]').forEach(el=>el.addEventListener('click',()=>{ openSocSheet('gaths',el.getAttribute('data-hgath')); }));
   host.querySelectorAll('.hcard[data-hclan]').forEach(el=>el.addEventListener('click',()=>{ try{openClanSheet(el.getAttribute('data-hclan'));}catch(e){} }));
-  host.querySelectorAll('.hcard.create[data-new]').forEach(b=>b.addEventListener('click',e=>{ e.stopPropagation(); const k=b.getAttribute('data-new');
-    try{ if(k==='room')newRoomFlow(); else if(k==='gath')newGatheringFlow(); else if(k==='clan')newClanFlow(); }catch(err){} }));
 }
 
 /* ---------- THE BOARD — the open feed ----------
@@ -20067,12 +20110,12 @@ function newTextPostFlow(prefill){
 }
 window.newTextPostFlow=newTextPostFlow;
 
-/* ---------- the TILE SHEETS — LOBBIES · GATHERINGS · GAMERS ---------- */
+/* ---------- the TILE SHEETS — LOBBIES · GATHERINGS · CLANS ---------- */
 let _socSheetKind=null;
 function socSheetSpec(kind){
   if(kind==='lobbies')return {ttl:'LOBBIES',sub:'every room on the floor — public halls, private rooms with a door, and yours',build:s=>floorSectionHTML(s)};
   if(kind==='gaths')  return {ttl:'GATHERINGS',sub:'everything the Order has called — BBQs, meet-ups, watch parties',build:s=>gathsSectionHTML(s)};
-  return {ttl:'GAMERS',sub:'the clans — pick your game, squad up, get the room key',build:s=>clansSection(s)};
+  return {ttl:'CLANS',sub:'pick your game, squad up, get the room key',build:s=>clansSection(s)};
 }
 function openSocSheet(kind,focusId){
   let sh=document.getElementById('socSheet');
@@ -20103,7 +20146,7 @@ function socSheetRepaint(){
   const keep=host.scrollTop;
   host.innerHTML=spec.build(step);
   bindFeed(host);
-  if(_socSheetKind==='gamers')try{bindClans(host);}catch(e){}
+  if(_socSheetKind==='clans')try{bindClans(host);}catch(e){}
   /* a room is a page of its own (it slides over the sheet); the list waits underneath for the way back */
   if(_socSheetKind==='lobbies')try{hydrateChatPreviews(socRoomsModel().map(r=>r.n));}catch(e){}
   host.scrollTop=keep;
@@ -28196,7 +28239,6 @@ html.daylight .hcard.hk-gath{background:#eef8f0;border-color:#b9dcc4}
 html.daylight .hcard.hk-clan{background:#f3edff;border-color:#cdb9f3}
 html.daylight .hcard.hk-clan .hc-kind{color:#5b2bb5}
 html.daylight .hcard .hc-rank{background:#c8442a}
-html.daylight .hcard.create{background:transparent;box-shadow:none;border-color:#e3bb92}
 html.daylight .bcomp .bc-av,html.daylight .bpost .bp-av{background:#fff4e8;background-image:none;border:1px solid #e3bb92;box-shadow:none}
 html.daylight .bcomp .bc-say{background:var(--well);border-color:var(--line)}
 html.daylight .bpost .bp-media{background:#f2efe9;border-color:var(--line)}
