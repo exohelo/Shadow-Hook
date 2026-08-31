@@ -3284,7 +3284,7 @@ window.DEVLOG=(function(){
         <div class="card-b"><p class="sub" style="text-align:center;padding:6px 0">🗝 Verify your card at the gate and sign in — wires ride your Brotherhood account so they follow you to every device.</p></div>
       </div>
       <div class="card">
-        <div class="card-h">Messages <span class="tag">1 ⬡ a message</span></div>
+        <div class="card-h">Messages <span class="tag">closed wires · free to talk</span></div>
         <div class="card-b" id="dmInbox"><p class="sub">Opening the book…</p></div>
         <!-- #burn(aug29) — a shortcut to the wires row of the profile's BURN THE LOG hub -->
         <div class="card-b" style="border-top:1px solid var(--line-soft);padding-top:13px">
@@ -3965,7 +3965,7 @@ window.DEVLOG=(function(){
       </div>
       <div class="svc-list" id="stcList"></div>
       <div class="svc-bar">
-        <input id="svcInput" type="text" placeholder="Say your piece… (1 ⬡)" maxlength="300" autocomplete="off">
+        <input id="svcInput" type="text" placeholder="Say your piece…" maxlength="300" autocomplete="off">
         <button id="svcSend" type="button" aria-label="Send">➤</button>
       </div>
     </div>
@@ -15614,6 +15614,7 @@ function buckPop(n){
 }
 function addCredits(n,reason,quiet){
   if(typeof isGuest==='function'&&isGuest())return false;   /* #guest — nothing is earned without a name on the record */
+  if(!n)return true;                                        /* #free — a 0 refund is nothing to book */
   CREDITS+=n;try{localStorage.setItem(K('credits'),CREDITS)}catch(e){}
   renderCredits();buckPop(n);if(!quiet)toast("+"+n+" ⬡ · "+reason);
   const chip=document.getElementById('meBucks');if(chip){chip.classList.remove('bump');void chip.offsetWidth;chip.classList.add('bump');}
@@ -16322,8 +16323,8 @@ function openRoom(name,ico,who){
   const rv=document.getElementById('roomView');
   if(name){document.getElementById('roomTitle').textContent=name;
     document.getElementById('roomIco').textContent=ico||'⚓';
-    document.getElementById('roomSubc').textContent=(who||'')+' · stay masked, the hall has ears · 1 ⬡ a message';
-    document.getElementById('chatInput').placeholder="Message "+name+"… (1 ⬡)";}
+    document.getElementById('roomSubc').textContent=(who||'')+' · stay masked, the hall has ears';
+    document.getElementById('chatInput').placeholder="Message "+name+"…";}
   rv.classList.add('on'); document.body.style.overflow="hidden";
   chatJoin(name||document.getElementById('roomTitle').textContent);   // #chat-live — load history + go realtime
 }
@@ -16789,10 +16790,13 @@ async function chatSendMedia(file,kind,cost){
   }
 }
 window.chatOutbound=chatOutbound; window.chatSendMedia=chatSendMedia; window.chatJoin=chatJoin;
-/* ===== #61 — talk isn't free: every message spends Port Bucks =====
-   1 ⬡ a text · 5 ⬡ a photo or video · GIFs will ride at 1 ⬡ when Tenor lands.
+/* ===== #free(aug29) — TALK IS FREE. Messages, GIFs, photos, videos, DMs, stories and
+   comments cost nothing. Port Bucks are for MAKING things: a room, a gathering, a clan.
+   The #61 plumbing below stays (every send still runs through payCredits) so a price
+   can come back with one constant; at 0 payCredits is a no-op.
+   (was #61 — 1 ⬡ a text · 5 ⬡ a photo or video · GIFs at 1 ⬡)
    Quiet deduction — the balance chip bumps, no toast spam per message. */
-const MSG_COST=1, MEDIA_COST=1, ROOM_COST=250, GATH_COST=150;   /* #rates2 — messages, GIFs, photo/video all 1 ⬡ */
+const MSG_COST=0, MEDIA_COST=0, ROOM_COST=250, GATH_COST=150, CLAN_COST=250;   /* #free — talk is 0; rooms, gatherings and clans are the paid things */
 /* ===== #76/#77 — out of bucks: short and bank-plain. "INSUFFICIENT FUNDS." =====
    One sheet everywhere bucks move — chat, media, rooms, gatherings, the Armory.
    Shows the shortfall at a glance, offers package deals the way game apps do,
@@ -16823,6 +16827,7 @@ function openBrokeSheet(need){
 window.openBrokeSheet=openBrokeSheet;
 function payCredits(n,reason,quiet){
   if(typeof isGuest==='function'&&isGuest()){ guestWall(); return false; }   /* #guest — no buying, no posting for bucks */
+  if(!n)return true;                                                          /* #free — a 0 fare is a pass, not a purchase */
   if(CREDITS<n){openBrokeSheet(n);return false;}   /* #76/#77 — alert + offer to buy */
   CREDITS-=n;try{localStorage.setItem(K('credits'),CREDITS)}catch(e){}
   renderCredits();buckPop(-n);if(!quiet)toast("−"+n+" ⬡ · "+reason);
@@ -17134,7 +17139,7 @@ window._gifFall=function(img){
     if(!ci.textContent&&ci.firstChild)ci.innerHTML='';   // a stray <br> hides the :empty placeholder
   });
 })();
-const GIF_COST=1;
+const GIF_COST=0;   /* #free */
 /* #gifout(aug13) — THE PICKER IS BACK, ON ITS OWN BUTTON. The unshipped v51 retired
    this sheet betting the phone keyboard could carry GIFs alone — it can't on every
    keyboard (SwiftKey SHARES the pick to the browser: "Send to Edge Drop"; the page
@@ -18123,7 +18128,7 @@ function storyCompose(file){
         +'<div class="sty-txthint" id="styTxtHint">✍ type below · drag the words to place them</div></div>'
     +'<span class="lbl">Add text on the '+(_styKind==='vid'?'video':'photo')+' (optional)</span>'
     +'<input class="field" id="styCap" placeholder="type words to lay over the clip" maxlength="120" style="margin-bottom:14px">'
-    +'<button class="btn" id="styPost" type="button">📣 POST IT — 1 ⬡</button>'
+    +'<button class="btn" id="styPost" type="button">📣 POST IT</button>'
     +'<button class="btn-ghost" id="styNo" type="button" style="width:100%;margin-top:10px;border:0;color:#586067">Never mind</button></div>';
   sh.querySelector('#styNo').addEventListener('click',()=>sh.classList.remove('on'));
   sh.querySelector('#styPost').addEventListener('click',postMediaStory);
@@ -18166,7 +18171,7 @@ async function postMediaStory(){
      chat spend; the ONLY failure that refunds is "couldn't read the file" (nothing
      landed anywhere). A server-upload failure does NOT refund — the story parks on
      the local wall and migrates up, so the member got what they paid for. */
-  if(!payCredits(1,'story',true))return;   // broke → the funds sheet, nothing charged
+  if(!payCredits(MSG_COST,'story',true))return;   // #free — 0 now
   const btn=sh&&sh.querySelector('#styPost'); if(btn){btn.disabled=true;btn.textContent='POSTING…';}
   const plat='hook-'+_styKind;
   /* #stories3 — the phone-side landing: photos keep a compressed copy that MIGRATES
@@ -18181,8 +18186,8 @@ async function postMediaStory(){
       renderSocialFeed();
       toast(msg||(_styKind==='vid'?'🎬 On the wall for this session — sign in to keep it there':'📸 On this phone’s wall — rides up when the wire answers'));
     }catch(e){
-      if(btn){btn.disabled=false;btn.textContent='📣 POST IT — 1 ⬡';}
-      try{addCredits(1,'refund',true);}catch(_){}   /* #rates2 — nothing landed, money back */
+      if(btn){btn.disabled=false;btn.textContent='📣 POST IT';}
+      try{addCredits(MSG_COST,'refund',true);}catch(_){}   /* #free — 0 now */
       toast('Couldn’t read that file — try another');
     }
   };
@@ -18638,7 +18643,7 @@ async function svcLoad(id){
   }
   if(_svcId!==String(id))return;   // scrolled on while loading
   const all=rows.concat(loc).sort((a,b)=>a.ts-b.ts);
-  list.innerHTML=all.length?all.map(svcRow).join(''):'<div class="svc-empty"><span class="ic">💬</span><b>QUIET SO FAR</b><span>say the first word — 1 ⬡</span></div>';
+  list.innerHTML=all.length?all.map(svcRow).join(''):'<div class="svc-empty"><span class="ic">💬</span><b>QUIET SO FAR</b><span>say the first word</span></div>';
   list.scrollTop=list.scrollHeight;
   svcHeadCount();
 }
@@ -18668,7 +18673,7 @@ function closeComments(){
 async function svcSend(){
   const inp=document.getElementById('svcInput');if(!inp||!_svcId)return;
   const body=(inp.value||'').trim().slice(0,300);if(!body)return;
-  if(!payCredits(1,'comment',true))return;                       // #61 — talk isn't free
+  if(!payCredits(MSG_COST,'comment',true))return;                // #free — 0 now
   inp.value='';
   const sid=_svcId, ts=Date.now(), tmp='c'+ts.toString(36)+Math.floor(Math.random()*1e6).toString(36);
   const list=document.getElementById('stcList');
@@ -18692,12 +18697,12 @@ async function svcSend(){
          when the message never leaves the device; svcSend was missed in that pass.
          holdLocal() writes to _svcStore() on THIS phone only — nobody else ever sees
          the comment — so charging 1 ⬡ for it is charging for nothing. */
-      try{addCredits(1,'refund',true);}catch(_){}
+      try{addCredits(MSG_COST,'refund',true);}catch(_){}
     }
     return;
   }
   holdLocal();
-  try{addCredits(1,'refund',true);}catch(_){}   // #fix3 — no backend: same story, same refund
+  try{addCredits(MSG_COST,'refund',true);}catch(_){}   // #fix3 — no backend: same story, same refund
 }
 (function(){   // #stories5 — drawer wiring
   const on=(id,ev,fn)=>{const e=document.getElementById(id);if(e)e.addEventListener(ev,fn);};
@@ -18725,7 +18730,7 @@ async function svcSend(){
     const row=b.closest('.svc-row');if(row)row.remove();
     svcHeadCount();
     const list=document.getElementById('stcList');
-    if(list&&!list.querySelectorAll('.svc-row').length)list.innerHTML='<div class="svc-empty"><span class="ic">💬</span><b>QUIET SO FAR</b><span>say the first word — 1 ⬡</span></div>';
+    if(list&&!list.querySelectorAll('.svc-row').length)list.innerHTML='<div class="svc-empty"><span class="ic">💬</span><b>QUIET SO FAR</b><span>say the first word</span></div>';
   });
 })();
 
@@ -19114,7 +19119,7 @@ async function openDmCard(uid,h){
   const can=(priv==='all')||(priv==='friends'&&friend);
   let inner='';
   if(friend)inner+='<div class="sub" style="border:1px dashed rgba(127,174,106,.45);color:var(--ok);border-radius:10px;padding:9px 11px;margin-bottom:4px">⚓ Friends — you always reach each other.</div>';
-  if(can)inner+='<button class="btn" style="margin-top:10px" onclick="openDmThread(\''+esc(uid)+'\',\''+esc(h||name)+'\')">💬 Send a DM · 1 ⬡</button>';
+  if(can)inner+='<button class="btn" style="margin-top:10px" onclick="openDmThread(\''+esc(uid)+'\',\''+esc(h||name)+'\')">💬 Send a DM</button>';
   else if(priv==='friends'){
     inner+='<div class="sub" style="border:1px dashed rgba(224,73,46,.45);color:var(--warn);border-radius:10px;padding:9px 11px;margin-bottom:4px">🗝 '+esc(h||name)+' takes DMs from friends only. Friend them and the wire opens.</div>';
     inner+=DM.reqOut[uid]?'<button class="btn-ghost" style="width:100%;margin-top:10px" disabled>⚓ Friend request sent — waiting</button>'
@@ -19175,7 +19180,7 @@ function _dmView(){
     +'<button class="pdp-back" id="dmWipe" type="button" aria-label="Wipe my messages" title="Wipe every message you\'ve sent — all rooms, all wires" style="padding:2px 8px;font-size:16px">🧹</button></div>'   /* #wipe */
     +'<div id="dmFeed" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px;display:flex;flex-direction:column;gap:8px"></div>'
     +'<div style="flex:none;display:flex;gap:8px;padding:10px 12px calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--line);background:var(--plate)">'
-    +'<input id="dmIn" placeholder="Say your piece… (1 ⬡)" autocomplete="off" style="flex:1;min-width:0;background:var(--void);border:1px solid var(--line);border-radius:99px;padding:11px 15px;color:var(--bone);font-family:inherit;font-size:16px;outline:none">'
+    +'<input id="dmIn" placeholder="Say your piece…" autocomplete="off" style="flex:1;min-width:0;background:var(--void);border:1px solid var(--line);border-radius:99px;padding:11px 15px;color:var(--bone);font-family:inherit;font-size:16px;outline:none">'
     +'<button id="dmSendBtn" type="button" style="flex:none;width:42px;height:42px;border-radius:50%;border:1px solid rgba(238,180,107,.5);background:linear-gradient(184deg,var(--btn-hi),var(--btn-lo));color:var(--copper-hi);font-size:16px;cursor:pointer">➤</button></div>';
   document.body.appendChild(v);
   v.querySelector('#dmBack').addEventListener('click',closeDmThread);
@@ -19407,7 +19412,7 @@ function dmDrawThread(){
       +(m.mine?'align-self:flex-end;background:linear-gradient(184deg,rgba(238,180,107,.16),rgba(238,180,107,.05));border-color:rgba(238,180,107,.35)':'align-self:flex-start;background:var(--well)')+'">'
       +esc(m.tx)+'<div style="font-size:8.5px;color:var(--steel);margin-top:4px;letter-spacing:.06em">'+tm+'</div></div>';
   }).join('')
-  :'<p class="sub" style="text-align:center;margin-top:30px">A closed wire, just you two. Masked handles, 1 ⬡ a message — same fare as a room.</p>';
+  :'<p class="sub" style="text-align:center;margin-top:30px">A closed wire, just you two. Masked handles, and talk is free.</p>';
   f.scrollTop=f.scrollHeight;
 }
 async function dmSend(){
@@ -19415,7 +19420,7 @@ async function dmSend(){
   const inp=document.getElementById('dmIn');if(!inp)return;
   const v=inp.value.trim();if(!v||!DM.openPeer)return;
   if(!(window.SB&&window.__shkUid)){toast('Sign in first — wires ride your account');return;}
-  if(!payCredits(1,'DM',true))return;
+  if(!payCredits(MSG_COST,'DM',true))return;   /* #free — 0 now */
   const id=chatUUID(), peer=DM.openPeer;
   dmFold({id:id,from_id:window.__shkUid,to_id:peer,body:v,created_at:new Date().toISOString()},false);
   inp.value=''; dmDrawThread();
@@ -19425,7 +19430,7 @@ async function dmSend(){
   }catch(e){
     const t=DM.threads[peer]; if(t)t.msgs=t.msgs.filter(x=>x.id!==id);
     dmDrawThread();
-    try{addCredits(1,'refund',true);}catch(e2){}
+    try{addCredits(MSG_COST,'refund',true);}catch(e2){}
     const m=String((e&&e.message)||'');
     toast(/policy|denied|violates/i.test(m)?'🗝 Their wire is closed to you — friends only, or off':'Message didn’t send — check your signal');
   }
@@ -19833,8 +19838,8 @@ function clansSection(step){
       +'</div></div>';
   });
   html+='<div class="evt create feedIn"'+step()+' data-new="clan"><div class="evt-date glyph">🎮</div>'
-    +'<div class="evt-main"><div class="evt-name">Start a Clan</div><div class="evt-meta"><span>the game, the squad, a private room — free</span></div></div>'
-    +'<span class="pill gold">FREE</span></div>';
+    +'<div class="evt-main"><div class="evt-name">Start a Clan</div><div class="evt-meta"><span>the game, the squad, a private room — joining is free</span></div></div>'
+    +'<span class="pill gold">'+clanPrice()+' ⬡</span></div>';
   html+='</div>';
   return html;
 }
@@ -19861,10 +19866,12 @@ function openClanRoom(id){
   try{ const sh=document.getElementById('clanSheet'); if(sh)sh.classList.remove('on'); }catch(e){}
   openRoom(c.room_name,'🎮','the '+c.name+' clan');
 }
+function clanPrice(){ return (circleLvl()>=3)?125:CLAN_COST; }   /* #free — Watchman rate, like the room and gathering rings */
 window.newClanFlow=function(){
   if(!(window.SB&&window.__shkUid)){ toast('Sign in first — clans ride your account'); return; }
-  openPaySheet({title:"START A CLAN",sub:"Free. Pick the game, name the squad. Your clan gets its own invite-only room, and every casual who joins hands you their gamer tag.",
-    price:0,go:"START THE CLAN",fields:[
+  const price=clanPrice();
+  openPaySheet({title:"START A CLAN",sub:"Pick the game, name the squad. Your clan gets its own invite-only room, and every casual who joins hands you their gamer tag. Joining is free."+(price<CLAN_COST?" Watchman rate.":""),
+    price:price,go:"START THE CLAN",fields:[
       {k:"g",label:"The game",type:"select",opts:CLAN_GAMES.map(g=>[g,g])},
       {k:"gx",label:"If “Other” — which game",ph:"type the game",opt:true,max:40},
       {k:"n",label:"Clan name",ph:"e.g. DOCK RATS · 3–24 characters",max:24},
@@ -19891,11 +19898,13 @@ window.newClanFlow=function(){
         try{ ALL_ROOMS.push(r.data); }catch(e){}
         clanKeyRoom({room_id:r.data.id,room_name:roomName,owner_handle:h});
         await sbLoadClans(); renderSocialFeed();
+        try{ armoryBuyMark(); }catch(e){}   /* a paid clan is a purchase, like a room */
         toast('🎮 '+nm+' is up — its room is open, invite the squad');
         openClanSheet(c.data.id);
       }catch(e){
-        toast(/does not exist|schema cache|42P01/i.test((e&&e.message)||'')?'Clans aren’t on the server yet — the Keymaster needs to run CLANS-SETUP.sql':
-              /duplicate|unique/i.test((e&&e.message)||'')?'That clan name’s taken for that game':'The wire dropped — try again');
+        try{ addCredits(price,'refund',true); }catch(_){}   /* nothing minted, bucks back */
+        toast(/does not exist|schema cache|42P01/i.test((e&&e.message)||'')?'Clans aren’t on the server yet — the Keymaster needs to run CLANS-SETUP.sql (bucks returned)':
+              /duplicate|unique/i.test((e&&e.message)||'')?'That clan name’s taken for that game — bucks returned':'The wire dropped — bucks returned, try again');
         try{ if(window.shkAlert)shkAlert('clan start',e); }catch(_){}
       }
     }});
@@ -20223,7 +20232,7 @@ const ROMAN=["I","II","III","IV","V","VI"];
 const CIRCLES=[
  {n:"Initiate",p:0,perks:["Verified at the gate — handle issued","The Book, the Wire, the Hall Floor — full run of the tool","Every docket, report & tip mints Port Bucks"]},
  {n:"Deckhand",p:100,perks:["RSVP to gatherings & enter Order raffles when they run","Deckhand ring on your handle — the Order sees you're in the climb","Priority word: your Send Word reports read first"]},
- {n:"Watchman",p:300,perks:["Photos & videos in chat drop 5 ⬡ → 3 ⬡","First look when new terminals & yard maps land","Watchman ring on your handle"]},
+ {n:"Watchman",p:300,perks:["Start a clan at half price — 250 ⬡ → 125 ⬡","First look when new terminals & yard maps land","Watchman ring on your handle"]},
  {n:"Quartermaster",p:750,perks:["Start gatherings 150 ⬡ → 100 ⬡","Early door when the Armory gates open","Quartermaster ring on your handle"]},
  {n:"Boatswain",p:1500,perks:["Open rooms at half price — 250 ⬡ → 125 ⬡","Handle changes free — the rename desk is yours (250 ⬡ below this ring)","Boatswain ring — the copper number"]},
  {n:"Shadow Council",p:-1,perks:["Elected by the Brotherhood — no buck buys this seat","Moderation duties beside the Keymaster","The council chamber, when it convenes"]},
