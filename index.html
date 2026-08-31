@@ -501,7 +501,8 @@ html.daylight .dayBtn{box-shadow:0 5px 14px rgba(70,56,30,.2)}
 #bankSheet{z-index:95}
 #paySheet{z-index:93}
 #burnSheet{z-index:98}
-#clanSheet{z-index:91}   /* #clans — above the floor, below the pay sheet it opens */   /* #burn — opens from the profile (92), a room (80) or a wire (96): it has to clear all three */
+#clanSheet{z-index:91}   /* #clans — above the floor, below the pay sheet it opens */
+#roomKeysSheet{z-index:98}   /* #keys — opens from inside a room (80) and from the floor */   /* #burn — opens from the profile (92), a room (80) or a wire (96): it has to clear all three */
 #shDlg{z-index:120}      /* #burn — the result card ("Log burned", the logout ask, any alert) rides above every sheet, not under the profile (.dlg itself says 80, further down) */
 /* #sheetscroll(aug10) — EVERY sheet card scrolls itself now.
    Two bugs lived here. (1) Cards without an inline max-height (the PROFILE
@@ -3901,6 +3902,8 @@ window.DEVLOG=(function(){
       <div class="room-id"><span class="room-ico" id="roomIco">⚓</span><div><b id="roomTitle">The Hall Floor</b><span id="roomSubc">212 masked · stay masked, the hall has ears</span></div></div>
       <!-- #12 — invite a casual into whatever room you're standing in -->
       <button class="room-back" id="roomInvite" aria-label="Invite to this room" style="margin-left:auto;font-size:16px">⤴</button>
+      <!-- #keys — the door: owners see who's asking, members see who's in -->
+      <button class="room-back" id="roomKeys" type="button" aria-label="Who holds a key" style="display:none;font-size:15px">🗝</button>
       <!-- #textsize — Aa right where the complaints are: taps through Small → Medium → Large -->
       <button class="room-back" id="aaBtn" type="button" aria-label="Text size" title="Text size — small · medium · large">Aa</button>
       <!-- #wipe(aug29) — burn the log: every message you've ever sent, all rooms, all wires -->
@@ -16321,11 +16324,13 @@ window.renderDayReport=renderDayReport;
 renderDayReport();
 function openRoom(name,ico,who){
   const rv=document.getElementById('roomView');
+  if(name){ try{ const _r=serverRoomByName(name); if(_r&&_r.is_private&&typeof roomCanEnter==='function'&&!roomCanEnter(_r)){ askRoomFlow(_r); return; } }catch(e){} }   /* #keys */
   if(name){document.getElementById('roomTitle').textContent=name;
     document.getElementById('roomIco').textContent=ico||'⚓';
     document.getElementById('roomSubc').textContent=(who||'')+' · stay masked, the hall has ears';
     document.getElementById('chatInput').placeholder="Message "+name+"…";}
   rv.classList.add('on'); document.body.style.overflow="hidden";
+  try{ roomAsksBadge(); }catch(e){}   /* #keys */
   chatJoin(name||document.getElementById('roomTitle').textContent);   // #chat-live — load history + go realtime
 }
 /* #backguard — teardown only; the global Back guard (below) is what turns a swipe / back
@@ -17381,7 +17386,9 @@ function openPaySheet(o){ // {title,sub,price,fields:[{k,label,ph}],go,onPaid}
     +'<p class="sub" style="margin:8px 0 14px;text-align:center">'+o.sub+'</p>'
     +o.fields.map(f=>f.type==='select'
       ?'<span class="lbl">'+f.label+'</span><select class="field" data-k="'+f.k+'" style="margin-bottom:12px">'+(f.opts||[]).map(op=>'<option value="'+esc(op[0])+'">'+esc(op[1])+'</option>').join('')+'</select>'
-      :'<span class="lbl">'+f.label+'</span><input class="field" data-k="'+f.k+'"'+(f.opt?' data-opt="1"':'')+' placeholder="'+esc(f.ph||'')+'" value="'+esc(f.v||'')+'" style="margin-bottom:12px" maxlength="'+(f.max||60)+'">').join('')
+      :'<span class="lbl">'+f.label+'</span><input class="field" data-k="'+f.k+'"'+(f.opt?' data-opt="1"':'')+(f.list?' list="paylist_'+f.k+'" autocomplete="off"':'')+' placeholder="'+esc(f.ph||'')+'" value="'+esc(f.v||'')+'" style="margin-bottom:12px" maxlength="'+(f.max||60)+'">'
+       /* #paylist — one box that is both a list and an open field: type anything, or pick from the suggestions the phone pops up */
+       +(f.list?'<datalist id="paylist_'+f.k+'">'+f.list.map(g=>'<option value="'+esc(g)+'">').join('')+'</datalist>':'')).join('')
     +'<div class="sixstrip" style="margin:2px 0 14px;justify-content:space-between"><span>Price <b class="mono" style="color:var(--copper-hi)">'+(o.price?o.price+' ⬡':'FREE')+'</b></span><span>Your stack <b class="mono" style="color:'+((!o.price||CREDITS>=o.price)?'var(--ok)':'var(--ember)')+'">'+CREDITS.toLocaleString()+' ⬡</b></span></div>'
     +'<button class="btn" id="payGo" type="button">'+(o.price?'⬡ PAY '+o.price+' — ':'✓ ')+o.go+'</button>'
     +'<button class="btn-ghost" id="payNo" type="button" style="width:100%;margin-top:10px;border:0;color:#586067">Never mind</button></div>';
@@ -17516,6 +17523,7 @@ async function sbLoadSocial(){
     if(rr.error||gg.error){console.warn('[social] load:',(rr.error||gg.error).message,'— run SOCIAL-SETUP.sql');return;}
     ALL_ROOMS=rr.data||[]; ALL_GATHS=gg.data||[];
     try{ await sbLoadClans(); }catch(e){}   /* #clans — the gamer wing rides the same pull */
+    try{ await sbLoadRoomKeys(); roomKeysSub(); }catch(e){}   /* #keys — who holds a key, who's asking */
     /* #clean1 — key-ring hygiene: a joined-room key whose room no longer exists on
        the server is a key to a demolished door (deleted rooms used to haunt the
        floor as "old cache" forever). The select above returns EVERY room, public
@@ -17621,6 +17629,7 @@ async function processPendingJoin(){
     try{localStorage.removeItem('shadowhook_pending_join')}catch(e){}
     const row=(r&&r.data&&r.data[0])||null;
     if(!row){toast('That room’s gone dark');return;}
+    try{ await window.SB.rpc('room_key_enter',{p_id:row.id}); MY_KEYS[row.id]='in'; }catch(e){}   /* #keys — the link is a key: seated on the server */
     try{
       const j=joinedRooms();
       if(!j.some(x=>x.id===row.id)){j.push({id:row.id,n:row.name,ico:row.ico||'🗣',priv:!!row.is_private,by:row.by_handle||''});localStorage.setItem(K('joinedrooms'),JSON.stringify(j));}
@@ -19610,9 +19619,11 @@ function renderSocialFeed(){
   /* ---------- THE FLOOR (rooms) ---------- */
   /* #21fix — the floor lists the SHARED directory: server rooms (everyone's),
      private rooms you hold a key to, then any legacy local rooms awaiting sync */
-  const svr=ALL_ROOMS.map(r=>({n:r.name,ico:r.ico||'🗣',id:r.id,priv:!!r.is_private,mine:isMineRow(r),
+  const svr=ALL_ROOMS.map(r=>{ const bd=(typeof ROOM_BOARD!=='undefined'&&ROOM_BOARD[r.id])||null, st=(typeof roomKeyStatus==='function')?roomKeyStatus(r):'';
+    return {n:r.name,ico:r.ico||'🗣',id:r.id,priv:!!r.is_private,mine:isMineRow(r),keys:bd?(+bd.n_in||0):null,asks:(typeof ROOM_ASKS!=='undefined'&&ROOM_ASKS[r.id]||[]).length,st:st,
     who:isMineRow(r)?'your room':('by '+(r.by_handle||'a casual')),
-    tagline:(r.is_private?'🗝 invite-only · ':'')+(isMineRow(r)?'your room · yours for good':'opened by '+(r.by_handle||'a casual'))}));
+    tagline:(r.is_private?('🗝 invite-only · '+(st==='owner'?'your room · yours for good':st==='in'?'you hold a key':st==='asked'?'asked — waiting on '+(r.by_handle||'the owner'):st==='declined'?'not this time — tap to ask again':'tap to ask '+(r.by_handle||'the owner')+' for the key'))
+             :(isMineRow(r)?'your room · yours for good':'opened by '+(r.by_handle||'a casual')))}; });
   const jn=joinedRooms().filter(j=>!svr.some(s=>s.id===j.id)).map(j=>({n:j.n,ico:j.ico||'🗣',id:j.id,priv:!!j.priv,mine:false,
     who:j.by?('by '+j.by):'invited crew',tagline:'🗝 invite-only · you hold the key'}));
   /* #ghostroom(aug10) — struck locals are gone for good; the old tagline read
@@ -19720,7 +19731,9 @@ function renderSocialFeed(){
         /* #floorreal(aug10) — no chip at all on an empty room. A room nobody
            is standing in should read as quiet, not as "0 on the floor". */
         +(function(){const n=floorCount(r.n);return n>0?'<span class="chan-mini"><i class="dot"></i>'+n+' on the floor</span>':'';})()
-        +(r.mine?'<span class="chan-mini yours">★ yours</span>':'')+(r.priv?'<span class="chan-mini lock">🗝 invite-only</span>':'')+'</div>'
+        +(r.mine?'<span class="chan-mini yours">★ yours</span>':'')
+        +(r.priv?'<span class="chan-mini lock">🗝 '+(r.keys!=null?r.keys+' hold a key':'invite-only')+'</span>':'')
+        +((r.mine&&r.asks)?'<span class="chan-mini yours" data-asks="'+esc(r.id)+'" style="cursor:pointer">🔔 '+r.asks+' ask to join</span>':'')+'</div>'
       +'</div>'
       +'<div class="chan-r"><span class="chan-time" data-time="'+esc(r.n)+'"></span><span class="chan-unread" data-unread="'+esc(r.n)+'" style="display:none"></span></div>'
       +((r.mine||r.priv)?'<button class="feed-inv" data-inv="room" data-name="'+esc(r.n)+'"'+(r.id?' data-rid="'+esc(r.id)+'"':'')+' aria-label="Invite to '+esc(r.n)+'">⤴</button>':'')
@@ -19799,9 +19812,23 @@ function renderSocialFeed(){
    it's allowed to read. The leader can boot a member and can disband; anyone
    can leave. Outsiders see the clan, the game, the headcount by platform. */
 let ALL_CLANS=[], CLAN_ROSTER={};      /* clan_board rows · clan_id → member rows the server let me read */
-const CLAN_GAMES=['Call of Duty: Warzone','Call of Duty: Black Ops','Fortnite','GTA Online','NBA 2K','Madden NFL','EA Sports FC','Apex Legends','Rocket League','Minecraft','Roblox','Valorant','Counter-Strike 2','Overwatch 2','Rainbow Six Siege','Destiny 2','Halo','Marvel Rivals','MLB The Show','EA UFC','Mortal Kombat','Street Fighter 6','Tekken 8','Elden Ring','Diablo IV','Helldivers 2','Battlefield','Gran Turismo 7','Forza','PUBG','Rust','Dead by Daylight','PGA Tour 2K','Other'];
-const CLAN_PLATFORMS=[['PC','💻 PC'],['Xbox','🟢 Xbox'],['PlayStation','🔵 PlayStation'],['Switch','🔴 Switch'],['Mobile','📱 Mobile']];
-const CLAN_PICON={PC:'💻',Xbox:'🟢',PlayStation:'🔵',Switch:'🔴',Mobile:'📱'};
+const CLAN_GAMES=['Call of Duty','Call of Duty: Warzone','FIFA / EA Sports FC','NBA 2K','GTA Online','Fortnite','Madden NFL','Apex Legends','Rocket League','Minecraft','Roblox','Valorant','Counter-Strike 2','Overwatch 2','Rainbow Six Siege','Destiny 2','Halo','Marvel Rivals','MLB The Show','WWE 2K','EA UFC','College Football','Mortal Kombat','Street Fighter 6','Tekken 8','Elden Ring','Diablo IV','Helldivers 2','Battlefield','Gran Turismo 7','Forza','PUBG','Rust','Dead by Daylight','PGA Tour 2K'];
+/* the short names casuals actually type → the one name the board files them under, so "cod", "COD" and
+   "Call of Duty" are one clan family, not three */
+const CLAN_ALIAS={cod:'Call of Duty','call of duty':'Call of Duty',warzone:'Call of Duty: Warzone','cod warzone':'Call of Duty: Warzone',fifa:'FIFA / EA Sports FC','ea fc':'FIFA / EA Sports FC','fc 26':'FIFA / EA Sports FC','fc26':'FIFA / EA Sports FC','ea sports fc':'FIFA / EA Sports FC','2k':'NBA 2K',nba2k:'NBA 2K','nba 2k':'NBA 2K','2k26':'NBA 2K',gta:'GTA Online','gta 5':'GTA Online',gta5:'GTA Online',gtav:'GTA Online','gta online':'GTA Online',madden:'Madden NFL',apex:'Apex Legends',cs2:'Counter-Strike 2',cs:'Counter-Strike 2',r6:'Rainbow Six Siege',siege:'Rainbow Six Siege',ow2:'Overwatch 2',overwatch:'Overwatch 2',mk:'Mortal Kombat',mk1:'Mortal Kombat',sf6:'Street Fighter 6',fortnite:'Fortnite',rl:'Rocket League','rocket league':'Rocket League',cfb:'College Football','college football 26':'College Football',ufc:'EA UFC',wwe:'WWE 2K','wwe 2k':'WWE 2K',halo:'Halo',destiny:'Destiny 2',minecraft:'Minecraft',roblox:'Roblox',valorant:'Valorant',pubg:'PUBG',rust:'Rust',forza:'Forza',diablo:'Diablo IV',elden:'Elden Ring','elden ring':'Elden Ring',helldivers:'Helldivers 2',battlefield:'Battlefield','gran turismo':'Gran Turismo 7',dbd:'Dead by Daylight','mlb the show':'MLB The Show','the show':'MLB The Show'};
+function clanGameName(raw){   /* what they typed → the name it files under (a game nobody listed stays as typed, tidied) */
+  const t=String(raw||'').trim().replace(/\s+/g,' '); if(!t)return '';
+  const k=t.toLowerCase(); if(CLAN_ALIAS[k])return CLAN_ALIAS[k];
+  const hit=CLAN_GAMES.find(g=>g.toLowerCase()===k); if(hit)return hit;
+  return t.length>40?t.slice(0,40):t;
+}
+const CLAN_PLATFORMS=[['PC','💻 PC'],['PlayStation','🔵 PlayStation'],['Xbox','🟢 Xbox'],['Switch','🔴 Nintendo Switch'],['Wii','⚪ Wii / Wii U'],['Mobile','📱 Mobile (iOS / Android)'],['Mac','🍎 Mac'],['VR','🥽 VR (Quest)'],['Cloud','☁️ Cloud (GeForce Now / Xbox Cloud)']];
+const CLAN_PICON={PC:'💻',PlayStation:'🔵',Xbox:'🟢',Switch:'🔴',Wii:'⚪',Mobile:'📱',Mac:'🍎',VR:'🥽',Cloud:'☁️'};
+const CLAN_PNAME={PC:'PC',PlayStation:'PlayStation',Xbox:'Xbox',Switch:'Switch',Wii:'Wii',Mobile:'Mobile',Mac:'Mac',VR:'VR',Cloud:'Cloud'};
+/* WHO CAN JOIN — 'any' is cross-play (COD, Fortnite, Rocket League…); one platform when the game doesn't cross over */
+const CLAN_JOIN_OPTS=[['any','🌐 Cross-play — any platform']].concat(CLAN_PLATFORMS.map(([k,l])=>[k,l+' only']));
+function clanCross(c){ return !c||!c.platforms||c.platforms==='any'; }
+function clanJoinPill(c){ return clanCross(c)?'<span class="epill" style="color:var(--ok);border-color:rgba(127,174,106,.5)">🌐 CROSS-PLAY</span>':'<span class="epill">'+(CLAN_PICON[c.platforms]||'')+' '+esc((CLAN_PNAME[c.platforms]||c.platforms).toUpperCase())+' ONLY</span>'; }
 function clanMine(c){ return !!(window.__shkUid&&c&&c.owner===window.__shkUid); }
 function clanIn(c){ const R=CLAN_ROSTER[c.id]||[]; return !!(window.__shkUid&&R.some(m=>m.user_id===window.__shkUid)); }
 async function sbLoadClans(){
@@ -19816,7 +19843,9 @@ async function sbLoadClans(){
   }catch(e){ console.warn('[clans] load',e); }
 }
 function clanPlatLine(c){
-  const parts=[]; [['n_pc','PC'],['n_xbox','Xbox'],['n_ps','PlayStation'],['n_switch','Switch'],['n_mobile','Mobile']].forEach(([k,p])=>{ const v=+c[k]||0; if(v)parts.push('<span>'+CLAN_PICON[p]+' '+v+'</span>'); });
+  const parts=[]; const bp=(c&&c.by_platform&&typeof c.by_platform==='object')?c.by_platform:null;
+  if(bp){ CLAN_PLATFORMS.forEach(([p])=>{ const v=+bp[p]||0; if(v)parts.push('<span title="'+esc(CLAN_PNAME[p]||p)+'">'+CLAN_PICON[p]+' '+v+'</span>'); }); }
+  else { [['n_pc','PC'],['n_xbox','Xbox'],['n_ps','PlayStation'],['n_switch','Switch'],['n_mobile','Mobile']].forEach(([k,p])=>{ const v=+c[k]||0; if(v)parts.push('<span>'+CLAN_PICON[p]+' '+v+'</span>'); }); }
   return parts.join('');
 }
 function clansSection(step){
@@ -19827,7 +19856,7 @@ function clansSection(step){
     html+='<div class="evt feedIn'+(mine?' mine':'')+'"'+step()+' data-clan="'+esc(c.id)+'">'
       +'<div class="evt-date glyph">🎮</div>'
       +'<div class="evt-main">'
-        +'<div class="evt-name">'+esc(c.name)+' <span class="epill">'+esc(c.game)+'</span>'+(mine?' <span class="epill">★ YOURS</span>':'')+'</div>'
+        +'<div class="evt-name">'+esc(c.name)+' <span class="epill">'+esc(c.game)+'</span> '+clanJoinPill(c)+(mine?' <span class="epill">★ YOURS</span>':'')+'</div>'
         +'<div class="evt-meta">'+(clanPlatLine(c)||'<span>nobody yet</span>')+'</div>'
         +'<div class="evt-going">⚓ <b>'+n+'</b> in the clan · led by <b>'+esc(c.owner_handle||'a casual')+'</b>'+(inn?' · <span style="color:var(--copper-hi)">you’re in</span>':' · tags for clanmates only')+'</div>'
         +'<div class="evt-foot"><span class="evt-host">'+esc(c.blurb||'')+'</span>'
@@ -19872,29 +19901,31 @@ window.newClanFlow=function(){
   const price=clanPrice();
   openPaySheet({title:"START A CLAN",sub:"Pick the game, name the squad. Your clan gets its own invite-only room, and every casual who joins hands you their gamer tag. Joining is free."+(price<CLAN_COST?" Watchman rate.":""),
     price:price,go:"START THE CLAN",fields:[
-      {k:"g",label:"The game",type:"select",opts:CLAN_GAMES.map(g=>[g,g])},
-      {k:"gx",label:"If “Other” — which game",ph:"type the game",opt:true,max:40},
+      {k:"g",label:"The game",ph:"FIFA · 2K · COD · GTA — or type any game",list:CLAN_GAMES,max:40},
       {k:"n",label:"Clan name",ph:"e.g. DOCK RATS · 3–24 characters",max:24},
+      {k:"x",label:"Who can join",type:"select",opts:CLAN_JOIN_OPTS},
       {k:"p",label:"Your platform",type:"select",opts:CLAN_PLATFORMS},
       {k:"t",label:"Your gamer tag",ph:"PSN · Gamertag · Steam · Epic",max:32},
       {k:"b",label:"A line about the squad (optional)",ph:"graveyard shift squad · mics on",opt:true,max:80}],
     validate:v=>{
-      const game=(v.g==='Other'?(v.gx||'').trim():v.g), nm=(v.n||'').trim();
-      if(!game||game.length<2)return "Which game? Pick one, or type it under “Other”";
+      const game=clanGameName(v.g), nm=(v.n||'').trim();
+      if(!game||game.length<2)return "Which game? Type it — or pick one as you type";
       if(nm.length<3||nm.length>24)return "Clan name: 3–24 characters";
       if(ALL_CLANS.some(c=>c.game===game&&c.name.toLowerCase()===nm.toLowerCase()))return "That clan already exists for that game — join it instead";
       if(serverRoomByName('🎮 '+nm))return "A room by that name is already on the floor — pick another";
+      if(v.x&&v.x!=='any'&&v.p!==v.x)return "You set the clan to "+(CLAN_PNAME[v.x]||v.x)+" only — but you're on "+(CLAN_PNAME[v.p]||v.p);
       if((v.t||'').trim().length<2)return "Your gamer tag — that's how the clan finds you online";
       return null;},
     onPaid:async v=>{
-      const game=(v.g==='Other'?(v.gx||'').trim():v.g), nm=(v.n||'').trim(), roomName='🎮 '+nm, h=chatMyHandle();
+      const game=clanGameName(v.g), nm=(v.n||'').trim(), roomName='🎮 '+nm, h=chatMyHandle();
       try{
         const r=await window.SB.from('rooms').insert({name:roomName,ico:'🎮',owner:window.__shkUid,by_id:ACCT_ID,by_handle:h,is_private:true}).select().single();
         if(r.error)throw r.error;
-        const c=await window.SB.from('clans').insert({game:game,name:nm,blurb:(v.b||'').trim()||null,owner:window.__shkUid,owner_handle:h,room_id:r.data.id,room_name:roomName}).select().single();
+        const c=await window.SB.from('clans').insert({game:game,name:nm,blurb:(v.b||'').trim()||null,owner:window.__shkUid,owner_handle:h,room_id:r.data.id,room_name:roomName,platforms:(v.x||'any')}).select().single();
         if(c.error){ try{ await window.SB.from('rooms').delete().eq('id',r.data.id); }catch(e){} throw c.error; }
         const m=await window.SB.from('clan_members').insert({clan_id:c.data.id,user_id:window.__shkUid,handle:h,platform:v.p,tag:(v.t||'').trim()});
         if(m.error)throw m.error;
+        try{ await window.SB.from('room_members').insert({room_id:r.data.id,user_id:window.__shkUid,handle:h,status:'in',decided_at:new Date().toISOString()}); MY_KEYS[r.data.id]='in'; }catch(e){}   /* #keys — the leader holds the first key */
         try{ ALL_ROOMS.push(r.data); }catch(e){}
         clanKeyRoom({room_id:r.data.id,room_name:roomName,owner_handle:h});
         await sbLoadClans(); renderSocialFeed();
@@ -19913,16 +19944,17 @@ window.joinClanFlow=function(id){
   const c=clanById(id); if(!c)return;
   if(!(window.SB&&window.__shkUid)){ toast('Sign in first — clans ride your account'); return; }
   if(clanIn(c)){ openClanSheet(id); return; }
-  openPaySheet({title:"JOIN "+c.name.toUpperCase(),sub:esc(c.game)+" · led by "+esc(c.owner_handle||'a casual')+". Free. Your platform and gamer tag show to clanmates only — and you get the key to the clan's room.",
+  const only=clanCross(c)?null:c.platforms;
+  openPaySheet({title:"JOIN "+c.name.toUpperCase(),sub:esc(c.game)+" · led by "+esc(c.owner_handle||'a casual')+" · "+(only?(esc(CLAN_PNAME[only]||only)+" only"):"cross-play, any platform")+". Free. Your platform and gamer tag show to clanmates only — and you get the key to the clan's room.",
     price:0,go:"JOIN THE CLAN",fields:[
-      {k:"p",label:"Your platform",type:"select",opts:CLAN_PLATFORMS},
+      {k:"p",label:"Your platform",type:"select",opts:only?CLAN_PLATFORMS.filter(([k])=>k===only):CLAN_PLATFORMS},
       {k:"t",label:"Your gamer tag",ph:"PSN · Gamertag · Steam · Epic",max:32}],
     validate:v=>((v.t||'').trim().length<2?"Your gamer tag — that's how the clan finds you online":null),
     onPaid:async v=>{
       try{
         const m=await window.SB.from('clan_members').insert({clan_id:c.id,user_id:window.__shkUid,handle:chatMyHandle(),platform:v.p,tag:(v.t||'').trim()});
         if(m.error)throw m.error;
-        if(c.room_id){ try{ await window.SB.rpc('join_room',{p_id:c.room_id}); }catch(e){} clanKeyRoom(c);
+        if(c.room_id){ try{ await window.SB.rpc('join_room',{p_id:c.room_id}); }catch(e){} try{ await window.SB.rpc('room_key_enter',{p_id:c.room_id}); MY_KEYS[c.room_id]='in'; }catch(e){} clanKeyRoom(c);
           try{ if(!ALL_ROOMS.some(r=>r.id===c.room_id))ALL_ROOMS.push({id:c.room_id,name:c.room_name,ico:'🎮',owner:c.owner,by_handle:c.owner_handle,is_private:true}); }catch(e){} }
         await sbLoadClans(); renderSocialFeed();
         toast('🎮 You’re in '+c.name+' — the room key is yours');
@@ -19945,6 +19977,14 @@ async function bootClanMember(id,uid,h){
   await sbLoadClans(); renderSocialFeed(); openClanSheet(id);
   toast(h+' is out of '+c.name);
 }
+async function handOverClan(id,uid,h){
+  const c=clanById(id); if(!c||!clanMine(c))return;
+  const r=await window.SB.rpc('clan_hand_over',{p_clan:c.id,p_to:uid});
+  if(r&&r.error){ toast('Couldn’t hand it over — '+(r.error.message||'the server refused')); return; }
+  try{ const rm=ALL_ROOMS.find(x=>x.id===c.room_id); if(rm){ rm.owner=uid; rm.by_handle=h; } }catch(e){}
+  await sbLoadClans(); try{ await sbLoadRoomKeys(); }catch(e){} renderSocialFeed(); openClanSheet(id);
+  toast('👑 '+h+' leads '+c.name+' now');
+}
 async function disbandClan(id){
   const c=clanById(id); if(!c||!clanMine(c))return;
   const r=await window.SB.from('clans').delete().eq('id',c.id).select('id');
@@ -19965,7 +20005,7 @@ function openClanSheet(id){
     +'<span style="flex:none;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--well);border:1px solid var(--line);font-size:15px">'+(CLAN_PICON[m.platform]||'🎮')+'</span>'
     +'<span style="flex:1;min-width:0"><b style="display:block;font-family:\'IBM Plex Mono\',monospace;font-size:12.5px;color:var(--bone);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(m.handle||'a casual')+(m.user_id===c.owner?' <span class="epill">LEADER</span>':'')+(m.user_id===window.__shkUid?' <span class="rtagme">YOU</span>':'')+'</b>'
     +'<span class="sub" style="display:block;font-family:\'IBM Plex Mono\',monospace;font-size:11.5px">'+esc(m.platform)+' · <span style="color:var(--copper-hi)">'+esc(m.tag)+'</span></span></span>'
-    +((mine&&m.user_id!==window.__shkUid)?'<button class="btn-ghost" data-cboot="'+esc(m.user_id)+'" data-ch="'+esc(m.handle||'')+'" style="flex:none;padding:6px 10px;font-size:11px;color:var(--ember)">✕</button>':'')
+    +((mine&&m.user_id!==window.__shkUid)?'<button class="btn-ghost" data-ccrown="'+esc(m.user_id)+'" data-ch="'+esc(m.handle||'')+'" title="Hand the clan to '+esc(m.handle||'them')+'" style="flex:none;padding:6px 9px;font-size:12px">👑</button><button class="btn-ghost" data-cboot="'+esc(m.user_id)+'" data-ch="'+esc(m.handle||'')+'" style="flex:none;padding:6px 10px;font-size:11px;color:var(--ember)">✕</button>':'')
     +'</div>';
   const members=inn
     ? (R.length?R.map(row).join(''):'<p class="sub" style="text-align:center;padding:10px 0">Nobody on the roster yet.</p>')
@@ -19973,6 +20013,7 @@ function openClanSheet(id){
   sh.innerHTML='<div class="sheet-card" style="text-align:left">'
     +'<div class="big" style="font-size:20px;letter-spacing:.06em;text-align:center">🎮 '+esc(c.name)+'</div>'
     +'<p class="sub" style="margin:6px 0 4px;text-align:center"><b style="color:var(--bone)">'+esc(c.game)+'</b> · led by <b style="color:var(--copper-hi)">'+esc(c.owner_handle||'a casual')+'</b></p>'
+    +'<p class="sub" style="margin:0 0 4px;text-align:center">'+(clanCross(c)?'🌐 <b style="color:var(--ok)">Cross-play</b> — any platform can join':(CLAN_PICON[c.platforms]||'')+' <b style="color:var(--bone)">'+esc(CLAN_PNAME[c.platforms]||c.platforms)+' only</b>')+'</p>'
     +(c.blurb?'<p class="sub" style="margin:0 0 8px;text-align:center;font-style:italic">“'+esc(c.blurb)+'”</p>':'')
     +'<div class="evt-meta" style="display:flex;gap:12px;justify-content:center;margin:4px 0 10px;font-family:\'IBM Plex Mono\',monospace;font-size:11.5px;color:var(--steel)">'+(clanPlatLine(c)||'<span>no platforms yet</span>')+'</div>'
     +'<div class="lbl">The roster</div>'
@@ -19980,6 +20021,7 @@ function openClanSheet(id){
     +'<div class="stat-row" style="display:flex;flex-direction:column;gap:8px">'
     +(inn?'<button class="btn" id="clanRoom" type="button" style="width:100%">🗣 OPEN THE CLAN ROOM</button>':'<button class="btn" id="clanJoin" type="button" style="width:100%">＋ JOIN THE CLAN</button>')
     +(inn&&!mine?'<button class="btn-line" id="clanLeave" type="button" style="width:100%">Leave the clan</button>':'')
+    +(mine?'<p class="sub" style="margin:0;font-size:11px;text-align:center">Stepping away? Tap 👑 on a clanmate to hand them the clan — the room goes with it — then leave. Or disband it for everyone.</p>':'')
     +(mine?'<button class="btn-line red" id="clanDisband" type="button" style="width:100%">☠ DISBAND THE CLAN</button>':'')
     +'</div>'
     +'<button class="btn-ghost" id="clanX" type="button" style="width:100%;margin-top:10px;border:0;color:#586067">Close</button></div>';
@@ -19990,11 +20032,163 @@ function openClanSheet(id){
   const d=sh.querySelector('#clanDisband'); if(d)d.addEventListener('click',()=>shConfirm('Disband '+c.name+'? The clan, its roster and its room go — for everyone in it.',()=>disbandClan(c.id),{title:'Disband?',icon:'☠',okText:'Disband it'}));
   sh.querySelectorAll('[data-cboot]').forEach(b=>b.addEventListener('click',()=>{ const uid=b.getAttribute('data-cboot'), h=b.getAttribute('data-ch')||'them';
     shConfirm('Remove '+h+' from '+c.name+'?',()=>bootClanMember(c.id,uid,h),{title:'Boot a clanmate?',icon:'🎮',okText:'Remove'}); }));
+  sh.querySelectorAll('[data-ccrown]').forEach(b=>b.addEventListener('click',()=>{ const uid=b.getAttribute('data-ccrown'), h=b.getAttribute('data-ch')||'them';
+    shConfirm('Hand '+c.name+' to '+h+'? They become the leader — the clan and its room are theirs, and you stay on as a clanmate.',()=>handOverClan(c.id,uid,h),{title:'Hand over the clan?',icon:'👑',okText:'Hand it over'}); }));
   sh.classList.add('on');
 }
 window.openClanSheet=openClanSheet;
 
+/* ═══ #keys(aug29) — 🗝 PRIVATE ROOMS WITH A DOOR ═══
+   A private room used to be a label: it sat on the floor and the only key was
+   knowing it existed. Now (ROOM-KEYS.sql) every private room shows on the Floor
+   with how many casuals hold a key; a casual who wants in ASKS, and the owner
+   APPROVES or DECLINES from a 🗝 sheet — on their room's row, and inside the
+   room. An invite link is still a key (room_key_enter). The owner sees who's in
+   and can remove anyone; anyone can leave. Approvals land live over realtime.
+   Membership lives on the server now, so a key follows the account, not the
+   phone — joinedRooms() on this phone is kept in step as a cache. */
+let ROOM_BOARD={}, MY_KEYS={}, ROOM_ASKS={};   /* room_id → {n_in,n_asked} · room_id → my status · room_id → asked rows (owner) */
+let _keysChan=null;
+function roomKeyStatus(r){ if(!r||!r.id)return ''; if(isMineRow(r))return 'owner'; return MY_KEYS[r.id]||''; }
+function roomCanEnter(r){ return !r||!r.is_private||isMineRow(r)||MY_KEYS[r.id]==='in'; }
+async function sbLoadRoomKeys(){
+  if(!(window.SB&&window.__shkUid))return;
+  try{
+    const b=await window.SB.from('room_board').select('room_id,name,ico,owner,by_handle,created_at,n_in,n_asked');
+    if(b.error){ if(!/does not exist|schema cache|42P01/i.test(b.error.message||''))console.warn('[keys]',b.error.message); return; }
+    ROOM_BOARD={}; (b.data||[]).forEach(x=>{ ROOM_BOARD[x.room_id]={n_in:+x.n_in||0,n_asked:+x.n_asked||0};
+      /* a private room the rooms table kept from this casual still gets its row on the Floor — that's the point */
+      if(x.name&&!ALL_ROOMS.some(r=>r.id===x.room_id))ALL_ROOMS.push({id:x.room_id,name:x.name,ico:x.ico||'🗣',owner:x.owner,by_handle:x.by_handle||'',is_private:true,created_at:x.created_at}); });
+    const m=await window.SB.from('room_members').select('room_id,user_id,handle,status,asked_at');
+    MY_KEYS={}; ROOM_ASKS={};
+    ((m&&!m.error&&m.data)||[]).forEach(x=>{
+      if(x.user_id===window.__shkUid)MY_KEYS[x.room_id]=x.status;
+      if(x.status==='asked'){ (ROOM_ASKS[x.room_id]=ROOM_ASKS[x.room_id]||[]).push(x); }
+    });
+    /* the phone's key ring follows the server: a seat you were given lands here, a seat you lost leaves */
+    try{
+      const j=joinedRooms(); let changed=false;
+      ALL_ROOMS.forEach(r=>{ if(!r.is_private)return;
+        const inn=MY_KEYS[r.id]==='in'||isMineRow(r), has=j.some(k=>k.id===r.id);
+        if(inn&&!has){ j.push({id:r.id,n:r.name,ico:r.ico||'🗣',priv:true,by:r.by_handle||''}); changed=true; }
+        if(!inn&&has&&MY_KEYS[r.id]!==undefined){ const i=j.findIndex(k=>k.id===r.id); if(i>=0){ j.splice(i,1); changed=true; } } });
+      if(changed)localStorage.setItem(K('joinedrooms'),JSON.stringify(j));
+      /* an owner with no seat of their own (a room from before the door) takes one now; a casual
+         holding an old link-key with no row gets seated the first time this runs */
+      ALL_ROOMS.forEach(r=>{ if(!r.is_private)return;
+        if(isMineRow(r)&&MY_KEYS[r.id]!=='in'){ window.SB.from('room_members').insert({room_id:r.id,user_id:window.__shkUid,handle:chatMyHandle(),status:'in',decided_at:new Date().toISOString()}).then(()=>{},()=>{}); MY_KEYS[r.id]='in'; }
+        else if(!isMineRow(r)&&MY_KEYS[r.id]===undefined&&j.some(k=>k.id===r.id)){ window.SB.rpc('room_key_enter',{p_id:r.id}).then(()=>{},()=>{}); MY_KEYS[r.id]='in'; } });
+    }catch(e){}
+  }catch(e){ console.warn('[keys] load',e); }
+}
+function roomKeysSub(){
+  if(!(window.SB&&window.__shkUid)||_keysChan)return;
+  try{
+    _keysChan=window.SB.channel('keys-'+window.__shkUid)
+      .on('postgres_changes',{event:'*',schema:'public',table:'room_members'},async p=>{
+        try{
+          const row=(p&&(p.new&&p.new.room_id?p.new:p.old))||null; if(!row)return;
+          const r=ALL_ROOMS.find(x=>x.id===row.room_id); const nm=r?r.name:'a room';
+          if(p.eventType==='UPDATE'&&p.new&&p.new.user_id===window.__shkUid&&p.new.status==='in'&&MY_KEYS[p.new.room_id]!=='in'){
+            toast('🗝 You’re in — '+nm); try{ if(typeof alertFire==='function')alertFire('priv',{title:'🗝 '+nm,body:'The owner let you in.',tag:'shadowhook-key-'+row.room_id}); }catch(e){}
+          }else if(p.eventType==='UPDATE'&&p.new&&p.new.user_id===window.__shkUid&&p.new.status==='declined'){
+            toast('🗝 Not this time — '+nm);
+          }else if(p.eventType==='INSERT'&&p.new&&p.new.status==='asked'&&r&&isMineRow(r)){
+            toast('🗝 '+(p.new.handle||'a casual')+' is asking to enter '+nm);
+          }
+          await sbLoadRoomKeys(); renderSocialFeed(); roomAsksBadge();
+        }catch(e){}
+      }).subscribe();
+  }catch(e){}
+}
+function askRoomFlow(r){
+  if(!r||!r.id)return;
+  if(!(window.SB&&window.__shkUid)){ toast('Sign in first — keys ride your account'); return; }
+  if(typeof guestWall==='function'&&guestWall())return;
+  const st=MY_KEYS[r.id];
+  if(st==='asked'){ toast('Already asked — waiting on '+(r.by_handle||'the owner')); return; }
+  shConfirm('Ask '+(r.by_handle||'the owner')+' to let you into '+r.name+'? They see your handle, nothing else. You’ll hear the moment they decide.',
+    async()=>{
+      const q=st?await window.SB.from('room_members').update({status:'asked',asked_at:new Date().toISOString()}).eq('room_id',r.id).eq('user_id',window.__shkUid).select('status')
+                :await window.SB.from('room_members').insert({room_id:r.id,user_id:window.__shkUid,handle:chatMyHandle(),status:'asked'}).select('status');
+      if(q.error||(st&&!(q.data||[]).length)){
+        /* a declined row can't be flipped back by its owner (only the room's owner updates) — ask fresh */
+        if(st==='declined'){ await window.SB.from('room_members').delete().eq('room_id',r.id).eq('user_id',window.__shkUid);
+          const q2=await window.SB.from('room_members').insert({room_id:r.id,user_id:window.__shkUid,handle:chatMyHandle(),status:'asked'}).select('status');
+          if(q2.error){ toast('Couldn’t ask — '+q2.error.message); return; } }
+        else { toast('Couldn’t ask — '+((q.error&&q.error.message)||'try again')); return; }
+      }
+      MY_KEYS[r.id]='asked'; renderSocialFeed(); toast('🗝 Asked — '+(r.by_handle||'the owner')+' will hear it');
+    },{title:'Ask for the key?',icon:'🗝',okText:'Ask'});
+}
+async function decideRoomAsk(roomId,uid,status,h){
+  const q=await window.SB.from('room_members').update({status:status,decided_at:new Date().toISOString()}).eq('room_id',roomId).eq('user_id',uid).select('status');
+  if(q.error||!(q.data||[]).length){ toast('Couldn’t — '+((q.error&&q.error.message)||'the server refused')); return; }
+  toast(status==='in'?('🗝 '+h+' is in'):('🗝 '+h+' — not this time'));
+  await sbLoadRoomKeys(); renderSocialFeed(); roomAsksBadge(); openRoomKeysSheet(roomId);
+}
+async function removeRoomMember(roomId,uid,h){
+  const q=await window.SB.from('room_members').delete().eq('room_id',roomId).eq('user_id',uid).select('user_id');
+  if(q.error||!(q.data||[]).length){ toast('Couldn’t remove them — '+((q.error&&q.error.message)||'the server refused')); return; }
+  toast('🗝 '+h+' is out'); await sbLoadRoomKeys(); renderSocialFeed(); openRoomKeysSheet(roomId);
+}
+async function leaveRoomKey(r){
+  const q=await window.SB.from('room_members').delete().eq('room_id',r.id).eq('user_id',window.__shkUid).select('user_id');
+  if(q.error){ toast('Couldn’t leave — '+q.error.message); return; }
+  delete MY_KEYS[r.id];
+  try{ const j=joinedRooms().filter(k=>k.id!==r.id); localStorage.setItem(K('joinedrooms'),JSON.stringify(j)); }catch(e){}
+  try{ document.getElementById('roomKeysSheet').classList.remove('on'); }catch(e){}
+  if(document.getElementById('roomView').classList.contains('on')&&document.getElementById('roomTitle').textContent===r.name)closeRoom();
+  renderSocialFeed(); toast('You left '+r.name);
+}
+async function openRoomKeysSheet(roomId){
+  const r=ALL_ROOMS.find(x=>x.id===roomId); if(!r)return;
+  const mine=isMineRow(r);
+  let sh=document.getElementById('roomKeysSheet');
+  if(!sh){ sh=document.createElement('div'); sh.className='sheet'; sh.id='roomKeysSheet'; document.body.appendChild(sh);
+    sh.addEventListener('click',e=>{ if(e.target===sh)sh.classList.remove('on'); }); }
+  let rows=[];
+  try{ const m=await window.SB.from('room_members').select('user_id,handle,status,asked_at').eq('room_id',roomId).order('asked_at',{ascending:true}); rows=(m&&!m.error&&m.data)||[]; }catch(e){}
+  const asks=rows.filter(x=>x.status==='asked'), inn=rows.filter(x=>x.status==='in');
+  const av=h=>'<span style="flex:none;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:\'Anton\',sans-serif;font-size:14px;background:var(--well);border:1px solid var(--line);color:var(--bone)">'+esc((h||'?').trim().charAt(0).toUpperCase()||'?')+'</span>';
+  const line=(x,btns)=>'<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line-soft)">'+av(x.handle)
+    +'<span style="flex:1;min-width:0;font-family:\'IBM Plex Mono\',monospace;font-size:12.5px;color:var(--bone);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(x.handle||'a casual')+(x.user_id===window.__shkUid?' <span class="rtagme">YOU</span>':'')+(x.user_id===r.owner?' <span class="epill">OWNER</span>':'')+'</span>'+btns+'</div>';
+  const bd=ROOM_BOARD[roomId]||{n_in:inn.length,n_asked:asks.length};
+  sh.innerHTML='<div class="sheet-card" style="text-align:left">'
+    +'<div class="big" style="font-size:20px;letter-spacing:.06em;text-align:center">🗝 '+esc(r.name)+'</div>'
+    +'<p class="sub" style="margin:6px 0 12px;text-align:center">invite-only · <b style="color:var(--bone)">'+(+bd.n_in||0)+'</b> hold a key · owned by <b style="color:var(--copper-hi)">'+esc(r.by_handle||'a casual')+'</b></p>'
+    +(mine?'<div class="lbl">Ask to join'+(asks.length?' · '+asks.length:'')+'</div>'
+      +(asks.length?asks.map(x=>line(x,'<button class="btn-line gold" data-kok="'+esc(x.user_id)+'" data-kh="'+esc(x.handle||'')+'" style="flex:none;padding:6px 10px;font-size:11px">LET IN</button><button class="btn-ghost" data-kno="'+esc(x.user_id)+'" data-kh="'+esc(x.handle||'')+'" style="flex:none;padding:6px 10px;font-size:11px;color:var(--ember)">✕</button>')).join('')
+                  :'<p class="sub" style="padding:6px 0 10px">Nobody at the door.</p>'):'')
+    +'<div class="lbl">Who’s in'+(inn.length?' · '+inn.length:'')+'</div>'
+    +'<div style="max-height:240px;overflow-y:auto;margin-bottom:12px">'+(inn.length?inn.map(x=>line(x,(mine&&x.user_id!==window.__shkUid)?'<button class="btn-ghost" data-krm="'+esc(x.user_id)+'" data-kh="'+esc(x.handle||'')+'" style="flex:none;padding:6px 10px;font-size:11px;color:var(--ember)">✕</button>':'')).join('')
+                  :'<p class="sub" style="padding:6px 0">Just you so far — tap ⤴ in the room to hand out a key.</p>')+'</div>'
+    +'<div class="stat-row" style="display:flex;flex-direction:column;gap:8px">'
+    +(roomCanEnter(r)?'<button class="btn" id="rkOpen" type="button" style="width:100%">🗣 OPEN THE ROOM</button>':'')
+    +((!mine&&MY_KEYS[roomId]==='in')?'<button class="btn-line" id="rkLeave" type="button" style="width:100%">Hand the key back</button>':'')
+    +'</div>'
+    +'<button class="btn-ghost" id="rkX" type="button" style="width:100%;margin-top:10px;border:0;color:#586067">Close</button></div>';
+  sh.querySelector('#rkX').addEventListener('click',()=>sh.classList.remove('on'));
+  const o=sh.querySelector('#rkOpen'); if(o)o.addEventListener('click',()=>{ sh.classList.remove('on'); openRoom(r.name,r.ico||'🗣',isMineRow(r)?'your room':('by '+(r.by_handle||'a casual'))); });
+  const l=sh.querySelector('#rkLeave'); if(l)l.addEventListener('click',()=>shConfirm('Hand back the key to '+r.name+'? You can ask again later.',()=>leaveRoomKey(r),{title:'Leave the room?',icon:'🗝',okText:'Leave'}));
+  sh.querySelectorAll('[data-kok]').forEach(b=>b.addEventListener('click',()=>decideRoomAsk(roomId,b.getAttribute('data-kok'),'in',b.getAttribute('data-kh')||'them')));
+  sh.querySelectorAll('[data-kno]').forEach(b=>b.addEventListener('click',()=>decideRoomAsk(roomId,b.getAttribute('data-kno'),'declined',b.getAttribute('data-kh')||'them')));
+  sh.querySelectorAll('[data-krm]').forEach(b=>b.addEventListener('click',()=>{ const h=b.getAttribute('data-kh')||'them'; shConfirm('Take the key back from '+h+'?',()=>removeRoomMember(roomId,b.getAttribute('data-krm'),h),{title:'Remove them?',icon:'🗝',okText:'Remove'}); }));
+  sh.classList.add('on');
+}
+window.openRoomKeysSheet=openRoomKeysSheet;
+/* the 🗝 in the room header: owners see the asks count, members see who's in */
+function roomAsksBadge(){
+  const b=document.getElementById('roomKeys'); if(!b)return;
+  const r=serverRoomByName(document.getElementById('roomTitle').textContent);
+  if(!r||!r.is_private||!r.id){ b.style.display='none'; return; }
+  const n=isMineRow(r)?((ROOM_ASKS[r.id]||[]).length):0;
+  b.style.display=''; b.textContent=n?('🗝 '+n):'🗝'; b.title=isMineRow(r)?(n?n+' ask to join':'Who holds a key'):'Who’s in';
+}
+(function(){ const b=document.getElementById('roomKeys'); if(b)b.addEventListener('click',()=>{ const r=serverRoomByName(document.getElementById('roomTitle').textContent); if(r&&r.id)openRoomKeysSheet(r.id); }); })();
+
 function bindFeed(host){
+  host.querySelectorAll('[data-asks]').forEach(c=>c.addEventListener('click',e=>{ e.stopPropagation(); openRoomKeysSheet(c.getAttribute('data-asks')); }));   /* #keys */
   host.querySelectorAll('.hero[data-room],.chan[data-room],.tcard[data-room]').forEach(el=>{
     el.addEventListener('click',()=>{
       const n=el.getAttribute('data-room');
