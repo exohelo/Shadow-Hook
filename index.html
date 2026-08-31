@@ -497,6 +497,8 @@ html.daylight .dayBtn{box-shadow:0 5px 14px rgba(70,56,30,.2)}
    Back close the Bank first and land you back on the profile. */
 #bankSheet{z-index:95}
 #paySheet{z-index:93}
+#burnSheet{z-index:98}   /* #burn — opens from the profile (92), a room (80) or a wire (96): it has to clear all three */
+#shDlg{z-index:120}      /* #burn — the result card ("Log burned", the logout ask, any alert) rides above every sheet, not under the profile (.dlg itself says 80, further down) */
 /* #sheetscroll(aug10) — EVERY sheet card scrolls itself now.
    Two bugs lived here. (1) Cards without an inline max-height (the PROFILE
    sheet above all) grew taller than the phone; because .sheet is align-items:
@@ -17541,6 +17543,13 @@ function floorJoin(){
           const metas=st[k]||[]; if(!metas.length)return;
           const m=metas[metas.length-1];               // newest meta wins
           if(m.ghost)return;                           /* #ghost(aug13) — appear-offline hands are invisible: no count, no roster */
+          if(m.anon||String(k).indexOf('anon-')===0)return;   /* #floornoname — a signed-out phone (this build says so; an older one shows by its anon- key) is nobody on the floor */
+          /* #floornoname2 — and NO HANDLE, NO SEAT, whatever the key: a login that never
+             claimed a card (a vendor or ambassador signed into the app by magic link, a
+             half-finished gate) beacons the header's "—" placeholder from an older build.
+             Only the viewer's own phone keeps its row without a name, so YOU still shows. */
+          const hh=String(m.h==null?'':m.h).trim();
+          if((!hh||hh==='—'||hh==='a hand'||hh==='a masked hand')&&!(window.__shkUid&&k===window.__shkUid))return;
           total++;                                     // one hand, however many tabs
           const r=m.room;
           if(r)by[String(r)]=(by[String(r)]||0)+1;
@@ -17568,8 +17577,16 @@ function floorJoin(){
    flag) but never in a room and never by name — degrades gently as the fleet updates. */
 function dmGhost(){try{return localStorage.getItem(K('ghost'))==='1'}catch(e){return false}}
 function _flMeta(room){
-  const m={room:dmGhost()?null:(room||null),h:(typeof chatMyHandle==='function'?chatMyHandle():'a hand')};
+  /* #floornoname(aug29) — A PHONE WITH NO HANDLE IS NOT A HAND ON THE FLOOR. Signed out,
+     or parked at the gate, chatMyHandle() fell back to the header's "—" placeholder, so
+     the roster listed a nameless "—" with a 💬 that could never land (its presence key
+     is anon-…, not a uid). Such a phone still joins the wire — it can READ the hall —
+     but announces itself as anon, and every roster and count skips it, like a ghost. */
+  let h=null; try{ const a=loadAcct(); if(a&&a.handle)h=String(a.handle).trim(); }catch(e){}
+  if(h==='—'||h==='a hand')h=null;
+  const m={room:dmGhost()?null:(room||null),h:h};
   if(dmGhost())m.ghost=1;
+  if(!h||!window.__shkUid)m.anon=1;
   return m;
 }
 /* called when a hand walks into a room or back out onto the shelves */
@@ -18747,7 +18764,7 @@ function _floorSheetRepaint(){
     const av=(p.h||'?').trim().charAt(0).toUpperCase()||'🎭';
     let hue=0;for(let i=0;i<p.h.length;i++)hue=(hue*31+p.h.charCodeAt(i))>>>0;
     /* #dm(aug13) — a roster row is a DOOR now: tap another hand → their card → a wire */
-    const tap=(!p.me&&p.uid&&typeof openDmCard==='function')?' role="button" data-dmuid="'+esc(p.uid)+'" data-dmh="'+esc(p.h)+'"':'';
+    const tap=(!p.me&&p.uid&&!/^anon-/.test(p.uid)&&typeof openDmCard==='function')?' role="button" data-dmuid="'+esc(p.uid)+'" data-dmh="'+esc(p.h)+'"':'';   /* #floornoname — no door onto a key that can't take a wire */
     return '<div'+tap+' class="floor-row" onclick="if(this.dataset.dmuid)try{openDmCard(this.dataset.dmuid,this.dataset.dmh)}catch(e){}" style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line-soft)'+(p.me?'':';cursor:pointer')+'">'
       +'<span style="flex:none;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:\'Anton\',sans-serif;font-size:14px;background:hsl('+(hue%360)+',42%,42%);color:#fff">'+esc(av)+'</span>'
       +'<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:\'IBM Plex Mono\',monospace;font-size:12.5px;color:var(--bone)">'+esc(p.h)+(p.me?' <span class="rtagme">YOU</span>':'')+'</span>'
