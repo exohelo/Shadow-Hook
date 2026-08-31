@@ -500,7 +500,8 @@ html.daylight .dayBtn{box-shadow:0 5px 14px rgba(70,56,30,.2)}
    Back close the Bank first and land you back on the profile. */
 #bankSheet{z-index:95}
 #paySheet{z-index:93}
-#burnSheet{z-index:98}   /* #burn — opens from the profile (92), a room (80) or a wire (96): it has to clear all three */
+#burnSheet{z-index:98}
+#clanSheet{z-index:91}   /* #clans — above the floor, below the pay sheet it opens */   /* #burn — opens from the profile (92), a room (80) or a wire (96): it has to clear all three */
 #shDlg{z-index:120}      /* #burn — the result card ("Log burned", the logout ask, any alert) rides above every sheet, not under the profile (.dlg itself says 80, further down) */
 /* #sheetscroll(aug10) — EVERY sheet card scrolls itself now.
    Two bugs lived here. (1) Cards without an inline max-height (the PROFILE
@@ -4593,7 +4594,7 @@ window.DEVLOG=(function(){
         <p>Every pay figure, ranking, board, and countdown is an <b>estimate for planning only</b> — not payroll, not an official dispatch, and not legal or financial advice. Always confirm against your own paystub and the hall's official postings.</p>
         <p>Your card, hours, and dockets live <b>on your device</b>; the optional Brotherhood account syncs them across your own phones. Nothing here is a public record. <b>Snitches get stitches.</b></p>
         <!-- #disclose(aug13) — the social features earned their own honest paragraphs -->
-        <p><b>Talk on the wire.</b> Rooms, direct messages, and reactions ride your <b>masked handle</b> — never your name or card number. Messages and reactions are stored on the Brotherhood's server so they reach the other casual's devices; a DM is readable only by the two casuals on the wire, and who may open one with you is <b>your setting</b>, on this profile, enforced at the server. Reactions you leave are visible to everyone in that room. <b>Your right to burn the log:</b> 🧹 BURN THE LOG above deletes what you choose from the server — your room messages, your wires (all or one at a time, your side or both), everything you’ve said, or your whole account and its login — any time, no questions, no takebacks. Open gear orders are cancelled and deleted; one already on the bench ships first, then every trace of you comes off it — the vendor keeps nothing but a nameless pay line.</p>
+        <p><b>Talk on the wire.</b> Rooms, direct messages, and reactions ride your <b>masked handle</b> — never your name or card number. Messages and reactions are stored on the Brotherhood's server so they reach the other casual's devices; a DM is readable only by the two casuals on the wire, and who may open one with you is <b>your setting</b>, on this profile, enforced at the server. Reactions you leave are visible to everyone in that room. <b>Your right to burn the log:</b> 🧹 BURN THE LOG above deletes what you choose from the server — your room messages, your wires (all or one at a time, your side or both), everything you’ve said, or your whole account and its login — any time, no questions, no takebacks. Open gear orders are cancelled and deleted; one already on the bench ships first, then every trace of you comes off it — the vendor keeps nothing but a nameless pay line. <b>Clans:</b> the platform and gamer tag you give a clan show to that clan’s members only — the rest of the Order sees the clan, the game, and the headcount.</p>
         <p><b>Being seen.</b> While the app is open, your handle and which lobby you're standing in appear on the ONLINE roster. Flip <b>🕶 Appear Offline</b> on this profile and the hall can't see you at all — you lose nothing but the spotlight.</p>
         <p><b>Alerts</b> fire from your own phone while the app is open or freshly put away — nothing pings a server to watch you. Each bell (board · chatrooms · private rooms · DMs) is its own switch above, and every one of them is yours to silence.</p>
       </details>
@@ -17509,6 +17510,7 @@ async function sbLoadSocial(){
     const rr=q[0],gg=q[1],vv=q[2],cc=q[3];
     if(rr.error||gg.error){console.warn('[social] load:',(rr.error||gg.error).message,'— run SOCIAL-SETUP.sql');return;}
     ALL_ROOMS=rr.data||[]; ALL_GATHS=gg.data||[];
+    try{ await sbLoadClans(); }catch(e){}   /* #clans — the gamer wing rides the same pull */
     /* #clean1 — key-ring hygiene: a joined-room key whose room no longer exists on
        the server is a key to a demolished door (deleted rooms used to haunt the
        floor as "old cache" forever). The select above returns EVERY room, public
@@ -18922,7 +18924,7 @@ function _floorSheetRepaint(){
           ? (p.me?'<button type="button" class="pill" onclick="try{goGateForHandle()}catch(e){}" style="flex:none;cursor:pointer;color:var(--ember);border-color:rgba(224,73,46,.55);background:none;font-family:inherit">⚓ take a handle</button>'
                  :'<span class="pill" style="flex:none;color:var(--ember);border-color:rgba(224,73,46,.45)">sign in at the gate</span>')
           : p.room?'<span class="pill" style="flex:none;color:var(--copper-hi);border-color:rgba(238,180,107,.4)">🗣 '+esc(p.room)+'</span>'
-                  :'<span class="pill" style="flex:none;opacity:.65">on the shelves</span>')
+                  :(p.me?'<span class="pill" style="flex:none;opacity:.65">that’s you</span>':'<span class="pill" style="flex:none;color:var(--copper-hi);border-color:rgba(238,180,107,.4)">send a message</span>'))
       +((p.me||p.nameless)?'':'<span class="pill" style="flex:none;color:var(--copper-hi);border-color:rgba(238,180,107,.35)">💬</span>')
       +'</div>';
   }).join('');
@@ -19076,7 +19078,7 @@ function dmRenderAll(){
       return '<div role="button" style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line-soft);cursor:pointer" onclick="openDmCard(\''+esc(p.uid)+'\',\''+esc(p.h)+'\')">'
         +_dmAv(p.h)
         +'<span style="flex:1;min-width:0"><b style="display:block;font-family:\'IBM Plex Mono\',monospace;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(p.h)+(DM.friends[p.uid]?' <span class="pill" style="color:var(--ok);border-color:rgba(127,174,106,.45)">friend</span>':'')+'</b>'
-        +'<span class="sub" style="display:block">'+(p.room?'standing in '+esc(p.room):'on the shelves')+'</span></span>'
+        +'<span class="sub" style="display:block">'+(p.room?'standing in '+esc(p.room):'send a message')+'</span></span>'
         +'<span class="pill" style="flex:none;color:var(--copper-hi);border-color:rgba(238,180,107,.35)">💬</span></div>';
     }).join('')
     :'<p class="sub">The hall’s quiet right now — casuals appear here the moment they’re online.</p>';
@@ -19773,11 +19775,215 @@ function renderSocialFeed(){
     +'<span class="pill gold">'+((circleLvl()>=4)?100:GATH_COST)+' ⬡</span></div>';   // #fix3 — Quartermaster rate, same as the pay sheet
   html+='</div>';
 
+  /* ---------- CLANS — the gamer wing ---------- */
+  try{ html+=clansSection(step); }catch(e){}
+
   host.innerHTML=html;
   bindFeed(host);
+  try{ bindClans(host); }catch(e){}
   hydrateChatPreviews(rooms.map(r=>r.n));
   try{renderHallStats();}catch(e){}   /* #hall — keep the stat strip in step with the feed */
 }
+
+/* ═══ #clans(aug29) — 🎮 CLANS · the gamer wing of the Social tab ═══
+   A casual starts a clan around a game (free), other casuals join it (free) with
+   the platform they play on and their gamer tag. Every clan gets its own
+   invite-only chatroom the moment it's started — joining the clan hands you the
+   room key the same way an invite link does. Tags are for CLANMATES ONLY: the
+   server enforces that (CLANS-SETUP.sql, row security), the app just draws what
+   it's allowed to read. The leader can boot a member and can disband; anyone
+   can leave. Outsiders see the clan, the game, the headcount by platform. */
+let ALL_CLANS=[], CLAN_ROSTER={};      /* clan_board rows · clan_id → member rows the server let me read */
+const CLAN_GAMES=['Call of Duty: Warzone','Call of Duty: Black Ops','Fortnite','GTA Online','NBA 2K','Madden NFL','EA Sports FC','Apex Legends','Rocket League','Minecraft','Roblox','Valorant','Counter-Strike 2','Overwatch 2','Rainbow Six Siege','Destiny 2','Halo','Marvel Rivals','MLB The Show','EA UFC','Mortal Kombat','Street Fighter 6','Tekken 8','Elden Ring','Diablo IV','Helldivers 2','Battlefield','Gran Turismo 7','Forza','PUBG','Rust','Dead by Daylight','PGA Tour 2K','Other'];
+const CLAN_PLATFORMS=[['PC','💻 PC'],['Xbox','🟢 Xbox'],['PlayStation','🔵 PlayStation'],['Switch','🔴 Switch'],['Mobile','📱 Mobile']];
+const CLAN_PICON={PC:'💻',Xbox:'🟢',PlayStation:'🔵',Switch:'🔴',Mobile:'📱'};
+function clanMine(c){ return !!(window.__shkUid&&c&&c.owner===window.__shkUid); }
+function clanIn(c){ const R=CLAN_ROSTER[c.id]||[]; return !!(window.__shkUid&&R.some(m=>m.user_id===window.__shkUid)); }
+async function sbLoadClans(){
+  if(!window.SB)return;
+  try{
+    const b=await window.SB.from('clan_board').select('*').order('created_at',{ascending:true});
+    if(b.error){ if(!/does not exist|schema cache|42P01/i.test(b.error.message||''))console.warn('[clans]',b.error.message); ALL_CLANS=[]; CLAN_ROSTER={}; return; }
+    ALL_CLANS=b.data||[];
+    const m=await window.SB.from('clan_members').select('clan_id,user_id,handle,platform,tag,joined_at').order('joined_at',{ascending:true});
+    CLAN_ROSTER={};
+    ((m&&!m.error&&m.data)||[]).forEach(r=>{ (CLAN_ROSTER[r.clan_id]=CLAN_ROSTER[r.clan_id]||[]).push(r); });
+  }catch(e){ console.warn('[clans] load',e); }
+}
+function clanPlatLine(c){
+  const parts=[]; [['n_pc','PC'],['n_xbox','Xbox'],['n_ps','PlayStation'],['n_switch','Switch'],['n_mobile','Mobile']].forEach(([k,p])=>{ const v=+c[k]||0; if(v)parts.push('<span>'+CLAN_PICON[p]+' '+v+'</span>'); });
+  return parts.join('');
+}
+function clansSection(step){
+  let html='<div class="fsec" id="clanSec">'
+    +'<div class="fsec-h"><span class="ttl">🎮 Clans</span><span class="more">squad up off the docks</span></div>';
+  ALL_CLANS.forEach(c=>{
+    const inn=clanIn(c), mine=clanMine(c), n=+c.n||0;
+    html+='<div class="evt feedIn'+(mine?' mine':'')+'"'+step()+' data-clan="'+esc(c.id)+'">'
+      +'<div class="evt-date glyph">🎮</div>'
+      +'<div class="evt-main">'
+        +'<div class="evt-name">'+esc(c.name)+' <span class="epill">'+esc(c.game)+'</span>'+(mine?' <span class="epill">★ YOURS</span>':'')+'</div>'
+        +'<div class="evt-meta">'+(clanPlatLine(c)||'<span>nobody yet</span>')+'</div>'
+        +'<div class="evt-going">⚓ <b>'+n+'</b> in the clan · led by <b>'+esc(c.owner_handle||'a casual')+'</b>'+(inn?' · <span style="color:var(--copper-hi)">you’re in</span>':' · tags for clanmates only')+'</div>'
+        +'<div class="evt-foot"><span class="evt-host">'+esc(c.blurb||'')+'</span>'
+          +'<div class="evt-cta">'
+            +(inn?'<button class="rsvp on" data-copen="'+esc(c.id)+'">🗣 Clan room</button>':'<button class="rsvp" data-cjoin="'+esc(c.id)+'">＋ Join</button>')
+          +'</div>'
+        +'</div>'
+      +'</div></div>';
+  });
+  html+='<div class="evt create feedIn"'+step()+' data-new="clan"><div class="evt-date glyph">🎮</div>'
+    +'<div class="evt-main"><div class="evt-name">Start a Clan</div><div class="evt-meta"><span>the game, the squad, a private room — free</span></div></div>'
+    +'<span class="pill gold">FREE</span></div>';
+  html+='</div>';
+  return html;
+}
+function bindClans(host){
+  host.querySelectorAll('[data-clan]').forEach(el=>el.addEventListener('click',e=>{ if(e.target.closest('button'))return; openClanSheet(el.getAttribute('data-clan')); }));
+  host.querySelectorAll('[data-cjoin]').forEach(b=>b.addEventListener('click',e=>{ e.stopPropagation(); joinClanFlow(b.getAttribute('data-cjoin')); }));
+  host.querySelectorAll('[data-copen]').forEach(b=>b.addEventListener('click',e=>{ e.stopPropagation(); openClanRoom(b.getAttribute('data-copen')); }));
+  const cc=host.querySelector('[data-new="clan"]'); if(cc)cc.addEventListener('click',()=>{ try{newClanFlow();}catch(e){} });
+}
+function clanById(id){ return ALL_CLANS.find(c=>String(c.id)===String(id))||null; }
+function clanKeyRoom(c){   /* the room key rides this phone like an invite does */
+  try{ if(!c||!c.room_id)return; const j=joinedRooms();
+    if(!j.some(x=>x.id===c.room_id)){ j.push({id:c.room_id,n:c.room_name,ico:'🎮',priv:true,by:c.owner_handle||''}); localStorage.setItem(K('joinedrooms'),JSON.stringify(j)); }
+  }catch(e){}
+}
+function clanDropRoomKey(c){
+  try{ if(!c||!c.room_id)return; const j=joinedRooms().filter(x=>x.id!==c.room_id); localStorage.setItem(K('joinedrooms'),JSON.stringify(j)); }catch(e){}
+}
+function openClanRoom(id){
+  const c=clanById(id); if(!c)return;
+  if(!clanIn(c)){ toast('Join the clan first — the room is theirs'); return; }
+  clanKeyRoom(c);
+  try{ if(!ALL_ROOMS.some(r=>r.id===c.room_id))ALL_ROOMS.push({id:c.room_id,name:c.room_name,ico:'🎮',owner:c.owner,by_handle:c.owner_handle,is_private:true}); }catch(e){}
+  try{ const sh=document.getElementById('clanSheet'); if(sh)sh.classList.remove('on'); }catch(e){}
+  openRoom(c.room_name,'🎮','the '+c.name+' clan');
+}
+window.newClanFlow=function(){
+  if(!(window.SB&&window.__shkUid)){ toast('Sign in first — clans ride your account'); return; }
+  openPaySheet({title:"START A CLAN",sub:"Free. Pick the game, name the squad. Your clan gets its own invite-only room, and every casual who joins hands you their gamer tag.",
+    price:0,go:"START THE CLAN",fields:[
+      {k:"g",label:"The game",type:"select",opts:CLAN_GAMES.map(g=>[g,g])},
+      {k:"gx",label:"If “Other” — which game",ph:"type the game",opt:true,max:40},
+      {k:"n",label:"Clan name",ph:"e.g. DOCK RATS · 3–24 characters",max:24},
+      {k:"p",label:"Your platform",type:"select",opts:CLAN_PLATFORMS},
+      {k:"t",label:"Your gamer tag",ph:"PSN · Gamertag · Steam · Epic",max:32},
+      {k:"b",label:"A line about the squad (optional)",ph:"graveyard shift squad · mics on",opt:true,max:80}],
+    validate:v=>{
+      const game=(v.g==='Other'?(v.gx||'').trim():v.g), nm=(v.n||'').trim();
+      if(!game||game.length<2)return "Which game? Pick one, or type it under “Other”";
+      if(nm.length<3||nm.length>24)return "Clan name: 3–24 characters";
+      if(ALL_CLANS.some(c=>c.game===game&&c.name.toLowerCase()===nm.toLowerCase()))return "That clan already exists for that game — join it instead";
+      if(serverRoomByName('🎮 '+nm))return "A room by that name is already on the floor — pick another";
+      if((v.t||'').trim().length<2)return "Your gamer tag — that's how the clan finds you online";
+      return null;},
+    onPaid:async v=>{
+      const game=(v.g==='Other'?(v.gx||'').trim():v.g), nm=(v.n||'').trim(), roomName='🎮 '+nm, h=chatMyHandle();
+      try{
+        const r=await window.SB.from('rooms').insert({name:roomName,ico:'🎮',owner:window.__shkUid,by_id:ACCT_ID,by_handle:h,is_private:true}).select().single();
+        if(r.error)throw r.error;
+        const c=await window.SB.from('clans').insert({game:game,name:nm,blurb:(v.b||'').trim()||null,owner:window.__shkUid,owner_handle:h,room_id:r.data.id,room_name:roomName}).select().single();
+        if(c.error){ try{ await window.SB.from('rooms').delete().eq('id',r.data.id); }catch(e){} throw c.error; }
+        const m=await window.SB.from('clan_members').insert({clan_id:c.data.id,user_id:window.__shkUid,handle:h,platform:v.p,tag:(v.t||'').trim()});
+        if(m.error)throw m.error;
+        try{ ALL_ROOMS.push(r.data); }catch(e){}
+        clanKeyRoom({room_id:r.data.id,room_name:roomName,owner_handle:h});
+        await sbLoadClans(); renderSocialFeed();
+        toast('🎮 '+nm+' is up — its room is open, invite the squad');
+        openClanSheet(c.data.id);
+      }catch(e){
+        toast(/does not exist|schema cache|42P01/i.test((e&&e.message)||'')?'Clans aren’t on the server yet — the Keymaster needs to run CLANS-SETUP.sql':
+              /duplicate|unique/i.test((e&&e.message)||'')?'That clan name’s taken for that game':'The wire dropped — try again');
+        try{ if(window.shkAlert)shkAlert('clan start',e); }catch(_){}
+      }
+    }});
+};
+window.joinClanFlow=function(id){
+  const c=clanById(id); if(!c)return;
+  if(!(window.SB&&window.__shkUid)){ toast('Sign in first — clans ride your account'); return; }
+  if(clanIn(c)){ openClanSheet(id); return; }
+  openPaySheet({title:"JOIN "+c.name.toUpperCase(),sub:esc(c.game)+" · led by "+esc(c.owner_handle||'a casual')+". Free. Your platform and gamer tag show to clanmates only — and you get the key to the clan's room.",
+    price:0,go:"JOIN THE CLAN",fields:[
+      {k:"p",label:"Your platform",type:"select",opts:CLAN_PLATFORMS},
+      {k:"t",label:"Your gamer tag",ph:"PSN · Gamertag · Steam · Epic",max:32}],
+    validate:v=>((v.t||'').trim().length<2?"Your gamer tag — that's how the clan finds you online":null),
+    onPaid:async v=>{
+      try{
+        const m=await window.SB.from('clan_members').insert({clan_id:c.id,user_id:window.__shkUid,handle:chatMyHandle(),platform:v.p,tag:(v.t||'').trim()});
+        if(m.error)throw m.error;
+        if(c.room_id){ try{ await window.SB.rpc('join_room',{p_id:c.room_id}); }catch(e){} clanKeyRoom(c);
+          try{ if(!ALL_ROOMS.some(r=>r.id===c.room_id))ALL_ROOMS.push({id:c.room_id,name:c.room_name,ico:'🎮',owner:c.owner,by_handle:c.owner_handle,is_private:true}); }catch(e){} }
+        await sbLoadClans(); renderSocialFeed();
+        toast('🎮 You’re in '+c.name+' — the room key is yours');
+        openClanSheet(c.id);
+      }catch(e){ toast(/duplicate|unique/i.test((e&&e.message)||'')?'You’re already in':'Couldn’t join — '+((e&&e.message)||'try again')); }
+    }});
+};
+async function leaveClan(id){
+  const c=clanById(id); if(!c)return;
+  const r=await window.SB.from('clan_members').delete().eq('clan_id',c.id).eq('user_id',window.__shkUid).select('clan_id');
+  if(r.error){ toast('Couldn’t leave — '+r.error.message); return; }
+  clanDropRoomKey(c); await sbLoadClans(); renderSocialFeed();
+  try{ document.getElementById('clanSheet').classList.remove('on'); }catch(e){}
+  toast('You left '+c.name);
+}
+async function bootClanMember(id,uid,h){
+  const c=clanById(id); if(!c||!clanMine(c))return;
+  const r=await window.SB.from('clan_members').delete().eq('clan_id',c.id).eq('user_id',uid).select('clan_id');
+  if(r.error||!(r.data||[]).length){ toast('Couldn’t remove them — '+((r.error&&r.error.message)||'the server refused')); return; }
+  await sbLoadClans(); renderSocialFeed(); openClanSheet(id);
+  toast(h+' is out of '+c.name);
+}
+async function disbandClan(id){
+  const c=clanById(id); if(!c||!clanMine(c))return;
+  const r=await window.SB.from('clans').delete().eq('id',c.id).select('id');
+  if(r.error||!(r.data||[]).length){ toast('Couldn’t disband — '+((r.error&&r.error.message)||'the server refused')); return; }
+  try{ if(c.room_id)await window.SB.from('rooms').delete().eq('id',c.room_id); }catch(e){}
+  try{ ALL_ROOMS=ALL_ROOMS.filter(x=>x.id!==c.room_id); }catch(e){}
+  clanDropRoomKey(c); await sbLoadClans(); renderSocialFeed();
+  try{ document.getElementById('clanSheet').classList.remove('on'); }catch(e){}
+  toast('🎮 '+c.name+' disbanded');
+}
+function openClanSheet(id){
+  const c=clanById(id); if(!c)return;
+  const inn=clanIn(c), mine=clanMine(c), R=(CLAN_ROSTER[c.id]||[]).slice();
+  let sh=document.getElementById('clanSheet');
+  if(!sh){ sh=document.createElement('div'); sh.className='sheet'; sh.id='clanSheet'; document.body.appendChild(sh);
+    sh.addEventListener('click',e=>{ if(e.target===sh)sh.classList.remove('on'); }); }
+  const row=m=>'<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line-soft)">'
+    +'<span style="flex:none;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--well);border:1px solid var(--line);font-size:15px">'+(CLAN_PICON[m.platform]||'🎮')+'</span>'
+    +'<span style="flex:1;min-width:0"><b style="display:block;font-family:\'IBM Plex Mono\',monospace;font-size:12.5px;color:var(--bone);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(m.handle||'a casual')+(m.user_id===c.owner?' <span class="epill">LEADER</span>':'')+(m.user_id===window.__shkUid?' <span class="rtagme">YOU</span>':'')+'</b>'
+    +'<span class="sub" style="display:block;font-family:\'IBM Plex Mono\',monospace;font-size:11.5px">'+esc(m.platform)+' · <span style="color:var(--copper-hi)">'+esc(m.tag)+'</span></span></span>'
+    +((mine&&m.user_id!==window.__shkUid)?'<button class="btn-ghost" data-cboot="'+esc(m.user_id)+'" data-ch="'+esc(m.handle||'')+'" style="flex:none;padding:6px 10px;font-size:11px;color:var(--ember)">✕</button>':'')
+    +'</div>';
+  const members=inn
+    ? (R.length?R.map(row).join(''):'<p class="sub" style="text-align:center;padding:10px 0">Nobody on the roster yet.</p>')
+    : '<p class="sub" style="text-align:center;padding:12px 0"><b style="color:var(--bone)">'+(+c.n||0)+'</b> in the clan. Join to see who — gamer tags are for clanmates only.</p>';
+  sh.innerHTML='<div class="sheet-card" style="text-align:left">'
+    +'<div class="big" style="font-size:20px;letter-spacing:.06em;text-align:center">🎮 '+esc(c.name)+'</div>'
+    +'<p class="sub" style="margin:6px 0 4px;text-align:center"><b style="color:var(--bone)">'+esc(c.game)+'</b> · led by <b style="color:var(--copper-hi)">'+esc(c.owner_handle||'a casual')+'</b></p>'
+    +(c.blurb?'<p class="sub" style="margin:0 0 8px;text-align:center;font-style:italic">“'+esc(c.blurb)+'”</p>':'')
+    +'<div class="evt-meta" style="display:flex;gap:12px;justify-content:center;margin:4px 0 10px;font-family:\'IBM Plex Mono\',monospace;font-size:11.5px;color:var(--steel)">'+(clanPlatLine(c)||'<span>no platforms yet</span>')+'</div>'
+    +'<div class="lbl">The roster</div>'
+    +'<div style="max-height:250px;overflow-y:auto;margin-bottom:12px">'+members+'</div>'
+    +'<div class="stat-row" style="display:flex;flex-direction:column;gap:8px">'
+    +(inn?'<button class="btn" id="clanRoom" type="button" style="width:100%">🗣 OPEN THE CLAN ROOM</button>':'<button class="btn" id="clanJoin" type="button" style="width:100%">＋ JOIN THE CLAN</button>')
+    +(inn&&!mine?'<button class="btn-line" id="clanLeave" type="button" style="width:100%">Leave the clan</button>':'')
+    +(mine?'<button class="btn-line red" id="clanDisband" type="button" style="width:100%">☠ DISBAND THE CLAN</button>':'')
+    +'</div>'
+    +'<button class="btn-ghost" id="clanX" type="button" style="width:100%;margin-top:10px;border:0;color:#586067">Close</button></div>';
+  sh.querySelector('#clanX').addEventListener('click',()=>sh.classList.remove('on'));
+  const j=sh.querySelector('#clanJoin'); if(j)j.addEventListener('click',()=>{ sh.classList.remove('on'); joinClanFlow(c.id); });
+  const o=sh.querySelector('#clanRoom'); if(o)o.addEventListener('click',()=>openClanRoom(c.id));
+  const l=sh.querySelector('#clanLeave'); if(l)l.addEventListener('click',()=>shConfirm('Leave '+c.name+'? You lose the room key; your tag comes off the roster.',()=>leaveClan(c.id),{title:'Leave the clan?',icon:'🎮',okText:'Leave'}));
+  const d=sh.querySelector('#clanDisband'); if(d)d.addEventListener('click',()=>shConfirm('Disband '+c.name+'? The clan, its roster and its room go — for everyone in it.',()=>disbandClan(c.id),{title:'Disband?',icon:'☠',okText:'Disband it'}));
+  sh.querySelectorAll('[data-cboot]').forEach(b=>b.addEventListener('click',()=>{ const uid=b.getAttribute('data-cboot'), h=b.getAttribute('data-ch')||'them';
+    shConfirm('Remove '+h+' from '+c.name+'?',()=>bootClanMember(c.id,uid,h),{title:'Boot a clanmate?',icon:'🎮',okText:'Remove'}); }));
+  sh.classList.add('on');
+}
+window.openClanSheet=openClanSheet;
 
 function bindFeed(host){
   host.querySelectorAll('.hero[data-room],.chan[data-room],.tcard[data-room]').forEach(el=>{
