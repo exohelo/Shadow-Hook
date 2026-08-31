@@ -393,6 +393,9 @@ html.daylight .dayBtn{box-shadow:0 5px 14px rgba(70,56,30,.2)}
 .nav button{background:none;border:0;cursor:pointer;color:var(--steel);display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 0;font-size:9px;letter-spacing:.1em;text-transform:uppercase;font-weight:600}
 .nav button .ico{font-size:17px;line-height:1}
 .nav button.on{color:var(--copper-hi)}
+.nav button.locked{opacity:.38}   /* #guest — shut until there's a handle; the tap still lands and explains */
+.nav button.locked .ico{position:relative}
+.nav button.locked .ico::after{content:"🔒";position:absolute;right:-9px;top:-5px;font-size:9px;filter:grayscale(1)}
 .nav button.on .ico{filter:drop-shadow(0 0 8px rgba(238,180,107,.5))}
 /* #maydayred — the MAYDAY tab's colour is set at the very BOTTOM of this sheet,
    after every skin. Search #maydayred to find it.
@@ -4799,6 +4802,66 @@ try{
   }
 }catch(e){ console.warn("Supabase init skipped:", e && e.message); }
 
+/* ═══ #guest(aug29) — NO HANDLE, NO HANDS ON ANYTHING ═══
+   A session with no handle (a login with no card behind it — a vendor or ambassador
+   who signed in by magic link — or a phone that never finished the gate) can LOOK:
+   the Wire with its call and forecast, and MAYDAY's emergency drill. Nothing else.
+   Two locks on one switch:
+   · THE NAV — every other tab stays shut; tapping one opens the gate word instead.
+   · THE PIPE — every write to the server (insert / upsert / update / delete, storage
+     uploads, the bucks and room RPCs) is refused with a plain error before it leaves
+     the phone, so nothing that slips past the UI can post, spend or earn. Reads pass.
+     claim_account passes — that is the way in.
+   Port Bucks can't move either (addCredits / payCredits / spendCredits refuse), so a
+   guest earns nothing off the board they're watching. The switch is isGuest(): no
+   handle on this device. Take one at the gate and everything opens the same second. */
+function isGuest(){ try{ const a=loadAcct(); return !(a&&a.handle); }catch(e){ return true; } }
+window.isGuest=isGuest;
+const GUEST_TABS={board:1,mayday:1};
+function guestWall(){
+  if(!isGuest())return false;
+  try{
+    shConfirm("Take a handle first. Verify your card at the gate and the whole Order opens — log your jobs, talk on the wire, earn Port Bucks, buy from the Armory. Until then you can watch the board and read the forecast, and that's it.",
+      function(){ try{ if(typeof goGateForHandle==='function')goGateForHandle(); }catch(e){} },
+      {title:"Who goes there?",icon:"🎭",okText:"Take a handle",noText:"Just looking"});
+  }catch(e){ try{ toast('Take a handle at the gate first'); }catch(_){} }
+  return true;
+}
+window.guestWall=guestWall;
+(function(){
+  if(!window.SB)return;
+  const ERR={message:'Take a handle at the gate first — this needs a name on the record.',code:'GUEST',details:null,hint:null};
+  /* a refused query: chains like the real builder, resolves like a refused call — every
+     caller in this app reads r.error and says so, none of them throw on a builder */
+  const refused=function(){
+    const q={}; const self=function(){ return q; };
+    ['eq','neq','gt','gte','lt','lte','like','ilike','is','in','or','and','not','filter','match','contains','order','limit','range','single','maybeSingle','select','returns','throwOnError','abortSignal','csv'].forEach(function(k){ q[k]=self; });
+    q.then=function(ok,no){ return Promise.resolve({data:null,error:ERR,count:null,status:403,statusText:'guest'}).then(ok,no); };
+    q.catch=function(no){ return q.then(undefined,no); };
+    return q;
+  };
+  const from0=window.SB.from.bind(window.SB);
+  window.SB.from=function(t){
+    const q=from0(t); if(!isGuest())return q;
+    ['insert','upsert','update','delete'].forEach(function(k){ if(typeof q[k]==='function')q[k]=refused; });
+    return q;
+  };
+  const RPC_OK={claim_account:1,rsvp_counts:1,scan_tape_count:1,amb_ledger:1,km_roster:1,km_book:1,km_book_scan:1};   /* the way in, and the read-only ones */
+  const rpc0=window.SB.rpc.bind(window.SB);
+  window.SB.rpc=function(name,args,opts){ if(isGuest()&&!RPC_OK[name])return refused(); return rpc0(name,args,opts); };
+  try{   /* storage is a getter that builds a fresh client each time — wrap the getter, not one instance */
+    const proto=Object.getPrototypeOf(window.SB), d=Object.getOwnPropertyDescriptor(proto,'storage');
+    if(d&&d.get){
+      Object.defineProperty(window.SB,'storage',{configurable:true,get:function(){
+        const st=d.get.call(this); if(!isGuest())return st;
+        const f0=st.from.bind(st);
+        st.from=function(b){ const bk=f0(b); bk.upload=function(){ return Promise.resolve({data:null,error:ERR}); }; return bk; };
+        return st;
+      }});
+    }
+  }catch(e){}
+})();
+
 /* connection proof — once the app's toast() exists, report what we found.
    A locked/empty response still means the pipe is open; only a network failure is "unreachable". */
 window.addEventListener('load', function(){
@@ -4881,6 +4944,7 @@ window.steppedAway=steppedAway;
    call window, not the wider drop window, so "dispatch is running" means the board is
    genuinely moving right now. */
 function openingTab(){
+  try{ if(typeof isGuest==='function'&&isGuest())return 'board'; }catch(e){}   /* #guest — a guest opens on the one screen that's theirs */
   try{
     if(typeof DOCKETS!=="undefined" && typeof todayISO==="function"){
       var t=todayISO();
@@ -6212,6 +6276,13 @@ function validHandle(h){return /^[A-Za-z0-9_\-]{3,20}$/.test(h)}
    to do that: it lives here now, above its only reader. */
 let alertsLoaded=false;
 function gotoTab(name){
+  /* #guest — the Wire and MAYDAY are the guest's whole world; any other tab is the gate word */
+  if(typeof isGuest==='function'&&isGuest()&&!GUEST_TABS[name]){
+    guestWall();
+    const cur=document.querySelector('.screen.on'), curName=cur?String(cur.id||'').replace('scr-',''):'';
+    name=GUEST_TABS[curName]?curName:'board';
+  }
+  try{ const g=(typeof isGuest==='function'&&isGuest()); document.querySelectorAll('.nav button').forEach(function(x){ x.classList.toggle('locked',!!(g&&!GUEST_TABS[x.dataset.scr])); }); }catch(e){}
   /* #shop — a product page is a mode, not a screen. Leaving the Armory with one
      open left gearShop, gearView and armoryHead pinned by inline styles, so
      coming back landed on the old product with the balance card still hidden and
@@ -6569,6 +6640,8 @@ function localEnter(){
           const a=loadAcct()||{}; a.handle=prof.handle; a.id=prof.card_id; a.name=prettyName(prof.full_name);   /* #gateorder — stored card-proper */
           a.since=prof.since||a.since||todayISO();
           saveAcct(a);
+        }else{
+          try{ noHandleNotice(); }catch(e){}   /* #floornoname — a session with nobody behind it is told so */
         }
         bootScreen(()=>enterApp(openingTab()),true);
         return;
@@ -6653,6 +6726,45 @@ function signedOutNotice(){
     });
   }catch(e){ console.warn('signedOutNotice', e); }
 }
+
+/* #floornoname(aug29) — SIGNED IN, BUT NOBODY. A live session with no profile behind it
+   (a vendor or ambassador who signed into the app by magic link, a gate that never
+   finished) used to walk straight in and stand on the floor as "—". It still walks in —
+   the boards and the dockets are theirs to use — but it is TOLD, once as a card and
+   always as a strip, that the hall can't see who they are until they verify a card and
+   take a handle. The strip is the same shape as the signed-out one; only one ever shows. */
+function goGateForHandle(){
+  try{ const gp=document.getElementById('gatePage'); gp.style.display=""; gp.classList.add('on');
+       document.getElementById('app').style.display="none"; window.scrollTo(0,0); }catch(e){}
+  try{ const fs=document.getElementById('floorSheet'); if(fs)fs.classList.remove('on'); }catch(e){}
+}
+window.goGateForHandle=goGateForHandle;
+function noHandleNotice(){
+  try{
+    if(!window.SB||!window.__shkUid) return;               // not a session: the signed-out notice has that case
+    const a=loadAcct(); if(a&&a.handle) return;             // named — nothing to say
+    if(document.getElementById('soNote')) return;
+    const app=document.getElementById('app'); if(!app) return;
+    const d=document.createElement('div'); d.id='soNote';
+    d.innerHTML='<i class="so-ic">🎭</i>'
+      +'<span class="so-txt"><b>The hall can’t see who you are</b>'
+      +'<span>You’re signed in, but no card or handle is on the record — the ONLINE roster shows you as NO HANDLE YET. Verify your card and take a handle.</span></span>'
+      +'<button type="button" id="soGo">Take a handle</button>';
+    app.insertBefore(d, app.firstChild);
+    try{ document.documentElement.classList.add('so-open'); }catch(e){}
+    if(typeof soClear==='function'){ soClear(d); [400,1500,3000].forEach(function(ms){ window.setTimeout(function(){ soClear(d); }, ms); }); }
+    d.querySelector('#soGo').addEventListener('click',goGateForHandle);
+    /* once a session, the word itself — the strip stays until the handle exists */
+    if(!sessionStorage.getItem('shk_nohandle_told')){
+      try{ sessionStorage.setItem('shk_nohandle_told','1'); }catch(e){}
+      setTimeout(function(){ try{
+        shConfirm("You’re signed in, but the Order doesn’t know you yet — no card on the record, no handle. On the floor you read as NO HANDLE YET, and nobody can open a wire to you. Verify your card at the gate and take a handle.",
+          goGateForHandle,{title:"Who goes there?",icon:"🎭",okText:"Take a handle",noText:"Later"});
+      }catch(e){} },2600);
+    }
+  }catch(e){ console.warn('noHandleNotice', e); }
+}
+window.noHandleNotice=noHandleNotice;
 
 /* #32 — Take My Place: lock the handle, set the passcode, board through the loading screen */
 document.getElementById('enterBtn').addEventListener('click',async ()=>{
@@ -11999,6 +12111,7 @@ setInterval(function(){
 function buzz(p){try{if(navigator.vibrate&&!(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches))navigator.vibrate(p)}catch(e){}}
 window.buzz=buzz;
 document.getElementById('dropAdd').addEventListener('click',()=>{
+  if(typeof guestWall==='function'&&guestWall())return;   /* #guest — a drop is a post AND a payday */
   const inp=document.getElementById('dropN');
   const n=parseInt((inp.value||"").replace(/\D/g,""),10);
   if(!isFinite(n)||n<1||n>5000){inp.focus();inp.style.borderColor="var(--ember)";return;}
@@ -15472,6 +15585,7 @@ function buckPop(n){
   document.body.appendChild(d);setTimeout(()=>d.remove(),1250);
 }
 function addCredits(n,reason,quiet){
+  if(typeof isGuest==='function'&&isGuest())return false;   /* #guest — nothing is earned without a name on the record */
   CREDITS+=n;try{localStorage.setItem(K('credits'),CREDITS)}catch(e){}
   renderCredits();buckPop(n);if(!quiet)toast("+"+n+" ⬡ · "+reason);
   const chip=document.getElementById('meBucks');if(chip){chip.classList.remove('bump');void chip.offsetWidth;chip.classList.add('bump');}
@@ -15489,6 +15603,7 @@ function addCredits(n,reason,quiet){
 }
 function spendCredits(n,reason){
   if(!n)return;
+  if(typeof isGuest==='function'&&isGuest()){ guestWall(); return false; }   /* #guest */
   /* #fix2(bucks) — a claw-back must always take back what was actually PAID, so it
      stays the full n on both sides. My first pass clamped the pushed delta to the
      member's current balance, which opened a clean exploit: seal a docket (+10),
@@ -16620,6 +16735,7 @@ function typedUploadBody(file, ext, kind){
   return file;
 }
 async function chatSendMedia(file,kind,cost){
+  if(typeof guestWall==='function'&&guestWall())return;   /* #guest */
   const room=CURRENT_ROOM;
   const cid=chatUUID(); chatRememberSent(cid);
   const by=(typeof ACCT_ID==='string'?ACCT_ID:''), handle=chatMyHandle();
@@ -16678,6 +16794,7 @@ function openBrokeSheet(need){
 }
 window.openBrokeSheet=openBrokeSheet;
 function payCredits(n,reason,quiet){
+  if(typeof isGuest==='function'&&isGuest()){ guestWall(); return false; }   /* #guest — no buying, no posting for bucks */
   if(CREDITS<n){openBrokeSheet(n);return false;}   /* #76/#77 — alert + offer to buy */
   CREDITS-=n;try{localStorage.setItem(K('credits'),CREDITS)}catch(e){}
   renderCredits();buckPop(-n);if(!quiet)toast("−"+n+" ⬡ · "+reason);
@@ -16796,6 +16913,7 @@ function chatApplyDelete(id){ const row=_msgRow(id); if(row)row.remove(); _chatS
 document.addEventListener('keydown',function(e){ if(e.key==='Escape'&&_chatEditId)chatCancelEdit(); });
 
 document.getElementById('chatSend').addEventListener('click',()=>{
+  if(typeof guestWall==='function'&&guestWall())return;   /* #guest */
   const i=document.getElementById('chatInput');const v=i.value.trim();if(!v)return;
   if(_chatEditId){ chatSaveEdit(v); return; }                           // #chatedit — saving an edit, not a new send (no fare)
   /* #kbgif — the phone keyboard's GIF button types a tenor/giphy LINK into the box.
@@ -17221,6 +17339,7 @@ function closeGifPicker(){if(_gifSheet)_gifSheet.classList.remove('on');}
    whole Order sees them; offline falls back to this device until next sign-in. */
 function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;")}
 function openPaySheet(o){ // {title,sub,price,fields:[{k,label,ph}],go,onPaid}
+  if(typeof guestWall==='function'&&guestWall())return;   /* #guest — rooms, gatherings, the rename desk */
   let sh=document.getElementById('paySheet');
   if(!sh){sh=document.createElement('div');sh.className='sheet';sh.id='paySheet';document.body.appendChild(sh);
     sh.addEventListener('click',e=>{if(e.target===sh)sh.classList.remove('on')});}
@@ -17543,22 +17662,23 @@ function floorJoin(){
           const metas=st[k]||[]; if(!metas.length)return;
           const m=metas[metas.length-1];               // newest meta wins
           if(m.ghost)return;                           /* #ghost(aug13) — appear-offline hands are invisible: no count, no roster */
-          if(m.anon||String(k).indexOf('anon-')===0)return;   /* #floornoname — a signed-out phone (this build says so; an older one shows by its anon- key) is nobody on the floor */
-          /* #floornoname2 — and NO HANDLE, NO SEAT, whatever the key: a login that never
-             claimed a card (a vendor or ambassador signed into the app by magic link, a
-             half-finished gate) beacons the header's "—" placeholder from an older build.
-             Only the viewer's own phone keeps its row without a name, so YOU still shows. */
+          /* #floornoname(aug29) — A SESSION WITH NO HANDLE STAYS ON THE ROSTER, NAMED FOR
+             WHAT IT IS. A login that never claimed a card (a vendor or ambassador signed
+             into the app by magic link, a half-finished gate) used to beacon the header's
+             "—" placeholder and sit there with a 💬 that could never land. It now shows as
+             NO HANDLE YET with "sign in at the gate", no door — and its own phone is told
+             the same thing (noHandleNotice). Counted: it IS a phone on the floor. */
           const hh=String(m.h==null?'':m.h).trim();
-          if((!hh||hh==='—'||hh==='a hand'||hh==='a masked hand')&&!(window.__shkUid&&k===window.__shkUid))return;
+          const nameless=!!m.anon||!hh||hh==='—'||hh==='a hand'||hh==='a masked hand';
           total++;                                     // one hand, however many tabs
           const r=m.room;
           if(r)by[String(r)]=(by[String(r)]||0)+1;
           /* #floorwho(aug13) — the roster keeps WHO, not just how many: the handle
              rides the presence meta now. A hand on an older build has no `h` in
              their meta — they show masked until their next update. */
-          roster.push({uid:String(k),h:String(m.h||'a masked hand'),room:r?String(r):null,me:!!(window.__shkUid&&k===window.__shkUid)});   /* #dm — the uid rides so a roster row can open a wire */
+          roster.push({uid:String(k),h:nameless?'':hh,nameless:nameless,room:r?String(r):null,me:!!(window.__shkUid&&k===window.__shkUid)});   /* #dm — the uid rides so a roster row can open a wire */
         });
-        roster.sort(function(a,b){return (a.room?0:1)-(b.room?0:1)||a.h.localeCompare(b.h);});
+        roster.sort(function(a,b){return (a.room?0:1)-(b.room?0:1)||(a.nameless?1:0)-(b.nameless?1:0)||a.h.localeCompare(b.h);});
         FLOOR.by=by; FLOOR.total=total; FLOOR.roster=roster; FLOOR.ok=true;
         _flRepaint();
         try{ if(typeof _floorSheetRepaint==='function')_floorSheetRepaint(); }catch(e){}
@@ -18761,16 +18881,22 @@ function _floorSheetRepaint(){
   if(!FLOOR.ok){host.innerHTML='<p class="sub" style="text-align:center;padding:14px 0">Reading the floor…</p>';return;}
   if(!R.length){host.innerHTML='<p class="sub" style="text-align:center;padding:14px 0">The hall’s quiet — nobody standing on the floor right now.</p>';return;}
   host.innerHTML=R.map(function(p){
-    const av=(p.h||'?').trim().charAt(0).toUpperCase()||'🎭';
-    let hue=0;for(let i=0;i<p.h.length;i++)hue=(hue*31+p.h.charCodeAt(i))>>>0;
+    /* #floornoname — a session with no handle is listed for what it is: no name, no door,
+       and a pill that says what to do. On its own phone the pill is the door to the gate. */
+    const nm=p.nameless?'NO HANDLE YET':p.h;
+    const av=p.nameless?'?':((p.h||'?').trim().charAt(0).toUpperCase()||'🎭');
+    let hue=0;for(let i=0;i<nm.length;i++)hue=(hue*31+nm.charCodeAt(i))>>>0;
     /* #dm(aug13) — a roster row is a DOOR now: tap another hand → their card → a wire */
-    const tap=(!p.me&&p.uid&&!/^anon-/.test(p.uid)&&typeof openDmCard==='function')?' role="button" data-dmuid="'+esc(p.uid)+'" data-dmh="'+esc(p.h)+'"':'';   /* #floornoname — no door onto a key that can't take a wire */
-    return '<div'+tap+' class="floor-row" onclick="if(this.dataset.dmuid)try{openDmCard(this.dataset.dmuid,this.dataset.dmh)}catch(e){}" style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line-soft)'+(p.me?'':';cursor:pointer')+'">'
-      +'<span style="flex:none;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:\'Anton\',sans-serif;font-size:14px;background:hsl('+(hue%360)+',42%,42%);color:#fff">'+esc(av)+'</span>'
-      +'<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:\'IBM Plex Mono\',monospace;font-size:12.5px;color:var(--bone)">'+esc(p.h)+(p.me?' <span class="rtagme">YOU</span>':'')+'</span>'
-      +(p.room?'<span class="pill" style="flex:none;color:var(--copper-hi);border-color:rgba(238,180,107,.4)">🗣 '+esc(p.room)+'</span>'
-              :'<span class="pill" style="flex:none;opacity:.65">on the shelves</span>')
-      +(p.me?'':'<span class="pill" style="flex:none;color:var(--copper-hi);border-color:rgba(238,180,107,.35)">💬</span>')
+    const tap=(!p.me&&!p.nameless&&p.uid&&!/^anon-/.test(p.uid)&&typeof openDmCard==='function')?' role="button" data-dmuid="'+esc(p.uid)+'" data-dmh="'+esc(p.h)+'"':'';   /* no door onto a key that can't take a wire */
+    return '<div'+tap+' class="floor-row" onclick="if(this.dataset.dmuid)try{openDmCard(this.dataset.dmuid,this.dataset.dmh)}catch(e){}" style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line-soft)'+((p.me||p.nameless)?'':';cursor:pointer')+'">'
+      +'<span style="flex:none;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:\'Anton\',sans-serif;font-size:14px;background:'+(p.nameless?'var(--well);border:1px dashed var(--line);color:var(--steel)':'hsl('+(hue%360)+',42%,42%);color:#fff')+'">'+esc(av)+'</span>'
+      +'<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:\'IBM Plex Mono\',monospace;font-size:12.5px;color:'+(p.nameless?'var(--steel)':'var(--bone)')+'">'+esc(nm)+(p.me?' <span class="rtagme">YOU</span>':'')+'</span>'
+      +(p.nameless
+          ? (p.me?'<button type="button" class="pill" onclick="try{goGateForHandle()}catch(e){}" style="flex:none;cursor:pointer;color:var(--ember);border-color:rgba(224,73,46,.55);background:none;font-family:inherit">⚓ take a handle</button>'
+                 :'<span class="pill" style="flex:none;color:var(--ember);border-color:rgba(224,73,46,.45)">sign in at the gate</span>')
+          : p.room?'<span class="pill" style="flex:none;color:var(--copper-hi);border-color:rgba(238,180,107,.4)">🗣 '+esc(p.room)+'</span>'
+                  :'<span class="pill" style="flex:none;opacity:.65">on the shelves</span>')
+      +((p.me||p.nameless)?'':'<span class="pill" style="flex:none;color:var(--copper-hi);border-color:rgba(238,180,107,.35)">💬</span>')
       +'</div>';
   }).join('');
 }
@@ -19256,6 +19382,7 @@ function dmDrawThread(){
   f.scrollTop=f.scrollHeight;
 }
 async function dmSend(){
+  if(typeof guestWall==='function'&&guestWall())return;   /* #guest */
   const inp=document.getElementById('dmIn');if(!inp)return;
   const v=inp.value.trim();if(!v||!DM.openPeer)return;
   if(!(window.SB&&window.__shkUid)){toast('Sign in first — wires ride your account');return;}
@@ -22686,7 +22813,9 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
     }catch(e){}
   }
 
-  function openSheet(){ fill(); try{ if(window.burnCollapse)burnCollapse(false); }catch(e){} sheet.classList.add('on'); }   /* #shred — folded shut on every open */
+  function openSheet(){ fill(); try{ if(window.burnCollapse)burnCollapse(false); }catch(e){}
+    try{ const g=(typeof isGuest==='function'&&isGuest()); const bb=document.getElementById('burnBox'); if(bb)bb.hidden=g; const rn=document.getElementById('pfRename'); if(rn)rn.style.display=g?'none':''; }catch(e){}   /* #guest — nothing to burn, nothing to rename, until there's a name */
+    sheet.classList.add('on'); }   /* #shred — folded shut on every open */
   function closeSheet(){ sheet.classList.remove('on'); }
   window.openProfileSheet=openSheet;
   /* #profpull(aug13) — HARD PULL-DOWN CLOSES THE PROFILE, same finger-following feel
@@ -31239,6 +31368,7 @@ window.shareCall=shareCall;
 
   /* ---- sealing it ---- */
   async function pay(){
+    if(typeof guestWall==='function'&&guestWall())return;   /* #guest — the till is shut without a name */
     if(TILL.busy)return;
     var msg=document.getElementById('tillMsg');
     var name=((document.getElementById('tillName')||{}).value||'').trim();
