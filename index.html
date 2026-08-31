@@ -6641,7 +6641,20 @@ function localEnter(){
           a.since=prof.since||a.since||todayISO();
           saveAcct(a);
         }else{
-          try{ noHandleNotice(); }catch(e){}   /* #floornoname — a session with nobody behind it is told so */
+          /* #stalled(aug29) — a session with no profile: if this phone still holds the
+             card and handle from its own gate, finish the claim right here, silently.
+             If that fails (the handle got taken meanwhile) or there's nothing local to
+             claim with, the hand is a guest — the strip and the lock take it from there. */
+          let fixed=false;
+          try{
+            const a0=loadAcct();
+            if(a0&&a0.id&&a0.handle){
+              const cl=await window.SB.rpc('claim_account',{p_card_id:a0.id,p_handle:a0.handle,p_full_name:a0.name||null});
+              if(!cl.error){ fixed=true; document.getElementById('meHandle').textContent=a0.handle; try{ toast('⚓ Your place on the record is finished — welcome back'); }catch(e){} }
+              else{ a0.handle=null; saveAcct(a0); }   /* no name until the gate gives one that holds */
+            }
+          }catch(e){}
+          if(!fixed){ try{ noHandleNotice(); }catch(e){} }   /* #floornoname — a session with nobody behind it is told so */
         }
         bootScreen(()=>enterApp(openingTab()),true);
         return;
@@ -6795,6 +6808,20 @@ document.getElementById('enterBtn').addEventListener('click',async ()=>{
            any transient failure. Pass null instead → finishEnter re-reads the device's
            own number. Same guard for a NULL port_bucks column. */
         if(prof&&prof.since)pa.since=prof.since;   // #fix4 — the account's real join date, not this device's
+        /* #stalled(aug29) — A LOGIN WITH NO PROFILE IS A CLAIM THAT NEVER FINISHED. The
+           gate is two steps — signUp makes the login, claim_account makes the profile —
+           and a claim that failed ("handle's taken", a dropped signal) left the login
+           standing. Coming back, this branch signed them in and walked them in on a
+           local handle, so the server never got a profile and the hand stayed a ghost
+           for good. Finish the claim here, with the handle they just picked. */
+        if(!prof){
+          const cl2=await window.SB.rpc('claim_account',{p_card_id:pa.id,p_handle:h,p_full_name:pa.name||null});
+          if(cl2.error){
+            if(/handle|duplicate|unique/i.test(cl2.error.message||"")){ hm.textContent="> that handle's taken — roll another"; }
+            else{ pm.textContent="> "+cl2.error.message; }
+            undo(); return;
+          }
+        }
         finishEnter(prof?prof.handle:h, pa, (prof&&prof.port_bucks!=null)?(+prof.port_bucks||0):null);
         return;
       }
