@@ -17667,10 +17667,26 @@ async function sbMigrateSocial(){
 /* pull the Order-wide directory + RSVP state; silent no-op offline */
 async function sbLoadSocial(){
   if(!window.SB)return;
+  /* #gathroom(sep01) — ask for the two new gathering columns, but never let their
+     absence take the whole directory down with it. On a server where
+     GATHERING-ROOMS.sql hasn't been run, the select fails on the unknown column;
+     we retry with the original list so rooms, gatherings and RSVPs all still load
+     and the app simply has no gathering rooms until the SQL runs. */
+  const GCOLS='id,name,ico,when_txt,where_txt,owner,by_id,by_handle,is_private,created_at';
+  const gathSel=async()=>{
+    if(window.__shkNoGathRooms!==true){
+      const t=await window.SB.from('gatherings').select(GCOLS+',room_id,room_name').order('created_at',{ascending:true});
+      if(!t.error)return t;
+      if(!/room_id|room_name|42703|PGRST204|schema cache/i.test((t.error&&t.error.message)||''))return t;
+      window.__shkNoGathRooms=true;
+      try{console.info('[social] gatherings have no room columns yet — run GATHERING-ROOMS.sql');}catch(e){}
+    }
+    return window.SB.from('gatherings').select(GCOLS).order('created_at',{ascending:true});
+  };
   try{
     const q=await Promise.all([
       window.SB.from('rooms').select('id,name,ico,owner,by_id,by_handle,is_private,created_at').order('created_at',{ascending:true}),
-      window.SB.from('gatherings').select('id,name,ico,when_txt,where_txt,owner,by_id,by_handle,is_private,created_at').order('created_at',{ascending:true}),
+      gathSel(),
       window.SB.from('gathering_rsvps').select('gathering_id,owner,by_handle'),
       window.SB.rpc('rsvp_counts')
     ]);
@@ -17709,6 +17725,69 @@ async function sbLoadSocial(){
 
 /* RSVP — server truth. Public gathering: your handle joins the list. Private:
    you ride in the count only (#RSVP rule — names stay masked). */
+/* ═══ #gathroom(sep01) — EVERY GATHERING GETS A ROOM, AND IT LIVES INSIDE IT.
+   Same pattern the clans already use. The room is invite-only and the RSVP is the
+   key: tap Going and the door opens, un-RSVP and it closes again. The caller holds
+   a key from the moment they call it.
+
+   Gatherings called BEFORE this existed have no room yet, so the room is opened
+   lazily the first time the caller taps the button — nobody has to re-create an
+   old gathering to get its room, and nobody but the owner can conjure one. ═══ */
+function gathById(id){ try{ return (ALL_GATHS||[]).find(g=>String(g.id)===String(id))||null; }catch(e){ return null; } }
+function gathRoomName(g){ return (g&&g.room_name)||('🕯 '+((g&&g.name)||'gathering')); }
+function gathIsMine(g){ try{ return !!(g&&window.__shkUid&&g.owner===window.__shkUid); }catch(e){ return false; } }
+function gathGoing(g){ try{ return !!(g&&MY_RSVPS[g.id]); }catch(e){ return false; } }
+/* the RSVP is the key — hold it locally so the room opens without a round trip */
+function gathKeyRoom(g){
+  try{ if(!g||!g.room_id)return; const j=joinedRooms();
+    if(!j.some(x=>x.id===g.room_id)){ j.push({id:g.room_id,n:gathRoomName(g),ico:'🕯',priv:true,by:g.by_handle||''}); localStorage.setItem(K('joinedrooms'),JSON.stringify(j)); }
+    MY_KEYS[g.room_id]='in';
+  }catch(e){}
+}
+function gathUnkeyRoom(g){
+  try{ if(!g||!g.room_id)return; const j=joinedRooms().filter(x=>x.id!==g.room_id); localStorage.setItem(K('joinedrooms'),JSON.stringify(j));
+    if(MY_KEYS[g.room_id]==='in')delete MY_KEYS[g.room_id];
+  }catch(e){}
+}
+/* open the room if this gathering hasn't got one yet — the caller only */
+async function gathRoomEnsure(g){
+  if(!g)return null;
+  if(g.room_id)return g;
+  if(!(window.SB&&window.__shkUid))return null;
+  if(!gathIsMine(g)){ toast('The caller hasn’t opened this gathering’s room yet'); return null; }
+  /* #gathroom — the directory pull already found out there are no room columns;
+     don't mint a room row that nothing can point at, and name the real fix */
+  if(window.__shkNoGathRooms===true){ toast('Gathering rooms aren’t on the server yet — the Keymaster needs to run GATHERING-ROOMS.sql'); return null; }
+  const nm=gathRoomName(g), h=chatMyHandle();
+  try{
+    if(serverRoomByName(nm)){ toast('A room called '+nm+' is already on the floor — rename the gathering first'); return null; }
+    const r=await window.SB.from('rooms').insert({name:nm,ico:'🕯',owner:window.__shkUid,by_id:ACCT_ID,by_handle:h,is_private:true}).select().single();
+    if(r.error)throw r.error;
+    const u=await window.SB.from('gatherings').update({room_id:r.data.id,room_name:nm}).eq('id',g.id).select().single();
+    if(u.error){ try{ await window.SB.from('rooms').delete().eq('id',r.data.id); }catch(e){} throw u.error; }
+    try{ await window.SB.from('room_members').insert({room_id:r.data.id,user_id:window.__shkUid,handle:h,status:'in',decided_at:new Date().toISOString()}); }catch(e){}
+    g.room_id=r.data.id; g.room_name=nm;
+    try{ if(!ALL_ROOMS.some(x=>x.id===r.data.id))ALL_ROOMS.push(r.data); }catch(e){}
+    gathKeyRoom(g);
+    renderSocialFeed();
+    return g;
+  }catch(e){
+    toast(/does not exist|schema cache|PGRST204|42703/i.test((e&&e.message)||'')
+      ? 'Gathering rooms aren’t on the server yet — the Keymaster needs to run GATHERING-ROOMS.sql'
+      : 'Couldn’t open the room — check your connection');
+    try{ if(window.shkAlert)shkAlert('gath room',e); }catch(_){}
+    return null;
+  }
+}
+async function openGathRoom(gid){
+  let g=gathById(gid); if(!g)return;
+  if(!g.room_id){ g=await gathRoomEnsure(g); if(!g)return; }
+  if(!gathIsMine(g)&&!gathGoing(g)){ toast('RSVP first — the room is for the casuals going'); return; }
+  gathKeyRoom(g);
+  try{ if(!ALL_ROOMS.some(r=>r.id===g.room_id))ALL_ROOMS.push({id:g.room_id,name:gathRoomName(g),ico:'🕯',owner:g.owner,by_handle:g.by_handle,is_private:true}); }catch(e){}
+  try{ const sh=document.getElementById('socSheet'); if(sh)sh.classList.remove('on'); }catch(e){}
+  openRoom(gathRoomName(g),'🕯','the '+g.name+' gathering');
+}
 async function rsvpToggle(gid){
   if(!window.SB||!window.__shkUid){toast('Verify at the gate first — then your RSVP rides the wire');return null;}
   const on=!!MY_RSVPS[gid];
@@ -17717,10 +17796,23 @@ async function rsvpToggle(gid){
       const r=await window.SB.from('gathering_rsvps').delete().eq('gathering_id',gid).eq('owner',window.__shkUid);
       if(r.error)throw r.error;
       delete MY_RSVPS[gid];RSVP_N[gid]=Math.max(0,(RSVP_N[gid]||1)-1);
+      /* #gathroom — the RSVP was the key; dropping out closes the door again.
+         The caller keeps theirs — it's their room whether or not they mark going. */
+      try{ const g=gathById(gid);
+        if(g&&g.room_id&&!gathIsMine(g)){
+          try{ await window.SB.from('room_members').delete().eq('room_id',g.room_id).eq('user_id',window.__shkUid); }catch(e){}
+          gathUnkeyRoom(g);
+        } }catch(e){}
     }else{
       const r=await window.SB.from('gathering_rsvps').insert({gathering_id:gid,owner:window.__shkUid,by_id:ACCT_ID,by_handle:chatMyHandle()});
       if(r.error)throw r.error;
       MY_RSVPS[gid]=true;RSVP_N[gid]=(RSVP_N[gid]||0)+1;
+      /* #gathroom — going means you're in the room too */
+      try{ const g=gathById(gid);
+        if(g&&g.room_id){
+          try{ await window.SB.from('room_members').insert({room_id:g.room_id,user_id:window.__shkUid,handle:chatMyHandle(),status:'in',decided_at:new Date().toISOString()}); }catch(e){}
+          gathKeyRoom(g);
+        } }catch(e){}
       try{tallyAdd('rsvp');unlockBadge(bixLate("Council Voice"))}catch(e){}   /* #marks2 — your voice, counted */
     }
     socPullSoon();
@@ -17732,8 +17824,15 @@ async function rsvpToggle(gid){
 async function socialDelete(kind,id){
   if(!window.SB||!window.__shkUid)return false;
   try{
+    /* #gathroom(sep01) — strike a gathering and its room goes too, or the room
+       would outlive it as an orphan nobody can reach (it's hidden from the floor
+       precisely because it belongs to the gathering). */
+    let gRoom=null; if(kind==='gath'){ try{ const g=gathById(id); gRoom=g&&g.room_id; }catch(e){} }
     const r=await window.SB.from(kind==='room'?'rooms':'gatherings').delete().eq('id',id);
     if(r.error)throw r.error;
+    if(gRoom){ try{ await window.SB.from('rooms').delete().eq('id',gRoom); }catch(e){}
+      try{ ALL_ROOMS=ALL_ROOMS.filter(x=>x.id!==gRoom);
+           localStorage.setItem(K('joinedrooms'),JSON.stringify(joinedRooms().filter(x=>x.id!==gRoom))); }catch(e){} }
     if(kind==='room'){try{localStorage.setItem(K('joinedrooms'),JSON.stringify(joinedRooms().filter(x=>x.id!==id)))}catch(e){}}
     ALL_ROOMS=ALL_ROOMS.filter(x=>x.id!==id);ALL_GATHS=ALL_GATHS.filter(x=>x.id!==id);
     renderSocialFeed();socPullSoon();
@@ -20299,6 +20398,25 @@ function roomsClan(r){
   const n=(r.name||r.n||''); if(n&&s.names[String(n).toLowerCase()])return s.names[String(n).toLowerCase()];
   return null;
 }
+/* #gathroom(sep01) — a gathering's room is the same story: it belongs to the
+   gathering, not to the open floor. Same set, same filter, same reasoning. */
+function gathRoomIdSet(){
+  const s={ids:Object.create(null),names:Object.create(null)};
+  try{ (ALL_GATHS||[]).forEach(g=>{
+    if(g&&g.room_id)s.ids[String(g.room_id)]=g;
+    if(g&&g.room_name)s.names[String(g.room_name).toLowerCase()]=g;
+  }); }catch(e){}
+  return s;
+}
+function roomsGath(r){
+  if(!r)return null;
+  const s=gathRoomIdSet();
+  if(r.id&&s.ids[String(r.id)])return s.ids[String(r.id)];
+  const n=(r.name||r.n||''); if(n&&s.names[String(n).toLowerCase()])return s.names[String(n).toLowerCase()];
+  return null;
+}
+/* one question the floor asks of every room: does this belong to something else? */
+function roomHasHome(r){ return !!(roomsClan(r)||roomsGath(r)); }
 function socRoomsModel(){
   /* #21fix — the floor lists the SHARED directory: server rooms (everyone's),
      private rooms you hold a key to, then any legacy local rooms awaiting sync */
@@ -20314,10 +20432,11 @@ function socRoomsModel(){
      rid of it, so it now says plainly that this one only exists on this phone. */
   const legacyR=MY_ROOMS.filter(r=>!socIsStruck('room',r.n)&&!svr.some(s=>s.n===r.n)&&!jn.some(s=>s.n===r.n)).map(r=>({n:r.n,ico:'🗣',who:'your room',
     tagline:'⚠ on this phone only — not on the wire · ✕ to clear it',mine:true,local:true}));
-  return BUILTIN_ROOMS.concat(svr,jn,legacyR).filter(r=>!roomsClan(r));   /* #clanroom — a clan's room shows inside its clan, not here */
+  return BUILTIN_ROOMS.concat(svr,jn,legacyR).filter(r=>!roomHasHome(r));   /* #clanroom #gathroom — clan and gathering rooms show inside their own, not here */
 }
 function socGathsModel(){
-  const svrG=ALL_GATHS.map(g=>({n:g.name,ico:g.ico||'🕯',w:g.when_txt||'',p:g.where_txt||'',by:isMineRow(g)?'you':(g.by_handle||'the Order'),mine:isMineRow(g),id:g.id,priv:!!g.is_private}));
+  const svrG=ALL_GATHS.map(g=>({n:g.name,ico:g.ico||'🕯',w:g.when_txt||'',p:g.where_txt||'',by:isMineRow(g)?'you':(g.by_handle||'the Order'),mine:isMineRow(g),id:g.id,priv:!!g.is_private,
+    room_id:g.room_id||null,room_name:g.room_name||null}));   /* #gathroom — the card needs to know about its room */
   const legacyG=MY_GATHS.filter(g=>!socIsStruck('gath',g.n)&&!svrG.some(s=>s.n===g.n)).map(g=>({n:g.n,ico:'🕯',w:g.w,p:g.p,by:g.by||'you',mine:true,local:true}));
   return BUILTIN_GATHS.concat(svrG,legacyG);
 }
@@ -20404,6 +20523,14 @@ function gathsSectionHTML(step,gaths){
         +'<div class="evt-foot"><span class="evt-host">called by <b>'+esc(g.by||'the Order')+'</b></span>'
           +'<div class="evt-cta">'
             +'<button class="rsvp'+(going?' on':'')+'" data-rsvp="'+esc(g.n)+'"'+(sv?' data-gid="'+esc(g.id)+'"':'')+'>'+(going?'✓ Going':'＋ RSVP')+'</button>'
+            /* #gathroom(sep01) — the gathering's own room, reachable only from in here.
+               Shown to the casuals going and to the caller; an old gathering with no
+               room yet still offers it to its caller, who opens it on the first tap. */
+            +((sv&&(going||g.mine))
+              ?'<button class="feed-inv" data-gathroom="'+esc(g.id)+'" aria-label="Open the '+esc(g.n)+' room">🗣'
+                +((function(){ try{ const n=floorCount(gathRoomName({name:g.n,room_name:g.room_name})); return n>0?' <b>'+n+'</b>':''; }catch(e){ return ''; } })())
+              +'</button>'
+              :'')
             +'<button class="feed-inv" data-inv="gath" data-name="'+esc(g.n)+'" data-detail="'+esc((g.w||'')+' · '+(g.p||''))+'" aria-label="Invite to '+esc(g.n)+'">⤴</button>'
             /* #ghostroom(aug10) — same fix on the gathering side: a phone-only
                gathering had no server row, so `sv` was false and its ✕ never drew. */
@@ -21609,6 +21736,13 @@ function bindFeed(host){
     if(dk==='story') await deleteStory(b.getAttribute('data-id'));
     else await socialDelete(dk,b.getAttribute('data-id'));
   }));
+  /* #gathroom(sep01) — open a gathering's own room straight off its card */
+  host.querySelectorAll('[data-gathroom]').forEach(b=>b.addEventListener('click',async e=>{
+    e.stopPropagation();
+    if(b.disabled)return; b.disabled=true;
+    try{ await openGathRoom(b.getAttribute('data-gathroom')); }catch(err){}
+    b.disabled=false;
+  }));
   host.querySelectorAll('[data-rsvp]').forEach(b=>b.addEventListener('click',async e=>{
     e.stopPropagation();
     const gid=b.getAttribute('data-gid');
@@ -21713,6 +21847,11 @@ window.newGatheringFlow=function(){
           const r=await window.SB.from('gatherings').insert({name:v.n,ico:'🕯',when_txt:v.w,where_txt:v.p,owner:window.__shkUid,by_id:ACCT_ID,by_handle:chatMyHandle(),is_private:priv}).select().single();
           if(r.error)throw r.error;
           if(r.data)ALL_GATHS.push(r.data);
+          /* #gathroom(sep01) — call a gathering, get its room with it. Best-effort:
+             if the room can't be opened (columns not added yet, name taken) the
+             gathering still stands — the caller can open the room later from its
+             card, and nothing they paid for is lost over it. */
+          try{ if(r.data)await gathRoomEnsure(r.data); }catch(e){}
           renderSocialFeed();
           unlockBadge(bixLate("Rally Caller"));                   // #8
           try{armoryBuyMark()}catch(e){}   // #fix2 — only once the gathering actually posted
