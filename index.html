@@ -20995,6 +20995,31 @@ function clipAsFile(blob,name,type){
    cases `loadedmetadata` gave us nothing, the sliders stayed at 0:00, and SQUEEZE IT
    became a dead button that returned without a word. Now the length is resolved
    properly, and a failure is stated out loud instead of swallowed. */
+/* #clipcodec(sep01) — SAY IT RIGHT FOR THE PHONE IN THE HAND.
+   The first version of this message blamed iPhone HEVC for every unreadable clip,
+   which is nonsense to read on an Android. Android records high-efficiency HEVC and
+   10-bit HDR just as happily, and the way out is a different menu on each. So: name
+   the platform's own setting, and never assert a cause we haven't checked. */
+function clipPlatform(){
+  const ua=String(navigator.userAgent||'');
+  if(/iPhone|iPad|iPod/i.test(ua)||(/Macintosh/.test(ua)&&navigator.maxTouchPoints>1))return 'ios';
+  if(/Android/i.test(ua))return 'android';
+  return 'other';
+}
+function clipCodecAdvice(){
+  const p=clipPlatform();
+  if(p==='ios')return 'iPhones record in HEVC by default. In <b>Settings → Camera → Formats</b> pick <b>Most Compatible</b> and re-shoot, or trim the clip in Photos first.';
+  if(p==='android')return 'Most Androids can record in high-efficiency <b>HEVC/H.265</b> or <b>HDR</b>, which browsers often won’t open. In your <b>Camera app → Settings</b>, turn off <b>“High efficiency video”</b> / <b>HDR</b> (Samsung calls it <i>Advanced video options</i>, Pixel calls it <i>Video codec</i>) and re-shoot, or trim the clip in your gallery first.';
+  return 'The clip is probably in a codec this browser doesn’t carry (HEVC/H.265, AV1, or 10-bit HDR). Re-save it as regular H.264 MP4 and try again.';
+}
+/* what the browser itself said went wrong — kept short, but real */
+function clipMediaErrTxt(v,file){
+  const c=v&&v.error&&v.error.code;
+  const name={1:'loading was aborted',2:'the file couldn’t be read',3:'the video couldn’t be decoded',4:'this format isn’t supported'}[c];
+  const bits=[]; if(name)bits.push(name);
+  const t=(file&&file.type)||''; if(t)bits.push(t);
+  return bits.length?bits.join(' · '):'';
+}
 function clipReadDuration(v,ms){
   return new Promise(res=>{
     let settled=false;
@@ -21021,6 +21046,9 @@ function clipWorkshop(clanId,file,onDone){
   let sh=document.getElementById('clipTrimSheet');
   if(!sh){ sh=document.createElement('div'); sh.className='sheet'; sh.id='clipTrimSheet'; sh.style.zIndex='96'; document.body.appendChild(sh); }
   let tier=1, start=0, end=0, dur=0, busy=false, abort=false;
+  /* #clipmime — if the clip only opened after being re-labelled, the squeeze has to be
+     handed those same re-labelled bytes, or it would fail exactly where the preview did */
+  let workFile=file; const retryUrls=[];
 
   sh.innerHTML='<div class="sheet-card" style="text-align:left">'
     +'<div class="big" style="font-size:20px;letter-spacing:.06em;text-align:center">✂ CUT IT DOWN</div>'
@@ -21057,7 +21085,8 @@ function clipWorkshop(clanId,file,onDone){
 
   const v=sh.querySelector('#ctVid'), sI=sh.querySelector('#ctStart'), eI=sh.querySelector('#ctEnd');
   const sT=sh.querySelector('#ctS'), eT=sh.querySelector('#ctE'), est=sh.querySelector('#ctEst');
-  const close=()=>{ abort=true; try{v.pause()}catch(e){} sh.classList.remove('on'); try{URL.revokeObjectURL(blob)}catch(e){} };
+  const close=()=>{ abort=true; try{v.pause()}catch(e){} sh.classList.remove('on');
+    try{URL.revokeObjectURL(blob)}catch(e){} retryUrls.forEach(u=>{try{URL.revokeObjectURL(u)}catch(e){}}); };
 
   const paintEst=()=>{
     const secs=Math.max(.5,end-start), bps=clipFitBps(CLIP_TIERS[tier].bps,secs), bytes=clipEstBytes(bps,secs);
@@ -21080,17 +21109,45 @@ function clipWorkshop(clanId,file,onDone){
   /* resolve the length before showing any control that depends on it */
   (async()=>{
     const read=sh.querySelector('#ctRead'), ctl=sh.querySelector('#ctCtl');
-    const d=await clipReadDuration(v,12000);
+    let d=await clipReadDuration(v,12000);
+    /* #clipmime(sep01) — BEFORE BLAMING THE CODEC, FIX THE LABEL.
+       This app already knows phones hand over a video File with an EMPTY or wrong
+       .type (it's why typedUploadBody exists for the upload path). A blob URL made
+       from such a File carries no type either, and <video> will refuse to sniff it —
+       which looks exactly like a codec failure but isn't. So a first failure gets
+       retried against the same bytes re-labelled, before we say anything about HEVC. */
+    if(d===-1||d===0){
+      const ext=((file.name||'').split('.').pop()||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+      const tries=[]; const seen={};
+      [mediaMime(file,ext,'video'),'video/mp4','video/webm','video/quicktime'].forEach(t=>{
+        if(t&&t!==(file.type||'')&&!seen[t]){ seen[t]=1; tries.push(t); } });
+      for(const t of tries){
+        if(!sh.classList.contains('on'))return;
+        try{
+          const u=URL.createObjectURL(new Blob([file],{type:t}));
+          v.removeAttribute('src'); v.src=u; v.load();
+          retryUrls.push(u);
+          d=await clipReadDuration(v,9000);
+          if(d>0){ workFile=clipAsFile(new Blob([file],{type:t}),file.name||'clip.mp4',t);
+            try{console.info('[clip] opened after re-labelling as',t);}catch(e){} break; }
+        }catch(e){}
+      }
+    }
     if(!sh.classList.contains('on'))return;                  /* they walked away */
     if(d===-1||d===0){
       /* #cliploading — a dead end is now a spoken one, with a way out of it */
-      const why=(d===-1)
-        ? 'This phone’s browser can’t open that video — iPhone clips saved as HEVC often do this.'
-        : 'Couldn’t read how long this clip is.';
-      read.innerHTML='<b style="color:var(--ember)">'+why+'</b><br>'
-        +'<span style="color:#586067">You can still send the whole thing as it is'
-        +(file.size>CLIP_MAX_MB*1048576?', but at '+clipMBTxt(file.size)+' the wire will refuse it — re-save it as “Most Compatible” in Settings → Camera → Formats, or trim it in your gallery first.':'.')+'</span>';
-      if(file.size<=CLIP_MAX_MB*1048576){
+      const fits=file.size<=CLIP_MAX_MB*1048576;
+      const detail=clipMediaErrTxt(v,file);
+      read.innerHTML='<b style="color:var(--ember)">'
+          +(d===-1?'This browser couldn’t open that video.':'Couldn’t work out how long this clip is.')+'</b>'
+        +(detail?'<br><span class="mono" style="color:#586067;font-size:10.5px">'+esc(detail)+'</span>':'')
+        +'<br><span style="color:var(--steel);display:block;margin-top:8px;line-height:1.5">'+clipCodecAdvice()+'</span>'
+        +'<span style="color:#586067;display:block;margin-top:8px">'
+          +(fits
+            ? 'It still uploads fine as it is — the squeeze is the only part that needs to open it.'
+            : 'At '+clipMBTxt(file.size)+' it’s over the '+CLIP_MAX_MB+' MB cap, and the squeeze can’t run on a clip it can’t open — so this one has to be trimmed on the phone first.')
+        +'</span>';
+      if(fits){
         const b=document.createElement('button'); b.className='btn'; b.type='button';
         b.style.marginTop='12px'; b.textContent='Send it as it is';
         b.addEventListener('click',()=>{ close(); onDone(file); });
@@ -21122,7 +21179,7 @@ function clipWorkshop(clanId,file,onDone){
     let spin=0; const SPIN=['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧'];
     const tickSpin=setInterval(()=>{ if(phase.dataset.run==='1')phase.textContent=SPIN[spin++%SPIN.length]+' Squeezing…'; },110);
     try{
-      const out=await clipSqueeze(file,{start:start,end:end,height:CLIP_TIERS[tier].h,
+      const out=await clipSqueeze(workFile,{start:start,end:end,height:CLIP_TIERS[tier].h,
         bps:clipFitBps(CLIP_TIERS[tier].bps,span),
         abort:()=>abort,
         onProgress:p=>{
