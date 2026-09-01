@@ -20987,6 +20987,34 @@ function clipAsFile(blob,name,type){
   catch(e){ try{ blob.name=name; }catch(_){} return blob; }
 }
 
+/* #cliploading(sep01) — READ THE LENGTH, OR SAY WHY NOT.
+   Two things quietly broke the workbench: a video whose duration reports Infinity
+   (anything recorded or streamed rather than saved by a camera app — the metadata
+   has no length until you force a seek to the end), and a file this browser simply
+   can't decode (iPhone HEVC .mov handed to a browser without the codec). In both
+   cases `loadedmetadata` gave us nothing, the sliders stayed at 0:00, and SQUEEZE IT
+   became a dead button that returned without a word. Now the length is resolved
+   properly, and a failure is stated out loud instead of swallowed. */
+function clipReadDuration(v,ms){
+  return new Promise(res=>{
+    let settled=false;
+    const give=d=>{ if(settled)return; settled=true; clearTimeout(t); res(d); };
+    const t=setTimeout(()=>give(0),ms||12000);
+    v.addEventListener('error',()=>give(-1),{once:true});
+    v.addEventListener('loadedmetadata',()=>{
+      if(isFinite(v.duration)&&v.duration>0)return give(v.duration);
+      /* Infinity — the standard shake-it-loose: seek past the end, read where it lands */
+      const onTime=()=>{
+        if(isFinite(v.duration)&&v.duration>0){ v.removeEventListener('timeupdate',onTime); try{v.currentTime=0}catch(e){} return give(v.duration); }
+        if(v.currentTime>0){ const d=v.currentTime; v.removeEventListener('timeupdate',onTime); try{v.currentTime=0}catch(e){} return give(d); }
+      };
+      v.addEventListener('timeupdate',onTime);
+      v.addEventListener('durationchange',onTime);
+      try{ v.currentTime=1e101; }catch(e){ give(0); }
+    },{once:true});
+  });
+}
+
 /* THE WORKBENCH — scrub the cut, pick the size, squeeze */
 function clipWorkshop(clanId,file,onDone){
   const blob=URL.createObjectURL(file);
@@ -21001,8 +21029,9 @@ function clipWorkshop(clanId,file,onDone){
         ? 'This clip is '+clipMBTxt(file.size)+' — over the '+CLIP_MAX_MB+' MB the wire takes. Trim it, shrink it, or both.'
         : 'This clip is '+clipMBTxt(file.size)+' and already fits. Cut it shorter or lighter anyway if you want.')
     +'</p>'
-    +'<div class="sty-compose-prev"><video id="ctVid" src="'+esc(blob)+'" muted playsinline preload="metadata"></video></div>'
-    +'<div id="ctCtl">'
+    +'<div class="sty-compose-prev"><video id="ctVid" src="'+esc(blob)+'" muted playsinline preload="auto"></video></div>'
+    +'<div id="ctRead" class="sub" style="text-align:center;margin:14px 0 4px">⏳ Reading the clip…</div>'
+    +'<div id="ctCtl" style="display:none">'
       +'<div style="display:flex;justify-content:space-between;align-items:baseline;margin:12px 0 3px">'
         +'<span class="lbl" style="margin:0">Start</span><span class="sub mono" id="ctS">0:00</span></div>'
       +'<input type="range" id="ctStart" min="0" max="100" step="0.1" value="0" style="width:100%;accent-color:var(--copper-hi)">'
@@ -21017,9 +21046,11 @@ function clipWorkshop(clanId,file,onDone){
       +'<button class="btn" id="ctGo" type="button">✂ SQUEEZE IT</button>'
     +'</div>'
     +'<div id="ctRun" style="display:none">'
-      +'<p class="sub" style="text-align:center;margin:14px 0 8px">Squeezing on your phone — this runs in real time, so it takes about as long as the clip itself. Keep the app open.</p>'
-      +'<div style="height:8px;border-radius:5px;background:var(--well);overflow:hidden;border:1px solid var(--line-soft)"><div id="ctBar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--copper),var(--copper-hi));transition:width .2s"></div></div>'
-      +'<div class="sub mono" id="ctPct" style="text-align:center;margin-top:7px">0%</div>'
+      +'<p class="sub" style="text-align:center;margin:14px 0 10px">Squeezing on your phone — this runs in real time, so it takes about as long as the clip you kept. Keep the app open and the screen on.</p>'
+      +'<div style="height:10px;border-radius:6px;background:var(--well);overflow:hidden;border:1px solid var(--line-soft)"><div id="ctBar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--copper),var(--copper-hi));transition:width .25s"></div></div>'
+      +'<div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:8px">'
+        +'<span class="sub" id="ctPhase">⏳ Starting…</span><span class="sub mono" id="ctPct">0%</span></div>'
+      +'<div class="sub mono" id="ctLeft" style="text-align:center;margin-top:4px;color:#586067"></div>'
       +'<button class="btn-ghost" id="ctStop" type="button" style="width:100%;margin-top:12px;border:0;color:var(--ember)">Stop</button>'
     +'</div>'
     +'<button class="btn-ghost" id="ctNo" type="button" style="width:100%;margin-top:10px;border:0;color:#586067">Never mind</button></div>';
@@ -21046,38 +21077,75 @@ function clipWorkshop(clanId,file,onDone){
   sh.querySelector('#ctNo').addEventListener('click',close);
   sh.querySelector('#ctStop').addEventListener('click',()=>{ abort=true; });
 
-  v.addEventListener('loadedmetadata',()=>{
-    dur=(isFinite(v.duration)&&v.duration>0)?v.duration:0;
-    if(!dur){ est.textContent='Couldn’t read the clip’s length — try a different file.'; return; }
+  /* resolve the length before showing any control that depends on it */
+  (async()=>{
+    const read=sh.querySelector('#ctRead'), ctl=sh.querySelector('#ctCtl');
+    const d=await clipReadDuration(v,12000);
+    if(!sh.classList.contains('on'))return;                  /* they walked away */
+    if(d===-1||d===0){
+      /* #cliploading — a dead end is now a spoken one, with a way out of it */
+      const why=(d===-1)
+        ? 'This phone’s browser can’t open that video — iPhone clips saved as HEVC often do this.'
+        : 'Couldn’t read how long this clip is.';
+      read.innerHTML='<b style="color:var(--ember)">'+why+'</b><br>'
+        +'<span style="color:#586067">You can still send the whole thing as it is'
+        +(file.size>CLIP_MAX_MB*1048576?', but at '+clipMBTxt(file.size)+' the wire will refuse it — re-save it as “Most Compatible” in Settings → Camera → Formats, or trim it in your gallery first.':'.')+'</span>';
+      if(file.size<=CLIP_MAX_MB*1048576){
+        const b=document.createElement('button'); b.className='btn'; b.type='button';
+        b.style.marginTop='12px'; b.textContent='Send it as it is';
+        b.addEventListener('click',()=>{ close(); onDone(file); });
+        read.appendChild(b);
+      }
+      return;
+    }
+    dur=d;
     sI.max=eI.max=dur; sI.value=0; eI.value=dur;
     /* open on a cut that already fits, so the first thing seen is a green number */
     const fitSecs=Math.floor((CLIP_MAX_MB*0.88*8*1048576)/(CLIP_TIERS[1].bps+96000));
     if(dur>fitSecs){ eI.value=Math.max(1,fitSecs); }
     clamp(); try{v.currentTime=0}catch(e){}
-  },{once:true});
+    read.style.display='none'; ctl.style.display='';
+  })();
 
   sh.querySelector('#ctGo').addEventListener('click',async()=>{
-    if(busy||!dur)return; busy=true; abort=false;
+    if(busy)return;
+    /* #cliploading — this button must never just sit there. If the length never
+       arrived, say so rather than returning into silence. */
+    if(!dur){ toast('Still reading the clip — give it a second, or send it as it is'); return; }
+    busy=true; abort=false;
     sh.querySelector('#ctCtl').style.display='none';
     sh.querySelector('#ctRun').style.display='';
     sh.querySelector('#ctNo').style.display='none';
-    const bar=sh.querySelector('#ctBar'), pct=sh.querySelector('#ctPct');
+    const bar=sh.querySelector('#ctBar'), pct=sh.querySelector('#ctPct'),
+          phase=sh.querySelector('#ctPhase'), left=sh.querySelector('#ctLeft');
+    const span=Math.max(.5,end-start);
+    let spin=0; const SPIN=['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧'];
+    const tickSpin=setInterval(()=>{ if(phase.dataset.run==='1')phase.textContent=SPIN[spin++%SPIN.length]+' Squeezing…'; },110);
     try{
       const out=await clipSqueeze(file,{start:start,end:end,height:CLIP_TIERS[tier].h,
-        bps:clipFitBps(CLIP_TIERS[tier].bps,end-start),
+        bps:clipFitBps(CLIP_TIERS[tier].bps,span),
         abort:()=>abort,
-        onProgress:p=>{ const n=Math.max(0,Math.min(100,Math.round(p*100))); bar.style.width=n+'%'; pct.textContent=n+'%'; }});
+        onProgress:p=>{
+          phase.dataset.run='1';
+          const n=Math.max(0,Math.min(100,Math.round(p*100)));
+          bar.style.width=n+'%'; pct.textContent=n+'%';
+          const rem=Math.max(0,span*(1-p));
+          left.textContent=rem>1?('about '+clipSecTxt(rem)+' to go'):'finishing up…';
+        }});
+      clearInterval(tickSpin);
       if(abort){ toast('Stopped — nothing was posted'); close(); return; }
       if(out.size>CLIP_MAX_MB*1048576){
         toast('Still '+clipMBTxt(out.size)+' — trim it shorter or drop to Small');
         busy=false; sh.querySelector('#ctRun').style.display='none';
         sh.querySelector('#ctCtl').style.display=''; sh.querySelector('#ctNo').style.display='';
+        phase.dataset.run=''; phase.textContent='⏳ Starting…'; bar.style.width='0%'; pct.textContent='0%'; left.textContent='';
         return;
       }
       close();
       toast('✂ Cut to '+clipMBTxt(out.size));
       onDone(out);
     }catch(e){
+      clearInterval(tickSpin);
       try{console.warn('[clip] squeeze failed:',e);}catch(_){}
       toast(abort?'Stopped — nothing was posted':'Couldn’t squeeze it on this phone — trim the clip in your gallery first');
       close();
