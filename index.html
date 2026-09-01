@@ -19494,7 +19494,10 @@ window.setHallView=setHallView;
 function openHub(){ try{gotoTab('order')}catch(e){} try{setHallView('hall')}catch(e){} }
 function renderHallStats(){
   const box=document.getElementById('hubStats'); if(!box)return;
-  let nRooms=0;try{nRooms=BUILTIN_ROOMS.length+ALL_ROOMS.length+joinedRooms().filter(j=>!ALL_ROOMS.some(s=>s.id===j.id)).length;}catch(e){nRooms=1;}   // de-duped — a joined room already on the server list counts once
+  /* #clanroom(sep01) — count what the LOBBIES sheet actually lists. It used to
+     add up the raw room rows, so every clan's private room padded the number and
+     the tile promised more doors than the sheet behind it had. */
+  let nRooms=0;try{nRooms=socRoomsModel().length;}catch(e){nRooms=1;}
   /* #floorreal(aug10) — the total is the presence roster itself, not a sum of
      per-room counts: a casual browsing the shelves is on the floor too, and the
      old sum-of-hashes counted nobody at all. "—" until the roster lands. */
@@ -20272,6 +20275,30 @@ window.dmDiag=dmDiag;
         posts, viewer and talk the stories reel had; the reel itself is gone.
    The list builders are split out so the SAME markup paints on the page and
    inside the tile sheets (.soc-list carries the feed's styles there). */
+/* ═══ #clanroom(sep01) — A CLAN'S ROOM BELONGS TO THE CLAN, NOT THE FLOOR.
+   Starting a clan also opens a room for it, and that room row went into the same
+   shared directory as every other lobby. So one clan showed up twice on the Hall —
+   once as CLAN, once as an identically-named LOBBY — and inflated the Lobbies
+   count with a door most casuals can't even open (clan rooms are invite-only to
+   clanmates). The room still exists and still works; it just lives behind its
+   clan now, reached from OPEN THE CLAN ROOM, and is kept out of the floor lists.
+   Rooms opened on their own are untouched — they're still their own lobbies. ═══ */
+function clanRoomIdSet(){
+  const s={ids:Object.create(null),names:Object.create(null)};
+  try{ (ALL_CLANS||[]).forEach(c=>{
+    if(c&&c.room_id)s.ids[String(c.room_id)]=c;
+    if(c&&c.room_name)s.names[String(c.room_name).toLowerCase()]=c;
+  }); }catch(e){}
+  return s;
+}
+/* which clan does this room belong to, if any */
+function roomsClan(r){
+  if(!r)return null;
+  const s=clanRoomIdSet();
+  if(r.id&&s.ids[String(r.id)])return s.ids[String(r.id)];
+  const n=(r.name||r.n||''); if(n&&s.names[String(n).toLowerCase()])return s.names[String(n).toLowerCase()];
+  return null;
+}
 function socRoomsModel(){
   /* #21fix — the floor lists the SHARED directory: server rooms (everyone's),
      private rooms you hold a key to, then any legacy local rooms awaiting sync */
@@ -20287,7 +20314,7 @@ function socRoomsModel(){
      rid of it, so it now says plainly that this one only exists on this phone. */
   const legacyR=MY_ROOMS.filter(r=>!socIsStruck('room',r.n)&&!svr.some(s=>s.n===r.n)&&!jn.some(s=>s.n===r.n)).map(r=>({n:r.n,ico:'🗣',who:'your room',
     tagline:'⚠ on this phone only — not on the wire · ✕ to clear it',mine:true,local:true}));
-  return BUILTIN_ROOMS.concat(svr,jn,legacyR);
+  return BUILTIN_ROOMS.concat(svr,jn,legacyR).filter(r=>!roomsClan(r));   /* #clanroom — a clan's room shows inside its clan, not here */
 }
 function socGathsModel(){
   const svrG=ALL_GATHS.map(g=>({n:g.name,ico:g.ico||'🕯',w:g.when_txt||'',p:g.where_txt||'',by:isMineRow(g)?'you':(g.by_handle||'the Order'),mine:isMineRow(g),id:g.id,priv:!!g.is_private}));
@@ -20580,7 +20607,7 @@ window.newTextPostFlow=newTextPostFlow;
 /* ---------- the TILE SHEETS — LOBBIES · GATHERINGS · CLANS ---------- */
 let _socSheetKind=null;
 function socSheetSpec(kind){
-  if(kind==='lobbies')return {ttl:'LOBBIES',sub:'every room on the floor — public halls, private rooms with a door, and yours',build:s=>floorSectionHTML(s)};
+  if(kind==='lobbies')return {ttl:'LOBBIES',sub:'every room on the floor — public halls, private rooms with a door, and yours. A clan’s room lives inside its clan.',build:s=>floorSectionHTML(s)};
   if(kind==='gaths')  return {ttl:'GATHERINGS',sub:'everything the Order has called — BBQs, meet-ups, watch parties',build:s=>gathsSectionHTML(s)};
   return {ttl:'CLANS',sub:'pick your game, squad up, get the room key',build:s=>clansSection(s)};
 }
@@ -20852,7 +20879,14 @@ function openClanSheet(id){
     +'<div class="lbl">The roster</div>'
     +'<div style="max-height:250px;overflow-y:auto;margin-bottom:12px">'+members+'</div>'
     +'<div class="stat-row" style="display:flex;flex-direction:column;gap:8px">'
-    +(inn?'<button class="btn" id="clanRoom" type="button" style="width:100%">🗣 OPEN THE CLAN ROOM</button>':'<button class="btn" id="clanJoin" type="button" style="width:100%">＋ JOIN THE CLAN</button>')
+    /* #clanroom(sep01) — the room reads as PART OF the clan now that it's off the
+       floor: its live headcount sits on the button, and a casual who isn't in yet
+       is told the room is in here rather than left hunting for it in Lobbies. */
+    +(inn?'<button class="btn" id="clanRoom" type="button" style="width:100%">🗣 OPEN THE CLAN ROOM'
+          +((function(){ try{ const n=floorCount(c.room_name); return n>0?' <span style="opacity:.75;font-weight:400">· '+n+' on now</span>':''; }catch(e){ return ''; } })())
+        +'</button>'
+        :'<button class="btn" id="clanJoin" type="button" style="width:100%">＋ JOIN THE CLAN</button>')
+    +(inn?'':'<p class="sub" style="margin:0;font-size:11px;text-align:center">The clan’s room lives in here — join and it opens above.</p>')
     +(inn&&!mine?'<button class="btn-line" id="clanLeave" type="button" style="width:100%">Leave the clan</button>':'')
     +(mine?'<p class="sub" style="margin:0;font-size:11px;text-align:center">Stepping away? Tap 👑 on a clanmate to hand them the clan — the room goes with it — then leave. Or disband it for everyone.</p>':'')
     +(mine?'<button class="btn-line red" id="clanDisband" type="button" style="width:100%">☠ DISBAND THE CLAN</button>':'')
