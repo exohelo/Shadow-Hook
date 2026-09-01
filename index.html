@@ -19685,6 +19685,15 @@ const DM={threads:{},friends:{},reqIn:{},reqOut:{},privacy:'all',_privSaved:fals
 /* #dmpriv2 — hold the last confirmed choice on THIS phone so the segment never
    flashes EVERYONE at a casual whose wire is closed while the profile loads. */
 try{const _lp=localStorage.getItem(K('dmpriv'));if(/^(all|friends|off)$/.test(_lp||''))DM.privacy=_lp;}catch(e){}
+/* #dmquote(sep01) — esc() guards HTML, but these DM lists drop handles into a JS
+   STRING inside an onclick attribute: onclick="openDmThread('uid','HANDLE')".
+   esc escapes & < " and leaves the apostrophe alone, so a casual whose handle
+   carries one — O'BRIEN, D'ARCY — closed the string early and left a button that
+   threw "missing ) after argument list" and did nothing at all. Their name showed
+   in the friends list, in requests, in the roster, and every one of those buttons
+   was dead. jsq escapes the backslash and the apostrophe first, then hands the
+   result to esc for the attribute itself. */
+function jsq(s){ return esc(String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'")); }
 function dmSeenMap(){try{return JSON.parse(localStorage.getItem(K('dmseen'))||'{}')}catch(e){return{}}}
 function dmMarkSeen(uid){try{const s=dmSeenMap();s[uid]=new Date().toISOString();localStorage.setItem(K('dmseen'),JSON.stringify(s));}catch(e){} dmBadges();}
 function dmUnread(uid){const t=DM.threads[uid];if(!t)return 0;const seen=dmSeenMap()[uid]||'';return t.msgs.filter(m=>!m.mine&&String(m.at)>String(seen)).length;}
@@ -19719,7 +19728,15 @@ async function dmLoad(){
   if(!window.SB||!window.__shkUid)return;
   const uid=window.__shkUid;
   try{
-    const r=await window.SB.from('dm_messages').select('*').or('from_id.eq.'+uid+',to_id.eq.'+uid).order('created_at',{ascending:true}).limit(500);
+    /* #dmnewest(sep01) — NEWEST FIRST, NOT OLDEST. This read asked for the first
+       500 rows in ascending time order, which is the 500 OLDEST messages a casual
+       has ever had. Once a wire history passed 500 the inbox froze in the past:
+       every new message landed on the server, rode the realtime channel while the
+       app stayed open, and then vanished on the next sign-in because the load
+       handed back the same ancient 500. Descending takes the most recent 500
+       instead; dmFold sorts each thread by time as it goes, so the thread still
+       reads oldest-to-newest on screen. */
+    const r=await window.SB.from('dm_messages').select('*').or('from_id.eq.'+uid+',to_id.eq.'+uid).order('created_at',{ascending:false}).limit(500);
     if(r&&!r.error&&Array.isArray(r.data)){DM.threads={};r.data.forEach(m=>dmFold(m,false));}
   }catch(e){}
   try{
@@ -19801,7 +19818,7 @@ function dmMembersPaint(){
   host.innerHTML=show.map(m=>{
     const me=m.id===window.__shkUid, p=on[m.id];
     const sub=me?'that’s you':p?('<span style="color:var(--ok)">● on now</span>'+(p.room?' · standing in '+esc(p.room):'')):(m.circle&&CIRCLE_NAMES[m.circle]?CIRCLE_NAMES[m.circle]:'')+(m.since?(m.circle&&CIRCLE_NAMES[m.circle]?' · ':'')+'since '+esc(memSince(m.since)):'');
-    return '<div role="button" style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line-soft);'+(me?'opacity:.7':'cursor:pointer')+'"'+(me?'':' onclick="openDmCard(\''+esc(m.id)+'\',\''+esc(m.handle)+'\')"')+'>'
+    return '<div role="button" style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line-soft);'+(me?'opacity:.7':'cursor:pointer')+'"'+(me?'':' onclick="openDmCard(\''+jsq(m.id)+'\',\''+jsq(m.handle)+'\')"')+'>'
       +_dmAv(m.handle,m.id)
       +'<span style="flex:1;min-width:0"><b style="display:block;font-family:\'Inter\',system-ui,-apple-system,\'Segoe UI\',Roboto,sans-serif;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(m.handle)+(DM.friends[m.id]?' <span class="pill" style="font-size:9px;padding:1px 6px;color:var(--copper-hi);border-color:rgba(238,180,107,.35)">⚓ friend</span>':'')+'</b>'
       +'<span class="sub" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(sub||'send a message')+'</span></span>'
@@ -19825,7 +19842,7 @@ function dmRenderAll(){
     });
     inbox.innerHTML=uids.length?uids.map(u=>{
       const t=DM.threads[u], last=t.msgs[t.msgs.length-1]||{}, un=dmUnread(u);
-      return '<div role="button" style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line-soft);cursor:pointer" onclick="openDmThread(\''+esc(u)+'\')">'
+      return '<div role="button" style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line-soft);cursor:pointer" onclick="openDmThread(\''+jsq(u)+'\')">'
         +_dmAv(dmPeerName(u),u)
         +'<span style="flex:1;min-width:0"><b style="display:block;font-family:\'Inter\',system-ui,-apple-system,\'Segoe UI\',Roboto,sans-serif;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(dmPeerName(u))+(DM.friends[u]?' <span class="pill" style="color:var(--ok);border-color:rgba(127,174,106,.45)">friend</span>':'')+'</b>'
         +'<span class="sub" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(last.mine?'you: ':'')+esc(String(last.tx||'').slice(0,48))+'</span></span>'
@@ -19838,7 +19855,7 @@ function dmRenderAll(){
   if(find){
     const R=((typeof FLOOR!=='undefined'&&FLOOR.roster)||[]).filter(p=>!p.me);
     find.innerHTML=R.length?R.map(p=>{
-      return '<div role="button" style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line-soft);cursor:pointer" onclick="openDmCard(\''+esc(p.uid)+'\',\''+esc(p.h)+'\')">'
+      return '<div role="button" style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line-soft);cursor:pointer" onclick="openDmCard(\''+jsq(p.uid)+'\',\''+jsq(p.h)+'\')">'
         +_dmAv(p.h,p.uid)
         +'<span style="flex:1;min-width:0"><b style="display:block;font-family:\'Inter\',system-ui,-apple-system,\'Segoe UI\',Roboto,sans-serif;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(p.h)+(DM.friends[p.uid]?' <span class="pill" style="color:var(--ok);border-color:rgba(127,174,106,.45)">friend</span>':'')+'</b>'
         +'<span class="sub" style="display:block">'+(p.room?'standing in '+esc(p.room):'send a message')+'</span></span>'
@@ -19878,16 +19895,16 @@ async function openDmCard(uid,h){
   const can=(priv==='all')||(priv==='friends'&&friend);
   let inner='';
   if(friend)inner+='<div class="sub" style="border:1px dashed rgba(127,174,106,.45);color:var(--ok);border-radius:10px;padding:9px 11px;margin-bottom:4px">⚓ Friends — you always reach each other.</div>';
-  if(can)inner+='<button class="btn" style="margin-top:10px" onclick="openDmThread(\''+esc(uid)+'\',\''+esc(h||name)+'\')">💬 Send a DM</button>';
+  if(can)inner+='<button class="btn" style="margin-top:10px" onclick="openDmThread(\''+jsq(uid)+'\',\''+jsq(h||name)+'\')">💬 Send a DM</button>';
   else if(priv==='friends'){
     inner+='<div class="sub" style="border:1px dashed rgba(224,73,46,.45);color:var(--warn);border-radius:10px;padding:9px 11px;margin-bottom:4px">🗝 '+esc(h||name)+' takes DMs from friends only. Friend them and the wire opens.</div>';
     inner+=DM.reqOut[uid]?'<button class="btn-ghost" style="width:100%;margin-top:10px" disabled>⚓ Friend request sent — waiting</button>'
-      :'<button class="btn-line" style="width:100%;margin-top:10px" onclick="dmSendReq(\''+esc(uid)+'\',\''+esc(h||name)+'\')">⚓ Send friend request</button>';
+      :'<button class="btn-line" style="width:100%;margin-top:10px" onclick="dmSendReq(\''+jsq(uid)+'\',\''+jsq(h||name)+'\')">⚓ Send friend request</button>';
   }else{
     inner+='<div class="sub" style="border:1px dashed rgba(224,73,46,.45);color:var(--warn);border-radius:10px;padding:9px 11px;margin-bottom:4px">🚫 '+esc(h||name)+' takes no DMs. The wire is closed.</div>';
   }
-  if(friend)inner+='<button class="btn-ghost" style="width:100%;margin-top:10px" onclick="dmUnfriend(\''+esc(uid)+'\')">✕ Unfriend</button>';
-  else if(can&&!DM.reqOut[uid])inner+='<button class="btn-ghost" style="width:100%;margin-top:10px" onclick="dmSendReq(\''+esc(uid)+'\',\''+esc(h||name)+'\')">⚓ Add friend</button>';
+  if(friend)inner+='<button class="btn-ghost" style="width:100%;margin-top:10px" onclick="dmUnfriend(\''+jsq(uid)+'\')">✕ Unfriend</button>';
+  else if(can&&!DM.reqOut[uid])inner+='<button class="btn-ghost" style="width:100%;margin-top:10px" onclick="dmSendReq(\''+jsq(uid)+'\',\''+jsq(h||name)+'\')">⚓ Add friend</button>';
   draw(inner);
 }
 window.openDmCard=openDmCard;
@@ -20220,14 +20237,14 @@ function dmProfileRefresh(){
   const rq=box.querySelector('#dmReqList'), rIds=Object.keys(DM.reqIn);
   if(rq)rq.innerHTML=rIds.length?rIds.map(u=>'<div style="display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid var(--line-soft)">'
     +_dmAv(DM.reqIn[u])+'<span style="flex:1;min-width:0;font-family:\'Inter\',system-ui,-apple-system,\'Segoe UI\',Roboto,sans-serif;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(DM.reqIn[u])+'</span>'
-    +'<button class="pill" style="cursor:pointer;color:var(--ok);border-color:rgba(127,174,106,.5);background:none" onclick="dmAccept(\''+esc(u)+'\')">✓ accept</button>'
-    +'<button class="pill" style="cursor:pointer;background:none" onclick="dmDecline(\''+esc(u)+'\')">✕</button></div>').join('')
+    +'<button class="pill" style="cursor:pointer;color:var(--ok);border-color:rgba(127,174,106,.5);background:none" onclick="dmAccept(\''+jsq(u)+'\')">✓ accept</button>'
+    +'<button class="pill" style="cursor:pointer;background:none" onclick="dmDecline(\''+jsq(u)+'\')">✕</button></div>').join('')
     :'<p class="sub" style="margin:2px 0 0">None waiting.</p>';
   const fl=box.querySelector('#dmFriendList'), fIds=Object.keys(DM.friends);
   if(fl)fl.innerHTML=fIds.length?fIds.map(u=>'<div style="display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid var(--line-soft)">'
     +_dmAv(DM.friends[u])+'<span style="flex:1;min-width:0;font-family:\'Inter\',system-ui,-apple-system,\'Segoe UI\',Roboto,sans-serif;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(DM.friends[u])+'</span>'
-    +'<button class="pill" style="cursor:pointer;color:var(--copper-hi);border-color:rgba(238,180,107,.4);background:none" onclick="openDmThread(\''+esc(u)+'\',\''+esc(DM.friends[u])+'\')">💬</button>'
-    +'<button class="pill" style="cursor:pointer;background:none" onclick="dmUnfriend(\''+esc(u)+'\')">✕</button></div>').join('')
+    +'<button class="pill" style="cursor:pointer;color:var(--copper-hi);border-color:rgba(238,180,107,.4);background:none" onclick="openDmThread(\''+jsq(u)+'\',\''+jsq(DM.friends[u])+'\')">💬</button>'
+    +'<button class="pill" style="cursor:pointer;background:none" onclick="dmUnfriend(\''+jsq(u)+'\')">✕</button></div>').join('')
     :'<p class="sub" style="margin:2px 0 0">No friends yet — ⚓ Add friend on a casual’s card.</p>';
 }
 /* #dmpriv2(aug15) — THE SWITCH THAT WOULDN'T SAVE.
@@ -20796,7 +20813,18 @@ function renderSocialFeed(){
    server enforces that (CLANS-SETUP.sql, row security), the app just draws what
    it's allowed to read. The leader can boot a member and can disband; anyone
    can leave. Outsiders see the clan, the game, the headcount by platform. */
-let ALL_CLANS=[], CLAN_ROSTER={};      /* clan_board rows · clan_id → member rows the server let me read */
+let ALL_CLANS=[], CLAN_ROSTER={}, CLAN_ASKS={};      /* clan_board rows · clan_id → members in · clan_id → casuals knocking */
+/* ═══ #clanask(sep01) — OPEN, OR ASK TO JOIN.
+   The create sheet asked which PLATFORMS could join and nothing else, so every
+   clan was wide open: anyone tapped JOIN, landed on the roster, and took the
+   room key with them. A leader had no way to vet anybody — the only tool was
+   booting them afterwards. Now the sheet asks, and an ask-to-join clan holds
+   newcomers as knocking (status 'asked') until the leader says yes.
+
+   Clans made before this default to 'open', which is exactly how they already
+   behaved, so nothing changes underneath anyone. ═══ */
+function clanJoinMode(c){ return (c&&c.join_mode==='ask')?'ask':'open'; }
+function clanAsking(c){ try{ return !!(c&&window.__shkUid&&(CLAN_ASKS[c.id]||[]).some(m=>m.user_id===window.__shkUid)); }catch(e){ return false; } }
 const CLAN_GAMES=['Call of Duty','Call of Duty: Warzone','FIFA / EA Sports FC','NBA 2K','GTA Online','Fortnite','Madden NFL','Apex Legends','Rocket League','Minecraft','Roblox','Valorant','Counter-Strike 2','Overwatch 2','Rainbow Six Siege','Destiny 2','Halo','Marvel Rivals','MLB The Show','WWE 2K','EA UFC','College Football','Mortal Kombat','Street Fighter 6','Tekken 8','Elden Ring','Diablo IV','Helldivers 2','Battlefield','Gran Turismo 7','Forza','PUBG','Rust','Dead by Daylight','PGA Tour 2K'];
 /* the short names casuals actually type → the one name the board files them under, so "cod", "COD" and
    "Call of Duty" are one clan family, not three */
@@ -20822,9 +20850,43 @@ async function sbLoadClans(){
     const b=await window.SB.from('clan_board').select('*').order('created_at',{ascending:true});
     if(b.error){ if(!/does not exist|schema cache|42P01/i.test(b.error.message||''))console.warn('[clans]',b.error.message); ALL_CLANS=[]; CLAN_ROSTER={}; return; }
     ALL_CLANS=b.data||[];
-    const m=await window.SB.from('clan_members').select('clan_id,user_id,handle,platform,tag,joined_at').order('joined_at',{ascending:true});
-    CLAN_ROSTER={};
-    ((m&&!m.error&&m.data)||[]).forEach(r=>{ (CLAN_ROSTER[r.clan_id]=CLAN_ROSTER[r.clan_id]||[]).push(r); });
+    /* #clanask — the mode rides its own narrow view so clan_board never had to be
+       rewritten. If CLAN-JOIN.sql hasn't run, the read fails and every clan stays
+       'open' — which is the behaviour that was already there. */
+    if(window.__shkNoClanAsk!==true){
+      try{
+        const jm=await window.SB.from('clan_join_modes').select('id,join_mode');
+        if(jm.error){ window.__shkNoClanAsk=true; console.info('[clans] no join modes yet — run CLAN-JOIN.sql'); }
+        else{ const M={}; (jm.data||[]).forEach(x=>{M[x.id]=x.join_mode;});
+          ALL_CLANS.forEach(c=>{ c.join_mode=M[c.id]||'open'; }); }
+      }catch(e){ window.__shkNoClanAsk=true; }
+    }
+    let m=null;
+    if(window.__shkNoClanStatus!==true){
+      m=await window.SB.from('clan_members').select('clan_id,user_id,handle,platform,tag,joined_at,status').order('joined_at',{ascending:true});
+      if(m.error&&/status|42703|PGRST204|schema cache/i.test(m.error.message||'')){ window.__shkNoClanStatus=true; m=null; }
+    }
+    if(!m)m=await window.SB.from('clan_members').select('clan_id,user_id,handle,platform,tag,joined_at').order('joined_at',{ascending:true});
+    CLAN_ROSTER={}; CLAN_ASKS={};
+    ((m&&!m.error&&m.data)||[]).forEach(r=>{
+      /* a row with no status at all is a member — never drop someone off a roster
+         because the column isn't there yet */
+      if(r.status==='asked'){ (CLAN_ASKS[r.clan_id]=CLAN_ASKS[r.clan_id]||[]).push(r); }
+      else if(r.status==='declined'){ /* turned down — shows nowhere */ }
+      else { (CLAN_ROSTER[r.clan_id]=CLAN_ROSTER[r.clan_id]||[]).push(r); }
+    });
+    /* #clanask — approval happens on the leader's phone, but the room key can only
+       be taken by its own holder. So on every load, any clan I'm actually IN whose
+       room key I don't hold gets claimed here. That catches the just-approved case
+       and quietly repairs anyone whose key never stuck. */
+    try{ if(window.__shkUid)ALL_CLANS.forEach(c=>{
+      if(!c.room_id)return;
+      const inIt=(CLAN_ROSTER[c.id]||[]).some(x=>x.user_id===window.__shkUid);
+      if(inIt&&MY_KEYS[c.room_id]!=='in'){
+        window.SB.rpc('join_room',{p_id:c.room_id}).then(()=>{},()=>{});
+        window.SB.rpc('room_key_enter',{p_id:c.room_id}).then(()=>{MY_KEYS[c.room_id]='in';clanKeyRoom(c);},()=>{});
+      }
+    }); }catch(e){}
   }catch(e){ console.warn('[clans] load',e); }
 }
 function clanPlatLine(c){
@@ -20888,7 +20950,11 @@ window.newClanFlow=function(){
     price:price,go:"START THE CLAN",fields:[
       {k:"g",label:"The game",ph:"FIFA · 2K · COD · GTA — or type any game",list:CLAN_GAMES,max:40},
       {k:"n",label:"Clan name",ph:"e.g. DOCK RATS · 3–24 characters",max:24},
-      {k:"x",label:"Who can join",type:"select",opts:CLAN_JOIN_OPTS},
+      {k:"x",label:"Which platforms",type:"select",opts:CLAN_JOIN_OPTS},
+      /* #clanask(sep01) — the question the sheet never asked. The field above is
+         about CONSOLES, not permission, and its old label ("Who can join") made
+         it look like the sheet had already covered this. */
+      {k:"j",label:"Who can join",type:"select",opts:[["","— pick one —"],["open","⚓ Open — any casual can join on the spot"],["ask","🗝 Ask to join — you approve every request"]]},
       {k:"p",label:"Your platform",type:"select",opts:CLAN_PLATFORMS},
       {k:"t",label:"Your gamer tag",ph:"PSN · Gamertag · Steam · Epic",max:32},
       {k:"b",label:"A line about the squad (optional)",ph:"graveyard shift squad · mics on",opt:true,max:80}],
@@ -20899,6 +20965,7 @@ window.newClanFlow=function(){
       if(ALL_CLANS.some(c=>c.game===game&&c.name.toLowerCase()===nm.toLowerCase()))return "That clan already exists for that game — join it instead";
       if(serverRoomByName('🎮 '+nm))return "A room by that name is already on the floor — pick another";
       if(v.x&&v.x!=='any'&&v.p!==v.x)return "You set the clan to "+(CLAN_PNAME[v.x]||v.x)+" only — but you're on "+(CLAN_PNAME[v.p]||v.p);
+      if(v.j!=='open'&&v.j!=='ask')return "Who can join? Open to any casual, or you approve each request";
       if((v.t||'').trim().length<2)return "Your gamer tag — that's how the clan finds you online";
       return null;},
     onPaid:async v=>{
@@ -20906,8 +20973,17 @@ window.newClanFlow=function(){
       try{
         const r=await window.SB.from('rooms').insert({name:roomName,ico:'🎮',owner:window.__shkUid,by_id:ACCT_ID,by_handle:h,is_private:true}).select().single();
         if(r.error)throw r.error;
-        const c=await window.SB.from('clans').insert({game:game,name:nm,blurb:(v.b||'').trim()||null,owner:window.__shkUid,owner_handle:h,room_id:r.data.id,room_name:roomName,platforms:(v.x||'any')}).select().single();
+        const crow={game:game,name:nm,blurb:(v.b||'').trim()||null,owner:window.__shkUid,owner_handle:h,room_id:r.data.id,room_name:roomName,platforms:(v.x||'any')};
+        /* #clanask — write the mode, but never lose the clan over a column that
+           isn't there yet: retry once without it and say so plainly. */
+        let c=await window.SB.from('clans').insert(Object.assign({join_mode:v.j},crow)).select().single();
+        if(c.error&&/join_mode|42703|PGRST204|schema cache/i.test(c.error.message||'')){
+          window.__shkNoClanAsk=true;
+          c=await window.SB.from('clans').insert(crow).select().single();
+          if(!c.error)toast('Clan made, but it’s open to everyone — run CLAN-JOIN.sql to use “ask to join”');
+        }
         if(c.error){ try{ await window.SB.from('rooms').delete().eq('id',r.data.id); }catch(e){} throw c.error; }
+        if(c.data&&!c.data.join_mode)c.data.join_mode=window.__shkNoClanAsk?'open':v.j;
         const m=await window.SB.from('clan_members').insert({clan_id:c.data.id,user_id:window.__shkUid,handle:h,platform:v.p,tag:(v.t||'').trim()});
         if(m.error)throw m.error;
         try{ await window.SB.from('room_members').insert({room_id:r.data.id,user_id:window.__shkUid,handle:h,status:'in',decided_at:new Date().toISOString()}); MY_KEYS[r.data.id]='in'; }catch(e){}   /* #keys — the leader holds the first key */
@@ -20929,16 +21005,31 @@ window.joinClanFlow=function(id){
   const c=clanById(id); if(!c)return;
   if(!(window.SB&&window.__shkUid)){ toast('Sign in first — clans ride your account'); return; }
   if(clanIn(c)){ openClanSheet(id); return; }
+  /* #clanask — already knocking? don't let them queue up twice */
+  if(clanAsking(c)){ toast('You’ve already asked — waiting on '+(c.owner_handle||'the leader')); return; }
+  const ask=clanJoinMode(c)==='ask';
   const only=clanCross(c)?null:c.platforms;
-  openPaySheet({title:"JOIN "+c.name.toUpperCase(),sub:esc(c.game)+" · led by "+esc(c.owner_handle||'a casual')+" · "+(only?(esc(CLAN_PNAME[only]||only)+" only"):"cross-play, any platform")+". Free. Your platform and gamer tag show to clanmates only — and you get the key to the clan's room.",
-    price:0,go:"JOIN THE CLAN",fields:[
+  openPaySheet({title:(ask?"ASK TO JOIN ":"JOIN ")+c.name.toUpperCase(),sub:esc(c.game)+" · led by "+esc(c.owner_handle||'a casual')+" · "+(only?(esc(CLAN_PNAME[only]||only)+" only"):"cross-play, any platform")+". Free. Your platform and gamer tag show to clanmates only"+(ask?" — "+esc(c.owner_handle||'the leader')+" approves every request, and the room key comes with the yes.":" — and you get the key to the clan's room."),
+    price:0,go:ask?"SEND THE REQUEST":"JOIN THE CLAN",fields:[
       {k:"p",label:"Your platform",type:"select",opts:only?CLAN_PLATFORMS.filter(([k])=>k===only):CLAN_PLATFORMS},
       {k:"t",label:"Your gamer tag",ph:"PSN · Gamertag · Steam · Epic",max:32}],
     validate:v=>((v.t||'').trim().length<2?"Your gamer tag — that's how the clan finds you online":null),
     onPaid:async v=>{
       try{
-        const m=await window.SB.from('clan_members').insert({clan_id:c.id,user_id:window.__shkUid,handle:chatMyHandle(),platform:v.p,tag:(v.t||'').trim()});
-        if(m.error)throw m.error;
+        const row={clan_id:c.id,user_id:window.__shkUid,handle:chatMyHandle(),platform:v.p,tag:(v.t||'').trim()};
+        if(ask&&window.__shkNoClanStatus!==true){
+          const m=await window.SB.from('clan_members').insert(Object.assign({status:'asked'},row));
+          if(m.error&&/status|42703|PGRST204|schema cache/i.test(m.error.message||'')){
+            window.__shkNoClanStatus=true;   /* server can't hold a request — fall through to a plain join */
+          }else if(m.error)throw m.error;
+          else{
+            await sbLoadClans(); renderSocialFeed();
+            toast('🗝 Request sent — '+(c.owner_handle||'the leader')+' has to say yes');
+            openClanSheet(c.id); return;
+          }
+        }
+        const m2=await window.SB.from('clan_members').insert(row);
+        if(m2.error)throw m2.error;
         if(c.room_id){ try{ await window.SB.rpc('join_room',{p_id:c.room_id}); }catch(e){} try{ await window.SB.rpc('room_key_enter',{p_id:c.room_id}); MY_KEYS[c.room_id]='in'; }catch(e){} clanKeyRoom(c);
           try{ if(!ALL_ROOMS.some(r=>r.id===c.room_id))ALL_ROOMS.push({id:c.room_id,name:c.room_name,ico:'🎮',owner:c.owner,by_handle:c.owner_handle,is_private:true}); }catch(e){} }
         await sbLoadClans(); renderSocialFeed();
@@ -20947,6 +21038,28 @@ window.joinClanFlow=function(id){
       }catch(e){ toast(/duplicate|unique/i.test((e&&e.message)||'')?'You’re already in':'Couldn’t join — '+((e&&e.message)||'try again')); }
     }});
 };
+/* #clanask — the leader's verdict */
+async function approveClanAsk(cid,uid,h){
+  const c=clanById(cid); if(!c||!clanMine(c))return;
+  try{
+    const r=await window.SB.from('clan_members').update({status:'in'}).eq('clan_id',cid).eq('user_id',uid).select('user_id');
+    if(r.error)throw r.error;
+    if(!r.data||!r.data.length){ toast('Couldn’t approve — the leader rule may be missing; run CLAN-JOIN.sql'); return; }
+    await sbLoadClans(); renderSocialFeed(); openClanSheet(cid);
+    toast('⚓ '+(h||'They')+' is in — the room key opens on their next look');
+  }catch(e){ toast('Couldn’t approve — '+((e&&e.message)||'try again')); }
+}
+window.approveClanAsk=approveClanAsk;
+async function declineClanAsk(cid,uid,h){
+  const c=clanById(cid); if(!c||!clanMine(c))return;
+  try{
+    const r=await window.SB.from('clan_members').delete().eq('clan_id',cid).eq('user_id',uid);
+    if(r.error)throw r.error;
+    await sbLoadClans(); renderSocialFeed(); openClanSheet(cid);
+    toast('Turned down '+(h||'them'));
+  }catch(e){ toast('Couldn’t turn it down — '+((e&&e.message)||'try again')); }
+}
+window.declineClanAsk=declineClanAsk;
 async function leaveClan(id){
   const c=clanById(id); if(!c)return;
   const r=await window.SB.from('clan_members').delete().eq('clan_id',c.id).eq('user_id',window.__shkUid).select('clan_id');
@@ -20983,6 +21096,7 @@ async function disbandClan(id){
 function openClanSheet(id){
   const c=clanById(id); if(!c)return;
   const inn=clanIn(c), mine=clanMine(c), R=(CLAN_ROSTER[c.id]||[]).slice();
+  const ASKS=(CLAN_ASKS[c.id]||[]).slice();   /* #clanask — casuals waiting on the leader */
   let sh=document.getElementById('clanSheet');
   if(!sh){ sh=document.createElement('div'); sh.className='sheet'; sh.id='clanSheet'; document.body.appendChild(sh);
     sh.addEventListener('click',e=>{ if(e.target===sh)sh.classList.remove('on'); }); }
@@ -20992,6 +21106,15 @@ function openClanSheet(id){
     +'<span class="sub" style="display:block;font-family:\'Inter\',system-ui,-apple-system,\'Segoe UI\',Roboto,sans-serif;font-size:11.5px">'+esc(m.platform)+' · <span style="color:var(--copper-hi)">'+esc(m.tag)+'</span></span></span>'
     +((mine&&m.user_id!==window.__shkUid)?'<button class="btn-ghost" data-ccrown="'+esc(m.user_id)+'" data-ch="'+esc(m.handle||'')+'" title="Hand the clan to '+esc(m.handle||'them')+'" style="flex:none;padding:6px 9px;font-size:12px">👑</button><button class="btn-ghost" data-cboot="'+esc(m.user_id)+'" data-ch="'+esc(m.handle||'')+'" style="flex:none;padding:6px 10px;font-size:11px;color:var(--ember)">✕</button>':'')
     +'</div>';
+  /* #clanask — a casual knocking: their tag shows to the leader deciding, with
+     the two verdicts right there. Nothing here is on the roster yet. */
+  const askRow=m=>'<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line-soft)">'
+    +'<span style="flex:none;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--well);border:1px solid var(--line);font-size:15px">'+(CLAN_PICON[m.platform]||'🎮')+'</span>'
+    +'<span style="flex:1;min-width:0"><b style="display:block;font-family:\'Inter\',system-ui,-apple-system,\'Segoe UI\',Roboto,sans-serif;font-size:12.5px;color:var(--bone);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(m.handle||'a casual')+'</b>'
+    +'<span class="sub" style="display:block;font-family:\'Inter\',system-ui,-apple-system,\'Segoe UI\',Roboto,sans-serif;font-size:11.5px">'+esc(m.platform||'')+' · <span style="color:var(--copper-hi)">'+esc(m.tag||'')+'</span></span></span>'
+    +'<button class="btn-ghost" data-cyes="'+esc(m.user_id)+'" data-ch="'+esc(m.handle||'')+'" style="flex:none;padding:6px 10px;font-size:12px;color:var(--ok)">✓</button>'
+    +'<button class="btn-ghost" data-cno="'+esc(m.user_id)+'" data-ch="'+esc(m.handle||'')+'" style="flex:none;padding:6px 10px;font-size:11px;color:var(--ember)">✕</button>'
+  +'</div>';
   const members=inn
     ? (R.length?R.map(row).join(''):'<p class="sub" style="text-align:center;padding:10px 0">Nobody on the roster yet.</p>')
     : '<p class="sub" style="text-align:center;padding:12px 0"><b style="color:var(--bone)">'+(+c.n||0)+'</b> in the clan. Join to see who — gamer tags are for clanmates only.</p>';
@@ -21000,6 +21123,15 @@ function openClanSheet(id){
     +'<p class="sub" style="margin:6px 0 4px;text-align:center"><b style="color:var(--bone)">'+esc(c.game)+'</b> · led by <b style="color:var(--copper-hi)">'+esc(c.owner_handle||'a casual')+'</b></p>'
     +'<p class="sub" style="margin:0 0 4px;text-align:center">'+(clanCross(c)?'🌐 <b style="color:var(--ok)">Cross-play</b> — any platform can join':(CLAN_PICON[c.platforms]||'')+' <b style="color:var(--bone)">'+esc(CLAN_PNAME[c.platforms]||c.platforms)+' only</b>')+'</p>'
     +(c.blurb?'<p class="sub" style="margin:0 0 8px;text-align:center;font-style:italic">“'+esc(c.blurb)+'”</p>':'')
+    /* #clanask(sep01) — say how this clan lets people in, and give the leader the
+       knocking list right here rather than hiding approvals somewhere else */
+    +'<p class="sub" style="margin:0 0 8px;text-align:center">'+(clanJoinMode(c)==='ask'
+        ? '🗝 <b style="color:var(--bone)">Ask to join</b> — '+esc(c.owner_handle||'the leader')+' approves every request'
+        : '⚓ <b style="color:var(--ok)">Open</b> — any casual can join on the spot')+'</p>'
+    +((mine&&ASKS.length)
+      ?'<div class="lbl">Knocking <span class="sub" style="font-size:10.5px;letter-spacing:.06em">'+ASKS.length+' waiting</span></div>'
+       +'<div style="max-height:190px;overflow-y:auto;margin-bottom:12px">'+ASKS.map(askRow).join('')+'</div>'
+      :'')
     +'<div class="evt-meta" style="display:flex;gap:12px;justify-content:center;margin:4px 0 10px;font-family:\'Inter\',system-ui,-apple-system,\'Segoe UI\',Roboto,sans-serif;font-size:11.5px;color:var(--steel)">'+(clanPlatLine(c)||'<span>no platforms yet</span>')+'</div>'
     /* #clanclips(aug31) — GAMEPLAY: the squad's clips, clanmates only; painted when the load lands */
     +(inn?'<div class="lbl" style="display:flex;align-items:center;gap:8px">🎬 Gameplay <span id="clanClipN" class="sub" style="font-size:10.5px;letter-spacing:.06em"></span></div><div id="clanClips" class="cclips"><div class="cclip add"><div class="cc-plus">＋</div><b>Upload a clip</b></div></div>':'')
@@ -21012,7 +21144,9 @@ function openClanSheet(id){
     +(inn?'<button class="btn" id="clanRoom" type="button" style="width:100%">🗣 OPEN THE CLAN ROOM'
           +((function(){ try{ const n=floorCount(c.room_name); return n>0?' <span style="opacity:.75;font-weight:400">· '+n+' on now</span>':''; }catch(e){ return ''; } })())
         +'</button>'
-        :'<button class="btn" id="clanJoin" type="button" style="width:100%">＋ JOIN THE CLAN</button>')
+        :(clanAsking(c)
+          ? '<button class="btn" type="button" style="width:100%" disabled>🗝 Request sent — waiting on '+esc(c.owner_handle||'the leader')+'</button>'
+          : '<button class="btn" id="clanJoin" type="button" style="width:100%">'+(clanJoinMode(c)==='ask'?'🗝 ASK TO JOIN':'＋ JOIN THE CLAN')+'</button>'))
     +(inn?'':'<p class="sub" style="margin:0;font-size:11px;text-align:center">The clan’s room lives in here — join and it opens above.</p>')
     +(inn&&!mine?'<button class="btn-line" id="clanLeave" type="button" style="width:100%">Leave the clan</button>':'')
     +(mine?'<p class="sub" style="margin:0;font-size:11px;text-align:center">Stepping away? Tap 👑 on a clanmate to hand them the clan — the room goes with it — then leave. Or disband it for everyone.</p>':'')
@@ -21022,6 +21156,10 @@ function openClanSheet(id){
   sh.querySelector('#clanX').addEventListener('click',()=>sh.classList.remove('on'));
   const j=sh.querySelector('#clanJoin'); if(j)j.addEventListener('click',()=>{ sh.classList.remove('on'); joinClanFlow(c.id); });
   const o=sh.querySelector('#clanRoom'); if(o)o.addEventListener('click',()=>openClanRoom(c.id));
+  /* #clanask — the leader's two verdicts */
+  sh.querySelectorAll('[data-cyes]').forEach(b=>b.addEventListener('click',()=>approveClanAsk(c.id,b.getAttribute('data-cyes'),b.getAttribute('data-ch'))));
+  sh.querySelectorAll('[data-cno]').forEach(b=>b.addEventListener('click',()=>{ const h=b.getAttribute('data-ch')||'them';
+    shConfirm('Turn down '+h+'? They can ask again later.',()=>declineClanAsk(c.id,b.getAttribute('data-cno'),h),{title:'Turn them down?',icon:'🗝',okText:'Turn down'}); }));
   const l=sh.querySelector('#clanLeave'); if(l)l.addEventListener('click',()=>shConfirm('Leave '+c.name+'? You lose the room key; your tag comes off the roster.',()=>leaveClan(c.id),{title:'Leave the clan?',icon:'🎮',okText:'Leave'}));
   const d=sh.querySelector('#clanDisband'); if(d)d.addEventListener('click',()=>shConfirm('Disband '+c.name+'? The clan, its roster and its room go — for everyone in it.',()=>disbandClan(c.id),{title:'Disband?',icon:'☠',okText:'Disband it'}));
   sh.querySelectorAll('[data-cboot]').forEach(b=>b.addEventListener('click',()=>{ const uid=b.getAttribute('data-cboot'), h=b.getAttribute('data-ch')||'them';
