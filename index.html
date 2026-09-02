@@ -13597,6 +13597,7 @@ document.getElementById('njAdd').onclick=()=>{
       if(shift==="HootOwl"&&hours>0)setLearnedHoot(hours); // learn the real hoot length
       if(hours>0){ learnJob(category, null, hours, null); renderJobDatalist(); } // remember corrected hours
       saveDK();renderDockets();drawWG();checkMarks();
+      try{ scanLearnFromEdit(editId,DOCKETS[ix]); }catch(e){}   /* #learn — fixing a scanned row teaches the reader */
       window.njEditId=null;
       document.getElementById('njAdd').textContent="Seal it in the log";
       njClearForm();
@@ -13613,6 +13614,7 @@ document.getElementById('njAdd').onclick=()=>{
   j.src=j.photo?'photo':'casual'; j.at=Date.now();   /* #antifraud — provenance rides the docket for the audit */
   sealBucks(j);                             /* #antifraud — decides the ⬡ (sets j.earned) and speaks the toast */
   DOCKETS.push(j);saveDK();renderDockets();
+  try{ if(window.scanLast&&j.photo){ scanLearn(window.scanLast.text,window.scanLast.p,j); scanRawKeep(j._id,window.scanLast); } window.scanLast=null; }catch(e){}   /* #learn */
   // a sealed hand-log means the member worked — feed the live board off their own ID, silently.
   const id=myBoardId();
   /* #lof — only a docket dated TODAY speaks for today's board. Backlogging an old
@@ -13645,7 +13647,7 @@ function manualClose(){
   const t=document.getElementById('njFormTitle');if(t)t.innerHTML='Log It By Hand <span class="sl">//</span> manual entry';
 }
 function manualCancelEdit(){   // walked out mid-correction — drop the edit state so the page form is clean
-  window.njEditId=null;window.scanThumb=null;
+  window.njEditId=null;window.scanThumb=null;window.scanLast=null;
   const b=document.getElementById('njAdd');if(b)b.textContent='Seal it in the log';
   njClearForm();   // clears the fields AND folds the popup away
 }
@@ -22280,6 +22282,7 @@ async function openDocketCam(){
 }
 document.getElementById('scanBtn').addEventListener('click',()=>{
   scanAborted=false;
+  try{ lessonsPull(); }catch(e){}   /* #learn — pick up what the Order taught since last time */
   openDocketCam(); /* rear camera, real photo quality; camera-app route as fallback */
 });
 document.getElementById('galleryBtn').addEventListener('click',()=>{  // #68 — pick an earlier photo
@@ -22341,6 +22344,188 @@ async function ocrDocket(dataUrl){
   const r=await Tesseract.recognize(dataUrl,'eng',opts);
   return (r&&r.data&&r.data.text)||"";
 }
+/* ═══════ #learn(sep2) — THE READER LEARNS FROM EVERY HUMAN FIX ═══════
+   Before this, a scan that came up short was finished by hand and the raw OCR text was
+   thrown away — the next casual with the same slip hit the same wall. Now every human
+   fix is a LESSON: "the slip read X, the truth is Y." Lessons live in two places:
+     · this phone   — localStorage shadowhook_lessons (shared knowledge, NOT per-card)
+     · the Order    — Supabase table scan_lessons, insert-only log (run SCAN-LESSONS.sql once)
+   parseDocket() consults the lessons at the end of every read (lessonsApply).
+   Trust rules: a lesson YOU taught applies on your phone at once. A lesson from another
+   member FILLS a blank at one vote, but OVERRIDES what the reader already had only once
+   two members have taught the same thing — one hand can fat-finger, two is a pattern.
+   Fields taught: terminal · ship · job code · berth. Dates and shifts are never learned:
+   a slip's date doesn't repeat, and a wrong date is a wrong docket.
+   Where the lessons come from:
+     · scanHandOff → the member finishes the form → seal      (scanLearn on the new seal)
+     · a scanned docket sealed wrong → tap → fix → update      (scanLearnFromEdit, via the
+       raw text kept per docket in shadowhook_scanraw, last 40 scans on this device)     */
+const LESSONS_KEY="shadowhook_lessons";
+const SCANRAW_KEY="shadowhook_scanraw";
+const LESSONS_MAX=1500;                        /* rows kept locally — oldest fall off */
+let LESSONS={rows:[],outbox:[],pulledAt:0};
+let _lessonsTally=null;                        /* cache; null = dirty */
+function lessonsLoad(){ try{ const j=JSON.parse(localStorage.getItem(LESSONS_KEY)||"null");
+  if(j&&Array.isArray(j.rows))LESSONS=Object.assign({rows:[],outbox:[],pulledAt:0},j); }catch(e){} }
+function lessonsSave(){ try{
+  if(LESSONS.rows.length>LESSONS_MAX)LESSONS.rows=LESSONS.rows.slice(-LESSONS_MAX);
+  localStorage.setItem(LESSONS_KEY,JSON.stringify(LESSONS)); }catch(e){} }
+lessonsLoad();
+/* one normal form for every token the reader and the lessons compare */
+function lessonClean(s){ return String(s||"").toUpperCase().replace(/[^A-Z0-9& ]/g," ").replace(/\s+/g," ").trim(); }
+/* bounded edit distance — bails at max+1 so long ship names stay cheap */
+function lessonEd(a,b,max){
+  a=String(a||"");b=String(b||""); if(Math.abs(a.length-b.length)>max)return max+1;
+  const m=a.length,n=b.length; let prev=new Array(n+1),cur=new Array(n+1);
+  for(let j=0;j<=n;j++)prev[j]=j;
+  for(let i=1;i<=m;i++){ cur[0]=i; let best=i;
+    for(let j=1;j<=n;j++){ cur[j]=Math.min(prev[j]+1,cur[j-1]+1,prev[j-1]+(a[i-1]===b[j-1]?0:1)); if(cur[j]<best)best=cur[j]; }
+    if(best>max)return max+1; const t=prev;prev=cur;cur=t; }
+  return prev[n];
+}
+function lessonKey(r){ return r.field+"\u001f"+r.token+"\u001f"+r.val+"\u001f"+(r.by||"local"); }
+/* tally: per field, per token → the winning truth {val, n (distinct members), self} */
+function lessonsTally(){
+  if(_lessonsTally)return _lessonsTally;
+  const me=window.__shkUid||null, t={};
+  for(const r of LESSONS.rows){ if(!r||!r.field||!r.token||!r.val)continue;
+    const f=t[r.field]||(t[r.field]={}); const tk=f[r.token]||(f[r.token]={});
+    const v=tk[r.val]||(tk[r.val]={by:{},self:false}); v.by[r.by||"local"]=1;
+    if(r.self||(me&&r.by===me))v.self=true; }
+  const out={};
+  for(const f in t){ out[f]={}; for(const tk in t[f]){ let best=null;
+    for(const v in t[f][tk]){ const o=t[f][tk][v], n=Object.keys(o.by).length, score=n+(o.self?10:0);
+      if(!best||score>best.score)best={val:v,n,self:o.self,score}; }
+    out[f][tk]=best; } }
+  return (_lessonsTally=out);
+}
+/* every vessel a human has ever typed onto a scanned slip → {name:{n,self}} */
+function lessonShips(){
+  const me=window.__shkUid||null, m={};
+  for(const r of LESSONS.rows){ if(!r||r.field!=="ship"||!r.val)continue;
+    const o=m[r.val]||(m[r.val]={by:{},self:false}); o.by[r.by||"local"]=1; if(r.self||(me&&r.by===me))o.self=true; }
+  const out={}; for(const k in m)out[k]={n:Object.keys(m[k].by).length,self:m[k].self};
+  return out;
+}
+/* ---- APPLY: called at the tail of parseDocket with the parse + the slip's lines ---- */
+function lessonsApply(p, lines, norm){
+  if(!p||!LESSONS.rows.length)return p;
+  const T=lessonsTally();
+  const ok=(L,override)=>!!L&&(L.self||L.n>=(override?2:1));
+  const mark=f=>{ p._learned=(p._learned||[]); if(p._learned.indexOf(f)<0)p._learned.push(f); };
+  const clean=(lines||[]).map(lessonClean);
+  /* terminal: a whole line the Order has learned to read as an operator */
+  if(T.terminal){ for(const L of clean){ if(!L)continue; const les=T.terminal[L];
+    if(les&&SCAN_TERMS.indexOf(les.val)>-1&&ok(les,!!p.terminal&&p.terminal!==les.val)){ if(p.terminal!==les.val){p.terminal=les.val;mark("terminal");} break; } } }
+  /* job code: the token under the header, or the token the reader took for the code */
+  if(T.cat){ let tok=null;
+    for(let i=0;i<clean.length;i++){ if(/JOB CATEG|CATEG|EGOR/.test(clean[i])&&clean[i+1]){ tok=clean[i+1].split(" ")[0]; break; } }
+    const tries=[tok,p.cat].filter(Boolean);
+    for(const tk of tries){ const les=T.cat[tk]; if(les&&ok(les,!!p.cat&&p.cat!==les.val)){ if(p.cat!==les.val){p.cat=les.val;mark("cat");} break; } } }
+  /* berth: a berth string the reader gets wrong the same way every time */
+  if(T.berth&&p.berth){ const les=T.berth[lessonClean(p.berth)];
+    if(les&&ok(les,true)&&lessonClean(p.berth)!==les.val){ p.berth=les.val; if(Array.isArray(p.berths))p.berths.unshift(les.val); mark("berth"); } }
+  /* ship: exact alias first, then snap to the nearest vessel a human has named */
+  if(T.ship&&p.ship){ const les=T.ship[lessonClean(p.ship)]; if(les&&les.val&&ok(les,true)&&lessonClean(p.ship)!==les.val){p.ship=les.val;mark("ship");} }
+  {
+    const known=lessonShips();
+    try{ (boardShipList()||[]).forEach(s=>{ const nm=lessonClean(s&&(s.ship||s.name||s.vessel)); if(nm&&!known[nm])known[nm]={n:1,self:false,board:true}; }); }catch(e){}
+    const names=Object.keys(known);
+    if(names.length){
+      const snap=(txt)=>{ const k=dktShipKey(txt); if(k.length<5)return null;
+        const tol=Math.max(1,Math.floor(k.length*0.2)); let best=null;
+        for(const nm of names){ const nk=dktShipKey(nm); if(nk.length<5)continue; const d=lessonEd(k,nk,tol);
+          if(d<=tol&&(!best||d<best.d))best={nm,d}; }
+        return best; };
+      if(p.ship){ const b=snap(p.ship); if(b&&b.d>0&&lessonClean(p.ship)!==b.nm){p.ship=b.nm;mark("ship");} }
+      else{ let best=null;
+        for(const L of clean){ if(L.replace(/[^A-Z]/g,"").length<5||/JOB CATEG|CATEG|WORKER|DURATION/.test(L))continue;
+          const b=snap(L); if(b&&(!best||b.d<best.d))best=b; }
+        if(best){p.ship=best.nm;mark("ship");} }
+    }
+  }
+  return p;
+}
+/* ---- LEARN: the raw OCR text + what the reader made of it + what the human sealed ---- */
+function scanLearn(text, parsed, sealed){
+  if(!text||!sealed)return 0; parsed=parsed||{};
+  const rawLines=String(text).split("\n").map(lessonClean).filter(s=>s.length>=2&&s.length<=40);
+  const lessons=[];
+  const add=(field,token,val)=>{ token=lessonClean(token); val=lessonClean(val);
+    if(!token||!val||token===val)return; if(field==="terminal"&&SCAN_TERMS.indexOf(val)<0)return;
+    if(!lessons.some(l=>l.field===field&&l.token===token))lessons.push({field,token,val}); };
+  /* terminal — the operator the human chose */
+  const tT=lessonClean(sealed.terminal);
+  if(tT&&tT!=="—"&&SCAN_TERMS.indexOf(tT)>-1&&lessonClean(parsed.terminal)!==tT){
+    const near=rawLines.filter(L=>L!==tT&&L.split(" ").length<=2&&L.length<=14&&!/\d{1,2}\/\d/.test(L)
+      &&(lessonEd(L,tT,2)<=2||(L.length>=3&&(tT.indexOf(L)>-1||L.indexOf(tT)>-1))));
+    near.slice(0,2).forEach(L=>add("terminal",L,tT));
+    if(parsed.terminal){ const bad=lessonClean(parsed.terminal); if(rawLines.indexOf(bad)>-1)add("terminal",bad,tT); }
+  }
+  /* ship — every named vessel is a lesson (the fuzzy snap feeds on these); a misread is an alias too */
+  const tS=lessonClean(sealed.ship);
+  if(tS&&tS!=="—"&&tS.replace(/[^A-Z]/g,"").length>=4){
+    if(parsed.ship&&lessonClean(parsed.ship)!==tS)add("ship",parsed.ship,tS);
+    else add("ship","*",tS);
+  }
+  /* job code — the token under the "Job Category" header, else what the reader took */
+  const tC=lessonClean(sealed.category);
+  if(tC&&lessonClean(parsed.cat)!==tC){ let tok=null;
+    for(let i=0;i<rawLines.length;i++){ if(/JOB CATEG|CATEG|EGOR/.test(rawLines[i])&&rawLines[i+1]){ tok=rawLines[i+1].split(" ")[0]; break; } }
+    if(!tok&&parsed.cat)tok=parsed.cat; if(tok)add("cat",tok,tC); }
+  /* berth — only when the reader had one and the human moved it */
+  const tB=lessonClean(sealed.berth);
+  if(tB&&parsed.berth&&lessonClean(parsed.berth)!==tB)add("berth",parsed.berth,tB);
+  if(!lessons.length)return 0;
+  const by=window.__shkUid||"local", at=Date.now();
+  const seen={}; LESSONS.rows.forEach(r=>{seen[lessonKey(r)]=1;});
+  let n=0;
+  lessons.forEach(l=>{ const row={field:l.field,token:l.token,val:l.val,by,at,self:true};
+    if(seen[lessonKey(row)])return; seen[lessonKey(row)]=1; LESSONS.rows.push(row); n++;
+    LESSONS.outbox.push({field:l.field,token:l.token,val:l.val,by:window.__shkUid||null,at:new Date(at).toISOString()}); });
+  _lessonsTally=null; lessonsSave(); lessonsFlush();
+  if(n){ try{ toast("✎ The reader learned "+n+" thing"+(n===1?"":"s")+" from your fix"); }catch(e){}
+    try{ if(window.DEVLOG&&DEVLOG.data)DEVLOG.data("scan lessons",lessons); }catch(e){} }
+  return n;
+}
+/* the raw read rides with the docket on this device so a LATER edit can still teach */
+function scanRawKeep(id,last){ if(!id||!last||!last.text)return; try{
+  const m=JSON.parse(localStorage.getItem(SCANRAW_KEY)||"{}");
+  m[id]={text:String(last.text).slice(0,4000),p:last.p||{},at:Date.now()};
+  const ks=Object.keys(m).sort((a,b)=>(m[a].at||0)-(m[b].at||0)); while(ks.length>40)delete m[ks.shift()];
+  localStorage.setItem(SCANRAW_KEY,JSON.stringify(m)); }catch(e){} }
+function scanRawGet(id){ try{ const m=JSON.parse(localStorage.getItem(SCANRAW_KEY)||"{}"); return m[id]||null; }catch(e){return null;} }
+function scanLearnFromEdit(id,sealed){ const raw=scanRawGet(id); if(raw&&raw.text)return scanLearn(raw.text,raw.p,sealed); return 0; }
+/* ---- the Order: push what this phone taught, pull what every other phone taught ---- */
+async function lessonsFlush(){
+  if(!window.SB||!LESSONS.outbox.length)return;
+  const batch=LESSONS.outbox.splice(0,50);
+  try{ const r=await window.SB.from('scan_lessons').insert(batch);
+    if(r&&r.error){ LESSONS.outbox=batch.concat(LESSONS.outbox); try{ if(window.DEVLOG&&DEVLOG.data)DEVLOG.data("scan_lessons WRITE",{ok:false,err:r.error.message+" ← run SCAN-LESSONS.sql in Supabase → SQL Editor"}); }catch(e){} }
+  }catch(e){ LESSONS.outbox=batch.concat(LESSONS.outbox); }
+  lessonsSave();
+}
+async function lessonsPull(force){
+  if(!window.SB)return;
+  if(!force&&Date.now()-(LESSONS.pulledAt||0)<10*60e3)return;   /* fresh enough */
+  try{
+    const r=await window.SB.from('scan_lessons').select('field,token,val,by,at').order('at',{ascending:false}).limit(LESSONS_MAX);
+    if(!r||r.error||!Array.isArray(r.data))return;
+    const me=window.__shkUid||null, seen={}; LESSONS.rows.forEach(x=>{seen[lessonKey(x)]=1;});
+    let added=0;
+    r.data.forEach(x=>{ if(!x||!x.field||!x.token||!x.val)return;
+      const row={field:x.field,token:x.token,val:x.val,by:x.by||"?",at:Date.parse(x.at)||0,self:!!(me&&x.by===me)};
+      if(seen[lessonKey(row)])return; seen[lessonKey(row)]=1; LESSONS.rows.push(row); added++; });
+    LESSONS.pulledAt=Date.now(); if(added)_lessonsTally=null; lessonsSave();
+  }catch(e){}
+}
+/* console tool: what does the reader know? */
+function lessonsReport(){ const T=lessonsTally(), out=[];
+  for(const f in T)for(const tk in T[f])out.push({field:f,slipSays:tk,truth:T[f][tk].val,members:T[f][tk].n,mine:T[f][tk].self});
+  console.table(out); return out; }
+setTimeout(function(){ try{lessonsPull(true);}catch(e){} try{lessonsFlush();}catch(e){} },3500);
+/* ═══════ end #learn ═══════ */
+
 /* parseDocket v2.2 — line-based, tested against 39 real Local 13 photos */
 /* #scanterms(aug15) — the reader only ever looked for these words on a slip, and the
    RORO docks and the satellite yards were never in the list. Toyota has always been on
@@ -22639,6 +22824,7 @@ function parseDocket(t, knownId){
     else if(/\b[S5$]\b(?=\s+(?:LA|GE)\b)/.test(up))p.cat="S";
     else if(/\bD\b(?=\s+(?:LA|GE)\b)/.test(up))p.cat="D";
   }
+  try{ lessonsApply(p,lines,norm); }catch(e){}   /* #learn — what the Order has taught the reader */
   return p;
 }
 /* #berthlog — a slip names BOTH the operator (SSA) and the berth (LB 96). The berth
@@ -22791,6 +22977,7 @@ function sealScan(p){
   j.src='photo'; j.at=Date.now();          /* #antifraud — a scanned slip is its own receipt */
   sealBucks(j);                             /* #antifraud — same faucet rules as the casual seal (sets j.earned) */
   DOCKETS.push(j);saveDK();renderDockets();drawWG();checkMarks();
+  try{ scanRawKeep(j._id,window.scanLast); window.scanLast=null; }catch(e){}   /* #learn — a later fix on this row can still teach */
   // feed the live board off the member's own dispatch number; silent when dispatch isn't running.
   const id=myBoardId()||p.pos;
   if(w&&id&&j.date===todayISO())submitLiveCall(id,'slip');   /* #lof — an old slip scanned late says nothing about where today's board is */
@@ -22806,7 +22993,7 @@ function scanHandOff(p){
   if(p.shift)njSetShift(p.shift); else njSetShift(njDefaultShift()); // #49
   if(p.start)njSetStart(p.start);                                    // #27
   try{manualOpen(window.scanThumb||null)}catch(e){}   /* #dock2 — correction popup with YOUR shot on top: read the slip, fix the fields */
-  alert("The docket couldn\u2019t be fully read. What the system caught is filled in \u2014 your photo rides the top of the form. Check it against the slip, finish the rest and seal it.");
+  alert("The docket couldn\u2019t be fully read. What the system caught is filled in \u2014 your photo rides the top of the form. Check it against the slip, finish the rest and seal it. Whatever you fix here, the reader remembers for the next casual.");
 }
 /* read one image \u2192 {readOk, p, thumb}; null if aborted. Shared by single + batch. */
 async function readDocketShot(f,label){
@@ -22836,7 +23023,7 @@ async function readDocketShot(f,label){
       }catch(err){}
     }
   }
-  return {readOk,p,thumb};
+  return {readOk,p,thumb,text};   /* #learn — the raw read rides along so a fix can teach */
 }
 async function processDocketPhoto(f){
   if(!f)return;
@@ -22846,6 +23033,7 @@ async function processDocketPhoto(f){
   const r=await readDocketShot(f);
   if(scanAborted||!r)return;
   window.scanThumb=r.thumb;
+  window.scanLast={text:r.text||"",p:JSON.parse(JSON.stringify(r.p||{}))};   /* #learn */
   closeScanSheet();
   if(r.readOk&&r.p.pos)sealScan(r.p);
   else scanHandOff(r.p);
@@ -22862,7 +23050,7 @@ async function processDocketBatch(files){
     scanSt(label+"developing the shot\u2026");
     const r=await readDocketShot(files[i],label);
     if(scanAborted)break;
-    if(r&&r.readOk&&r.p.pos){window.scanThumb=r.thumb;sealScan(r.p);sealed++;}
+    if(r&&r.readOk&&r.p.pos){window.scanThumb=r.thumb;window.scanLast={text:r.text||"",p:JSON.parse(JSON.stringify(r.p||{}))};sealScan(r.p);sealed++;}
     else{unread.push(files[i].name);}
   }
   window.scanThumb=null;
