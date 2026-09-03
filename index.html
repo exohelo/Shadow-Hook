@@ -1918,6 +1918,17 @@ html.daylight .jl-gate{background:linear-gradient(180deg,rgba(214,138,74,.12),rg
 #scr-ports .send-word::before{content:"";position:absolute;top:0;bottom:0;left:-60%;width:40%;
   background:linear-gradient(90deg,transparent,rgba(238,180,107,.18),transparent);
   transform:skewX(-20deg);animation:wlSheen 4.5s ease-in-out infinite}
+
+/* #novideo(sep03) — video upload/playback retired to hold egress down. These are
+   plain no-fetch placeholders standing in everywhere a <video src="..."> used to
+   pull bytes straight from Supabase Storage on view. */
+.novid,.cc-novid,.bp-novid{display:flex;align-items:center;justify-content:center;text-align:center;
+  color:#8a8f98;font-size:12.5px;line-height:1.4;background:#0a0b0d;
+  border:1px dashed var(--line-soft);border-radius:12px;padding:14px;min-height:60px}
+.msg .media.novid{max-width:210px}
+.sv-mediafull.novid{position:absolute;inset:0;font-size:15px;border-radius:0}
+.svc-media.novid{max-width:220px}
+.cc-novid,.bp-novid{position:absolute;inset:0;border-radius:inherit;border:none}
 </style>
 <style id="acctStyles">
 /* the anchor seal in the header opens the account panel — give it a subtle
@@ -4038,8 +4049,8 @@ window.DEVLOG=(function(){
     </div>
   </div>
   <!-- #stories2 — story creation rides the phone's own camera / gallery -->
-  <input type="file" id="storyShoot" accept="image/*,video/*" capture="environment" hidden>
-  <input type="file" id="storyPick" accept="image/*,video/*" hidden>
+  <input type="file" id="storyShoot" accept="image/*" capture="environment" hidden>
+  <input type="file" id="storyPick" accept="image/*" hidden>
 
   <div class="roomscreen" id="roomView">
     <div class="room-top">
@@ -4076,8 +4087,8 @@ window.DEVLOG=(function(){
     <div class="sendbar">
       <button class="attach" id="attachBtn" type="button" aria-label="Add photo or video">＋</button>
       <button class="attach gifbtn" id="gifBtn" type="button" aria-label="Send a GIF">GIF</button><!-- #gifout — one tap to the picker -->
-      <input type="file" id="chatCam" accept="image/*,video/*" capture="environment" hidden>
-      <input type="file" id="chatFile" accept="image/*,video/*" hidden>
+      <input type="file" id="chatCam" accept="image/*" capture="environment" hidden>
+      <input type="file" id="chatFile" accept="image/*" hidden>
       <!-- #kbgif2(aug13) — the send box is a RICHLY-EDITABLE div now, not an <input>.
            The phone keyboard's GIF button hands the image over through the IME's
            rich-content channel (commitContent). A plain <input> can't take that, so
@@ -4120,7 +4131,7 @@ window.DEVLOG=(function(){
         <!-- #talkmedia(aug31) — a photo, a clip or a GIF answers too, same roads as the chatroom -->
         <button type="button" class="svc-att" id="svcAtt" aria-label="Add a photo or video">＋</button>
         <button type="button" class="svc-att gif" id="svcGif" aria-label="Send a GIF">GIF</button>
-        <input type="file" id="svcFile" accept="image/*,video/*" hidden>
+        <input type="file" id="svcFile" accept="image/*" hidden>
         <input id="svcInput" type="text" placeholder="Say your piece…" maxlength="300" autocomplete="off">
         <button id="svcSend" type="button" aria-label="Send">➤</button>
       </div>
@@ -12130,7 +12141,7 @@ async function dwPull(){
     }
   }catch(e){}
 }
-setInterval(function(){try{dwPull();}catch(e){} try{if(typeof sbLoadBoardWire==='function')sbLoadBoardWire();}catch(e){}},45000);   /* #noflop2 — the seal rides this pull even if realtime drops that one table */
+setInterval(function(){try{dwPull();}catch(e){} try{if(typeof sbLoadBoardWire==='function')sbLoadBoardWire();}catch(e){}},90000);   /* #noflop2 #egress — the seal rides this pull even if realtime drops that one table */
 try{dwPull();}catch(e){}
 /* #37 — you can only hear the speaker at YOUR dispatch. The log opens with the
    flex call and closes WITH the board — day 6:30→9:30, night 4:30→7:00 PM.
@@ -16650,7 +16661,7 @@ function renderChatRow(row){
   const _gm=(kind==='link'&&typeof gifMediaUrl==='function')?gifMediaUrl(row.url||row.body||''):null;
   if(kind==='link'&&!_gm) inner=linkCard(row.url||row.body||'', row.body&&!isLink(row.body)?row.body:'');   // #hub — a shared link is a branded card
   else if(kind==='text') inner='<div class="txt">'+esc(row.body||'').replace(/\n/g,'<br>')+'</div>';
-  else if(kind==='video') inner='<video class="media" src="'+esc(String(row.url||''))+'" controls playsinline></video>';
+  else if(kind==='video') inner='<div class="media novid">🎬 Video messages are disabled</div>';
   else{
     const src=_gm||String(row.url||'');
     const orig=_gm?String(row.url||''):((kind==='gif'&&row.body&&isLink(row.body))?String(row.body):'');
@@ -16771,10 +16782,10 @@ async function chatJoin(room){
   try{ var _tick=0; _chatPoll=setInterval(function(){
     if(document.hidden||!window.SB||CURRENT_ROOM!==room)return;
     _tick++;
-    if(_chatLive && (_tick%5)!==0) return;   // realtime healthy → pull only ~every 20s as a safety net (saves request budget)
+    if(_chatLive && (_tick%4)!==0) return;   // #egress — realtime healthy → pull only ~every 60s as a safety net
     window.SB.from('messages').select('*').eq('room',room).order('created_at',{ascending:true}).limit(60)
       .then(function(r){if(r&&r.data&&CURRENT_ROOM===room)r.data.forEach(renderChatRow);}).catch(function(){});
-  },4000); }catch(e){}
+  },15000); }catch(e){}
 }
 function chatLeave(){
   try{if(CURRENT_ROOM)markRoomSeen(CURRENT_ROOM);}catch(e){}   // #chatpos — everything on screen when you walk out counts as read
@@ -17133,9 +17144,10 @@ document.getElementById('chatInput').addEventListener('keydown',e=>{if(e.key==='
    so "📷 Camera" and "🖼 Photo or Video" both send a photo OR a clip. */
 function chatMediaPicked(e){
   const f=e.target.files&&e.target.files[0];if(!f){e.target.value="";return;}
+  if(f.type&&f.type.startsWith('video')){toast('🎬 Video is off for now — photos only');e.target.value="";return;}   /* #novideo — egress control */
   const mc=MEDIA_COST;    /* #rates2 — media is 1 ⬡ flat; the old Watchman "discount" to 3 would now be a markup */
   if(!payCredits(mc,"photo / video",true)){e.target.value="";return;}  // #61
-  chatSendMedia(f, (f.type&&f.type.startsWith('video'))?'video':'image', mc);    // #chat-live — upload to Storage + share
+  chatSendMedia(f,'image',mc);    // #chat-live — upload to Storage + share
   e.target.value="";
 }
 ['chatFile','chatCam'].forEach(id=>{const el=document.getElementById(id);if(el)el.addEventListener('change',chatMediaPicked);});
@@ -18385,7 +18397,8 @@ window.storyCreateChooser=storyCreateChooser;
 let _styFile=null,_styKind='img',_styBlobUrl=null,_styTxtY=0.42;   // #vidtext — vertical position (0..1) of the on-clip text
 function storyCompose(file){
   if(!file)return;
-  _styFile=file;_styKind=(file.type&&file.type.startsWith('video'))?'vid':'img';
+  if(file.type&&file.type.startsWith('video')){toast('🎬 Video is off for now — photos only');return;}   /* #novideo — egress control */
+  _styFile=file;_styKind='img';
   _styTxtY=0.42;
   if(_styBlobUrl){try{URL.revokeObjectURL(_styBlobUrl)}catch(e){}}
   _styBlobUrl=URL.createObjectURL(file);
@@ -18843,7 +18856,7 @@ function svPageHTML(s,i){
     const capTxt=ov?'':(s.note||'');                     // overlay rides on the media; a plain note stays a caption
     const overHTML=ov?'<div class="sv-txt" style="top:'+(ov.y*100).toFixed(1)+'%">'+esc(ov.t).replace(/\n/g,'<br>')+'</div>':'';
     const media=(k==='vid')
-      ?'<video class="sv-mediafull" src="'+u+'" muted autoplay playsinline webkit-playsinline preload="auto"'+(poster?' poster="'+esc(poster)+'"':'')+'></video>'
+      ?(poster?'<img class="sv-mediafull" src="'+esc(poster)+'" alt="">':'<div class="sv-mediafull novid">🎬 Video is disabled</div>')
       :'<img class="sv-mediafull" src="'+u+'" alt="">';
     return '<div class="sv-page" data-si="'+i+'" style="--pc:#EEB46B">'
       +media+overHTML+'<div class="sv-shade top"></div><div class="sv-shade"></div><div class="sv-burst">❤</div>'
@@ -19200,7 +19213,7 @@ function svcRow(c){
     +'<div class="svc-b"><div class="svc-h">'+esc(c.by_handle||'a casual')+'<time>'+agoShort(c.ts)+'</time></div>'
     +'<div class="svc-t">'+(re&&c.reply_handle?'<span class="svc-at">↩ '+esc(c.reply_handle)+'</span>':'')+esc(c.body||'')+'</div>'
     +(c.url?(c.kind==='video'
-        ?'<video class="svc-media" src="'+esc(String(c.url))+'" controls playsinline preload="metadata"></video>'
+        ?'<div class="svc-media novid">🎬 Video disabled</div>'
         :'<img class="svc-media" src="'+esc(String(c.url))+'" alt="" loading="lazy">'):'')
     +'<div class="svc-foot"><button type="button" class="svc-re" data-cre="'+esc(String(c.reply_to||c.id))+'" data-creh="'+esc(c.by_handle||'a casual')+'">↩ Reply</button></div></div>'
     +(own?'<button class="svc-x" data-cdel="'+esc(String(c.id))+'"'+(c.local?' data-loc="1"':'')+' aria-label="Strike comment">✕</button>':'')
@@ -19361,9 +19374,9 @@ async function svcSend(media){
   /* #talkmedia — ＋ → the phone's picker; GIF → the GIPHY sheet, its pick routed here */
   on('svcAtt','click',()=>{ if(typeof guestWall==='function'&&guestWall())return; const f=document.getElementById('svcFile'); if(f){f.value='';f.click();} });
   on('svcFile','change',e=>{ const f=e.target.files&&e.target.files[0]; e.target.value=''; if(!f||!_svcId)return;
-    const kind=(f.type&&f.type.startsWith('video'))?'video':'image';
+    if(f.type&&f.type.startsWith('video')){toast('🎬 Video is off for now — photos only');return;}   /* #novideo — egress control */
     let u=''; try{u=URL.createObjectURL(f);}catch(_){}
-    svcSend({kind:kind,url:u,file:f}); });
+    svcSend({kind:'image',url:u,file:f}); });
   on('svcGif','click',()=>{ if(typeof guestWall==='function'&&guestWall())return; try{openGifPicker(u=>{ const gm=(typeof gifMediaUrl==='function'&&gifMediaUrl(u))||u; svcSend({kind:'gif',url:gm}); });}catch(e){} });
   const sl=document.getElementById('stcList');
   if(sl)sl.addEventListener('click',async e=>{
@@ -20638,7 +20651,7 @@ function boardPostHTML(s,i,step){
     body=(cap&&cap.trim()?'<div class="bp-say">'+esc(cap)+'</div>':'')
       +'<div class="bp-media">'
         +(k==='vid'
-          ?((th&&th.img)?'<img src="'+esc(String(th.img))+'" alt="">':'<video src="'+esc(String(s.url))+'#t=0.1" muted playsinline preload="metadata"></video>')+'<div class="bp-play">▶</div>'
+          ?((th&&th.img)?('<img src="'+esc(String(th.img))+'" alt=""><div class="bp-play">▶</div>'):'<div class="bp-novid">🎬 Video disabled</div>')
           :'<img src="'+esc(String(s.url))+'" alt="" loading="lazy">')
       +'</div>';
     if(k==='vid'&&!(th&&th.img))try{makeVideoThumb(s.url)}catch(e){}
@@ -21203,7 +21216,7 @@ function clanClipsPaint(clanId){
     const poster=(x.kind==='image')?x.url:(_thumbCache()[String(x.url)]||'');
     if(x.kind!=='image'&&!poster)try{makeVideoThumb(x.url)}catch(e){}
     html+='<div class="cclip" data-cplay="'+i+'">'
-      +(poster?'<img src="'+esc(String(poster))+'" alt="" loading="lazy">':'<video src="'+esc(String(x.url))+'#t=0.1" muted playsinline preload="metadata"></video>')
+      +(poster?'<img src="'+esc(String(poster))+'" alt="" loading="lazy">':'<div class="cc-novid">🎬 disabled</div>')
       +(x.kind==='image'?'':'<div class="cc-play">▶</div>')+'<div class="cc-grad"></div>'
       +'<div class="cc-by">'+esc(x.handle||'a clanmate')+'<span>'+(x.caption?esc(x.caption):agoShort(x.created_at?new Date(x.created_at).getTime():0))+'</span></div>'
       +((x.owner===window.__shkUid||mine)?'<button type="button" class="cc-x" data-cdelclip="'+esc(x.id)+'" aria-label="Strike this clip">✕</button>':'')
@@ -21222,7 +21235,7 @@ function clanClipPick(clanId){
   const c=clanById(clanId); if(!c||!clanIn(c)){ toast('Join the clan first'); return; }
   if(CLAN_CLIPS[clanId]===null){ toast('The wire has no clip table yet — run CLANS-SETUP.sql'); return; }
   let i=document.getElementById('clanClipFile');
-  if(!i){ i=document.createElement('input'); i.type='file'; i.id='clanClipFile'; i.accept='video/*,image/*'; i.hidden=true; document.body.appendChild(i);
+  if(!i){ i=document.createElement('input'); i.type='file'; i.id='clanClipFile'; i.accept='image/*'; i.hidden=true; document.body.appendChild(i);
     i.addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; const cid=i.dataset.clan; e.target.value=''; if(f&&cid)clanClipCompose(cid,f); }); }
   i.dataset.clan=clanId; i.value=''; i.click();
 }
@@ -21583,6 +21596,7 @@ async function clipSqueeze(file,opt){
 
 function clanClipCompose(clanId,file,squeezed){
   if(!file)return;
+  if(file.type&&file.type.startsWith('video')){toast('🎬 Video clips are off for now — photos only');return;}   /* #novideo — egress control */
   /* #clipfit(sep01) — over the cap? offer the cutting room instead of a dead end */
   if(file.size>CLIP_MAX_MB*1048576){
     const isVid=!!(file.type&&file.type.startsWith('video'));
@@ -23903,7 +23917,7 @@ function liveSync(){
   }catch(e){}
 }
 try{liveSync();}catch(e){}
-setInterval(function(){ if(document.hidden||!window.SB||_liveOn)return; liveRefreshAll(); }, 12000);   // fallback pull only while realtime is down
+setInterval(function(){ if(document.hidden||!window.SB||_liveOn)return; liveRefreshAll(); }, 45000);   // #egress — fallback pull only while realtime is down
 /* #118 — NO FLOP: the official end of dispatch, called from the Drop Log.
    The end card is the one entry that matters; the crowd's drops are the count.
    Seals the row, ripples the chain, re-figures the predictions, rides the wire
