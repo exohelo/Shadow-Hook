@@ -6863,8 +6863,21 @@ function mergeDockets(a,b){
        The honest version of this is a server-side marks_awarded row with a unique
        constraint; this is what can be done inside the client. */
     if(key==='shadowhook_markspaid_'+a) return false;
+    /* #doubleboot(sep3) — THE STAMP THAT RELOADED EVERY OPEN. shadowhook_lastseen_<card>
+       is the #idle "did they step away" clock: stamped with Date.now() ~150ms into every
+       boot and refreshed every minute while the app is open. It rode this mirror, so on
+       every cold open the phone wrote NOW, the pull found the server holding the LAST
+       open's stamp, counted that as "server differs", and location.reload()'d — the whole
+       boot show playing twice, the second time under the browser's blue loading bar. (A
+       browser tab kept sessionStorage so it only ever hit the installed app.) It also
+       fired a user_kv upsert a minute for every open device. The stamp is per-DEVICE by
+       design — your tablet stepping away has nothing to do with your phone — so it stays
+       on the device: never uploaded, and rows the server already holds are ignored. */
+    if(key===lastseenKey(a)) return false;
     return true;
   }
+  function lastseenKey(a){ return 'shadowhook_lastseen_'+a; }
+  function deviceOnly(k){ return /^shadowhook_lastseen_[A-Z]\d{2,5}$/.test(k||''); }
   function markDirty(){ try{ _set(DIRTY,'1'); }catch(e){} }
   function clearDirty(){ try{ _rem(DIRTY); }catch(e){} }
 
@@ -6965,7 +6978,9 @@ function mergeDockets(a,b){
        previous reload. unlockBadge() guards only on the in-memory flag and then pays
        +50 ⬡, and its disk write dedupes the index — so the re-award left no trace.
        Same exposure for CIRCLE_LVL, which decides what the member is charged. */
-    rows.forEach(function(row){ seen[row.k]=1; if(apply(row.k,row.v)){ changed++; try{ settle(row.k); }catch(e){} } });
+    rows.forEach(function(row){ seen[row.k]=1;
+      if(deviceOnly(row.k)){ try{ window.SB.from('user_kv').delete().eq('owner',uid).eq('k',row.k).then(function(){},function(){}); }catch(e){} return; }   /* #doubleboot — leftover stamp rows: drop, don't apply */
+      if(apply(row.k,row.v)){ changed++; try{ settle(row.k); }catch(e){} } });
     // MIGRATION / GAP-FILL: push up any Work ID data this device holds that the
     // server is still missing — never clobbering what's already up there. This is
     // what carries a pre-existing member's whole history into the cloud the first
@@ -7000,7 +7015,7 @@ function mergeDockets(a,b){
             function(payload){
               try{
                 var row=(payload&&payload.new&&payload.new.k)?payload.new:((payload&&payload.old)||null);
-                if(!row||!row.k) return;
+                if(!row||!row.k||deviceOnly(row.k)) return;   /* #doubleboot */
                 var del=(payload.eventType==='DELETE');
                 if(apply(row.k, del?null:String(row.v!=null?row.v:''))) settle(row.k);
               }catch(e){ console.warn('[cloud] live apply', e); }
