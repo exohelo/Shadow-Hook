@@ -9293,6 +9293,7 @@ function stCountPaint(){
     const c=window.ST_COUNT;
     if(!c||!(+c.swipes>0)){el.innerHTML='';return;}
     const s1=+c.swipes,h1=+c.hands,bits=[];
+    if(+c.same>0)bits.push(c.same+' on the card');   /* #samecard — only lands once scan_tape_count returns it */
     if(+c.behind>0)bits.push(c.behind+' behind the reel');
     if(+c.held>0)bits.push(c.held+' held');
     if(+c.bad>0)bits.push(c.bad+' bad card'+(+c.bad===1?'':'s'));
@@ -9305,7 +9306,7 @@ window.stCountRefresh=stCountRefresh;
 function submitLiveCall(pos,src){ // the reel takes no identity — the TAPE does, and only the crown reads it
   const _was=(lastCall&&lastCall.pos)||null;                    /* where the board stood when this landed */
   const r=applyLiveCall(pos,Date.now(),'local');
-  try{ stPush(pos, r===true?'posted':(r==='far'?'held':(r==='behind'?'behind':'bad')), _was, src||'scan'); }catch(e){}
+  try{ stPush(pos, r===true?'posted':(r==='far'?'held':(r==='behind'?'behind':(r==='same'?'same':'bad'))), _was, src||'scan'); }catch(e){}   /* #samecard */
   if(r===true){ try{lwPush(lastCall.pos);}catch(e){}   /* #onewire — and every other phone hears it */
     /* #marks2 — a call that actually MOVED the board is a board call on the record */
     try{ const n=tallyAdd('bcalls');
@@ -9326,7 +9327,15 @@ function submitLiveCall(pos,src){ // the reel takes no identity — the TAPE doe
 function applyLiveCall(pos,ts,src){
   pos=String(pos||'').toUpperCase().trim();
   if(posVal(pos)<0)return false;
-  if(lastCall&&posVal(pos)<=posVal(lastCall.pos))return "behind"; // valid scan, but the board is already past it
+  /* #samecard(sep3) — THE TIE IS NOT A MISS. This was `<=`: a casual scanning the
+     very card the board is standing on got "behind the reel" — the same verdict
+     as a card the board passed an hour ago — and the code's own #tape note
+     admitted it ("two casuals on the SAME card lose the second one"). Now `<` is
+     behind and `===` is its own word, "same": the board doesn't move (it's
+     already there), nothing rides live_wire, no board-call badge is tallied —
+     the only thing that changes is the tape tells the truth about it. */
+  if(lastCall&&posVal(pos)<posVal(lastCall.pos))return "behind";   // valid scan, but the board is already past it
+  if(lastCall&&posVal(pos)===posVal(lastCall.pos))return "same";   // valid scan, and the board is standing right on it
   const a=lofAnchor();
   /* #lofopen(aug24) — which witness is the anchor? A confirmed call is a fact about
      where the board IS; OPENP() is only where it was predicted to start. Gate them
@@ -31531,7 +31540,7 @@ window.SEASON_GREET={
 
     <!-- #pulse2(aug13) — FOOTFALL: devices through the door, by day. Run PULSE.sql once. -->
     <div class="card-h" style="margin-top:4px">The Scan Tape <span class="pill gold" id="kmTapeN" style="display:none">0</span></div>
-    <div class="sub" style="margin:-2px 0 8px;font-size:11px;line-height:1.6">Every swipe that landed — moved the board or not. <b style="color:#d8a544">behind the reel</b> is normal, not a lost scan: board order beats scan order, so a casual called earlier who finishes later reports a card the board is already past.</div>
+    <div class="sub" style="margin:-2px 0 8px;font-size:11px;line-height:1.6">Every swipe that landed — moved the board or not. <b style="color:#d8a544">behind the reel</b> is normal, not a lost scan: board order beats scan order, so a casual called earlier who finishes later reports a card the board is already past. <b style="color:#7fcde8">on the card</b> is the tie — the board was already standing on that card when the swipe landed.</div>
     <input class="field" id="kmTapeFind" placeholder="filter — card, handle, outcome, board" style="margin-bottom:6px">
     <div id="kmTape" class="sub" style="max-height:300px;overflow-y:auto;line-height:1.7;margin-bottom:14px">—</div>
 
@@ -33131,8 +33140,8 @@ window.SEASON_GREET={
     let rows=window.__kmTapeRows||[];
     if(q)rows=rows.filter(x=>((x.pos||'')+' '+(x.by_handle||'')+' '+(x.outcome||'')+' '+(x.src||'')+' '+(x.k||'')).toLowerCase().indexOf(q)>=0);
     if(!rows.length){out.innerHTML='<span style="color:var(--steel)">'+(q?'nothing on the tape matches that':'no swipes on the tape yet')+'</span>';return;}
-    const WORD={posted:'moved the board',behind:'behind the reel',held:'held — past the line of fire',bad:'bad card'};
-    const COL ={posted:'#9fd18a',behind:'#d8a544',held:'#e0492e',bad:'#8a8f96'};
+    const WORD={posted:'moved the board',same:'on the card — board was already there',behind:'behind the reel',held:'held — past the line of fire',bad:'bad card'};   /* #samecard */
+    const COL ={posted:'#9fd18a',same:'#7fcde8',behind:'#d8a544',held:'#e0492e',bad:'#8a8f96'};
     let html='',lastK=null;
     rows.forEach(function(x){
       if(x.k!==lastK){
@@ -33794,6 +33803,7 @@ window.SEASON_GREET={
       if(r===true){ si.value=''; try{buzz(25)}catch(e){} try{toast('📡 '+v+' on the wire')}catch(e){} hudTick(); }
       else if(r==='far'){ si.value=''; try{buzz([30,40,30])}catch(e){} hudTick(); }   /* #lof — held, not an error: submitLiveCall already raised the red flag */
       else if(r==='behind'){ si.value=''; try{toast('Board already past '+v+' — logged on the tape')}catch(e){} hudTick(); }
+      else if(r==='same'){ si.value=''; try{buzz(25)}catch(e){} try{toast('Board is standing on '+v+' — logged on the tape')}catch(e){} hudTick(); }   /* #samecard */
       else { si.style.borderColor='var(--ember)'; setTimeout(()=>si.style.borderColor='',900); } };
     sg.addEventListener('click',go);
     si.addEventListener('keydown',e=>{if(e.key==='Enter')go();});
