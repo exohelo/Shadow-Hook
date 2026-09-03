@@ -3804,7 +3804,7 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
    catches every error from the very first script block onward. Zero deps.
    Everything it collects is shown by the DEV LOG panel (bottom of the page). */
 window.DEVLOG=(function(){
-  const S={errs:[],notes:[],tables:{},t0:Date.now(),build:'2026-07-23 fixpack-5'};
+  const S={errs:[],notes:[],tables:{},t0:Date.now(),build:'2026-09-03 egress2'};
   const clip=(s,n)=>String(s==null?'':s).slice(0,n||300);
   const stamp=()=>new Date().toLocaleTimeString([],{hour:'numeric',minute:'2-digit',second:'2-digit'});
   function push(arr,item,max){arr.unshift(item);if(arr.length>max)arr.length=max;}
@@ -12825,10 +12825,20 @@ function ingestForecast(key,data){
   try{renderRecentBoards();}catch(e){}
   try{repredict();}catch(e){}                 // #114 — new sheet in → predictions re-figure
 }
-async function sbLoadDispatch(){
+/* #egress2(sep03) — THE BIGGEST LEAK. This pulled EVERY row of dispatch_boards
+   (two full board JSONs per day since July, growing forever) on every load, every
+   socket reconnect and every bot upsert, on every phone. Older sheets already
+   live in localStorage on devices that saw them, so the server only needs to hand
+   over the recent window (keys start with the ISO date, so a string >= works).
+   Reconnect storms are coalesced: a re-pull inside 90 s is a no-op. */
+const DISPATCH_PULL_DAYS=14; let _dispLastPull=0;
+function _dispCutoffKey(){const d=new Date(Date.now()-DISPATCH_PULL_DAYS*864e5);return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
+async function sbLoadDispatch(force){
   if(!window.SB){try{DEVLOG.data('dispatch_boards',{ok:false,err:'no backend client'});}catch(e){} return;}
+  if(!force&&Date.now()-_dispLastPull<90000)return;
+  _dispLastPull=Date.now();
   try{
-    const r=await window.SB.from('dispatch_boards').select('key,data,updated_at');
+    const r=await window.SB.from('dispatch_boards').select('key,data,updated_at').gte('key',_dispCutoffKey()).order('key',{ascending:true});
     if(r&&!r.error&&Array.isArray(r.data)){
       r.data.forEach(row=>{try{ingestForecast(row.key,row.data);}catch(e){}});
       try{const latest=r.data.slice().sort((a,b)=>String(a.updated_at||'').localeCompare(String(b.updated_at||''))).pop();
@@ -18340,12 +18350,16 @@ async function chatJoin(room){
       });
   }catch(e){}
   // safety net — even if realtime is blocked (some networks throttle WebSockets), pull new messages every few seconds
-  try{ var _tick=0; _chatPoll=setInterval(function(){
+  /* #egress2(sep03) — the net used to re-download the last 60 rows of the room every
+     minute for as long as the room was open (≈1 MB/hour per phone). It now asks only
+     for rows newer than the newest it has seen, and while realtime is healthy it
+     asks every 2 min instead of every 1. */
+  try{ var _tick=0, _sinceTs=new Date(Date.now()-120000).toISOString(); _chatPoll=setInterval(function(){
     if(document.hidden||!window.SB||CURRENT_ROOM!==room)return;
     _tick++;
-    if(_chatLive && (_tick%4)!==0) return;   // #egress — realtime healthy → pull only ~every 60s as a safety net
-    window.SB.from('messages').select('*').eq('room',room).order('created_at',{ascending:true}).limit(60)
-      .then(function(r){if(r&&r.data&&CURRENT_ROOM===room)r.data.forEach(renderChatRow);}).catch(function(){});
+    if(_chatLive && (_tick%8)!==0) return;
+    window.SB.from('messages').select('*').eq('room',room).gt('created_at',_sinceTs).order('created_at',{ascending:true}).limit(60)
+      .then(function(r){ if(r&&r.data&&CURRENT_ROOM===room){ r.data.forEach(function(row){ renderChatRow(row); if(row&&row.created_at&&row.created_at>_sinceTs)_sinceTs=row.created_at; }); } }).catch(function(){});
   },15000); }catch(e){}
 }
 function chatLeave(){
@@ -18503,7 +18517,7 @@ async function chatSendMedia(file,kind,cost){
   try{
     const ext=((file.name||'').split('.').pop()||(kind==='video'?'mp4':'jpg')).toLowerCase().replace(/[^a-z0-9]/g,'')||'bin';
     const path=String(room).replace(/[^a-zA-Z0-9_-]/g,'_')+'/'+cid+'.'+ext;
-    const up=await window.SB.storage.from('chat-media').upload(path,typedUploadBody(file,ext,kind),{contentType:mediaMime(file,ext,kind),upsert:true});   // #vidmime2 — Blob carries the real type
+    const up=await window.SB.storage.from('chat-media').upload(path,typedUploadBody(file,ext,kind),{contentType:mediaMime(file,ext,kind),upsert:true,cacheControl:'31536000'});   // #vidmime2 — Blob carries the real type
     if(up.error)throw up.error;
     const pub=window.SB.storage.from('chat-media').getPublicUrl(path);
     const url=pub&&pub.data&&pub.data.publicUrl; if(!url)throw new Error('no public url');
@@ -19872,7 +19886,7 @@ async function sbMigrateStories(){
         if(/^data:/.test(url)){   // offline camera shot — land the image in storage first
           const blob=await (await fetch(url)).blob();
           const path='stories/'+chatUUID()+'.jpg';
-          const r1=await window.SB.storage.from('chat-media').upload(path,blob,{contentType:blob.type||'image/jpeg',upsert:true});
+          const r1=await window.SB.storage.from('chat-media').upload(path,blob,{contentType:blob.type||'image/jpeg',upsert:true,cacheControl:'31536000'});
           if(r1.error)throw r1.error;
           const pub=window.SB.storage.from('chat-media').getPublicUrl(path);
           url=pub&&pub.data&&pub.data.publicUrl;if(!url)throw new Error('no public url');
@@ -20042,7 +20056,7 @@ async function postMediaStory(){
     try{
       const ext=((file.name||'').split('.').pop()||(_styKind==='vid'?'mp4':'jpg')).toLowerCase().replace(/[^a-z0-9]/g,'')||'bin';
       const path='stories/'+chatUUID()+'.'+ext;
-      const up=await window.SB.storage.from('chat-media').upload(path,typedUploadBody(file,ext,_styKind),{contentType:mediaMime(file,ext,_styKind),upsert:true});   // #vidmime2 — Blob carries the real type
+      const up=await window.SB.storage.from('chat-media').upload(path,typedUploadBody(file,ext,_styKind),{contentType:mediaMime(file,ext,_styKind),upsert:true,cacheControl:'31536000'});   // #vidmime2 — Blob carries the real type
       if(up.error)throw up.error;
       const pub=window.SB.storage.from('chat-media').getPublicUrl(path);
       const url=pub&&pub.data&&pub.data.publicUrl; if(!url)throw new Error('no public url');
@@ -20198,7 +20212,7 @@ async function avatarUpload(blob){   /* blob: the finished 256×256 JPEG from av
     const old=myAvatar();
     const path='avatars/'+window.__shkUid+'-'+Date.now().toString(36)+'.jpg';
     stage='upload';
-    const up=await window.SB.storage.from('chat-media').upload(path,blob,{contentType:'image/jpeg',upsert:false});
+    const up=await window.SB.storage.from('chat-media').upload(path,blob,{contentType:'image/jpeg',upsert:false,cacheControl:'31536000'});
     if(up.error)throw up.error;
     const pub=window.SB.storage.from('chat-media').getPublicUrl(path);
     const url=pub&&pub.data&&pub.data.publicUrl; if(!url)throw new Error('no public url');
@@ -20880,7 +20894,7 @@ async function svcSend(media){
       if(media&&media.file){   /* a photo or clip: land it in storage first, under talk/ */
         const file=media.file, ext=((file.name||'').split('.').pop()||(mk==='video'?'mp4':'jpg')).toLowerCase().replace(/[^a-z0-9]/g,'')||'bin';
         const path='talk/'+chatUUID()+'.'+ext;
-        const up=await window.SB.storage.from('chat-media').upload(path,typedUploadBody(file,ext,mk),{contentType:mediaMime(file,ext,mk),upsert:true});
+        const up=await window.SB.storage.from('chat-media').upload(path,typedUploadBody(file,ext,mk),{contentType:mediaMime(file,ext,mk),upsert:true,cacheControl:'31536000'});
         if(up.error)throw up.error;
         const pub=window.SB.storage.from('chat-media').getPublicUrl(path);
         url=pub&&pub.data&&pub.data.publicUrl; if(!url)throw new Error('no public url');
@@ -23215,7 +23229,7 @@ async function clanClipUpload(clanId,file,kind,caption,blobUrl){
   try{
     const ext=((file.name||'').split('.').pop()||(kind==='video'?'mp4':'jpg')).toLowerCase().replace(/[^a-z0-9]/g,'')||'bin';
     const path='clans/'+String(clanId).replace(/[^a-zA-Z0-9_-]/g,'_')+'/'+chatUUID()+'.'+ext;
-    const up=await window.SB.storage.from('chat-media').upload(path,typedUploadBody(file,ext,kind),{contentType:mediaMime(file,ext,kind),upsert:true});
+    const up=await window.SB.storage.from('chat-media').upload(path,typedUploadBody(file,ext,kind),{contentType:mediaMime(file,ext,kind),upsert:true,cacheControl:'31536000'});
     if(up.error)throw up.error;
     const pub=window.SB.storage.from('chat-media').getPublicUrl(path);
     const url=pub&&pub.data&&pub.data.publicUrl; if(!url)throw new Error('no public url');
@@ -25512,23 +25526,33 @@ try{sbLoadBoardWire();}catch(e){}
    board log/correction, or a dispatch sheet from ANY casual lands on every screen at
    once. Falls back to a gentle pull if the socket can't hold (same as chat). */
 let _liveChan=null, _liveOn=false;
-function liveRefreshAll(){ try{dwPull();}catch(e){} try{cwSync();}catch(e){} try{sbLoadLiveCalls();}catch(e){} try{sbLoadKmFlags();}catch(e){} try{sbLoadNotices();}catch(e){} try{sbLoadSheetLog();}catch(e){} try{sbLoadBoardWire();}catch(e){} try{sbLoadDispatch();}catch(e){} try{sbLoadHallLine();}catch(e){} try{sbLoadSocial();}catch(e){} try{sbLoadStories();}catch(e){} }
+/* #egress2(sep03) — every realtime event used to make EVERY phone re-pull a whole
+   table over REST (N clients × full payload per row change). Bursts are now
+   coalesced per loader (trailing 4 s), and a full catch-up (liveRefreshAll —
+   eleven endpoints) runs at most once every 2 min: phones drop and re-open the
+   socket constantly when backgrounded, and each reconnect was a full re-download. */
+const _rtT={};
+function _rtCoalesce(name,fn,ms){ if(_rtT[name])return; _rtT[name]=setTimeout(function(){_rtT[name]=null;try{fn();}catch(e){}},ms||4000); }
+let _liveRefreshAt=0;
+function liveRefreshAll(){
+  if(Date.now()-_liveRefreshAt<120000)return;
+  _liveRefreshAt=Date.now(); try{dwPull();}catch(e){} try{cwSync();}catch(e){} try{sbLoadLiveCalls();}catch(e){} try{sbLoadKmFlags();}catch(e){} try{sbLoadNotices();}catch(e){} try{sbLoadSheetLog();}catch(e){} try{sbLoadBoardWire();}catch(e){} try{sbLoadDispatch();}catch(e){} try{sbLoadHallLine();}catch(e){} try{sbLoadSocial();}catch(e){} try{sbLoadStories();}catch(e){} }
 function liveSync(){
   if(!window.SB)return;
   try{
     _liveChan=window.SB.channel('order-live-'+Date.now())
-      .on('postgres_changes',{event:'*',schema:'public',table:'drop_wire'},      function(){try{dwPull();}catch(e){}})
-      .on('postgres_changes',{event:'*',schema:'public',table:'count_wire'},     function(){try{cwSync();}catch(e){}})   /* #countwire */
-      .on('postgres_changes',{event:'*',schema:'public',table:'live_wire'},      function(){try{sbLoadLiveCalls();}catch(e){}})   /* #onewire — every scan moves every reel */
+      .on('postgres_changes',{event:'*',schema:'public',table:'drop_wire'},      function(){_rtCoalesce('dw',dwPull);})
+      .on('postgres_changes',{event:'*',schema:'public',table:'count_wire'},     function(){_rtCoalesce('cw',cwSync);})   /* #countwire */
+      .on('postgres_changes',{event:'*',schema:'public',table:'live_wire'},      function(){_rtCoalesce('lw',sbLoadLiveCalls,3000);})   /* #onewire — every scan moves every reel */
       .on('postgres_changes',{event:'*',schema:'public',table:'km_flags'},       function(){try{sbLoadKmFlags();}catch(e){}})   /* #km — the Keymaster's word travels instantly */
       .on('postgres_changes',{event:'*',schema:'public',table:'km_notices'},     function(){try{sbLoadNotices();}catch(e){}})   /* #km2 — warnings & bans land live */
-      .on('postgres_changes',{event:'*',schema:'public',table:'board_wire'},      function(){try{sbLoadBoardWire();}catch(e){}})
-      .on('postgres_changes',{event:'*',schema:'public',table:'dispatch_boards'}, function(){try{sbLoadDispatch();}catch(e){}})
-      .on('postgres_changes',{event:'*',schema:'public',table:'hall_line_log'},   function(){try{sbLoadHallLine();}catch(e){}})   /* #hallline — the phone bot's reads land live */
+      .on('postgres_changes',{event:'*',schema:'public',table:'board_wire'},      function(){_rtCoalesce('bw',sbLoadBoardWire);})
+      .on('postgres_changes',{event:'*',schema:'public',table:'dispatch_boards'}, function(p){try{ if(p&&p.new&&p.new.key&&p.new.data)ingestForecast(p.new.key,p.new.data); else sbLoadDispatch(true); }catch(e){}})   /* #egress2 — the event carries the row; no table re-pull */
+      .on('postgres_changes',{event:'*',schema:'public',table:'hall_line_log'},   function(){_rtCoalesce('hl',sbLoadHallLine);})   /* #hallline — the phone bot's reads land live */
       .on('postgres_changes',{event:'*',schema:'public',table:'rooms'},           function(){try{socPullSoon();}catch(e){}})   // #21fix — the social
       .on('postgres_changes',{event:'*',schema:'public',table:'gatherings'},      function(){try{socPullSoon();}catch(e){}})   // directory is shared:
       .on('postgres_changes',{event:'*',schema:'public',table:'gathering_rsvps'}, function(){try{socPullSoon();}catch(e){}})   // rooms/RSVPs land live
-      .on('postgres_changes',{event:'*',schema:'public',table:'stories'},         function(){try{sbLoadStories();}catch(e){}})   // #hub — the Stories wall lands live
+      .on('postgres_changes',{event:'*',schema:'public',table:'stories'},         function(){_rtCoalesce('st',sbLoadStories,6000);})   // #hub — the Stories wall lands live
       .subscribe(function(s){ _liveOn=(s==='SUBSCRIBED'); try{console.log('[live] order sync:',s);}catch(e){} try{DEVLOG.note('realtime: '+s);}catch(e){}
         if(_liveOn){try{liveRefreshAll();}catch(e){}} });   /* #noflop2 — the moment the wire (re)connects, catch up on everything missed */
   }catch(e){}
