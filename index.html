@@ -22247,16 +22247,25 @@ function closeScanSheet(){document.getElementById('scanSheet').classList.remove(
    pipeline the camera app uses — from a stream locked to the back camera.
    No ImageCapture on the phone (iPhone honors the rear hint anyway), no
    permission, no camera at all → the old camera-app route, untouched. */
-let camStream=null,camShooting=false;
+let camStream=null,camShooting=false,camWatchdog=null;
 function killDocketCam(){
+  if(camWatchdog){clearTimeout(camWatchdog);camWatchdog=null;}
   if(camStream){try{camStream.getTracks().forEach(t=>t.stop())}catch(e){} camStream=null;}
   camShooting=false;
   const o=document.getElementById('camScan'); if(o)o.remove();
 }
 async function openDocketCam(){
   if(document.getElementById('camScan'))return;
-  const fallback=()=>{const inp=document.getElementById('scanPhoto');inp.value="";inp.click();};
+  const fallback=()=>{killDocketCam();const inp=document.getElementById('scanPhoto');inp.value="";inp.click();};
   if(!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia&&window.ImageCapture))return fallback();
+  /* #camfix(sep3) — FIRST-OPEN FREEZE. The very first getUserMedia call on a device is the
+     one that has to power up the sensor cold AND settle a 4K "ideal" resolution ask at the
+     same time as the permission grant — some phones take several seconds to a full stop
+     doing that, and with nothing on screen but a bare black div meanwhile it reads as a
+     crash, not a wait. Every later call reuses an already-warm camera and is fast. Two
+     fixes: a visible "opening camera…" state instead of plain black, and a watchdog — if
+     the sensor hasn't delivered a frame inside 7s, bail to the phone's own camera app
+     rather than sit there black forever. */
   let stream=null;
   try{stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{exact:"environment"},width:{ideal:4096},height:{ideal:3072}}});}
   catch(e1){
@@ -22270,6 +22279,11 @@ async function openDocketCam(){
   o.style.cssText='position:fixed;top:var(--tbH,0px);left:0;right:0;bottom:0;z-index:90;background:#000';   /* #hdr2 — the dispatch header stays up over the camera */
   o.innerHTML=
     '<video id="camVid" autoplay playsinline muted style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"></video>'
+    +'<div id="camWait" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;pointer-events:none">'
+      +'<div style="width:34px;height:34px;border-radius:50%;border:3px solid rgba(238,180,107,.25);border-top-color:var(--copper-hi);animation:camWaitSpin .8s linear infinite"></div>'
+      +'<div style="font-family:\'Inter\',system-ui,-apple-system,\'Segoe UI\',Roboto,sans-serif;font-size:11px;letter-spacing:.16em;color:#dcd6c9">OPENING CAMERA…</div>'
+    +'</div>'
+    +'<style>@keyframes camWaitSpin{to{transform:rotate(360deg)}}</style>'
     +'<div style="position:absolute;top:0;left:0;right:0;padding:14px 16px 30px;background:linear-gradient(180deg,rgba(0,0,0,.65),transparent);display:flex;align-items:center;justify-content:space-between">'
       +'<div style="font-family:\'Inter\',system-ui,-apple-system,\'Segoe UI\',Roboto,sans-serif;font-size:11px;letter-spacing:.24em;color:var(--copper-hi)">▣ SCAN A DOCKET</div>'
       +'<button id="camX" style="background:none;border:0;color:#dcd6c9;font-size:22px;line-height:1;cursor:pointer;padding:4px 6px" aria-label="close">✕</button>'
@@ -22278,7 +22292,16 @@ async function openDocketCam(){
       +'<button id="camGo" aria-label="capture" style="width:68px;height:68px;border-radius:50%;cursor:pointer;border:4px solid var(--copper-hi);background:rgba(238,180,107,.22);box-shadow:0 0 24px rgba(238,180,107,.35)"></button>'
     +'</div>';
   document.body.appendChild(o);
-  document.getElementById('camVid').srcObject=stream;
+  const vid=document.getElementById('camVid');
+  vid.srcObject=stream;
+  try{vid.play().catch(()=>{});}catch(e){}
+  /* first real frame → drop the spinner; never comes → bail out cleanly instead of a black freeze */
+  const clearWait=()=>{const w=document.getElementById('camWait'); if(w)w.remove(); if(camWatchdog){clearTimeout(camWatchdog);camWatchdog=null;}};
+  vid.addEventListener('loadeddata',clearWait,{once:true});
+  camWatchdog=setTimeout(()=>{
+    if(!vid.videoWidth){ killDocketCam(); toast('⚓ Camera stalled — tap SCAN A DOCKET again, or use PICTURE GALLERY'); try{fallback();}catch(e){} }
+    else clearWait();
+  },7000);
   document.getElementById('camX').addEventListener('click',()=>{scanAborted=true;killDocketCam();});
   document.getElementById('camGo').addEventListener('click',async()=>{
     if(camShooting||!camStream)return; camShooting=true;
@@ -22476,7 +22499,11 @@ function scanLearn(text, parsed, sealed){
   if(!text||!sealed)return 0; parsed=parsed||{};
   const rawLines=String(text).split("\n").map(lessonClean).filter(s=>s.length>=2&&s.length<=40);
   const lessons=[];
-  const add=(field,token,val)=>{ token=lessonClean(token); val=lessonClean(val);
+  /* #learnfix(sep3) — the "*" wildcard token (every sealed vessel is a lesson, below) was
+     being scrubbed to "" by lessonClean and thrown away before it ever stored, so the fuzzy
+     ship snap only ever fed on MISREADS and the board — never on the ships casuals typed.
+     The wildcard now passes through untouched. */
+  const add=(field,token,val)=>{ token=(token==="*")?"*":lessonClean(token); val=lessonClean(val);
     if(!token||!val||token===val)return; if(field==="terminal"&&SCAN_TERMS.indexOf(val)<0)return;
     if(!lessons.some(l=>l.field===field&&l.token===token))lessons.push({field,token,val}); };
   /* terminal — the operator the human chose */
