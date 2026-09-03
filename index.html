@@ -12541,10 +12541,13 @@ setInterval(()=>{
 function myBoardStatus(r){
   const isAM=r.slot.endsWith("AM");
   const job=DOCKETS.find(j=>j.date===r.date&&(isAM?j.shift==="Day":j.shift!=="Day"));
+  /* #faces(sep3) — the season may dress these; the WORD never changes. Falls back
+     to the house face when there is no season, no costume, or decor is off. */
+  const F=(k,d)=>{ try{ return (window.seasonFace&&window.seasonFace(k,d))||d; }catch(e){ return d; } };
   const V=(c,e,w)=>'<div class="rb-stat '+c+'"><div class="rb-emoji">'+e+'</div><div class="rb-word">'+w+'</div></div>';
   if(job){
     const st=new Date(r.date+"T"+(isAM?"08:00":"18:00"));
-    return (Date.now()<st.getTime()+8*3600000)?V('prog','💪','Working'):V('worked','🤑','Worked');
+    return (Date.now()<st.getTime()+8*3600000)?V('prog',F('prog','💪'),'Working'):V('worked',F('worked','🤑'),'Worked');
   }
   if(r.act==null)return '';
   /* #fix(derivedAM) — same class as the render guard: a partial row (wire patch or
@@ -12556,7 +12559,7 @@ function myBoardStatus(r){
   if(savedAcct.since && r.date < savedAcct.since)return '';
   /* #noflop0 — the window never advanced, so no card was reached. Nobody was "at the
      window" on a held board, not even the casual it was sitting on. */
-  if(boardMoved(r)===false)return V('miss','⚑','Board Held');
+  if(boardMoved(r)===false)return V('miss',F('held','⚑'),'Board Held');
   /* #cardpos(aug2) — read the WHOLE card, not just its letter. The old rule compared
      letters only (dd<act ⇒ Flop), so every casual sharing the board's START letter was
      told they flopped — including the ones whose number sat BEHIND the opening card.
@@ -12566,20 +12569,20 @@ function myBoardStatus(r){
      the prediction were calling one casual two different things. Now both read the card. */
   const myCard=savedAcct.id;
   switch(cardRunPos(myCard,r.start,r.end)){
-    case 'called': return V('flop','😢','Flop');
-    case 'at':     return V('close','😬','At the Window');
-    case 'past':   return V('miss','😴','Not Called');   // behind the opening card
-    case 'short':  return V('miss','😴','Not Called');   // it died before your number
+    case 'called': return V('flop',F('flop','😢'),'Flop');
+    case 'at':     return V('close',F('close','😬'),'At the Window');
+    case 'past':   return V('miss',F('miss','😴'),'Not Called');   // behind the opening card
+    case 'short':  return V('miss',F('miss','😴'),'Not Called');   // it died before your number
   }
   /* no sealed end card on the record — fall back to the letter ladder, minus the one
      case letters always got wrong: your number sitting behind the start card. */
   const myL=myCard[0];
   const dd=(AZ.indexOf(myL)-AZ.indexOf(r.start[0])+26)%26;
   const myN=parseInt(myCard.slice(1),10), stN=parseInt(String(r.start).slice(1),10);
-  if(dd===0&&isFinite(myN)&&isFinite(stN)&&myN<stN)return V('miss','😴','Not Called');
-  if(dd<r.act)return V('flop','😢','Flop');
-  if(dd===r.act)return V('close','😬','At the Window');
-  return V('miss','😴','Not Called');
+  if(dd===0&&isFinite(myN)&&isFinite(stN)&&myN<stN)return V('miss',F('miss','😴'),'Not Called');
+  if(dd<r.act)return V('flop',F('flop','😢'),'Flop');
+  if(dd===r.act)return V('close',F('close','😬'),'At the Window');
+  return V('miss',F('miss','😴'),'Not Called');
 }
 /* ===== #37 — THE FLOP COUNT =====
    We can't tell exactly WHO flopped, but the board tells us HOW MANY:
@@ -30969,6 +30972,372 @@ apply(true);   /* #perf(aug24) — boot pass: set the class, skip the resize sto
   document.addEventListener('visibilitychange',function(){if(!document.hidden)applySeason()});
   window.addEventListener('focus',applySeason);
 })();
+</script>
+
+<style id="decor-v1">
+/* ═══════════ #decor(sep3) — THE SEASONS MOVE ═══════════
+   Until now a season was a PALETTE and nothing else: the same app in different
+   colours. This layer gives the marquee holidays something that actually moves —
+   snow and a light garland at Christmas, bats and fog at Halloween — without
+   touching one line of the app underneath it.
+
+   WHERE IT SITS. z-index 2: above the cards (.stage is z-index 1) so snow falls
+   in FRONT of the log, but under the header and the nav (both z-index 40) and
+   under every sheet (74+), so the working chrome is never dressed and opening
+   the camera, the bank or the profile hides the weather entirely.
+
+   WHAT IT COSTS. Every piece is a transform/opacity CSS animation — the two
+   properties the compositor animates without waking the main thread — so the
+   whole show runs off the render thread. No JS animation loop, no canvas, no
+   images: the glyphs are emoji and the snow is a CSS dot. Nothing is built
+   until the boot loader has left the screen, the count scales down on a narrow
+   phone, it pauses the moment the app goes to the background, and
+   prefers-reduced-motion gets the ornaments standing still and nothing flying.
+
+   THE RULE THIS FOLLOWS. Not every holiday gets confetti. Memorial Day,
+   Veterans Day, MLK Day and Presidents Day are dressed in colour alone — a
+   remembrance day is not a party, and falling anything would read as one.
+   That is a judgement, not a technical limit: give a season a row in
+   SEASON_DECOR below and it moves.
+
+   PREVIEW (your device only): setSeasonFlag('xmas') · setSeasonFlag('halloween')
+   setSeasonFlag('auto') hands it back to the calendar. setDecor('off') kills the
+   motion and keeps the colours; setDecor('on') brings it back. */
+.sn-decor{position:fixed;inset:0;z-index:2;pointer-events:none;overflow:hidden;contain:strict}
+.sn-decor *{position:absolute;pointer-events:none}
+html.daylight .sn-decor{opacity:.5}
+.sn-pause .sn-decor *{animation-play-state:paused!important}
+
+/* ── falling: snow, hearts, clover, leaves ─────────────────────────────── */
+.sn-fall{top:0;left:var(--x);font-size:calc(var(--s) * 1px);line-height:1;
+  animation:snFall var(--d) linear var(--dl) infinite}
+.sn-fall.dot{width:calc(var(--s) * 1px);height:calc(var(--s) * 1px);border-radius:50%;
+  background:radial-gradient(circle at 35% 35%,#fff,rgba(255,255,255,.65) 60%,rgba(255,255,255,0));
+  box-shadow:0 0 6px rgba(255,255,255,.55)}
+@keyframes snFall{
+  0%{transform:translate3d(0,-14vh,0) rotate(0deg);opacity:0}
+  10%{opacity:var(--o)}
+  90%{opacity:var(--o)}
+  100%{transform:translate3d(var(--dx),114vh,0) rotate(var(--rot));opacity:0}
+}
+/* ── rising: embers, sparks, bubbles ──────────────────────────────────── */
+.sn-rise{bottom:0;left:var(--x);width:calc(var(--s) * 1px);height:calc(var(--s) * 1px);
+  border-radius:50%;background:var(--c);box-shadow:0 0 8px var(--c);
+  animation:snRise var(--d) ease-in var(--dl) infinite}
+@keyframes snRise{
+  0%{transform:translate3d(0,6vh,0) scale(1);opacity:0}
+  14%{opacity:var(--o)}
+  100%{transform:translate3d(var(--dx),-108vh,0) scale(.3);opacity:0}
+}
+/* ── flying: bats. Outer carries X, middle bobs, inner flaps. ─────────── */
+.sn-fly{top:var(--y);left:0;animation:snFlyX var(--d) linear var(--dl) infinite}
+.sn-fly > i{position:relative;display:block;animation:snFlyY calc(var(--d) / 5) ease-in-out infinite alternate}
+.sn-fly > i > b{position:relative;display:block;font-size:calc(var(--s) * 1px);line-height:1;opacity:var(--o);
+  animation:snFlap .34s ease-in-out infinite alternate}
+@keyframes snFlyX{from{transform:translate3d(-22vw,0,0)}to{transform:translate3d(122vw,0,0)}}
+@keyframes snFlyY{from{transform:translateY(0)}to{transform:translateY(var(--bob))}}
+@keyframes snFlap{from{transform:scaleX(1)}to{transform:scaleX(.66)}}
+
+/* ── the props: what sits on the floor and in the corners ─────────────── */
+.sn-prop{bottom:calc(74px + env(safe-area-inset-bottom));font-size:calc(var(--s) * 1px);line-height:1;
+  opacity:var(--o);transform-origin:50% 100%;filter:drop-shadow(0 4px 10px rgba(0,0,0,.5));
+  animation:snSway var(--d) ease-in-out var(--dl) infinite alternate}
+.sn-prop.l{left:8px}.sn-prop.r{right:8px}
+.sn-prop.top{bottom:auto;top:calc(var(--tbH,0px) + 2px);transform-origin:50% 0;animation:none}
+@keyframes snSway{from{transform:rotate(-3.5deg)}to{transform:rotate(3.5deg)}}
+
+/* ── the garland: harbor lights strung under the header ───────────────── */
+.sn-lights{top:calc(var(--tbH,0px) - 1px);left:0;right:0;height:18px;
+  display:flex;justify-content:space-around;align-items:flex-start}
+.sn-lights::before{content:"";position:absolute;left:0;right:0;top:3px;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.16) 8%,rgba(255,255,255,.16) 92%,transparent)}
+.sn-lights i{position:relative;top:4px;width:6px;height:6px;border-radius:50%;background:var(--c);
+  box-shadow:0 0 8px var(--c),0 0 16px var(--c);animation:snBlink 2.6s ease-in-out var(--dl) infinite}
+@keyframes snBlink{0%,100%{opacity:1}50%{opacity:.25}}
+
+/* ── the fog bank: one blurred sheet drifting along the floor ─────────── */
+/* #perf — this used to carry filter:blur(26px). A blur that size over a quarter of
+   the screen is re-rasterised every frame it moves and cost ~4fps on a throttled
+   phone all by itself. A radial gradient with a soft stop is ALREADY a blur, and
+   free — same fog bank, none of the bill. */
+.sn-fog{left:-30%;right:-30%;bottom:calc(60px + env(safe-area-inset-bottom));height:26vh;
+  background:radial-gradient(ellipse 60% 100% at 30% 100%,var(--c),transparent 72%),
+             radial-gradient(ellipse 50% 100% at 75% 100%,var(--c),transparent 72%);
+  opacity:var(--o);animation:snDrift 26s ease-in-out infinite alternate}
+@keyframes snDrift{from{transform:translate3d(-6%,0,0)}to{transform:translate3d(6%,0,0)}}
+
+/* reduced motion: the ornaments stay, the weather stops */
+@media (prefers-reduced-motion:reduce){
+  .sn-fall,.sn-rise,.sn-fly,.sn-fog{display:none}
+  .sn-prop,.sn-lights i{animation:none}
+}
+/* ── #greet — the title card. Inherits the season's tokens, so it is always in-skin. */
+#snGreet{position:fixed;inset:0;z-index:76;display:flex;align-items:center;justify-content:center;
+  padding:24px;pointer-events:none;opacity:0;transition:opacity .38s ease;
+  background:radial-gradient(ellipse 80% 50% at 50% 50%,rgba(0,0,0,.55),rgba(0,0,0,.72))}
+#snGreet.on{opacity:1}
+/* the card is OPAQUE on purpose: at 93% the neon underneath bled through the
+   wordmark and it read like a toast instead of a title card */
+#snGreet .sg-card{pointer-events:auto;cursor:pointer;text-align:center;max-width:330px;width:100%;
+  padding:26px 22px 20px;border-radius:20px;border:1px solid var(--copper-hi);
+  background:linear-gradient(180deg,#231e40,#0a0814);
+  box-shadow:0 24px 60px rgba(0,0,0,.6),0 0 34px rgba(var(--scg,77,226,255),.30),inset 0 0 28px rgba(var(--scg,77,226,255),.10);
+  transform:translateY(14px) scale(.96);transition:transform .42s cubic-bezier(.2,.9,.3,1.2)}
+#snGreet.on .sg-card{transform:none}
+#snGreet .sg-glyph{font-size:52px;line-height:1;margin-bottom:10px;
+  filter:drop-shadow(0 0 18px rgba(var(--scg,77,226,255),.55));animation:sgPop .7s ease-out both}
+#snGreet .sg-big{font-family:'Anton',sans-serif;font-size:27px;line-height:1.05;letter-spacing:.045em;
+  color:var(--bone);text-shadow:0 0 20px rgba(var(--scg,77,226,255),.55),0 0 46px rgba(var(--scg,77,226,255),.25)}
+#snGreet .sg-sub{font-family:'Barlow Condensed',system-ui,sans-serif;font-size:16px;line-height:1.3;
+  color:var(--steel);margin-top:7px}
+#snGreet .sg-rule{height:1px;margin:14px 12px 9px;
+  background:linear-gradient(90deg,transparent,var(--copper-hi),transparent);opacity:.7}
+#snGreet .sg-from{font-family:'Inter',system-ui,sans-serif;font-size:8.5px;letter-spacing:.26em;color:var(--copper)}
+@keyframes sgPop{0%{transform:scale(.4) rotate(-12deg);opacity:0}70%{transform:scale(1.12) rotate(4deg)}100%{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){#snGreet .sg-glyph{animation:none}#snGreet .sg-card{transition:none;transform:none}}
+
+</style>
+<script>
+/* ═══ #decor(sep3) — the engine. See the sheet above for what it is and why. ═══
+   ADDING A SEASON: one row here, keyed by the season id in window.SEASONS.
+     fall  {n, glyph|'dot', size:[min,max], dur:[min,max], opacity}
+     rise  {n, color, size, dur, opacity}          — embers, sparks, bubbles
+     fly   {n, glyph, size, dur, opacity}          — crosses the screen on a bob
+     props [[glyph, 'l'|'r'|'l top'|'r top', size, opacity], …]
+     lights [colours…]                             — the garland under the header
+     fog   {color, opacity}
+   Leave a season out and it stays a pure palette, which is the right answer for
+   the remembrance days. */
+/* ═══ #faces(sep3) — THE OUTCOME FACES PUT ON A COSTUME ═══
+   The six faces on the board record (Working · Worked · At the Window · Flop ·
+   Not Called · Board Held) are the app's own little cast, so the seasons get to
+   dress them too. THE WORD UNDER EACH FACE NEVER CHANGES — the emoji is the
+   costume, the label is the record — so a casual reading the log at a glance
+   still reads the same six outcomes on Halloween as in March.
+   A season overrides only the faces it has a good idea for; anything it leaves
+   out keeps the house face. Same rule as the decor: the remembrance days get
+   nothing, because a costume on Memorial Day is the wrong joke. */
+window.SEASON_FACES={
+  halloween:{ prog:'🧟', worked:'🍬', close:'😱', flop:'👻', miss:'💀', held:'⚰' },
+  xmas:{      prog:'🧝', worked:'🎁', close:'🔔', flop:'🧦', miss:'☃'          },
+  valentine:{ prog:'💌', worked:'💝', close:'😍', flop:'💔', miss:'🥀'         },
+  thanksgiving:{ prog:'🍳', worked:'🍗', close:'🥧', flop:'🦴', miss:'🍽'      },
+  stpats:{    worked:'🍀', close:'🌈'                                          },
+  newyear:{   worked:'🥂', close:'⏳'                                          },
+  july4:{     worked:'🎆'                                                      },
+  dogdays:{   prog:'🥵', miss:'🏖'                                             },
+  labor:{     prog:'🔧', worked:'⚒'                                           },
+  mayday:{    worked:'✊'                                                      },
+  earth:{     worked:'🌱'                                                      },
+  juneteenth:{worked:'✊'                                                      }
+};
+window.SEASON_DECOR={
+  xmas:{ fall:{n:20,glyph:'dot',size:[3,7],dur:[9,17],opacity:.75},
+         lights:['#ff6b6b','#7ce0a0','#ffd53d','#4de2ff'],
+         props:[['🎄','l',44,.55],['🎄','r',34,.4]] },
+  halloween:{ fly:{n:4,glyph:'🦇',size:[20,30],dur:[15,26],opacity:.5},
+              fog:{color:'rgba(157,78,221,.16)',opacity:1},
+              props:[['🎃','l',40,.6],['💀','r',34,.55],['🕸','l top',34,.28],['🕸','r top',34,.28]] },
+  thanksgiving:{ fall:{n:12,glyph:'🍂',size:[14,24],dur:[11,20],opacity:.5},
+                 props:[['🦃','l',38,.5],['🌽','r',30,.4]] },
+  valentine:{ fall:{n:14,glyph:'❤',size:[12,20],dur:[10,19],opacity:.45},
+              fall2:{n:7,glyph:'🌹',size:[14,22],dur:[12,21],opacity:.4},
+              props:[['💐','l',36,.5],['🌹','r',26,.4]] },
+  stpats:{ fall:{n:14,glyph:'☘',size:[13,21],dur:[10,18],opacity:.5} },
+  newyear:{ rise:{n:16,color:'#ffe9a8',size:[3,6],dur:[7,13],opacity:.8},
+            lights:['#ffe9a8','#ffffff','#4a6fd4','#ffe9a8'],
+            props:[['🎆','l',34,.45],['🎆','r',28,.35]] },
+  july4:{ rise:{n:18,color:'#ff7b7b',size:[3,6],dur:[6,12],opacity:.75},
+          lights:['#d02c2c','#ffffff','#1f4fa8','#ffffff'] },
+  mayday:{ rise:{n:14,color:'#ff8f74',size:[3,6],dur:[8,15],opacity:.7} },   /* the brazier on the line */
+  labor:{ rise:{n:14,color:'#ff7a18',size:[2,5],dur:[6,11],opacity:.7} },    /* sparks off the steel */
+  dogdays:{ fall:{n:14,glyph:'dot',size:[2,4],dur:[16,26],opacity:.35} },    /* dust in the August light */
+  earth:{ rise:{n:14,color:'#6fd8cc',size:[4,9],dur:[11,20],opacity:.5} },   /* the harbor breathing */
+  juneteenth:{ rise:{n:12,color:'#ffd166',size:[3,6],dur:[9,16],opacity:.55} }
+  /* mlk · presidents · memorial · veterans — colour only, on purpose. */
+};
+(function(){try{
+  var LAYER=null, BUILT=null;
+  function on(){ try{ return localStorage.getItem('shadowhook_decor')!=='off'; }catch(e){ return true; } }
+  function rnd(a,b){ return a+Math.random()*(b-a); }
+  function pick(r){ return (r&&r.length)?r[0]+Math.random()*(r[1]-r[0]):0; }
+  function el(cls,style,html){ var e=document.createElement(cls==='lights'?'div':'i');
+    e.className='sn-'+cls; if(style)e.style.cssText=style; if(html!=null)e.innerHTML=html; return e; }
+
+  function seasonId(){ var id=null,h=document.documentElement;
+    (window.SEASONS||[]).forEach(function(s){ if(h.classList.contains('season-'+s.id))id=s.id; }); return id; }
+  /* myBoardStatus() asks this for every row it draws; it is defensive on its own
+     side, so this can arrive late (it does — the boards are drawn during boot). */
+  window.seasonFace=function(kind,fallback){
+    try{ if(!on())return fallback;
+      var f=(window.SEASON_FACES||{})[seasonId()||''];
+      return (f&&f[kind])||fallback;
+    }catch(e){ return fallback; }
+  };
+
+  function wipe(){ if(LAYER&&LAYER.parentNode)LAYER.parentNode.removeChild(LAYER); LAYER=null; BUILT=null; }
+
+  function build(id){
+    var spec=(window.SEASON_DECOR||{})[id]; if(!spec)return;
+    var narrow=(window.innerWidth||420)<380, k=narrow?.65:1;   /* a small phone carries fewer */
+    var L=document.createElement('div'); L.className='sn-decor'; L.setAttribute('aria-hidden','true');
+
+    [spec.fall,spec.fall2].forEach(function(f){ if(!f)return; var n=Math.max(1,Math.round(f.n*k));
+      for(var i=0;i<n;i++){
+        var s=pick(f.size);
+        L.appendChild(el('fall'+(f.glyph==='dot'?' dot':''),
+          '--x:'+rnd(-4,100).toFixed(1)+'%;--s:'+s.toFixed(1)+';--d:'+pick(f.dur).toFixed(1)+'s;'
+          +'--dl:-'+rnd(0,18).toFixed(1)+'s;--dx:'+rnd(-9,9).toFixed(1)+'vw;'
+          +'--rot:'+Math.round(rnd(-320,320))+'deg;--o:'+(f.opacity*rnd(.6,1)).toFixed(2),
+          f.glyph==='dot'?'':f.glyph));
+      } });
+
+    if(spec.rise){ var r=spec.rise, rn=Math.max(1,Math.round(r.n*k));
+      for(var j=0;j<rn;j++){
+        L.appendChild(el('rise',
+          '--x:'+rnd(2,98).toFixed(1)+'%;--s:'+pick(r.size).toFixed(1)+';--d:'+pick(r.dur).toFixed(1)+'s;'
+          +'--dl:-'+rnd(0,14).toFixed(1)+'s;--dx:'+rnd(-7,7).toFixed(1)+'vw;--c:'+r.color+';'
+          +'--o:'+(r.opacity*rnd(.6,1)).toFixed(2)));
+      } }
+
+    if(spec.fly){ var y=spec.fly, yn=Math.max(1,Math.round(y.n*k));
+      for(var m=0;m<yn;m++){
+        var w=el('fly','--y:'+rnd(12,62).toFixed(1)+'vh;--s:'+pick(y.size).toFixed(1)+';'
+          +'--d:'+pick(y.dur).toFixed(1)+'s;--dl:-'+rnd(0,20).toFixed(1)+'s;'
+          +'--bob:'+rnd(-9,-3).toFixed(1)+'vh;--o:'+(y.opacity*rnd(.7,1)).toFixed(2),
+          '<i><b>'+y.glyph+'</b></i>');
+        L.appendChild(w);
+      } }
+
+    if(spec.props){ spec.props.forEach(function(p,ix){
+        L.appendChild(el('prop '+p[1],'--s:'+p[2]+';--o:'+p[3]+';--d:'+(4.5+ix*.7).toFixed(1)+'s;--dl:-'+(ix*1.3).toFixed(1)+'s',p[0]));
+      }); }
+
+    if(spec.lights){ var g=document.createElement('div'); g.className='sn-lights';
+      var count=narrow?11:14;
+      for(var q=0;q<count;q++){ var b=document.createElement('i');
+        b.style.cssText='--c:'+spec.lights[q%spec.lights.length]+';--dl:-'+(q*.31).toFixed(2)+'s'; g.appendChild(b); }
+      L.appendChild(g); }
+
+    if(spec.fog){ L.appendChild(el('fog','--c:'+spec.fog.color+';--o:'+spec.fog.opacity)); }
+
+    document.body.appendChild(L); LAYER=L; BUILT=id;
+  }
+
+  var FACED=null;
+  function paint(){
+    try{
+      var id=seasonId();
+      /* the record is drawn during boot, before this block exists — and again
+         whenever the season turns over — so hand it back its costumes once */
+      var want=(window.SEASON_FACES||{})[id||'']?id:null;
+      if(want!==FACED){ FACED=want; try{ if(typeof renderRecentBoards==='function')renderRecentBoards(); }catch(e){} }
+      if(!on()||!id||!(window.SEASON_DECOR||{})[id]){ if(LAYER)wipe(); return; }
+      if(BUILT===id)return;                 /* already dressed for this season */
+      wipe(); build(id);
+    }catch(e){ try{console.warn('[decor]',e)}catch(_){} }
+  }
+  window.decorPaint=paint;
+  window.setDecor=function(v){ try{ v==='off'?localStorage.setItem('shadowhook_decor','off')
+    :localStorage.removeItem('shadowhook_decor'); }catch(e){} FACED='?'; paint();
+    return v==='off'?'decor off — colours stay':'decor on'; };
+
+  /* THE SEASON CAN CHANGE UNDER US and there is no one place to hook: the class is
+     set pre-paint in <head>, again by applySeason on the hourly re-check and on
+     foreground, and by setSeasonFlag — which calls its own closure copy, not
+     window.applySeason, so wrapping that function catches nothing (it looked like
+     it worked until a preview switch changed the colours and left the snow). Watch
+     the attribute itself instead: one observer on <html>, fires only when the class
+     list actually changes, catches every path including ones added later. */
+  try{
+    var mo=new MutationObserver(function(){ paint(); });
+    mo.observe(document.documentElement,{attributes:true,attributeFilter:['class']});
+  }catch(e){
+    var _as=window.applySeason;
+    if(typeof _as==='function'){ window.applySeason=function(){ var r=_as.apply(this,arguments); try{paint();}catch(e2){} return r; }; }
+  }
+
+  /* backgrounded app pays nothing */
+  document.addEventListener('visibilitychange',function(){
+    document.body.classList.toggle('sn-pause',document.hidden);
+    if(!document.hidden)paint();
+  });
+
+  /* wait for the loader to leave, exactly like the iPhone gate — the boot is
+     busy enough without building weather on top of it */
+  function arm(){ var t0=Date.now(), iv=setInterval(function(){
+      if(!document.getElementById('boot')||Date.now()-t0>9000){ clearInterval(iv); paint();
+        setTimeout(function(){ try{ window.greetMaybe&&greetMaybe(); }catch(e){} },700); }
+    },300); }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',arm,{once:true}); else arm();
+}catch(e){ try{console.warn('[decor]',e)}catch(_){} }})();
+
+/* ═══ #greet(sep3) — THE GREETING, ONCE A DAY ═══
+   A title card on the first open of each day inside a holiday window: the
+   season's own colours (it inherits the skin's tokens, so it is never off-brand),
+   its glyphs, the greeting, and one line underneath in the Order's voice.
+   Rules it keeps: once per day per season per device (localStorage), never
+   during boot, never over the gate, taps away, walks itself off after 4.5s,
+   and it is a CARD — not a modal — so nothing is blocked behind it.
+   THE COPY IS ALL RIGHT HERE. Edit a line, change what the Order says.
+   Preview: greetShow('xmas') · greetReset() to see it again today. */
+window.SEASON_GREET={
+  newyear:     ['🎆','HAPPY NEW YEAR','A new book opens. Same hands, same hook.'],
+  mlk:         ['✊','HONORING DR. KING','“All labor that uplifts humanity has dignity.”'],
+  valentine:   ['💝',"HAPPY VALENTINE'S DAY",'Somebody at home is proud of you.'],
+  presidents:  ['🎩','PRESIDENTS DAY','The docks run either way.'],
+  stpats:      ['☘',"HAPPY ST PATRICK'S DAY",'May your board move early.'],
+  earth:       ['🌍','HAPPY EARTH DAY','One harbor. Look after it.'],
+  mayday:      ['⚒','HAPPY MAY DAY','An injury to one is an injury to all.'],
+  memorial:    ['🎖','MEMORIAL DAY','We remember the ones who never came home.'],
+  juneteenth:  ['✊','HAPPY JUNETEENTH','Freedom day. Earned, not given.'],
+  july4:       ['🎇','HAPPY FOURTH','Mind the traffic on the 710.'],
+  dogdays:     ['☀','DOG DAYS','Drink water. Watch the heat out there.'],
+  labor:       ['⚒','HAPPY LABOR DAY','Every hour on the book was fought for.'],
+  halloween:   ['🎃','HAPPY HALLOWEEN','Watch your back in the rows tonight.'],
+  veterans:    ['🎖','VETERANS DAY','To every casual who served — thank you.'],
+  thanksgiving:['🦃','HAPPY THANKSGIVING','Grateful for the ones who work the holiday.'],
+  xmas:        ['🎄','MERRY CHRISTMAS','From the Order — mind the ice on the ladder.']
+};
+(function(){try{
+  var KEY='shadowhook_greeted';
+  function seen(id){ try{ return localStorage.getItem(KEY)===id+'|'+new Date().toDateString(); }catch(e){ return true; } }
+  function mark(id){ try{ localStorage.setItem(KEY,id+'|'+new Date().toDateString()); }catch(e){} }
+  window.greetReset=function(){ try{localStorage.removeItem(KEY)}catch(e){} return 'greeting armed again'; };
+
+  window.greetShow=function(id){
+    try{
+      var g=(window.SEASON_GREET||{})[id]; if(!g)return;
+      if(document.getElementById('snGreet'))return;
+      var w=document.createElement('div'); w.id='snGreet'; w.setAttribute('role','status');
+      w.innerHTML='<div class="sg-card"><div class="sg-glyph">'+g[0]+'</div>'
+        +'<div class="sg-big">'+g[1]+'</div><div class="sg-sub">'+g[2]+'</div>'
+        +'<div class="sg-rule"></div><div class="sg-from">THE ORDER OF THE SHADOW HOOK</div></div>';
+      document.body.appendChild(w);
+      requestAnimationFrame(function(){ w.classList.add('on'); });
+      var go=function(){ if(!w.parentNode)return; w.classList.remove('on');
+        setTimeout(function(){ try{w.remove()}catch(e){} },420); };
+      w.addEventListener('click',go); setTimeout(go,4500);
+      mark(id);
+    }catch(e){ try{console.warn('[greet]',e)}catch(_){} }
+  };
+
+  window.greetMaybe=function(){
+    try{
+      if(typeof isGuest==='function'&&isGuest())return;        /* not at the gate */
+      if(document.documentElement.classList.contains('at-gate'))return;
+      if(typeof window.setDecor==='function'){ try{ if(localStorage.getItem('shadowhook_decor')==='off')return; }catch(e){} }
+      var id=null,h=document.documentElement;
+      (window.SEASONS||[]).forEach(function(s){ if(h.classList.contains('season-'+s.id))id=s.id; });
+      if(!id||seen(id))return;
+      greetShow(id);
+    }catch(e){}
+  };
+}catch(e){}})();
+</script>
+
+<script>
+/* #decor — the seasons block above closed this script; the rest of it resumes here. */
 /* #ioskb — iOS: the on-screen keyboard floats OVER the page instead of resizing
    it (Android resizes the viewport), so every fixed-bottom input — the room
    composer, sheet fields, the talk drawer, the HUD scan bar — vanished behind
