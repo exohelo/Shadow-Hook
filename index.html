@@ -19718,7 +19718,14 @@ function dmPeerName(uid){
   const t=DM.threads[uid]; if(t&&t.h)return t.h;
   if(DM.friends[uid])return DM.friends[uid];
   const r=((typeof FLOOR!=='undefined'&&FLOOR.roster)||[]).find(x=>x.uid===uid);
-  return r?r.h:'a casual';
+  if(r)return r.h;
+  /* #dmname(sep03) — a thread you started yourself (not a reply, not a friend,
+     not someone currently online) had no handle anywhere to show, so it fell
+     back to the literal "a casual" placeholder even though the message itself
+     went to the right person. The full Members roster (loaded for the Members
+     list) already has everyone's handle by id — check that before giving up. */
+  const mm=((typeof MEMBERS!=='undefined'&&MEMBERS)||[]).find(x=>x.id===uid);
+  return mm?mm.handle:'a casual';
 }
 function dmFold(m,fresh){
   const uid=window.__shkUid; if(!uid||!m)return;
@@ -19983,6 +19990,10 @@ function _dmView(){
 function openDmThread(uid,h){
   const v=_dmView();
   DM.openPeer=uid; DM.openPeerH=h||dmPeerName(uid);
+  /* #dmname(sep03) — we already know the handle here (it came from wherever this
+     was opened from); save it on the thread right away so the Messages list
+     shows the right name even before dmPeerName's other lookups would find it. */
+  if(h){ const t=DM.threads[uid]||(DM.threads[uid]={h:null,msgs:[]}); if(!t.h)t.h=h; }
   try{document.getElementById('dmCardSheet')&&document.getElementById('dmCardSheet').classList.remove('on');}catch(e){}
   try{document.getElementById('floorSheet')&&document.getElementById('floorSheet').classList.remove('on');}catch(e){}
   v.querySelector('#dmTName').textContent=DM.openPeerH;
