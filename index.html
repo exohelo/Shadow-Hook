@@ -24643,19 +24643,37 @@ async function processDocketPhoto(f){
   else scanHandOff(r.p);
 }
 /* #67 \u2014 read and log several docket images in one pass */
+/* #batchorder(sep3) \u2014 SEAL IN BOARD ORDER, NOT PICK ORDER. A batch used to seal
+   each docket the moment its photo was read \u2014 i.e. in whatever order the casual
+   picked the files, which a camera roll usually hands you newest-first. The live
+   board scores a swipe by BOARD position, not upload order (see #tape below), so
+   sealing out of pick order fed submitLiveCall positions out of sequence and
+   manufactured "behind the reel" rows that had nothing to do with when those
+   jobs were actually worked \u2014 purely an artifact of file order. Reading still
+   runs one photo at a time so the progress line and OCR are unchanged; only the
+   SEAL \u2014 the point where a docket hits the log and the live board \u2014 is now
+   deferred until every shot in the batch is read, then replayed in ascending
+   board-position order. */
 async function processDocketBatch(files){
   scanAborted=false;
   document.getElementById('scanSheet').classList.add('on');
   scanSpinOn(true);
-  let sealed=0; const unread=[];
+  let sealed=0; const unread=[]; const ready=[];
   for(let i=0;i<files.length;i++){
     if(scanAborted)break;
     const label="Docket "+(i+1)+" of "+files.length+" \u00b7 ";
     scanSt(label+"developing the shot\u2026");
     const r=await readDocketShot(files[i],label);
     if(scanAborted)break;
-    if(r&&r.readOk&&r.p.pos){window.scanThumb=r.thumb;window.scanLast={text:r.text||"",p:JSON.parse(JSON.stringify(r.p||{}))};sealScan(r.p);sealed++;}
-    else{unread.push(files[i].name);}
+    if(r&&r.readOk&&r.p.pos)ready.push(r);
+    else unread.push(files[i].name);
+  }
+  ready.sort(function(a,b){return posVal(a.p.pos)-posVal(b.p.pos);});
+  for(let i=0;i<ready.length;i++){
+    if(scanAborted)break;
+    const r=ready[i];
+    window.scanThumb=r.thumb;window.scanLast={text:r.text||"",p:JSON.parse(JSON.stringify(r.p||{}))};
+    sealScan(r.p);sealed++;
   }
   window.scanThumb=null;
   closeScanSheet();
@@ -31071,15 +31089,24 @@ html.daylight .sn-decor{opacity:.5}
   .sn-fall,.sn-rise,.sn-fly,.sn-fog{display:none}
   .sn-prop,.sn-lights i{animation:none}
 }
-/* ── #greet — the title card. Inherits the season's tokens, so it is always in-skin. */
+/* ── #greet — the title card. The CARD ITSELF never changes: it is always the
+   same dark plate no matter what theme or season is running (see #dock2 note
+   below). #fixdaylight(sep3) — but its TEXT used to pull var(--bone)/--steel/
+   --copper/--copper-hi, which the daylight theme (and season-labor.daylight in
+   particular) redefine to DARK ink meant for a LIGHT background. On a white/
+   daylight phone the card kept its dark plate but the type flipped to near-
+   black — headline and border both nearly invisible on the dark card. The card
+   now carries its OWN fixed palette (--sg-*) so its contrast never depends on
+   which theme or season is active. */
 #snGreet{position:fixed;inset:0;z-index:76;display:flex;align-items:center;justify-content:center;
   padding:24px;pointer-events:none;opacity:0;transition:opacity .38s ease;
-  background:radial-gradient(ellipse 80% 50% at 50% 50%,rgba(0,0,0,.55),rgba(0,0,0,.72))}
+  background:radial-gradient(ellipse 80% 50% at 50% 50%,rgba(0,0,0,.55),rgba(0,0,0,.72));
+  --sg-ink:#f2ecdf;--sg-sub:#c9cfd6;--sg-line:#eeb46b;--sg-foot:#d69a53}
 #snGreet.on{opacity:1}
 /* the card is OPAQUE on purpose: at 93% the neon underneath bled through the
    wordmark and it read like a toast instead of a title card */
 #snGreet .sg-card{pointer-events:auto;cursor:pointer;text-align:center;max-width:330px;width:100%;
-  padding:26px 22px 20px;border-radius:20px;border:1px solid var(--copper-hi);
+  padding:26px 22px 20px;border-radius:20px;border:1px solid var(--sg-line);
   background:linear-gradient(180deg,#231e40,#0a0814);
   box-shadow:0 24px 60px rgba(0,0,0,.6),0 0 34px rgba(var(--scg,77,226,255),.30),inset 0 0 28px rgba(var(--scg,77,226,255),.10);
   transform:translateY(14px) scale(.96);transition:transform .42s cubic-bezier(.2,.9,.3,1.2)}
@@ -31087,12 +31114,12 @@ html.daylight .sn-decor{opacity:.5}
 #snGreet .sg-glyph{font-size:52px;line-height:1;margin-bottom:10px;
   filter:drop-shadow(0 0 18px rgba(var(--scg,77,226,255),.55));animation:sgPop .7s ease-out both}
 #snGreet .sg-big{font-family:'Anton',sans-serif;font-size:27px;line-height:1.05;letter-spacing:.045em;
-  color:var(--bone);text-shadow:0 0 20px rgba(var(--scg,77,226,255),.55),0 0 46px rgba(var(--scg,77,226,255),.25)}
+  color:var(--sg-ink);text-shadow:0 0 20px rgba(var(--scg,77,226,255),.55),0 0 46px rgba(var(--scg,77,226,255),.25)}
 #snGreet .sg-sub{font-family:'Barlow Condensed',system-ui,sans-serif;font-size:16px;line-height:1.3;
-  color:var(--steel);margin-top:7px}
+  color:var(--sg-sub);margin-top:7px}
 #snGreet .sg-rule{height:1px;margin:14px 12px 9px;
-  background:linear-gradient(90deg,transparent,var(--copper-hi),transparent);opacity:.7}
-#snGreet .sg-from{font-family:'Inter',system-ui,sans-serif;font-size:8.5px;letter-spacing:.26em;color:var(--copper)}
+  background:linear-gradient(90deg,transparent,var(--sg-line),transparent);opacity:.7}
+#snGreet .sg-from{font-family:'Inter',system-ui,sans-serif;font-size:8.5px;letter-spacing:.26em;color:var(--sg-foot)}
 @keyframes sgPop{0%{transform:scale(.4) rotate(-12deg);opacity:0}70%{transform:scale(1.12) rotate(4deg)}100%{transform:none;opacity:1}}
 @media (prefers-reduced-motion:reduce){#snGreet .sg-glyph{animation:none}#snGreet .sg-card{transition:none;transform:none}}
 
@@ -31277,10 +31304,44 @@ window.SEASON_DECOR={
    season's own colours (it inherits the skin's tokens, so it is never off-brand),
    its glyphs, the greeting, and one line underneath in the Order's voice.
    Rules it keeps: once per day per season per device (localStorage), never
-   during boot, never over the gate, taps away, walks itself off after 4.5s,
+   during boot, never over the gate, taps away, walks itself off after 7s,
    and it is a CARD — not a modal — so nothing is blocked behind it.
    THE COPY IS ALL RIGHT HERE. Edit a line, change what the Order says.
-   Preview: greetShow('xmas') · greetReset() to see it again today. */
+   Preview: greetShow('xmas') · greetReset() to see it again today.
+
+   #greetfloat(sep3) — FLOATING HOLIDAYS GREET ON THEIR REAL DATE, NOT ALL WEEK.
+   window.SEASONS windows are deliberately a whole week wide so the SKIN (colours,
+   decorations) has a stretch to run in — see #seasons2 up top: "a holiday week,
+   not a holiday day." But the copy in SEASON_GREET says things like "HAPPY LABOR
+   DAY" — that's a claim about TODAY specifically, and for a moving Monday/Thursday
+   holiday most of that week isn't actually the day. A casual opening the app on
+   the Thursday before Labor Day was getting told "Happy Labor Day" three days
+   early. FLOAT_HOLIDAYS below gives the five moving holidays their real
+   nth-weekday-of-month date; greetMaybe() only pops the card on that exact date
+   for them. The skin still dresses the whole window either way — only the
+   greeting narrowed. Fixed-date holidays (Xmas week, Halloween week, etc.) are
+   unaffected. */
+window.FLOAT_HOLIDAYS={
+  mlk:          {month:1,  weekday:1, n:3},   /* 3rd Monday of January */
+  presidents:   {month:2,  weekday:1, n:3},   /* 3rd Monday of February */
+  memorial:     {month:5,  weekday:1, n:-1},  /* LAST Monday of May */
+  labor:        {month:9,  weekday:1, n:1},   /* 1st Monday of September */
+  thanksgiving: {month:11, weekday:4, n:4}    /* 4th Thursday of November */
+};
+/* nth (1-based; n:-1 means "last") weekday(0=Sun..6=Sat) of month(1-12) in year — local dates only. */
+window.nthWeekdayOfMonth=function(year,month,weekday,n){
+  if(n>0){
+    var d=new Date(year,month-1,1), add=(weekday-d.getDay()+7)%7;
+    return new Date(year,month-1,1+add+(n-1)*7);
+  }
+  var last=new Date(year,month,0), sub=(last.getDay()-weekday+7)%7;
+  return new Date(year,month,0-sub);
+};
+window.isFloatingHolidayToday=function(id){
+  var f=(window.FLOAT_HOLIDAYS||{})[id]; if(!f)return true;   /* not a floating one — no extra gate */
+  var now=new Date(), real=window.nthWeekdayOfMonth(now.getFullYear(),f.month,f.weekday,f.n);
+  return now.toDateString()===real.toDateString();
+};
 window.SEASON_GREET={
   newyear:     ['🎆','HAPPY NEW YEAR','A new book opens. Same hands, same hook.'],
   mlk:         ['✊','HONORING DR. KING','“All labor that uplifts humanity has dignity.”'],
@@ -31317,7 +31378,7 @@ window.SEASON_GREET={
       requestAnimationFrame(function(){ w.classList.add('on'); });
       var go=function(){ if(!w.parentNode)return; w.classList.remove('on');
         setTimeout(function(){ try{w.remove()}catch(e){} },420); };
-      w.addEventListener('click',go); setTimeout(go,4500);
+      w.addEventListener('click',go); setTimeout(go,7000);
       mark(id);
     }catch(e){ try{console.warn('[greet]',e)}catch(_){} }
   };
@@ -31330,6 +31391,7 @@ window.SEASON_GREET={
       var id=null,h=document.documentElement;
       (window.SEASONS||[]).forEach(function(s){ if(h.classList.contains('season-'+s.id))id=s.id; });
       if(!id||seen(id))return;
+      if(typeof window.isFloatingHolidayToday==='function'&&!window.isFloatingHolidayToday(id))return;   /* #greetfloat — skin's on, but it isn't the day yet */
       greetShow(id);
     }catch(e){}
   };
