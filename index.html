@@ -19655,18 +19655,18 @@ async function sbLoadGathFlyers(){
   /* #gathpage — the extras, their own read so a missing table costs the flyers nothing */
   if(window.__shkNoExtra!==true){
     try{
-      const x=await window.SB.from('gath_extra').select('id,cost,parking,notes');
+      const x=await window.SB.from('gath_extra').select('id,cost,parking,notes,tickets');
       if(x.error){ window.__shkNoExtra=true; console.info('[gath] no extras yet — re-run GATH-FLYER.sql'); }
-      else{ GATH_EXTRA={}; (x.data||[]).forEach(r2=>{ if(r2&&r2.id)GATH_EXTRA[r2.id]={cost:r2.cost||'',parking:r2.parking||'',notes:r2.notes||''}; }); }
+      else{ GATH_EXTRA={}; (x.data||[]).forEach(r2=>{ if(r2&&r2.id)GATH_EXTRA[r2.id]={cost:r2.cost||'',parking:r2.parking||'',notes:r2.notes||'',tickets:r2.tickets||''}; }); }
     }catch(e){ window.__shkNoExtra=true; }
   }
 }
 async function gathExtraSave(gid,d){
   if(!(window.SB&&window.__shkUid))return false;
   try{
-    const r=await window.SB.from('gath_extra').upsert({id:gid,cost:d.cost||null,parking:d.parking||null,notes:d.notes||null,set_by:window.__shkUid},{onConflict:'id'});
+    const r=await window.SB.from('gath_extra').upsert({id:gid,cost:d.cost||null,parking:d.parking||null,notes:d.notes||null,tickets:d.tickets||null,set_by:window.__shkUid},{onConflict:'id'});
     if(r.error)throw r.error;
-    GATH_EXTRA[gid]={cost:d.cost||'',parking:d.parking||'',notes:d.notes||''};
+    GATH_EXTRA[gid]={cost:d.cost||'',parking:d.parking||'',notes:d.notes||'',tickets:d.tickets||''};
     return true;
   }catch(e){
     const m=String((e&&(e.message||e.error))||e||'');
@@ -19769,8 +19769,9 @@ function openGathPage(gid){
       +'<div class="gp-by">called by <b>'+esc(mine?'you':(g.by_handle||'the Order'))+'</b></div>'
       +'<div class="gp-rows">'
         +row('🕓','When',g.when_txt||'')
-        +row('📍','Where',g.where_txt||'',g.where_txt?'<button type="button" id="gpDir">🧭 DIRECTIONS</button>':'')
+        +row('📍','Where',g.where_txt||'',g.where_txt?'<button type="button" id="gpDir">'+DIR_ARROW+' DIRECTIONS</button>':'')
         +row('💵','Cover',ex.cost||'')
+        +(ticketUrl(ex.tickets)?'<div class="gp-row"><span class="ic">🎟</span><span class="tx"><span class="k">Tickets</span><span class="v" style="font-size:14px;color:var(--copper-hi);word-break:break-all">'+esc(ticketUrl(ex.tickets).replace(/^https?:\/\//,''))+'</span></span></div>':'')
         +row('🅿️','Parking',ex.parking||'')
         +row('📝','Details',ex.notes||'')
       +'</div>'
@@ -19779,16 +19780,20 @@ function openGathPage(gid){
         ? '🗝 <b>'+nGo+'</b> going · names ride masked'
         : '⚓ <b>'+nGo+'</b> going'+(hs.length?' · '+esc(hs.slice(0,8).join(', '))+(hs.length>8?' +'+(hs.length-8)+' more':''):''))+'</div>'
     +'<div class="gp-acts">'
-      +'<button class="btn" id="gpRsvp" type="button">'+(going?'✓ YOU’RE GOING · TAP TO DROP OFF':'＋ RSVP — COUNT ME IN')+'</button>'
+      +(ticketUrl(ex.tickets)?'<button class="btn" id="gpTix" type="button">🎟 BUY TICKETS</button>':'')   /* #gathtidy — the ticket link, where the decision gets made */
+      +'<button class="btn'+(ticketUrl(ex.tickets)?'-line':'')+'" id="gpRsvp" type="button">'+(going?'✓ YOU’RE GOING · TAP TO DROP OFF':'＋ RSVP — COUNT ME IN')+'</button>'
       +'<div class="gp-two">'
         +((sv&&(going||mine))?'<button class="btn-line" id="gpRoom" type="button">🗣 THE ROOM</button>':'')
         +'<button class="btn-line" id="gpInv" type="button">⤴ INVITE</button>'
       +'</div>'
-      +(mine?'<button class="btn-line" id="gpPic" type="button">📣 '+(fly?'CHANGE THE FLYER':'ADD A FLYER')+'</button>':'')
+      +((mine&&!fly)?'<button class="btn-line" id="gpPic" type="button">📣 ADD A FLYER</button>':'')   /* #gathtidy — once there IS one, changing it is on the picture */
       +(mine&&sv?'<button class="btn-line red" id="gpDel" type="button">✕ STRIKE THIS GATHERING</button>':'')
     +'</div>';
   const on=(id,fn)=>{ const b=sc.querySelector('#'+id); if(b)b.addEventListener('click',fn); };
-  on('gpFly',()=>openFlyer(fly.url,'<b style="color:#fff">'+esc(g.name||'')+'</b>'+((g.when_txt||g.where_txt)?'<br>'+esc([g.when_txt,g.where_txt].filter(Boolean).join(' · ')):'')));
+  on('gpFly',()=>openFlyer(fly.url,'<b style="color:#fff">'+esc(g.name||'')+'</b>'+((g.when_txt||g.where_txt)?'<br>'+esc([g.when_txt,g.where_txt].filter(Boolean).join(' · ')):''),
+    mine?[{t:'📷 REPLACE',go:()=>gathFlyerPick(gid)},
+          {t:'🗑 REMOVE',danger:true,go:()=>shConfirm('Take the flyer down? The gathering stays.',()=>{gathFlyerClear(gid);setTimeout(()=>openGathPage(gid),300);},{title:'Take it down?',icon:'📣',okText:'Take it down'})}]:null));
+  on('gpTix',()=>openTickets(ex.tickets));
   on('gpDir',()=>openDirections(g.where_txt));
   on('gpRoom',()=>{ try{ openGathRoom(gid); }catch(e){} });
   on('gpInv',()=>{ try{ inviteWord('gath',g.name,[g.when_txt,g.where_txt].filter(Boolean).join(' · '),gid); }catch(e){} });
@@ -19809,15 +19814,24 @@ function gathEditDetails(gid){
   const ex=gathExtra(gid)||{};
   openPaySheet({title:"THE DETAILS",sub:"Whatever a casual needs to know before they drive out. All optional.",price:0,go:"SAVE THE DETAILS",
     fields:[{k:"cost",label:"Cover / cost",ph:"e.g. $20 at the door · free",opt:true,max:60,v:ex.cost||''},
+            {k:"tickets",label:"Ticket link",ph:"paste the ticket page — eventbrite, ticketmaster…",opt:true,max:300,v:ex.tickets||''},
             {k:"parking",label:"Parking",ph:"e.g. lot behind the venue, $10",opt:true,max:80,v:ex.parking||''},
             {k:"notes",label:"Anything else",type:"textarea",ph:"21+ · bring a chair · doors at 7",opt:true,max:400,v:ex.notes||''}],
-    onPaid:async v2=>{ if(await gathExtraSave(gid,v2)){ toast('✓ Details saved'); openGathPage(gid); } }});
+    onPaid:async v2=>{ v2.tickets=ticketUrl(v2.tickets); if(await gathExtraSave(gid,v2)){ toast('✓ Details saved'); openGathPage(gid); } }});
 }
 window.gathEditDetails=gathEditDetails;
 /* #directions(sep04) — "Cabrillo Beach pits" is a place, and a phone already knows
    what to do with one. Hand it over to whichever maps app the phone actually has:
    Apple Maps on an iPhone, Google Maps everywhere else. No key, no embed, no
    tracking — just the words the caller typed, handed to the map. */
+/* #gathtidy — 🧭 renders as a wall clock on some phones. An arrow is an arrow. */
+const DIR_ARROW='<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden="true" style="vertical-align:-1px"><path d="M2.4 11.2 20.6 3.3c.7-.3 1.4.4 1.1 1.1l-7.9 18.2c-.3.7-1.3.7-1.5-.1l-1.9-6.4-6.4-1.9c-.8-.2-.9-1.2-.1-1.5z"/></svg>';
+/* #gathtidy — a ticket link the caller pasted, opened the way a link should be.
+   Typed without the https:// (most people do), it still works. */
+function ticketUrl(u){ u=String(u||'').trim(); if(!u)return ''; if(!/^https?:\/\//i.test(u))u='https://'+u.replace(/^\/+/,''); return /^https?:\/\/[^\s]+\.[^\s]/i.test(u)?u:''; }
+function openTickets(u){ var url=ticketUrl(u); if(!url){ toast('That ticket link doesn’t look right'); return; }
+  try{ var w=window.open(url,'_blank','noopener'); if(!w)location.href=url; }catch(e){ try{location.href=url;}catch(_){} } }
+window.openTickets=openTickets; window.ticketUrl=ticketUrl;
 function openDirections(place){
   var q=String(place||'').trim(); if(!q){ toast('No place on this one to point at'); return; }
   var ios=/iPad|iPhone|iPod/.test(navigator.userAgent||'')||((navigator.platform==='MacIntel')&&navigator.maxTouchPoints>1);
@@ -22767,7 +22781,10 @@ function gathsSectionHTML(step,gaths){
       ? '<button class="gath-flyer" type="button" data-flyer="'+esc(g.id)+'" aria-label="Open the flyer for '+esc(g.n)+'"'
         +' style="background-image:url(&quot;'+esc(fly.url)+'&quot;);background-position:50% '+((fly.pos==null?.5:fly.pos)*100).toFixed(1)+'%">'
         +'<i>⤢ TAP TO OPEN</i>'
-        +(g.mine?'<b><span data-flyswap="'+esc(g.id)+'" role="button" aria-label="Change the flyer">📷</span><span data-flyx="'+esc(g.id)+'" role="button" aria-label="Take the flyer down">✕</span></b>':'')
+        /* #gathtidy — the ✕ up here means what an ✕ means everywhere: strike the
+           gathering. Changing or removing the FLYER is on the picture itself now
+           (open it from the page — the owner gets Replace and Remove in there). */
+        +(g.mine?'<b><span data-gdel="'+esc(g.id)+'" role="button" aria-label="Strike '+esc(g.n)+'">✕</span></b>':'')
         +'</button>'
       : ((g.mine&&sv)?'<button class="gath-add" type="button" data-flyswap="'+esc(g.id)+'">📣 ＋ ADD A FLYER</button>':'');
     html+='<div class="evt feedIn'+(fly?' gath-card':'')+((g.mine&&sv&&!fly)?' gath-card':'')+(g.mine?' mine':'')+'"'+step()
@@ -22787,13 +22804,11 @@ function gathsSectionHTML(step,gaths){
                 +((function(){ try{ const n=floorCount(gathRoomName({name:g.n,room_name:g.room_name})); return n>0?' <b>'+n+'</b>':''; }catch(e){ return ''; } })())
               +'</button>'
               :'')
-            /* #directions — only when the caller actually named a place */
-            +(g.p?'<button class="feed-inv" data-dir="'+esc(g.p)+'" aria-label="Directions to '+esc(g.p)+'" title="Directions">🧭</button>':'')
-            +'<button class="feed-inv" data-inv="gath" data-name="'+esc(g.n)+'" data-detail="'+esc((g.w||'')+' · '+(g.p||''))+'" aria-label="Invite to '+esc(g.n)+'">⤴</button>'
-            /* #ghostroom(aug10) — same fix on the gathering side: a phone-only
-               gathering had no server row, so `sv` was false and its ✕ never drew. */
-            +(g.mine&&sv?'<button class="feed-inv feed-del" data-del="gath" data-id="'+esc(g.id)+'" aria-label="Strike '+esc(g.n)+'">✕</button>'
-              :(g.local?'<button class="feed-inv feed-del" data-del="localgath" data-name="'+esc(g.n)+'" aria-label="Clear '+esc(g.n)+' from this phone">✕</button>':''))
+            /* #gathtidy(sep04) — the card keeps the two buttons a casual actually hits
+               from a list: RSVP, and the room. Directions, invite, tickets and the
+               strike all live on the page now, at a size worth tapping. A phone-only
+               gathering has no page, so it keeps its own ✕. */
+            +(!sv&&g.local?'<button class="feed-inv feed-del" data-del="localgath" data-name="'+esc(g.n)+'" aria-label="Clear '+esc(g.n)+' from this phone">✕</button>':'')
           +'</div>'
         +'</div>'
       +'</div></div>';
@@ -23205,7 +23220,7 @@ function clanBannerHTML(c,mine){
     +'</div>';
 }
 /* ═══ #flyer(sep04) — OPEN IT. Pinch, double-tap or drag to read the small print. ═══ */
-function openFlyer(url,cap){
+function openFlyer(url,cap,acts){
   if(!url)return;
   var v=document.getElementById('flyerView');
   if(!v){ v=document.createElement('div'); v.id='flyerView'; v.setAttribute('role','dialog');
@@ -23213,6 +23228,16 @@ function openFlyer(url,cap){
     document.body.appendChild(v); }
   var img=v.querySelector('img'); img.src=url;
   v.querySelector('.fv-cap').innerHTML=cap||'';
+  /* #gathtidy — the picture is where you change or remove the picture */
+  var bar=v.querySelector('.fv-acts');
+  if(!bar){ bar=document.createElement('div'); bar.className='fv-acts'; v.appendChild(bar); }
+  bar.innerHTML=''; bar.style.display='none';
+  (acts||[]).forEach(function(a){
+    var b=document.createElement('button'); b.type='button'; b.textContent=a.t;
+    if(a.danger)b.className='danger';
+    b.addEventListener('click',function(e){ e.stopPropagation(); v.classList.remove('on'); try{a.go();}catch(_){} });
+    bar.appendChild(b); bar.style.display='flex';
+  });
   var z=1, tx=0, ty=0, moved=false, lastTap=0, pts={}, base=0, bz=1;
   function paint(){ img.style.transform='translate('+tx.toFixed(1)+'px,'+ty.toFixed(1)+'px) scale('+z.toFixed(3)+')';
     v.classList.toggle('zoomed',z>1.02); }
@@ -23227,6 +23252,7 @@ function openFlyer(url,cap){
   var keys=function(o){ return Object.keys(o); };
   v.onpointerdown=function(e){
     if(e.target.classList.contains('fv-x'))return;
+    if(e.target.closest('.fv-acts'))return;   /* #gathtidy — REPLACE / REMOVE are buttons, not a drag */
     pts[e.pointerId]={x:e.clientX,y:e.clientY,sx:e.clientX,sy:e.clientY};
     try{ v.setPointerCapture(e.pointerId); }catch(_){}
     var k=keys(pts);
@@ -24397,21 +24423,24 @@ function bindFeed(host){
     else await socialDelete(dk,b.getAttribute('data-id'));
   }));
   /* #gathroom(sep01) — open a gathering's own room straight off its card */
-  host.querySelectorAll('[data-dir]').forEach(b=>b.addEventListener('click',e=>{ e.stopPropagation(); openDirections(b.getAttribute('data-dir')); }));   /* #directions */
   /* #flyer — open it, change it, take it down */
   /* #gathpage — the whole card is the door; the flyer on it opens the page too, and
      the zoom lives INSIDE the page where there is room for it */
   host.querySelectorAll('[data-gopen]').forEach(el=>el.addEventListener('click',e=>{
-    if(e.target.closest('button,[data-flyswap],[data-flyx]')&&!e.target.closest('[data-flyer]'))return;
+    if(e.target.closest('[data-gdel],[data-flyswap]'))return;   /* #gathtidy — the ✕ is its own business */
+    if(e.target.closest('button')&&!e.target.closest('[data-flyer]'))return;
     openGathPage(el.getAttribute('data-gopen'));
   }));
   host.querySelectorAll('[data-flyer]').forEach(b=>b.addEventListener('click',e=>{
-    if(e.target.closest('[data-flyswap],[data-flyx]'))return;
+    if(e.target.closest('[data-gdel],[data-flyswap]'))return;   /* #gathtidy */
     e.stopPropagation(); openGathPage(b.getAttribute('data-flyer'));
   }));
   host.querySelectorAll('[data-flyswap]').forEach(b=>b.addEventListener('click',e=>{ e.stopPropagation(); gathFlyerPick(b.getAttribute('data-flyswap')); }));
-  host.querySelectorAll('[data-flyx]').forEach(b=>b.addEventListener('click',e=>{ e.stopPropagation();
-    shConfirm('Take the flyer down?',()=>gathFlyerClear(b.getAttribute('data-flyx')),{title:'Take it down?',icon:'📣',okText:'Take it down'}); }));
+  /* #gathtidy — the ✕ on the flyer strikes the GATHERING */
+  host.querySelectorAll('[data-gdel]').forEach(b=>b.addEventListener('click',e=>{ e.stopPropagation();
+    const gid=b.getAttribute('data-gdel'), gg=gathById(gid);
+    shConfirm('Strike '+((gg&&gg.name)||'this gathering')+'? It comes off the board for everyone.',
+      async()=>{ try{ await socialDelete('gath',gid); }catch(_){} },{title:'Strike it?',icon:'🕯',okText:'Strike it'}); }));
   host.querySelectorAll('[data-gathroom]').forEach(b=>b.addEventListener('click',async e=>{
     e.stopPropagation();
     if(b.disabled)return; b.disabled=true;
@@ -24517,6 +24546,7 @@ window.newGatheringFlow=function(){
       {k:"v",label:"The RSVP list",type:"select",opts:[["","— pick one —"],["0","⚓ Public — list every casual going"],["1","🗝 Private — show the count, mask the names"]]},
       /* #makepic — put the poster up while you are calling it */
       {k:"cost",label:"Cover / cost (optional)",ph:"e.g. $20 at the door · free",opt:true,max:60},
+      {k:"tix",label:"Ticket link (optional)",ph:"paste the ticket page — eventbrite, ticketmaster…",opt:true,max:300},
       {k:"park",label:"Parking (optional)",ph:"e.g. lot behind the venue, $10",opt:true,max:80},
       {k:"img",type:"photo",label:"Flyer (optional)",ph:"📣 ＋ ADD A FLYER",ratio:"wide16",plain:true,head:"📣 PLACE THE FLYER",
        note:"The whole flyer is kept — this only picks the strip the card shows. Tapping it on the board opens the lot."}],
@@ -24535,7 +24565,8 @@ window.newGatheringFlow=function(){
           /* #makepic — the flyer they placed on the way in */
           try{ if(v.img&&v.img.src&&r.data&&r.data.id)await gathFlyerSend(r.data.id,r.data,v.img.src,v.img.fy); }catch(e){}
           /* #gathpage — and what it costs / where to park, if they said */
-          try{ if(r.data&&r.data.id&&((v.cost||'').trim()||(v.park||'').trim()))await gathExtraSave(r.data.id,{cost:(v.cost||'').trim(),parking:(v.park||'').trim(),notes:''}); }catch(e){}
+          try{ if(r.data&&r.data.id&&((v.cost||'').trim()||(v.park||'').trim()||(v.tix||'').trim()))
+                 await gathExtraSave(r.data.id,{cost:(v.cost||'').trim(),parking:(v.park||'').trim(),notes:'',tickets:ticketUrl(v.tix)}); }catch(e){}
           renderSocialFeed();
           unlockBadge(bixLate("Rally Caller"));                   // #8
           try{armoryBuyMark()}catch(e){}   // #fix2 — only once the gathering actually posted
@@ -32128,6 +32159,25 @@ html.fs-lg .msg .who time{font-size:calc(12px * var(--chatfs,1))}
   will-change:transform;-webkit-user-select:none;user-select:none;-webkit-user-drag:none}
 #flyerView .fv-x{position:absolute;top:calc(10px + env(safe-area-inset-top));right:12px;width:38px;height:38px;border-radius:50%;
   background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.28);color:#fff;font-size:17px;cursor:pointer;z-index:2}
+/* ═══ #gathtidy(sep04) — RED MEANS RED ═══
+   Chasing "not the red one in the button row" turned up something older: there was
+   no red one. `.btn-line.red` was written before the arcade skin, and the skin's
+   own html.arcade.daylight .btn-line rule ties it on specificity and wins on order,
+   so every destructive button in the app — Strike This Gathering, Shred My Data,
+   Dispute Pay, Remove The Picture — had quietly been wearing the same lavender as
+   Invite. A button that ends something should not look like a button that starts
+   something. One class higher than the skin, in both lights. */
+html .btn-line.red,html.arcade .btn-line.red{
+  background:linear-gradient(184deg,rgba(224,73,46,.26),rgba(30,14,12,.92));
+  border-color:rgba(224,73,46,.6);color:#ffb9a3}
+html.daylight .btn-line.red,html.arcade.daylight .btn-line.red{
+  background:linear-gradient(184deg,#ffe7e1,#ffd2c6);
+  border-color:#f0a996;color:#9d2412;box-shadow:0 4px 0 rgba(160,32,17,.18)}
+html.arcade.daylight .btn-line.red:active{box-shadow:none;transform:translateY(3px)}
+#flyerView .fv-acts{position:absolute;left:0;right:0;bottom:calc(60px + env(safe-area-inset-bottom));display:none;justify-content:center;gap:10px;z-index:2}
+#flyerView .fv-acts button{cursor:pointer;padding:11px 18px;border-radius:12px;background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.3);color:#fff;
+  font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:11.5px;letter-spacing:.1em}
+#flyerView .fv-acts button.danger{background:rgba(179,85,42,.35);border-color:rgba(224,73,46,.6);color:#ffb9a3}
 #flyerView .fv-cap{position:absolute;left:0;right:0;bottom:calc(14px + env(safe-area-inset-bottom));text-align:center;pointer-events:none;
   font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:11.5px;letter-spacing:.06em;color:#cfd4dc;
   text-shadow:0 1px 6px rgba(0,0,0,.9);padding:0 20px;line-height:1.5}
@@ -32519,25 +32569,16 @@ html.daylight .sn-decor{opacity:.5}
   background-image:repeating-linear-gradient(90deg,transparent 0 3px,var(--bn-ridge) 3px 4px)}
 @keyframes bnLoad{0%,4%{transform:translateY(0)}42%,54%{transform:translateY(141.2%)}92%,100%{transform:translateY(0)}}
 @keyframes bnCable{0%,4%{transform:scaleY(1)}42%,54%{transform:scaleY(3.4)}92%,100%{transform:scaleY(1)}}
-#snBanner .bn-strip{display:flex;flex-wrap:wrap;align-items:center;gap:7px 10px;padding:9px 14px 10px;container-type:inline-size;
-  border-top:1px solid var(--bn-strip-line);background:linear-gradient(180deg,var(--bn-plate1),var(--bn-plate2))}
-#snBanner .bn-kick{flex:1 1 auto;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-weight:600;font-size:8px;letter-spacing:.24em;color:var(--bn-kick);line-height:1.35;white-space:nowrap}
-#snBanner .bn-kick b{display:block;margin-top:2px;font-weight:700;font-size:10.5px;color:var(--bn-kick-b);letter-spacing:.2em}
-#snBanner .bn-count{flex:0 0 auto;margin-left:auto;display:flex;align-items:flex-start;gap:2px}
-#snBanner .bn-cell{text-align:center;min-width:38px}
-#snBanner .bn-n{display:block;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-weight:700;font-size:21px;line-height:1;letter-spacing:.02em;color:var(--bn-digit);
-  text-shadow:0 0 12px var(--bn-digit-glow)}
-#snBanner .bn-l{display:block;margin-top:4px;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:7.5px;letter-spacing:.22em;color:var(--bn-label)}
-#snBanner .bn-colon{font-family:'Inter',system-ui,sans-serif;font-weight:700;font-size:19px;line-height:1;color:var(--bn-colon);opacity:.85;padding-top:1px}
-#snBanner .bn-line{flex:1;min-width:0;font-family:'Barlow Condensed',system-ui,sans-serif;font-size:14.5px;line-height:1.3;color:var(--bn-line-txt)}
-#snBanner .bn-line small{display:block;margin-top:3px;font-family:'Inter',system-ui,sans-serif;font-size:8px;letter-spacing:.26em;color:var(--bn-foot)}
-#snBanner .bn-glyph{flex:none;font-size:22px;line-height:1;filter:drop-shadow(0 0 10px var(--bn-digit-glow))}
-#snBanner.day .bn-count,#snBanner.day .bn-kick{display:none}
-#snBanner:not(.day) .bn-line,#snBanner:not(.day) .bn-glyph{display:none}
-@container (max-width:310px){
-  #snBanner .bn-kick{font-size:7px;letter-spacing:.18em}#snBanner .bn-kick b{font-size:9px;letter-spacing:.14em}
-  #snBanner .bn-cell{min-width:33px}#snBanner .bn-n{font-size:18px}#snBanner .bn-colon{font-size:16px}#snBanner .bn-l{font-size:7px;letter-spacing:.18em}
-}
+/* ═══ #lbtrim(sep04) — THE COUNTER COMES DOWN ═══
+   By request: "too much going on." Under the harbour there used to be a strip —
+   SAN PEDRO BAY / LABOR DAY IN, then DAYS : HRS : MIN : SEC ticking. Two type
+   systems and a running number stacked under a picture that already said the same
+   thing, on top of every tab. The card keeps what it was for: the cranes, LABOR
+   DAY, and MON SEP 7 under it. The whole strip is gone — markup, clock and the
+   thirty-odd lines of CSS that dressed it — rather than hidden, so nothing is
+   paying rent behind a display:none. The palettes still carry the --bn-kick /
+   --bn-digit / --bn-label tokens it read; they cost nothing and the next card
+   that wants a counter has them waiting. */
 </style>
 <script>
 /* ═══ #decor(sep3) — the engine. See the sheet above for what it is and why. ═══
@@ -32689,7 +32730,7 @@ window.SEASON_DECOR={
           lights:['#d02c2c','#ffffff','#1f4fa8','#ffffff'] },
   mayday:{ rise:{n:14,color:'#ff8f74',size:[3,6],dur:[8,15],opacity:.7} },   /* the brazier on the line */
   labor:{ rise:{n:14,color:'#ff7a18',size:[2,5],dur:[6,11],opacity:.7},      /* sparks off the steel */
-          banner:{art:'harbor',pal:'stars',title:'HAPPY LABOR DAY',to:'labor'} },   /* #lbbanner — stars & stripes; "HAPPY LABOR DAY" all weekend, "MON SEP 7" under it */
+          banner:{art:'harbor',pal:'stars',title:'LABOR DAY',to:'labor'} },   /* #lbtrim(sep04) — two words and the date. The counter came down; see the #lbtrim block. */
   dogdays:{ fall:{n:14,glyph:'dot',size:[2,4],dur:[16,26],opacity:.35} },    /* dust in the August light */
   earth:{ rise:{n:14,color:'#6fd8cc',size:[4,9],dur:[11,20],opacity:.5} },   /* the harbor breathing */
   juneteenth:{ rise:{n:12,color:'#ffd166',size:[3,6],dur:[9,16],opacity:.55} }
@@ -32799,16 +32840,7 @@ window.SEASON_DECOR={
     var w=document.createElement('div'); w.id='snBanner'; w.setAttribute('role','status'); w.setAttribute('aria-live','off'); w.style.cssText=css;
     w.innerHTML='<div class="bn-art">'+svg
       +'<div class="bn-cable a"></div><div class="bn-cable b"></div><div class="bn-load"></div></div>'
-      +'<div class="bn-strip">'
-      +'<div class="bn-kick">'+(b.kick||'SAN PEDRO BAY')+'<b>'+(b.until||'LABOR DAY IN')+'</b></div>'
-      +'<div class="bn-count">'
-      +'<span class="bn-cell"><span class="bn-n" data-k="d">00</span><span class="bn-l">DAYS</span></span><span class="bn-colon">:</span>'
-      +'<span class="bn-cell"><span class="bn-n" data-k="h">00</span><span class="bn-l">HRS</span></span><span class="bn-colon">:</span>'
-      +'<span class="bn-cell"><span class="bn-n" data-k="m">00</span><span class="bn-l">MIN</span></span><span class="bn-colon">:</span>'
-      +'<span class="bn-cell"><span class="bn-n" data-k="s">00</span><span class="bn-l">SEC</span></span>'
-      +'</div>'
-      +'<div class="bn-glyph"></div><div class="bn-line"><span></span><small>THE ORDER OF THE SHADOW HOOK</small></div>'
-      +'</div>';
+      ;   /* #lbtrim(sep04) — the card is the picture and the two lines drawn into it. Nothing under it. */
     host.insertBefore(w,host.firstChild);
     BANNER={el:w,id:id,spec:b,last:''};
     bannerTick(); bannerArm();
@@ -32835,16 +32867,12 @@ window.SEASON_DECOR={
       var sub=DAYS[day.getDay()]+' '+MONS[day.getMonth()]+' '+day.getDate()+(b.sub?' · '+b.sub:'');   /* "MON SEP 7" — by request, just the date */
       var key=title+'|'+sub+'|'+state;
       if(key!==BANNER.last){ BANNER.last=key;
-        el.querySelector('.bn-title').textContent=title; el.querySelector('.bn-sub').textContent=sub;
-        if(isDay){ var g=(window.SEASON_GREET||{})[BANNER.id]||[];   /* the Order's line, read on the day so the greet block has surely parsed */
-          el.querySelector('.bn-glyph').textContent=g[0]||'⚒'; el.querySelector('.bn-line span').textContent=g[2]||''; } }
-      if(!isDay){
-        var t=Math.max(0,Math.floor((day-now)/1000));
-        var v={d:Math.floor(t/86400),h:Math.floor(t%86400/3600),m:Math.floor(t%3600/60),s:t%60};
-        var ns=el.querySelectorAll('.bn-n');
-        for(var i=0;i<ns.length;i++){ var k=ns[i].getAttribute('data-k'), txt=pad(v[k]); if(ns[i].textContent!==txt)ns[i].textContent=txt; }
-        bannerArm(1000);
-      }else bannerArm(60000);   /* nothing left to count — just watch for midnight */
+        el.querySelector('.bn-title').textContent=title; el.querySelector('.bn-sub').textContent=sub; }
+      /* #lbtrim(sep04) — with the counter gone there is no second hand to keep. The tick
+         now exists only to notice two things: the stroke of midnight that turns the
+         count into the day, and the one that takes the card down. A minute is plenty,
+         and the phone gets its battery back. */
+      bannerArm(60000);
     }catch(e){ try{console.warn('[banner]',e)}catch(_){} }
   }
   /* preview only: pin the banner's clock — setBannerClock('2026-09-07T09:00') · setBannerClock() to release */
