@@ -4578,7 +4578,7 @@ window.DEVLOG=(function(){
         </div>
         <span class="dl-onair"><i></i>ON AIR</span>
       </div>
-      <div class="dl-pay">every drop you catch pays <b>+10 ⬡</b> <span style="opacity:.72">· first 6 a board</span></div><!-- #fix3: the cap is real, say so -->
+      <div class="dl-pay">every drop you catch pays <b id="dlPayN">+5 ⬡</b></div><!-- #nocap(sep04): the 6-a-board cap is gone — every catch pays. The amount is painted from PAY.DROP below (it read +10 here while the code paid 5) -->
       <div class="dl-hint" id="dropHint">150 UTR now… 40 swing later — they drop it in waves. Punch in each call.</div>
       <div class="row2">
         <div><label class="lbl" for="dropN">How many</label><input class="field dl-num" id="dropN" type="text" inputmode="numeric" placeholder="0"></div>
@@ -5262,7 +5262,7 @@ window.DEVLOG=(function(){
       <p class="sub" style="margin:8px 0 12px">The Order pays for the work that keeps the tool sharp. What each action mints:</p>
       <table class="baseline-tbl" id="rateTbl">
         <tr><td>Seal a docket</td><td><b data-rate="DOCKET">+10</b> <span style="opacity:.7">· every saved docket counts; old boards need their slip</span></td></tr>
-        <tr><td>Log a drop on the wire</td><td><b data-rate="DROP">+5</b> <span style="opacity:.7">· 6 a board</span></td></tr>
+        <tr><td>Log a drop on the wire</td><td><b data-rate="DROP">+5</b> <span style="opacity:.7">· every catch</span></td></tr>
         <tr><td>Feed the live board during dispatch</td><td><b data-rate="CW">+5</b></td></tr>
         <tr><td>First to log today's board</td><td><b data-rate="SPIN">+10–50</b></td></tr>
         <tr><td>Send word — number, map, correction, idea</td><td><b data-rate="WORD">+10</b> <span style="opacity:.7">· 3 a day</span></td></tr>
@@ -5273,6 +5273,7 @@ window.DEVLOG=(function(){
            capped drops at 6 a board, send-word at 3 a day and the share bounty at once
            ever, paid 50–500 for a board log that wasn't listed at all, and pays nothing
            for the four balance-threshold marks. Every row now matches the code.
+           #nocap(sep04) — the drop cap is gone (see dropAdd); the row says "every catch".
            #rates(aug15) — and now it CAN'T drift again: the amounts above are the
            fallback for a member reading this before the script block parses, and
            paintRateCard() overwrites every one of them from the PAY table on open.
@@ -6838,7 +6839,7 @@ const PAY = {
   DOCKET:     10,    // seal a docket — one board a day by rule, and a BACKLOG of
                      // saved dockets all pays (SEAL_PAY_CAP raised; dockets older
                      // than a week still need their slip photo — the fraud guard)
-  DROP:        5,    // log a drop on the wire (cap 6 a board)
+  DROP:        5,    // log a drop on the wire (#nocap sep04: no per-board cap — every catch pays; a repeat of the same call in a wave still counts once and pays nothing)
   WORD:       10,    // send word to the Keymaster (cap WORD_PAY_CAP/day)
   MARK:       30,    // earn a new mark (107 payable marks: 3,210 ⬡ lifetime)
   SHARE:      25,    // unchanged — acquisition
@@ -6879,6 +6880,10 @@ function paintRateCard(){
   }catch(e){}
 }
 window.paintRateCard=paintRateCard;
+/* #nocap(sep04) — the Drop Log card's own promise ("every drop you catch pays +N")
+   reads off PAY.DROP too. It was hard-typed +10 while the table said +5 and the
+   toast paid 5 — the same drift #rates fixed for the rate card, one card over. */
+try{ const _dp=document.getElementById('dlPayN'); if(_dp)_dp.textContent='+'+PAY.DROP+' ⬡'; }catch(e){}
 /* #truehrs + #tdz2(aug13) — THE POSTING CUTOFF LIVES AT THE TOP OF THE SCRIPT.
    It sat next to the hours functions (~7,400), but those functions are HOISTED and
    boot paths can call them DURING evaluation — on some members' devices (data-
@@ -13855,8 +13860,12 @@ function finRecord(id,v){
    · a ballpark counts as a whole-board estimate — the total is whichever is
      larger, the sum of drops heard or the ballpark
    · silence = no entries = the flop math keeps its floor
-   Every logged drop pays ⬡10, capped at 6 paid drops a board so it can't be
-   farmed. (Single-device for now — the backend cross-checks the crowd's drops.) */
+   Every logged drop pays PAY.DROP. #nocap(sep04) — it USED to stop paying after
+   six a board (an anti-farm cap); by the Keymaster's call that cap is gone, because
+   a member who has hit it has no reason to keep punching in the seventh call, and
+   the seventh call is the one the count needs. What still stands against farming:
+   the same call twice in a wave counts once and pays nothing (below), a struck
+   drop claws its pay back, and the crown can void a row off the wire. */
 function dropPhase(ts){var d=nowLA(ts||Date.now()),m=d.getHours()*60+d.getMinutes();if(m>=NIGHT_OPEN)return m<17*60?"FLEX":(m<18*60?"1ST":"2ND");return m<7*60?"FLEX":(m<8*60?"1ST":"2ND");}
 const DROP_WAVE={FLEX:"Flex","1ST":"1st","2ND":"2nd"};
 const DROP_CATS={UTR:"UTR",FLEX:"Flex",HOOTS:"Hoots",HOLD:"Hold",SWING:"Swing",SL:"Swing Lash",LASH:"Lash",DOCK:"Dock",CRANE:"Crane",TOP:"Top Pick",SIDE:"Side Pick",RAIL:"Rail",BULL:"Bull",DSIG:"Dock Signal",HL:"Heavy Lift",AUTO:"Autos",JIT:"Jitney",CY:"CY",SWMP:"Swamper",GEAR:"Gear",KEYS:"Keys",BCLK:"Basic Clerk",CLK:"Clerk","?":"they didn't say",EST:"ballpark"};
@@ -14213,8 +14222,10 @@ document.getElementById('dropAdd').addEventListener('click',()=>{
      striking it can claw the same amount back. Without it a member could log six
      drops (+60 ⬡), delete all six — taking the data back off the wire — and keep
      the money for contributing nothing. */
-  if(o.paid<6){o.paid++;d.earned=PAY.DROP;addCredits(PAY.DROP,"drop logged on the wire");toast("✓ Drop logged · +"+PAY.DROP+" ⬡");try{buzz(30);}catch(e){}try{rainCoins(9);}catch(e){}}   /* #dl2 — a paid catch sprinkles coins */
-  else toast("✓ Drop logged — pay caps at 6 a board");
+  /* #nocap(sep04) — every catch pays. The `if(o.paid<6)` gate that lived here is
+     gone; o.paid still counts paid drops so the record of what a board paid stays
+     readable, it just no longer decides anything. */
+  o.paid=(o.paid||0)+1;d.earned=PAY.DROP;addCredits(PAY.DROP,"drop logged on the wire");toast("✓ Drop logged · +"+PAY.DROP+" ⬡");try{buzz(30);}catch(e){}try{rainCoins(9);}catch(e){}   /* #dl2 — a paid catch sprinkles coins */
   dropSave(o);dropRecompute();renderDropLog();
   try{dwPush(d);}catch(e){}                     // #118 — every member's log hears it
   try{renderRecentBoards();}catch(e){}          // #118 — the entry's count climbs live…
@@ -14260,8 +14271,8 @@ document.getElementById('dropList').addEventListener('click',e=>{
   const b=e.target.closest('button[data-di]');if(!b)return;
   const o=dropData();const gone=o.drops.splice(parseInt(b.dataset.di,10),1)[0];
   /* #fix2(bucks) — claw back exactly what this drop paid, mirroring the docket strike.
-     o.paid is deliberately NOT decremented: the cap slot stays spent, so a
-     delete/re-add cycle can't walk past the 6-a-board ceiling. */
+     o.paid is deliberately NOT decremented (it used to be the cap slot; #nocap
+     retired the cap, and the counter is just a record now). */
   const refund=(gone&&gone.earned)||0;
   if(refund)try{spendCredits(refund,"drop struck from the wire");}catch(_){}
   dropSave(o);dropRecompute();renderDropLog();
