@@ -304,6 +304,9 @@ select.field{appearance:none}
 .pw-eye{position:absolute;right:5px;top:50%;transform:translateY(-50%);width:34px;height:34px;border:0;background:transparent;cursor:pointer;font-size:16px;line-height:1;display:flex;align-items:center;justify-content:center;color:var(--steel);opacity:.72;padding:0;-webkit-tap-highlight-color:transparent}
 .pw-eye:active{transform:translateY(-50%) scale(.9)}
 .pw-eye.on{opacity:1;color:var(--copper-hi)}
+/* #pwreset — the forgot-it line: fine print with the link inside it */
+.pw-forgot{background:none;border:0;padding:4px 0;font:inherit;font-size:12.5px;line-height:1.45;color:var(--steel);cursor:pointer;-webkit-tap-highlight-color:transparent}
+.pw-forgot b{color:var(--copper-hi);font-weight:600;text-decoration:underline;text-underline-offset:2px}
 /* #101 — custom job/terminal picker. Native <datalist> renders blank rows
    ("empty boxes") on iOS Safari and some Android browsers; this themed
    dropdown renders identically on every device. */
@@ -3920,6 +3923,33 @@ window.DEVLOG=(function(){
       <div class="field-msg" id="passMsg"></div>
       <p class="sub" style="font-size:11.5px;margin:4px 0 0;color:#586067">Your card + this password logs you in on any device.</p>
       <div style="margin-top:16px"><button class="btn" id="enterBtn" type="button" style="width:100%">⚓ TAKE MY PLACE</button></div>
+      <!-- #pwreset(sep4) — FORGOT THE PASSWORD? THE CARD IS THE KEY. The offer opens itself
+           the moment a sign-in fails on the password (see the enterBtn handler), or by hand
+           here. The flow is in the "#pwreset" script block next to the card-scan wiring. -->
+      <div id="pwReset" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line-soft);text-align:center">
+        <button class="pw-forgot" id="pwResetOpen" type="button">Already on the record and can’t remember the password? <b>Reset it with your PMA card</b></button>
+        <div id="pwResetBody" style="display:none;text-align:left">
+          <p class="sub" style="text-align:center;margin-bottom:10px">Scan the yellow card itself. If it reads <b class="mono" id="pwResetCard" style="color:var(--copper-hi)">—</b>, you set a new password — and a new handle if you want one.</p>
+          <button class="btn" id="pwScanBtn" type="button" style="width:100%;font-size:15px">📷 Scan PMA Casual ID Card</button>
+          <input type="file" id="pwScanFile" accept="image/*" capture="environment" style="display:none">
+          <div class="field-msg" id="pwScanMsg" aria-live="polite"></div>
+          <div id="pwResetForm" style="display:none;margin-top:6px;padding:13px 12px;border:1px solid rgba(238,180,107,.4);border-radius:12px;background:var(--well)">
+            <p class="sub" style="margin-bottom:10px;color:var(--copper-hi)">Card <b class="mono" id="pwReadId">—</b> read. Set the new lock.</p>
+            <label class="lbl" for="pwNew">New password</label>
+            <div class="pw-wrap">
+              <input class="field" id="pwNew" type="password" autocomplete="new-password" placeholder="6+ characters">
+              <button class="pw-eye" id="pwNewEye" type="button" aria-label="Show password" aria-pressed="false" title="Show password">👁</button>
+            </div>
+            <label class="lbl" for="pwHandle" style="margin-top:10px">New handle — optional, blank keeps yours</label>
+            <div style="display:flex;gap:8px">
+              <input class="field" id="pwHandle" maxlength="20" autocapitalize="characters" autocomplete="off" placeholder="leave blank to keep it">
+              <button class="btn-ghost" id="pwHandleRoll" type="button" style="flex:none;font-size:17px" title="roll another">🎲</button>
+            </div>
+            <div class="field-msg" id="pwResetMsg"></div>
+            <button class="btn" id="pwResetGo" type="button" style="width:100%">⚓ RESET &amp; TAKE MY PLACE</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
   <p class="mono" style="text-align:center;margin-top:18px;font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:#586067">An Injury To One Is An Injury To All</p>
@@ -6566,7 +6596,7 @@ window.guestWall=guestWall;
     ['insert','upsert','update','delete'].forEach(function(k){ if(typeof q[k]==='function')q[k]=refused; });
     return q;
   };
-  const RPC_OK={claim_account:1,rsvp_counts:1,scan_tape_count:1,amb_ledger:1,km_roster:1,km_book:1,km_book_scan:1};   /* the way in, and the read-only ones */
+  const RPC_OK={claim_account:1,reset_by_card:1,rsvp_counts:1,scan_tape_count:1,amb_ledger:1,km_roster:1,km_book:1,km_book_scan:1};   /* the way in (claim, and #pwreset's reset), and the read-only ones */
   const rpc0=window.SB.rpc.bind(window.SB);
   window.SB.rpc=function(name,args,opts){ if(isGuest()&&!RPC_OK[name])return refused(); return rpc0(name,args,opts); };
   try{   /* storage is a getter that builds a fresh client each time — wrap the getter, not one instance */
@@ -7900,8 +7930,8 @@ async function getOCR(){
 }
 
 /* --- run a scan: try the photo as-is, then rotated, keep the best read --- */
-async function scanCard(file){
-  const sm=document.getElementById('scanMsg');
+async function scanCard(file,msgEl){
+  const sm=msgEl||document.getElementById('scanMsg');   /* #pwreset — the reset scan reports into its own line */
   sm.textContent="> loading the reader…";
   const worker=await getOCR();
   const img=new Image();
@@ -7991,6 +8021,110 @@ function rosterEnroll(name,id){
     conf.style.display="none";sm.textContent="";
     document.getElementById('scanOffer').style.display="none";
     document.getElementById('joinBtn').click();
+  });
+})();
+
+/* ═══ #pwreset(sep4) — FORGOT THE PASSWORD? THE CARD IS THE KEY. ═══
+   By request: a casual came back, couldn't remember the password, and had no way
+   in. The account has no real e-mail behind it (cardToEmail is a stand-in), so the
+   stock reset link can't reach anyone — but the card can. On THE GATE OPENS step a
+   casual already on the record scans the yellow PMA card the same way a new casual
+   proves themselves (#105: same reader, same "does this look like a PMA card" rule),
+   with one extra bar: the read has to say the card THIS gate check is for, digit for
+   digit — nothing typed in. Then a new password, and a new handle if they want one,
+   go up through reset_by_card (PW-RESET.sql — run once in Supabase → SQL Editor).
+   The server checks the name against the private profile, sets the new lock, closes
+   every other device's session, and books the reset — three a day per card, then it
+   is the Keymaster's call. With the lock set, they walk in exactly like a sign-in.
+   The offer opens itself when a sign-in fails on the password, so nobody has to go
+   looking for it. Backend off: nothing to reset, and it says so. */
+(function(){
+  const open=document.getElementById('pwResetOpen'), body=document.getElementById('pwResetBody'),
+        btn=document.getElementById('pwScanBtn'), file=document.getElementById('pwScanFile'),
+        sm=document.getElementById('pwScanMsg'), form=document.getElementById('pwResetForm'),
+        pw=document.getElementById('pwNew'), eye=document.getElementById('pwNewEye'),
+        hd=document.getElementById('pwHandle'), rm=document.getElementById('pwResetMsg'),
+        go=document.getElementById('pwResetGo');
+  if(!open||!body||!btn||!go)return;
+  let READ=null;   /* the card the reader saw — must equal the card at the gate before the form shows */
+  function reveal(nudge){
+    body.style.display='block'; open.style.display='none';
+    const pa=window._pendingAcct||{}; const c=document.getElementById('pwResetCard'); if(c)c.textContent=pa.id||'—';
+    if(nudge)sm.textContent='> forgot it? scan your card and set a new one';
+    try{ body.scrollIntoView({block:'nearest',behavior:'smooth'}); }catch(e){}
+  }
+  window.pwResetReveal=reveal;
+  open.addEventListener('click',()=>reveal(false));
+  btn.addEventListener('click',()=>{
+    if(!window.SB){ sm.textContent='> the backend is off on this build — there is no account to reset'; return; }
+    file.click();
+  });
+  file.addEventListener('change',async()=>{
+    if(!file.files||!file.files[0])return;
+    form.style.display='none'; rm.textContent=''; btn.disabled=true; READ=null;
+    const pa=window._pendingAcct||{};
+    try{
+      const read=await scanCard(file.files[0],sm);
+      if(!read.id){ sm.textContent="> Couldn't read the card. Fill the frame, kill the glare, hold it flat — and shoot again."; return; }
+      if(read.markers<2){ sm.textContent="> That doesn't read like a PMA casual card. Scan the yellow ID card itself."; return; }
+      if(!pa.id||read.id!==pa.id){
+        sm.textContent='> That card reads '+read.id+' — this gate check is for '+(pa.id||'another card')+'. Scan the card that matches, or start over with '+read.id+'.';
+        return;
+      }
+      READ=read.id; sm.textContent='';
+      document.getElementById('pwReadId').textContent=read.id;
+      form.style.display='block'; pw.value=''; hd.value='';
+      try{ form.scrollIntoView({block:'nearest',behavior:'smooth'}); }catch(e){}
+      pw.focus();
+    }catch(e){
+      sm.textContent='> The reader needs signal to load the first time — check your connection and retry.';
+    }finally{ btn.disabled=false; file.value=''; }
+  });
+  /* the eye — same as the field above */
+  if(eye)eye.addEventListener('click',function(){ var show=pw.type==='password'; pw.type=show?'text':'password'; eye.classList.toggle('on',show);
+    eye.setAttribute('aria-pressed',show?'true':'false'); var l=show?'Hide password':'Show password'; eye.setAttribute('aria-label',l); eye.setAttribute('title',l); eye.textContent=show?'🙈':'👁'; pw.focus(); });
+  document.getElementById('pwHandleRoll').addEventListener('click',()=>{ hd.value=genHandle(); rm.textContent=''; });
+  const WHY={ no_account:'> no account on this card yet — set a password above and take your place',
+              name_mismatch:'> the name on the record doesn’t match this gate check — go back and write it exactly as the card reads',
+              cooldown:'> three resets in a day is the limit — see the Keymaster',
+              handle_taken:'> that handle’s taken — roll another',
+              bad_handle:'> handle: 3–20 characters — letters, numbers, _ or - only',
+              short_password:'> 6 characters or more',
+              bad_card:'> that card number doesn’t read right' };
+  go.addEventListener('click',async()=>{
+    rm.textContent='';
+    const pa=window._pendingAcct||{};
+    if(!READ||READ!==pa.id){ rm.textContent='> scan the card first'; return; }
+    const np=pw.value; if(!np||np.length<6){ rm.textContent='> 6 characters or more'; pw.focus(); return; }
+    const h=hd.value.trim().toUpperCase().replace(/\s+/g,'_');
+    if(h&&!validHandle(h)){ rm.textContent=WHY.bad_handle; hd.focus(); return; }
+    if(!window.SB){ rm.textContent='> the backend is off on this build — there is no account to reset'; return; }
+    const label=go.textContent; go.disabled=true; go.textContent='⚓ RESETTING…';
+    const undo=()=>{ go.disabled=false; go.textContent=label; };
+    try{
+      const r=await window.SB.rpc('reset_by_card',{p_card_id:pa.id,p_full_name:pa.name||null,p_new_password:np,p_handle:h||null});
+      if(r.error){
+        const m=r.error.message||'';
+        rm.textContent=/could not find the function|PGRST202|schema cache/i.test(m)
+          ? '> the reset isn’t switched on yet — run PW-RESET.sql in Supabase → SQL Editor' : '> '+m;
+        undo(); return;
+      }
+      const d=r.data||{};
+      if(!d.ok){ rm.textContent=WHY[d.reason]||('> '+(d.reason||'reset refused')); undo(); return; }
+      /* the lock is new — walk in with it, exactly like a sign-in */
+      const si=await window.SB.auth.signInWithPassword({email:cardToEmail(pa.id),password:np});
+      if(si.error){ rm.textContent='> the reset landed but the sign-in didn’t — try TAKE MY PLACE with the new password'; undo(); return; }
+      const prof=await sbLoadProfile();
+      if(prof&&prof.since)pa.since=prof.since;
+      let handle=d.handle||(prof&&prof.handle)||h;   /* the server's word first — it just wrote the handle */
+      if(!prof){   /* a claim that never finished (#stalled) — finish it now, with the handle they picked */
+        const hh=h||genHandle();
+        const cl=await window.SB.rpc('claim_account',{p_card_id:pa.id,p_handle:hh,p_full_name:pa.name||null});
+        if(cl.error){ rm.textContent='> '+cl.error.message; undo(); return; }
+        handle=hh;
+      }
+      finishEnter(handle, pa, (prof&&prof.port_bucks!=null)?(+prof.port_bucks||0):null);
+    }catch(e){ console.warn(e); rm.textContent='> couldn’t reach the backend — try again'; undo(); }
   });
 })();
 
@@ -8522,7 +8656,7 @@ document.getElementById('enterBtn').addEventListener('click',async ()=>{
       if(up.error && /already registered|already exists|registered/i.test(up.error.message||"")){
         // this card already has an account → log them in instead
         const si=await window.SB.auth.signInWithPassword({email:email,password:pass});
-        if(si.error){ pm.textContent="> that password doesn't match this card"; undo(); return; }
+        if(si.error){ pm.textContent="> that password doesn't match this card"; try{ if(window.pwResetReveal)pwResetReveal(true); }catch(e){} undo(); return; }   /* #pwreset — and here's the way back in */
         const prof=await sbLoadProfile();
         /* #fix(bucks) — sbLoadProfile() returns null on a thrown error, an RLS denial,
            a network blip or a missing row. The old `prof?…:0` passed a hard 0, which
