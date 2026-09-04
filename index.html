@@ -18988,11 +18988,14 @@ document.getElementById('chatInput').addEventListener('keydown',e=>{if(e.key==='
    so "📷 Camera" and "🖼 Photo or Video" both send a photo OR a clip. */
 function chatMediaPicked(e){
   const f=e.target.files&&e.target.files[0];if(!f){e.target.value="";return;}
-  const isVid=!!(f.type&&f.type.startsWith('video'));   /* #video2 — clips ride again */
-  const mc=MEDIA_COST;    /* #rates2 — media is 1 ⬡ flat; the old Watchman "discount" to 3 would now be a markup */
-  if(!payCredits(mc,"photo / video",true)){e.target.value="";return;}  // #61
-  chatSendMedia(f,isVid?'video':'image',mc);    // #chat-live — upload to Storage + share
   e.target.value="";
+  /* #cliprule(sep04) — the room's clips obey the same ten seconds as the clan's */
+  clipGate(f,function(file){
+    const isVid=!!(file.type&&file.type.startsWith('video'));   /* #video2 — clips ride again */
+    const mc=MEDIA_COST;    /* #rates2 — media is 1 ⬡ flat; the old Watchman "discount" to 3 would now be a markup */
+    if(!payCredits(mc,"photo / video",true))return;  // #61
+    chatSendMedia(file,isVid?'video':'image',mc);    // #chat-live — upload to Storage + share
+  });
 }
 ['chatFile','chatCam'].forEach(id=>{const el=document.getElementById(id);if(el)el.addEventListener('change',chatMediaPicked);});
 /* ===== #GIF — two doors, one fare. The GIPHY picker sheet (its own GIF button in the
@@ -20241,6 +20244,8 @@ window.storyCreateChooser=storyCreateChooser;
 let _styFile=null,_styKind='img',_styBlobUrl=null,_styTxtY=0.42;   // #vidtext — vertical position (0..1) of the on-clip text
 function storyCompose(file){
   if(!file)return;
+  /* #cliprule(sep04) — a clip on the wall is cut to ten seconds and re-encoded first */
+  if(file.type&&file.type.startsWith('video')&&!CLIP_PASSED.has(file)){ clipGate(file,storyCompose); return; }
   _styFile=file;_styKind=(file.type&&file.type.startsWith('video'))?'vid':'img';   /* #video2 — clips post again */
   _styTxtY=0.42;
   if(_styBlobUrl){try{URL.revokeObjectURL(_styBlobUrl)}catch(e){}}
@@ -23269,7 +23274,22 @@ window.openClanSheet=openClanSheet;
    tile → the full-page viewer plays the squad's reel (likes and the talk ride
    along, keyed 'clip-<id>'); the uploader or the leader can strike one. */
 let CLAN_CLIPS={};   /* clan_id → rows */
-const CLIP_MAX_MB=60;
+/* ═══ #cliprule(sep04) — TEN SECONDS, 720p, EVERY TIME ═══
+   By request. Two things were wrong with letting a clip through as it came off the
+   phone. The obvious one: a modern phone shoots 4K60, so a ten-second brag lands as
+   ~90 MB — a slow upload for the poster, and every clanmate who scrolls past pays to
+   download it. The quiet one: the chat-media bucket takes 10 MB a file, so the old
+   60 MB cap was a promise the wire could never keep — anything between 10 and 60
+   went all the way through the sheet and died at the upload with a bucket error.
+   So: CLIP_MAX_SEC is the length of a highlight, and the cap is now sized to what a
+   ten-second 720p clip actually weighs (2.5 Mbps ≈ 3.2 MB) with room to spare and
+   clear air under the bucket. Every video — clan clips, the room, the wall — goes
+   through clipGate() first, which runs the cutting room: the canvas re-encode scales
+   a 4K source down to 720p and the trim can't select more than ten seconds. A
+   browser too old to re-encode can't be made to obey, so it is asked instead: a clip
+   over ten seconds is turned away with a plain reason. */
+const CLIP_MAX_SEC=10;
+const CLIP_MAX_MB=8;
 async function sbLoadClanClips(clanId){
   if(!(window.SB&&window.__shkUid))return;
   try{
@@ -23436,7 +23456,7 @@ function clipWorkshop(clanId,file,onDone){
   const blob=URL.createObjectURL(file);
   let sh=document.getElementById('clipTrimSheet');
   if(!sh){ sh=document.createElement('div'); sh.className='sheet'; sh.id='clipTrimSheet'; sh.style.zIndex='96'; document.body.appendChild(sh); }
-  let tier=1, start=0, end=0, dur=0, busy=false, abort=false;
+  let tier=0, start=0, end=0, dur=0, busy=false, abort=false;   /* #cliprule — a 10s cut at 720p is ~3 MB, so open on the sharp one */
   /* #clipmime — if the clip only opened after being re-labelled, the squeeze has to be
      handed those same re-labelled bytes, or it would fail exactly where the preview did */
   let workFile=file; const retryUrls=[];
@@ -23444,9 +23464,7 @@ function clipWorkshop(clanId,file,onDone){
   sh.innerHTML='<div class="sheet-card" style="text-align:left">'
     +'<div class="big" style="font-size:20px;letter-spacing:.06em;text-align:center">✂ CUT IT DOWN</div>'
     +'<p class="sub" id="ctWhy" style="margin:6px 0 12px;text-align:center">'
-      +(file.size>CLIP_MAX_MB*1048576
-        ? 'This clip is '+clipMBTxt(file.size)+' — over the '+CLIP_MAX_MB+' MB the wire takes. Trim it, shrink it, or both.'
-        : 'This clip is '+clipMBTxt(file.size)+' and already fits. Cut it shorter or lighter anyway if you want.')
+      +'Clips run <b style="color:var(--bone)">'+CLIP_MAX_SEC+' seconds</b> — pick the best ten. It gets re-cut for a phone on the way out, so a 4K original lands light.'
     +'</p>'
     +'<div class="sty-compose-prev"><video id="ctVid" src="'+esc(blob)+'" muted playsinline preload="auto"></video></div>'
     +'<div id="ctRead" class="sub" style="text-align:center;margin:14px 0 4px">⏳ Reading the clip…</div>'
@@ -23459,7 +23477,7 @@ function clipWorkshop(clanId,file,onDone){
       +'<input type="range" id="ctEnd" min="0" max="100" step="0.1" value="100" style="width:100%;accent-color:var(--copper-hi)">'
       +'<div class="lbl" style="margin:14px 0 6px">How sharp</div>'
       +'<div class="lbseg" id="ctTiers" style="margin:0 0 12px">'
-        +CLIP_TIERS.map((t,i)=>'<button type="button" data-tier="'+i+'"'+(i===1?' class="on"':'')+' style="padding:10px 4px;font-size:11.5px">'+t.label+'<br><span style="opacity:.6;font-size:10px">'+t.sub+'</span></button>').join('')
+        +CLIP_TIERS.map((t,i)=>'<button type="button" data-tier="'+i+'"'+(i===0?' class="on"':'')+' style="padding:10px 4px;font-size:11.5px">'+t.label+'<br><span style="opacity:.6;font-size:10px">'+t.sub+'</span></button>').join('')
       +'</div>'
       +'<div id="ctEst" class="sub" style="text-align:center;margin:0 0 12px;font-size:12px"></div>'
       +'<button class="btn" id="ctGo" type="button">✂ SQUEEZE IT</button>'
@@ -23488,6 +23506,11 @@ function clipWorkshop(clanId,file,onDone){
   const clamp=()=>{
     start=+sI.value; end=+eI.value;
     if(end<start+0.5){ if(document.activeElement===sI){ start=Math.max(0,end-0.5); sI.value=start; } else { end=Math.min(dur,start+0.5); eI.value=end; } }
+    /* #cliprule — the window can be dragged anywhere in the clip, but never wider than ten seconds */
+    if(end-start>CLIP_MAX_SEC){
+      if(document.activeElement===sI){ end=Math.min(dur,start+CLIP_MAX_SEC); eI.value=end; }
+      else { start=Math.max(0,end-CLIP_MAX_SEC); sI.value=start; }
+    }
     sT.textContent=clipSecTxt(start); eT.textContent=clipSecTxt(end); paintEst();
   };
   sI.addEventListener('input',()=>{ clamp(); try{v.currentTime=start}catch(e){} });
@@ -23548,9 +23571,8 @@ function clipWorkshop(clanId,file,onDone){
     }
     dur=d;
     sI.max=eI.max=dur; sI.value=0; eI.value=dur;
-    /* open on a cut that already fits, so the first thing seen is a green number */
-    const fitSecs=Math.floor((CLIP_MAX_MB*0.88*8*1048576)/(CLIP_TIERS[1].bps+96000));
-    if(dur>fitSecs){ eI.value=Math.max(1,fitSecs); }
+    /* #cliprule — open on the first ten seconds, so the first thing seen already obeys the rule */
+    if(dur>CLIP_MAX_SEC){ eI.value=CLIP_MAX_SEC; }
     clamp(); try{v.currentTime=0}catch(e){}
     read.style.display='none'; ctl.style.display='';
   })();
@@ -23566,11 +23588,11 @@ function clipWorkshop(clanId,file,onDone){
     sh.querySelector('#ctNo').style.display='none';
     const bar=sh.querySelector('#ctBar'), pct=sh.querySelector('#ctPct'),
           phase=sh.querySelector('#ctPhase'), left=sh.querySelector('#ctLeft');
-    const span=Math.max(.5,end-start);
+    const span=Math.min(CLIP_MAX_SEC,Math.max(.5,end-start));   /* #cliprule — the encoder never runs past ten seconds */
     let spin=0; const SPIN=['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧'];
     const tickSpin=setInterval(()=>{ if(phase.dataset.run==='1')phase.textContent=SPIN[spin++%SPIN.length]+' Squeezing…'; },110);
     try{
-      const out=await clipSqueeze(workFile,{start:start,end:end,height:CLIP_TIERS[tier].h,
+      const out=await clipSqueeze(workFile,{start:start,end:start+span,height:CLIP_TIERS[tier].h,
         bps:clipFitBps(CLIP_TIERS[tier].bps,span),
         abort:()=>abort,
         onProgress:p=>{
@@ -23671,8 +23693,39 @@ async function clipSqueeze(file,opt){
   }catch(e){ cleanup(); throw e; }
 }
 
+/* #cliprule — how long is it, without opening the workbench */
+function clipVideoSeconds(file){
+  return new Promise(function(res,rej){
+    var u=''; try{ u=URL.createObjectURL(file); }catch(e){ rej(new Error('no url')); return; }
+    var v=document.createElement('video'); v.muted=true; v.playsInline=true; v.preload='metadata'; v.src=u;
+    clipReadDuration(v,9000).then(function(d){ try{URL.revokeObjectURL(u)}catch(e){}
+      (d>0)?res(d):rej(new Error('no duration')); },function(e){ try{URL.revokeObjectURL(u)}catch(_){} rej(e); });
+  });
+}
+/* #cliprule — THE GATE. Nothing that moves gets past this without being cut to
+   CLIP_MAX_SEC and re-encoded for a phone. Stills pass straight through. */
+const CLIP_PASSED=(typeof WeakSet==='function')?new WeakSet():{has:function(){return false},add:function(){}};
+function clipGate(file,onOk){
+  if(!(file&&file.type&&String(file.type).startsWith('video'))){ onOk(file); return; }
+  try{ if(CLIP_PASSED.has(file)){ onOk(file); return; } }catch(e){}
+  var pass=function(f){ try{ CLIP_PASSED.add(f); }catch(e){} onOk(f); };
+  if(clipCanSqueeze()){ clipWorkshop(null,file,pass); return; }
+  /* no encoder here — hold the line on length and hand back the reason */
+  toast('Checking the clip…');
+  clipVideoSeconds(file).then(function(sec){
+    if(sec>CLIP_MAX_SEC+0.4){ toast('🎬 Clips run '+CLIP_MAX_SEC+' seconds — cut it shorter in your gallery first'); return; }
+    if(file.size>CLIP_MAX_MB*1048576){ toast('That clip is '+clipMBTxt(file.size)+' — over the '+CLIP_MAX_MB+' MB the wire takes, and this browser can’t shrink it'); return; }
+    pass(file);
+  }).catch(function(){ toast('This browser couldn’t open that clip — an MP4 usually works'); });
+}
+window.clipGate=clipGate;
 function clanClipCompose(clanId,file,squeezed){
   if(!file)return;
+  /* #cliprule(sep04) — a VIDEO always goes through the cutting room first: ten
+     seconds, 720p, re-encoded on the phone. It comes back here as a passed file. */
+  if(!squeezed && file.type && file.type.startsWith('video')){
+    clipGate(file,f=>clanClipCompose(clanId,f,true)); return;
+  }
   /* #clipfit(sep01) — over the cap? offer the cutting room instead of a dead end */
   if(file.size>CLIP_MAX_MB*1048576){
     const isVid=!!(file.type&&file.type.startsWith('video'));
