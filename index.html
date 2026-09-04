@@ -913,7 +913,7 @@ html.daylight .badge.earned{background:#fff;border-width:2px}
 .bpager button{width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:var(--plate);color:var(--copper-hi);font-size:17px;cursor:pointer}
 .bpager button:disabled{opacity:.3;cursor:default}
 .bpager span{font-size:11px;color:var(--steel);letter-spacing:.1em}
-.toast{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom));transform:translate(-50%,16px);z-index:96;   /* #hdr2 — toasts must clear chat (80) & the header-spawned sheets: “live chat connected”, refunds etc. were firing invisibly behind the room */
+.toast{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom));transform:translate(-50%,16px);z-index:110;   /* #toastz(sep04) — was 96, level with #dmView: a toast fired inside a wire painted BEHIND it (same z, later node wins). Above every sheet (≤98), under the alert dialog (120). */   /* #hdr2 — toasts must clear chat (80) & the header-spawned sheets: “live chat connected”, refunds etc. were firing invisibly behind the room */
   background:linear-gradient(184deg,var(--btn-hi),var(--btn-lo));border:1px solid rgba(238,180,107,.55);border-radius:16px;
   padding:10px 17px;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:12px;color:var(--copper-hi);
   /* #toastfix — long lines WRAP inside the screen now (they used to run off the page, unreadable) */
@@ -21800,14 +21800,41 @@ function _dmView(){
   v.querySelector('#dmSendBtn').addEventListener('click',dmSend);
   v.querySelector('#dmIn').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();dmSend();}});
   /* #dmmedia — ＋ opens the phone's picker (camera lives in it); GIF opens the picker sheet */
-  v.querySelector('#dmAtt').addEventListener('click',()=>{ if(typeof guestWall==='function'&&guestWall())return; const f=v.querySelector('#dmFile'); f.value=''; f.click(); });
+  v.querySelector('#dmAtt').addEventListener('click',()=>{ if(typeof guestWall==='function'&&guestWall())return;
+    if(DM.mediaOff){ toast(DM.mediaOff); dmMediaNote(DM.mediaOff); return; }   /* #dmmedia2 — say it, don't open a picker that leads nowhere */
+    const f=v.querySelector('#dmFile'); f.value=''; f.click(); });
   v.querySelector('#dmFile').addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; e.target.value=''; if(!f)return; dmSendMedia(f); });
   v.querySelector('#dmGif').addEventListener('click',()=>{ if(typeof guestWall==='function'&&guestWall())return;
+    if(DM.mediaOff){ toast(DM.mediaOff); dmMediaNote(DM.mediaOff); return; }   /* #dmmedia2 */
     try{ openGifPicker(u=>{ const gm=(typeof gifMediaUrl==='function'&&gifMediaUrl(u))||u; dmSendGif(gm); }); }catch(e){} });
   return v;
 }
+/* #dmmedia2 — ONE QUESTION, ONCE: can dm_messages carry kind + url? A select on the two
+   columns answers without writing anything. No → the ＋ and GIF dim and say what to run. */
+async function dmMediaProbe(){
+  if(!(window.SB&&window.__shkUid)||DM._mprobed)return; DM._mprobed=1;
+  try{
+    const r=await window.SB.from('dm_messages').select('kind,url').limit(1);
+    const m=String((r&&r.error&&r.error.message)||'');
+    DM.mediaOff=(r&&r.error&&/column|schema cache|does not exist|kind|url/i.test(m))
+      ? '⚓ Pictures on the wire need DM-MEDIA.sql — run it in Supabase → SQL Editor' : null;
+  }catch(e){}
+  dmMediaButtons();
+}
+function dmMediaButtons(){
+  try{ const v=document.getElementById('dmView'); if(!v)return;
+    ['#dmAtt','#dmGif'].forEach(q=>{ const b=v.querySelector(q); if(b){ b.style.opacity=DM.mediaOff?'.45':''; b.title=DM.mediaOff||''; } }); }catch(e){}
+}
+/* a picture that didn't send leaves a line IN THE THREAD (a toast is gone in 2.6 s) */
+function dmMediaNote(why){
+  try{ const f=document.getElementById('dmFeed'); if(!f)return;
+    const p=document.createElement('p'); p.className='sub'; p.setAttribute('data-dmnote','1');
+    p.style.cssText='align-self:center;text-align:center;max-width:86%;font-size:12px;line-height:1.4;color:var(--warn);margin:4px 0';
+    p.textContent=why; f.appendChild(p); f.scrollTop=f.scrollHeight; }catch(e){}
+}
 function openDmThread(uid,h){
   const v=_dmView();
+  try{ dmMediaProbe(); }catch(e){}   /* #dmmedia2 */
   DM.openPeer=uid; DM.openPeerH=h||dmPeerName(uid);
   /* #dmname(sep03) — we already know the handle here (it came from wherever this
      was opened from); save it on the thread right away so the Messages list
@@ -22085,6 +22112,7 @@ async function dmSendMedia(file){
   dmFold({id:id,from_id:window.__shkUid,to_id:peer,body:DM_WORD[kind],kind:kind,url:local,created_at:new Date().toISOString()},false);
   try{ const t=DM.threads[peer], mm=t&&t.msgs.find(x=>x.id===id); if(mm)mm.pend=true; }catch(e){}
   dmDrawThread();
+  let step='upload';   /* #dmmedia2 — which leg failed decides what it says */
   try{
     const ext=((file.name||'').split('.').pop()||(isVid?'mp4':'jpg')).toLowerCase().replace(/[^a-z0-9]/g,'')||'bin';
     const path='dm/'+String(window.__shkUid).replace(/[^a-zA-Z0-9_-]/g,'_')+'/'+id+'.'+ext;
@@ -22092,6 +22120,7 @@ async function dmSendMedia(file){
     if(up.error)throw up.error;
     const pub=window.SB.storage.from('chat-media').getPublicUrl(path);
     const url=pub&&pub.data&&pub.data.publicUrl; if(!url)throw new Error('no public url');
+    step='insert';
     const r=await window.SB.from('dm_messages').insert({id:id,from_id:window.__shkUid,to_id:peer,from_handle:(typeof chatMyHandle==='function'?chatMyHandle():'a casual'),body:DM_WORD[kind],kind:kind,url:url});
     if(r&&r.error)throw r.error;
     const t=DM.threads[peer], mm=t&&t.msgs.find(x=>x.id===id); if(mm){ mm.url=url; mm.pend=false; }
@@ -22099,10 +22128,21 @@ async function dmSendMedia(file){
   }catch(e){
     const t=DM.threads[peer]; if(t)t.msgs=t.msgs.filter(x=>x.id!==id);
     dmDrawThread();
-    const m=String((e&&e.message)||'');
-    toast(/column|kind|url|schema cache/i.test(m)?'⚓ The wire can’t carry pictures yet — run DM-MEDIA.sql in Supabase'
-      :/policy|denied|violates/i.test(m)?'🗝 Their wire is closed to you — friends only, or off':'Upload failed — check your connection');
-    try{console.warn('[dm] media failed:',m);}catch(_){}
+    const m=String((e&&(e.message||e.error))||e||'');
+    let why;
+    if(step==='upload'){
+      why=/policy|violates|denied|row-level|unauthorized|403/i.test(m) ? '⚓ The bucket refused dm/ — add the storage policy at the bottom of DM-MEDIA.sql'
+         : /bucket not found|404/i.test(m) ? '⚓ No chat-media bucket on this backend'
+         : 'Upload failed — '+(m?m.slice(0,90):'check your connection');
+    } else {
+      why=/column|schema cache|does not exist/i.test(m) ? '⚓ Pictures on the wire need DM-MEDIA.sql — run it in Supabase → SQL Editor'
+         : /policy|denied|violates/i.test(m) ? '🗝 Their wire is closed to you — friends only, or off'
+         : 'Picture didn’t send — '+(m?m.slice(0,90):'check your signal');
+      if(/column|schema cache|does not exist/i.test(m)){ DM.mediaOff=why; dmMediaButtons(); }
+    }
+    toast(why); dmMediaNote(why);
+    try{console.warn('[dm] media failed at '+step+':',m);}catch(_){}
+    try{ if(window.DEVLOG&&DEVLOG.data)DEVLOG.data('dm media '+step,{ok:false,err:m}); }catch(_){}
   }
   dmRenderAll();
 }
@@ -22119,9 +22159,11 @@ async function dmSendGif(url){
   }catch(e){
     const t=DM.threads[peer]; if(t)t.msgs=t.msgs.filter(x=>x.id!==id);
     dmDrawThread();
-    const m=String((e&&e.message)||'');
-    toast(/column|kind|url|schema cache/i.test(m)?'⚓ The wire can’t carry GIFs yet — run DM-MEDIA.sql in Supabase'
-      :/policy|denied|violates/i.test(m)?'🗝 Their wire is closed to you — friends only, or off':'GIF didn’t send — check your signal');
+    const m=String((e&&(e.message||e.error))||e||'');
+    const why=/column|schema cache|does not exist/i.test(m)?'⚓ GIFs on the wire need DM-MEDIA.sql — run it in Supabase → SQL Editor'
+      :/policy|denied|violates/i.test(m)?'🗝 Their wire is closed to you — friends only, or off':'GIF didn’t send — '+(m?m.slice(0,90):'check your signal');
+    if(/column|schema cache|does not exist/i.test(m)){ DM.mediaOff=why; dmMediaButtons(); }
+    toast(why); dmMediaNote(why);   /* #dmmedia2 */
   }
   dmRenderAll();
 }
