@@ -19410,7 +19410,9 @@ function openPaySheet(o){ // {title,sub,price,fields:[{k,label,ph}],go,onPaid}
   sh.innerHTML='<div class="sheet-card" style="text-align:left">'
     +'<div class="big" style="font-size:20px;letter-spacing:.06em;text-align:center">'+o.title+'</div>'
     +'<p class="sub" style="margin:8px 0 14px;text-align:center">'+o.sub+'</p>'
-    +o.fields.map(f=>f.type==='select'
+    +o.fields.map(f=>f.type==='photo'   /* #makepic — a picture, chosen and placed before the thing exists */
+      ?'<span class="lbl">'+f.label+'</span><button class="pay-photo" type="button" data-photo="'+esc(f.k)+'"><span>'+esc(f.ph||'📷 ＋ ADD A PICTURE')+'</span></button>'
+      :f.type==='select'
       ?'<span class="lbl">'+f.label+'</span><select class="field" data-k="'+f.k+'" style="margin-bottom:12px">'+(f.opts||[]).map(op=>'<option value="'+esc(op[0])+'">'+esc(op[1])+'</option>').join('')+'</select>'
       :f.type==='textarea'   /* #social2 — room to say it */
       ?'<span class="lbl">'+f.label+'</span><textarea class="field" data-k="'+f.k+'"'+(f.opt?' data-opt="1"':'')+' rows="4" placeholder="'+esc(f.ph||'')+'" style="margin-bottom:12px" maxlength="'+(f.max||300)+'">'+esc(f.v||'')+'</textarea>'
@@ -19421,6 +19423,32 @@ function openPaySheet(o){ // {title,sub,price,fields:[{k,label,ph}],go,onPaid}
     +'<button class="btn" id="payGo" type="button">'+(o.price?'⬡ PAY '+o.price+' — ':'✓ ')+o.go+'</button>'
     +'<button class="btn-ghost" id="payNo" type="button" style="width:100%;margin-top:10px;border:0;color:#586067">Never mind</button></div>';
   sh.querySelector('#payNo').addEventListener('click',()=>sh.classList.remove('on'));
+  /* #makepic — the picture is picked and PLACED right here; it is held on the phone
+     and only uploaded once the thing it belongs to exists and has an id. */
+  const PAY_PIC={};
+  sh.querySelectorAll('[data-photo]').forEach(btn=>{
+    const key=btn.getAttribute('data-photo');
+    const spec=(o.fields||[]).find(f=>f.k===key)||{};
+    btn.addEventListener('click',()=>{
+      let inp=document.getElementById('payPhotoFile');
+      if(!inp){ inp=document.createElement('input'); inp.type='file'; inp.id='payPhotoFile'; inp.accept='image/*'; inp.hidden=true; document.body.appendChild(inp); }
+      inp.onchange=async e=>{
+        const f=e.target.files&&e.target.files[0]; e.target.value=''; if(!f)return;
+        let src; try{ src=await decodePicture(f); }catch(_){ toast('Couldn’t read that picture — try a JPG or PNG'); return; }
+        coverPlace({src:src,ratio:spec.ratio||'',plain:!!spec.plain,title:spec.title||'',sub:spec.sub||'',
+          head:spec.head||'📷 PLACE THE PICTURE',note:spec.note||'Drag the picture to where it should sit.',
+          onOk:(fx,fy)=>{
+            PAY_PIC[key]={src:src,fx:fx,fy:fy};
+            let u=''; try{ u=URL.createObjectURL(f); }catch(_){}
+            btn.classList.add('set');
+            if(u)btn.style.backgroundImage='url("'+u+'")';
+            btn.style.backgroundPosition=(fx*100).toFixed(1)+'% '+(fy*100).toFixed(1)+'%';
+            btn.querySelector('span').textContent='✓ PICTURE SET · TAP TO CHANGE';
+          }});
+      };
+      inp.click();
+    });
+  });
   let _payBusy=false;   /* #fix3(bucks) — .sheet transitions visibility over .25s, and a
      visibility transition holds `visible` for the whole run — so the button stayed
      hit-testable for 250ms AFTER classList.remove('on'). A double-tap (or an iOS
@@ -19432,6 +19460,7 @@ function openPaySheet(o){ // {title,sub,price,fields:[{k,label,ph}],go,onPaid}
     sh.querySelectorAll('input[data-k],select[data-k],textarea[data-k]').forEach(i=>{const v=i.value.trim();vals[i.dataset.k]=v;
       if(!v&&!i.dataset.opt){ if(ok){ i.focus(); const lb=i.previousElementSibling; const nm=(lb&&/lbl/.test(lb.className||'')&&lb.textContent)?lb.textContent.trim():'That one';
         toast(nm+(i.tagName==='SELECT'?' — pick one':' — fill it in')); } ok=false; }});   /* #pickone — say which, don't just blink */
+    Object.keys(PAY_PIC).forEach(k=>{ vals[k]=PAY_PIC[k]; });   /* #makepic — the placed picture rides with the rest of the form */
     if(!ok)return;
     if(o.validate){const err=o.validate(vals);if(err){toast(err);return;}}   // checked BEFORE any bucks move
     if(o.price&&!payCredits(o.price,o.title.toLowerCase()))return;
@@ -19682,6 +19711,18 @@ async function gathFlyerClear(gid){
   }catch(e){ toast('Couldn’t take it down — try again'); }
 }
 window.gathFlyerPick=gathFlyerPick; window.gathFlyerClear=gathFlyerClear;
+/* #directions(sep04) — "Cabrillo Beach pits" is a place, and a phone already knows
+   what to do with one. Hand it over to whichever maps app the phone actually has:
+   Apple Maps on an iPhone, Google Maps everywhere else. No key, no embed, no
+   tracking — just the words the caller typed, handed to the map. */
+function openDirections(place){
+  var q=String(place||'').trim(); if(!q){ toast('No place on this one to point at'); return; }
+  var ios=/iPad|iPhone|iPod/.test(navigator.userAgent||'')||((navigator.platform==='MacIntel')&&navigator.maxTouchPoints>1);
+  var url=ios?('https://maps.apple.com/?q='+encodeURIComponent(q))
+             :('https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(q));
+  try{ var w=window.open(url,'_blank','noopener'); if(!w)location.href=url; }catch(e){ try{location.href=url;}catch(_){} }
+}
+window.openDirections=openDirections;
 function gathById(id){ try{ return (ALL_GATHS||[]).find(g=>String(g.id)===String(id))||null; }catch(e){ return null; } }
 function gathRoomName(g){ return (g&&g.room_name)||('🕯 '+((g&&g.name)||'gathering')); }
 function gathIsMine(g){ try{ return !!(g&&window.__shkUid&&g.owner===window.__shkUid); }catch(e){ return false; } }
@@ -22642,6 +22683,8 @@ function gathsSectionHTML(step,gaths){
                 +((function(){ try{ const n=floorCount(gathRoomName({name:g.n,room_name:g.room_name})); return n>0?' <b>'+n+'</b>':''; }catch(e){ return ''; } })())
               +'</button>'
               :'')
+            /* #directions — only when the caller actually named a place */
+            +(g.p?'<button class="feed-inv" data-dir="'+esc(g.p)+'" aria-label="Directions to '+esc(g.p)+'" title="Directions">🧭</button>':'')
             +'<button class="feed-inv" data-inv="gath" data-name="'+esc(g.n)+'" data-detail="'+esc((g.w||'')+' · '+(g.p||''))+'" aria-label="Invite to '+esc(g.n)+'">⤴</button>'
             /* #ghostroom(aug10) — same fix on the gathering side: a phone-only
                gathering had no server row, so `sv` was false and its ✕ never drew. */
@@ -23203,7 +23246,7 @@ async function clanBannerSet(clanId,file){
   catch(e){ toast('Couldn’t read that picture — try a JPG or PNG'); return; }
   clanBannerPlace(c,src,function(fx,fy){ clanBannerSend(clanId,c,src,fx,fy); });
 }
-async function clanBannerSend(clanId,c,src,fx,fy){
+async function clanBannerSend(clanId,c,src,fx,fy,quiet){   /* quiet: made with the clan — don't pop its sheet */
   var el=document.getElementById('clanBanner'); if(el)el.classList.add('busy');
   try{
     var blob=await canvasBlob(clanCoverCanvas(src,1200,480,fx,fy),.82);
@@ -23218,8 +23261,7 @@ async function clanBannerSend(clanId,c,src,fx,fy){
     if(r.error)throw r.error;
     CLAN_BANNER[clanId]=url; try{ c.banner_url=url; }catch(e){}
     try{ var k=String(old||'').match(/\/chat-media\/(clans\/[^?#]+)/); if(k)window.SB.storage.from('chat-media').remove([decodeURIComponent(k[1])]).catch(function(){}); }catch(e){}   /* the last cover goes */
-    toast('🎮 Cover set — the clan wears it');
-    try{ openClanSheet(clanId); }catch(e){}
+    if(!quiet){ toast('🎮 Cover set — the clan wears it'); try{ openClanSheet(clanId); }catch(e){} }
     try{ renderSocialFeed(); }catch(e){}
   }catch(e){
     if(el)el.classList.remove('busy');
@@ -23276,7 +23318,10 @@ window.newClanFlow=function(){
       {k:"j",label:"Who can join",type:"select",opts:[["","— pick one —"],["open","⚓ Open — any casual can join on the spot"],["ask","🗝 Ask to join — you approve every request"]]},
       {k:"p",label:"Your platform",type:"select",opts:CLAN_PLATFORMS},
       {k:"t",label:"Your gamer tag",ph:"PSN · Gamertag · Steam · Epic",max:32},
-      {k:"b",label:"A line about the squad (optional)",ph:"graveyard shift squad · mics on",opt:true,max:80}],
+      {k:"b",label:"A line about the squad (optional)",ph:"graveyard shift squad · mics on",opt:true,max:80},
+      /* #makepic — the cover belongs to the making of the clan, not to a chore afterwards */
+      {k:"img",type:"photo",label:"Cover picture (optional)",ph:"🎮 ＋ ADD A COVER",head:"🎮 PLACE THE COVER",
+       note:"Drag the picture to where it should sit. This is the real frame — the name sits where you see it."}],
     validate:v=>{
       const game=clanGameName(v.g), nm=(v.n||'').trim();
       if(!game||game.length<2)return "Which game? Type it — or pick one as you type";
@@ -23308,6 +23353,8 @@ window.newClanFlow=function(){
         try{ await window.SB.from('room_members').insert({room_id:r.data.id,user_id:window.__shkUid,handle:h,status:'in',decided_at:new Date().toISOString()}); MY_KEYS[r.data.id]='in'; }catch(e){}   /* #keys — the leader holds the first key */
         try{ ALL_ROOMS.push(r.data); }catch(e){}
         clanKeyRoom({room_id:r.data.id,room_name:roomName,owner_handle:h});
+        /* #makepic — the cover they placed on the way in, now that the clan has an id */
+        try{ if(v.img&&v.img.src&&c.data&&c.data.id)await clanBannerSend(c.data.id,c.data,v.img.src,v.img.fx,v.img.fy,true); }catch(e){}
         await sbLoadClans(); renderSocialFeed();
         try{ armoryBuyMark(); }catch(e){}   /* a paid clan is a purchase, like a room */
         toast('🎮 '+nm+' is up — its room is open, invite the squad');
@@ -24246,6 +24293,7 @@ function bindFeed(host){
     else await socialDelete(dk,b.getAttribute('data-id'));
   }));
   /* #gathroom(sep01) — open a gathering's own room straight off its card */
+  host.querySelectorAll('[data-dir]').forEach(b=>b.addEventListener('click',e=>{ e.stopPropagation(); openDirections(b.getAttribute('data-dir')); }));   /* #directions */
   /* #flyer — open it, change it, take it down */
   host.querySelectorAll('[data-flyer]').forEach(b=>b.addEventListener('click',e=>{
     if(e.target.closest('[data-flyswap],[data-flyx]'))return;
@@ -24358,7 +24406,10 @@ window.newGatheringFlow=function(){
       {k:"n",label:"What is it",ph:"e.g. C-List BBQ at Cabrillo"},
       {k:"w",label:"When",ph:"e.g. Sat Aug 8 · 2 PM"},
       {k:"p",label:"Where",ph:"e.g. Cabrillo Beach pits"},
-      {k:"v",label:"The RSVP list",type:"select",opts:[["","— pick one —"],["0","⚓ Public — list every casual going"],["1","🗝 Private — show the count, mask the names"]]}],
+      {k:"v",label:"The RSVP list",type:"select",opts:[["","— pick one —"],["0","⚓ Public — list every casual going"],["1","🗝 Private — show the count, mask the names"]]},
+      /* #makepic — put the poster up while you are calling it */
+      {k:"img",type:"photo",label:"Flyer (optional)",ph:"📣 ＋ ADD A FLYER",ratio:"wide16",plain:true,head:"📣 PLACE THE FLYER",
+       note:"The whole flyer is kept — this only picks the strip the card shows. Tapping it on the board opens the lot."}],
     onPaid:async v=>{
       const priv=v.v==="1";
       if(window.SB&&window.__shkUid){
@@ -24371,6 +24422,8 @@ window.newGatheringFlow=function(){
              gathering still stands — the caller can open the room later from its
              card, and nothing they paid for is lost over it. */
           try{ if(r.data)await gathRoomEnsure(r.data); }catch(e){}
+          /* #makepic — the flyer they placed on the way in */
+          try{ if(v.img&&v.img.src&&r.data&&r.data.id)await gathFlyerSend(r.data.id,r.data,v.img.src,v.img.fy); }catch(e){}
           renderSocialFeed();
           unlockBadge(bixLate("Rally Caller"));                   // #8
           try{armoryBuyMark()}catch(e){}   // #fix2 — only once the gathering actually posted
@@ -31969,6 +32022,15 @@ html.fs-lg .msg .who time{font-size:calc(12px * var(--chatfs,1))}
 #flyerView .fv-hint{position:absolute;left:0;right:0;top:calc(16px + env(safe-area-inset-top));text-align:center;pointer-events:none;
   font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:9.5px;letter-spacing:.18em;color:rgba(255,255,255,.5);transition:opacity .3s}
 #flyerView.zoomed .fv-hint{opacity:0}
+/* #makepic(sep04) — the picture tile inside a create sheet: empty it is a dashed
+   invitation, filled it is the picture itself with a line over it */
+.pay-photo{position:relative;display:flex;align-items:center;justify-content:center;width:100%;min-height:74px;margin-bottom:12px;
+  border:1px dashed rgba(238,180,107,.45);border-radius:12px;background:rgba(238,180,107,.05);cursor:pointer;overflow:hidden;
+  background-size:cover;background-position:center;
+  font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:11px;letter-spacing:.14em;color:var(--copper-hi)}
+.pay-photo.set{min-height:104px;border-style:solid;border-color:rgba(238,180,107,.5);color:#fff}
+.pay-photo span{position:relative;z-index:1;padding:6px 12px;border-radius:99px}
+.pay-photo.set span{background:rgba(8,6,16,.66);border:1px solid rgba(255,255,255,.26)}
 /* the same cover, small, as the clan's tile on the board */
 .evt-date.clan-thumb{min-height:52px;background-size:cover;background-position:center;font-size:0;border-color:rgba(238,180,107,.3)}
 
