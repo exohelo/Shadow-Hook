@@ -784,6 +784,13 @@ html.daylight .heist{background:rgba(64,54,38,.6)}
 .wire-cell.rest{color:#4a5057;border:1px dashed rgba(220,214,201,.22);opacity:.75;
   background:repeating-linear-gradient(135deg,rgba(220,214,201,.09) 0 2px,transparent 2px 6px),var(--well)}
 .wire-cell.rest .tick{color:var(--ember)}
+/* #ladder(sep4) — a night that opens into thin letters can call past 16 rungs: the
+   ladder wraps to a second row (13 a row) with room for the ticks between them.
+   The FRESH tick marks where the rested crew is back on the board. */
+.wire-track.wide{flex-wrap:wrap;row-gap:24px}
+.wire-track.wide .wire-cell{flex:0 0 calc((100% - 12*3px)/13)}
+.wire-cell .tick.fresh{color:var(--ok);font-weight:700}
+.wire-cell.rest.stop{opacity:1;color:#fff}
 /* #wirebtns(aug24) — the .wire-btns row is retired with the two buttons it held.
    #myOdds keeps its id (renderMyOdds writes into it) and now stands on its own:
    empty in the normal case and hidden by :empty, a full-width dashed panel when
@@ -10129,6 +10136,120 @@ function eligibleSpan(r){
   const sp=boardCalled(r); if(sp==null)return null;
   return Math.max(0,sp-(offBoardCount(r)||0));
 }
+/* ═══ #ladder(sep4) — THE REST LADDER: WHICH LETTERS ARE THIN ON THE NEXT BOARD ═══
+   No back-to-backs, so the crew that worked the last board is off the next one.
+   The rest zone in publishCall knew that much, but it measured the zone as "the
+   last board's start card to its end card" — and after a LAP that's the whole
+   book, so it put the zone 26 letters out and went quiet. The board has a
+   TWO-board memory, and the record holds both:
+     Thu PM ran V4963 → E5068 and caught 516: V→E was off the board Fri AM.
+     Fri AM lapped from E5069. The cards that could answer were E→V (fresh), and
+     the 805 jobs went mostly to them; V→E was thin because its crew was resting.
+     So Fri PM: E→U is THIN (its regulars worked this morning; only the morning's
+     flops will show) and V→E is FULL again (Thursday's crew is back).
+   The ladder walks the sealed boards forward keeping the RESTING set: the cards
+   called on the board before that were not themselves resting during it. On an
+   ordinary board that's exactly the last board's span — the old rest zone. After
+   a lap it's the lap's fresh stretch, and the span before it comes back into play.
+   Card-level, the same walk the flop math uses, so a split letter (E above the
+   opening card vs. E below it) comes out right.
+   HOW THIN: the last board caught `down` jobs across its fresh cards. The hall's
+   base rate is what a fresh card catches on an ordinary board (chain average,
+   ~26%). The share of a thin letter's regulars still available ≈ 1 − att ÷ base,
+   floored at 10% — "the few that flopped in the morning". 0.25 when the last
+   board's come-down was never logged.
+   Returns null with no sealed last board. w[27]: the weight of each ladder letter
+   from the opening card (1 = fresh; k=0 is the opening letter from the card up,
+   k=26 the same letter below the card — a lap). thin[27]: the resting share. */
+const LADDER_FLOOR=0.10, LADDER_DEFAULT=0.25, LADDER_MEMORY=6;
+function restLadder(openingCard){
+  try{
+    const lb=(typeof lastCompletedBoard==="function")?lastCompletedBoard():null;
+    if(!lb||!lb.start||!lb.end)return null;
+    const oc=String(openingCard||"").toUpperCase(); const om=/^([A-Z])(\d+)$/.exec(oc); if(!om)return null;
+    const b0=LSEQ.indexOf(om[1]), sn=parseInt(om[2],10); if(b0<0||isNaN(sn))return null;
+    /* the sealed boards leading up to the last one, oldest first — adjacent only,
+       a gap in the record breaks the memory (nothing to rest anyone on) */
+    const chain=[lb]; let cur=lb;
+    for(let i=0;i<LADDER_MEMORY;i++){ const p=prevBoardOf(cur); if(!p||!p.start||!p.end)break; chain.unshift(p); cur=p; }
+    let R=new Set(), freshOfLast=new Set(), sumDown=0, sumFresh=0, lastDown=0, lastFresh=0;
+    chain.forEach(b=>{
+      const held=(boardMoved(b)===false);
+      const called=held?new Set():(spanCards(b.start,b.end,boardLap(b))||new Set());
+      const fresh=new Set(); called.forEach(c=>{ if(!R.has(c))fresh.add(c); });
+      const dn=held?0:boardDown(b);
+      if(dn!=null&&dn>0&&fresh.size>0){
+        if(b===lb){ lastDown=Math.min(dn,fresh.size); lastFresh=fresh.size; }   // the last board is what we're measuring, not the yardstick
+        else { sumDown+=Math.min(dn,fresh.size); sumFresh+=fresh.size; }
+      }
+      R=fresh; freshOfLast=fresh;         // the ones who could answer this board are the ones resting on the next
+    });
+    if(!sumFresh){ sumDown=lastDown; sumFresh=lastFresh; }   // nothing else on the record: the last board has to stand in
+    const base=(sumFresh>0)?Math.max(0.08,Math.min(0.9,sumDown/sumFresh)):0.27;
+    const dnL=(boardMoved(lb)===false)?0:boardDown(lb);
+    const att=(dnL!=null&&dnL>0&&freshOfLast.size>0)?Math.min(1,dnL/freshOfLast.size):null;
+    const thinW=(att!=null)?Math.max(LADDER_FLOOR,Math.min(1,1-att/base)):LADDER_DEFAULT;
+    /* the ladder from the opening card: a thin share per letter, and its weight */
+    const w=new Array(27).fill(1), thin=new Array(27).fill(0); let n0=0;
+    for(let k=0;k<27;k++){
+      const L=LSEQ[(b0+k)%26], arr=ACTIVE[L]||[];
+      let n=0,t=0;
+      for(const num of arr){
+        if(k===0&&num<sn)continue;          // the opening letter from the card up
+        if(k===26&&num>=sn)break;           // …and the same letter below the card, a lap later
+        n++; if(R.has(L+num))t++;
+      }
+      thin[k]=n?t/n:-1;                   // -1: no cards on this rung (an opening card at the top of its letter)
+      if(k===0)n0=n;
+    }
+    /* a stub of an opening rung — the card sits at the top of its letter, or in the
+       gap a lap left (E5067 after E5069 → E5066) — reads like the letter the board
+       walks first: the night opens into F, and F is what it opens into. */
+    if(n0<6)thin[0]=Math.max(0,thin[1]);
+    for(let k=0;k<27;k++){ if(thin[k]<0)thin[k]=0; w[k]=1-thin[k]*(1-thinW); }
+    /* a rung is called THIN on the ladder from a third resting — the split letter at
+       the edge of a span (V4963 → …: V's top half rested, its bottom half didn't) still
+       reads as the zone's edge, the way the record names it. The MATH never rounds:
+       the weights above carry the exact share. */
+    const THIN=0.34; let firstThin=-1, firstFresh=-1;
+    for(let k=0;k<27;k++){ if(thin[k]>=THIN){ firstThin=k; break; } }
+    if(firstThin>=0){ for(let k=firstThin+1;k<27;k++){ if(thin[k]<THIN){ firstFresh=k; break; } } }
+    let lastThin=firstThin; if(firstThin>=0){ lastThin=(firstFresh>0?firstFresh:27)-1; }
+    const any=thin.some(x=>x>0);
+    const sig=[oc,thinW.toFixed(2),thin.map(x=>Math.round(x*10)).join('')].join('~');
+    return {w:w,thin:thin,thinW:thinW,any:any,firstThin:firstThin,firstFresh:firstFresh,lastThin:lastThin,
+            resting:R.size,att:att,base:base,last:lb,when:String(lb.slot).endsWith('PM')?'last night':'this morning',
+            heldLast:(boardMoved(lb)===false),sig:sig,base0:b0};
+  }catch(e){return null;}
+}
+/* #ladder — STRETCH THE CALL. The engine's distribution says "with this count the
+   board moves m ordinary letters" (it ends inside letter start+m, so m covers the
+   walk from m to m+1 ordinary letters). Re-walk that against the ladder: a thin
+   letter only spends thinW of an ordinary letter, a fresh one spends a whole one.
+   An 8-letter call on a night that opens into 17 thin letters (≈2 letters' worth)
+   lands ~6 fresh letters past them. A hold stays a hold. All-fresh → identity, so
+   an ordinary night's call is untouched until the count reaches the rest zone —
+   and then the board barrels through it in the numbers, not just in a line. */
+function restStretch(pmf,ladder){
+  try{
+    if(!pmf||!ladder||!ladder.w||!ladder.any)return pmf;
+    const w=ladder.w, cum=[0]; for(let k=0;k<27;k++)cum.push(cum[k]+w[k]);
+    const out=new Array(27).fill(0);
+    out[0]+=(pmf[0]||0);
+    for(let m=1;m<27;m++){
+      const p=pmf[m]||0; if(!p)continue;
+      const a=m, b=m+1; let placed=0;
+      for(let K=0;K<27;K++){
+        const ov=Math.max(0,Math.min(b,cum[K+1])-Math.max(a,cum[K]));
+        if(ov>0){ out[K]+=p*ov; placed+=ov; }
+      }
+      if(placed<1-1e-9)out[26]+=p*(1-placed);   // past the end of the ladder: all the way around
+    }
+    const s=out.reduce((x,y)=>x+y,0)||1;
+    return out.map(x=>x/s);
+  }catch(e){return pmf;}
+}
+window.restLadder=restLadder; window.restStretch=restStretch;
 /* ===== #cardpos(aug2) — WHERE ONE CARD SAT ON ONE BOARD, READ TO THE NUMBER =====
    Letters alone cannot answer this. The start letter is shared by hands on BOTH sides
    of the opening card, and the end letter by hands on both sides of the closing card,
@@ -10513,27 +10634,34 @@ function renderWireStage(o){
   /* hero */
   set('predStop', stopL);
   set('wMoves', o.med<=0 ? ('likely <b>holds</b> on '+startL)
-    : ('runs <b>'+o.med+' card'+(o.med===1?'':'s')+'</b> · '+startL+' &rarr; <b>'+stopL+'</b>'));
-  /* the board — a dispatch-letter ladder from the start card */
-  const span=Math.min(16, Math.max(o.hi+2, o.med+2, 8));
+    : ('runs <b>'+o.med+' letter'+(o.med===1?'':'s')+'</b> · '+startL+' &rarr; <b>'+stopL+'</b>'));   /* #letters — the wire counts letters, never cards */
+  /* the board — a dispatch-letter ladder from the start card
+     #ladder — a long call (a night that opens into thin letters) needs more than 16
+     rungs, so the ladder is allowed the whole book and wraps to a second row past 16. */
+  const span=Math.min(26, Math.max(o.hi+2, o.med+2, 8));
   const myId=(typeof myBoardId==='function')?myBoardId():null;
   const myDist=myId?((((AZ2.indexOf(myId[0])-o.base)%26)+26)%26):-1;
-  const restAt=(o.cycle&&o.cycle.d>0)?o.cycle.d:-1;   /* #cycle — first rested letter, if it's on the ladder */
+  const lad=o.ladder||null;
+  const thinAt=k=>!!(lad&&lad.thin&&lad.thin[k]>=0.34);           /* #ladder — a third or more resting: same edge restLadder names */
+  const restAt=(o.cycle&&o.cycle.d>0)?o.cycle.d:-1;                /* first rested letter, if it's on the ladder */
+  const freshAt=(o.cycle&&o.cycle.opensThin&&o.cycle.fd>0)?o.cycle.fd:-1;   /* #ladder — where the fresh letters begin on a thin-opening night */
   let cells='';
   for(let k=0;k<=span;k++){
     let cls='wire-cell', inner=AZ2[(o.base+k)%26];
     if(k>=o.lo&&k<=o.hi)cls+=' band';
     if(k===0)cls+=' start';
     if(k===o.med)cls+=' stop';
-    if(restAt>0&&k>=restAt)cls+=' rest';
+    if(lad?thinAt(k):(restAt>0&&k>=restAt))cls+=' rest';
     if(myDist===k)cls+=' youcell';
     if(k===0)inner+='<span class="tick">START</span>';
     else if(k===o.med)inner+='<span class="tick">STOP</span>';
+    else if(k===freshAt)inner+='<span class="tick fresh">FRESH</span>';
     else if(k===restAt)inner+='<span class="tick">REST</span>';
     if(myDist===k&&myDist!==0)inner='<span class="you">📍</span>'+inner;
     cells+='<div class="'+cls+'">'+inner+'</div>';
   }
   set('wTrack', cells);
+  try{ const tr=document.getElementById('wTrack'); if(tr)tr.classList.toggle('wide',span>16); }catch(e){}
   /* meters — move% bar + heat, instead of a run-on sentence */
   const heat=o.mom>=3.5?'hot':o.mom>=1?'warm':'cold';
   const heatTxt=heat==='hot'?'🔥 HOT':heat==='warm'?'WARM':'❄ COLD';
@@ -10553,18 +10681,35 @@ function renderWireStage(o){
   if(run){
     run.style.display='block';
     const c=o.cycle;
-    if(c){
+    if(c&&c.opensThin){
+      /* #ladder — THE NIGHT OPENS INTO THIN LETTERS. The last board lapped (or ran
+         right up to this opening card), so the crew that worked it is exactly the
+         crew this board calls first. The line says how far the thin stretch runs,
+         where the fresh letters start, and the odds the call gets there. */
+      const thinPct=Math.round(c.thinW*100);
+      const arrow='<b>'+c.letter+'</b>&rarr;<b>'+c.end+'</b>';
+      const body='<span class="rw-c">'+arrow+' worked '+c.when+' &mdash; only the flops left, about '+thinPct+'% of a full letter'
+        +(c.fresh?' &middot; fresh from <b>'+c.fresh+'</b>, <b>'+c.fd+' letter'+(c.fd===1?'':'s')+'</b> out':' &middot; thin all the way around')+'</span>';
+      if(c.fresh&&c.pf>=0.5){ run.className='wire-runaway cyc';
+        run.innerHTML='<span class="rw-l">&#10227; thin letters &middot; '+oddsWord(c.pf)+' the call reaches the fresh ones</span>'+body;
+      } else if(c.fresh&&c.pf>=0.12){ run.className='wire-runaway cyc watch';
+        run.innerHTML='<span class="rw-l">&#10227; thin letters &middot; '+oddsWord(c.pf)+' it reaches the fresh ones</span>'+body;
+      } else { run.className='wire-runaway cyc watch';
+        run.innerHTML='<span class="rw-l">&#10227; thin letters &middot; expect movement</span>'+body; }
+    } else if(c&&c.d>0){
       const arrow=c.letter+'&rarr;'+c.end;
       /* one line each — the hall knows why a board cycles; the line just says where and how likely */
-      const body='<span class="rw-c"><b>'+c.letter+'</b> is <b>'+c.d+' card'+(c.d===1?'':'s')+'</b> out &middot; '+arrow+' worked '+c.when+'</span>';
+      const body='<span class="rw-c"><b>'+c.letter+'</b> is <b>'+c.d+' letter'+(c.d===1?'':'s')+'</b> out &middot; '+arrow+' worked '+c.when+'</span>';
       if(c.p>=0.5){ run.className='wire-runaway cyc';
         run.innerHTML='<span class="rw-l">&#10227; cycle alert &middot; '+oddsWord(c.p)+'</span>'+body;
       } else if(c.p>=0.12){ run.className='wire-runaway cyc watch';
         run.innerHTML='<span class="rw-l">&#10227; cycle watch &middot; '+oddsWord(c.p)+'</span>'+body;
       } else { run.className='wire-runaway steady';
-        run.innerHTML='steady run &middot; <b>'+c.letter+'</b> is '+c.d+' cards out &middot; no cycle signal'; }
+        run.innerHTML='steady run &middot; <b>'+c.letter+'</b> is '+c.d+' letters out &middot; no cycle signal'; }
+    } else if(c&&c.heldLast){ run.className='wire-runaway steady';
+      run.innerHTML='steady run &middot; the last board held &mdash; nobody is resting';   /* #ladder */
     } else if(o.p6>=0.12){ run.className='wire-runaway';
-      run.innerHTML='<span class="rw-l">&#9888; runaway watch</span><span class="rw-n">6+ cards <b>'+oddsWord(o.p6)+'</b>'+(o.p10>=0.08?' &middot; 10+ <b>'+oddsWord(o.p10)+'</b>':'')+'</span>';
+      run.innerHTML='<span class="rw-l">&#9888; runaway watch</span><span class="rw-n">6+ letters <b>'+oddsWord(o.p6)+'</b>'+(o.p10>=0.08?' &middot; 10+ <b>'+oddsWord(o.p10)+'</b>':'')+'</span>';
     } else { run.className='wire-runaway steady'; run.innerHTML='steady run &middot; no blowout signal'; }
   }
 }
@@ -11197,6 +11342,21 @@ function publishCall(){
       mom=shMomentum(true); pmf=shPrior(mom,false,dowIdx>=5); source=finalIn?'FINAL':'AM';
     }
   }
+  /* ═══ #ladder(sep4) — THE CALL RUNS ON THE REST LADDER ═══
+     The engine's distribution is "m ordinary letters for this count". Tonight's
+     letters aren't all ordinary: the crew that worked the last board is off this
+     one, so the letters they sit in are thin and the board walks through them on
+     the few who flopped. restLadder reads which letters those are off the sealed
+     record (two boards of memory — after a lap, the lap's fresh half is thin and
+     the half before it is back), restStretch re-walks the distribution against
+     them. Everything below — stop, band, move%, the personal odds, the forecast's
+     pending cell — reads the stretched distribution. The raw one is kept for the
+     dev log and the side-bet. */
+  const pmfRaw=pmf; let ladder=null;
+  try{ ladder=restLadder(lastStart); }catch(_le){ ladder=null; }
+  if(ladder&&ladder.any){ try{ pmf=restStretch(pmfRaw,ladder); }catch(_se){ pmf=pmfRaw; } }
+  window._restLadder=ladder?Object.assign({anchor:lastStart},ladder):null;
+  try{ if(window._v4dbg)window._v4dbg.ladder=ladder?{thinW:+ladder.thinW.toFixed(2),att:(ladder.att!=null?+ladder.att.toFixed(3):null),base:+ladder.base.toFixed(3),firstThin:ladder.firstThin,firstFresh:ladder.firstFresh,resting:ladder.resting}:null; }catch(_de){}
   SH_PMF=pmf;
   const cum=[]; let c=0; pmf.forEach(x=>{c+=x;cum.push(c);});
   const q=t=>cum.findIndex(x=>x>=t);
@@ -11224,20 +11384,21 @@ function publishCall(){
      in renderWireStage (the ladder hatches the rested letters; the runaway line
      becomes the cycle line). Null when the last board isn't sealed — the stage
      then falls back to the old runaway odds. */
+  /* #ladder — the rest zone is now read off the ladder (which letters are thin,
+     and where the fresh ones begin), not off the last board's two end letters. */
   let cycle=null;
   try{
-    const lb=(typeof lastCompletedBoard==='function')?lastCompletedBoard():null;
-    if(lb&&lb.start&&lb.end){
-      const rs=AZ.indexOf(String(lb.start)[0]), re=AZ.indexOf(String(lb.end)[0]);
-      if(rs>=0&&re>=0){
-        let d=((rs-base)%26+26)%26; if(d===0)d=26;                       /* the rest zone opens at the last board's first letter */
-        const p=pmf.slice(Math.min(d,pmf.length)).reduce((a,x)=>a+x,0);   /* chance the call gets that far */
-        const zone=((re-rs)%26+26)%26+1;                                  /* letters that worked, start..end inclusive */
-        cycle={letter:AZ[rs],end:AZ[re],d:d,p:p,zone:zone,when:String(lb.slot).endsWith('PM')?'last night':'this morning'};
-      }
+    if(ladder){
+      const surv=k=>pmf.slice(Math.min(Math.max(0,k),pmf.length)).reduce((a,x)=>a+x,0);
+      if(ladder.firstThin>=0){
+        const d=ladder.firstThin, f=ladder.firstFresh;
+        cycle={letter:AZ[(base+d)%26], end:AZ[(base+ladder.lastThin)%26], d:d, p:surv(d),
+               fresh:(f>0?AZ[(base+f)%26]:null), fd:f, pf:(f>0?surv(f):0),
+               thinW:ladder.thinW, when:ladder.when, opensThin:(d===0)};
+      } else cycle={letter:null,d:-1,p:0,fresh:null,fd:-1,pf:0,thinW:ladder.thinW,when:ladder.when,opensThin:false,heldLast:ladder.heldLast};
     }
   }catch(_ce){}
-  const o={base:base,start:lastStart,med:med,lo:lo,hi:hi,pmove:pmove,mom:mom,p6:p6,p10:p10,source:source,isAM:isAM,lock:lock,cycle:cycle};
+  const o={base:base,start:lastStart,med:med,lo:lo,hi:hi,pmove:pmove,mom:mom,p6:p6,p10:p10,source:source,isAM:isAM,lock:lock,cycle:cycle,ladder:ladder};
   window._lastStageO=o; window._publishedKey=key;
   try{ renderWireStage(o); }catch(e){ console.warn('wire stage',e); }
   /* the pending row on Recent Boards reads this same call */
@@ -11584,7 +11745,9 @@ window.renderMyOdds=renderMyOdds;
        (a weekday rolling over, a learned table settling) can still move, so allow at
        most one recompute per half hour when every visible input is unchanged. */
     var valve=Math.floor(Date.now()/1800000);
-    var key=[anchor,my,ymdOf(from),startPM?1:0,confirmed?1:0,eng,valve].join("|");
+    /* #ladder — the pending cell reads the stretched call, so the ladder is an input */
+    var lad=null; try{ lad=(window._restLadder&&window._restLadder.any&&window._restLadder.anchor===anchor)?window._restLadder:null; }catch(e){}
+    var key=[anchor,my,ymdOf(from),startPM?1:0,confirmed?1:0,eng,valve,(lad?lad.sig:"")].join("|");
     if(_memo&&_memoKey===key) return _memo;
 
     var D=new Array(BINS); for(var b=0;b<BINS;b++)D[b]=0;
@@ -11618,6 +11781,16 @@ window.renderMyOdds=renderMyOdds;
         }catch(e){ pmf=null; }
         if(!pmf){ row.slots.push({ap:isAM?"AM":"PM",slot:slot,reach:0,sharp:0,band:BANDS[0],mean:0}); continue; }
 
+        /* #ladder — the PENDING board (and only it: after it the cursor is a spread,
+           not a card) runs on the same stretched distribution the call above
+           publishes, so tonight's cell and the wire can't disagree. The ordinary
+           mean rolls the momentum, as before — the stretch is tonight's letters,
+           not a change in the hall's pace. */
+        var meanRaw=0; for(j=0;j<27;j++) meanRaw+=j*(pmf[j]||0);
+        if(i===0&&(isAM!==startPM)&&lad&&typeof restStretch==="function"){
+          try{ pmf=restStretch(pmf,lad); }catch(e){}
+        }
+
         if(cats&&cats.shutdown&&!row.cal) row.cal={name:"BOARD DARK"};
         else if(cats&&cats.holiday&&!row.cal) row.cal={name:"HOLIDAY"};
 
@@ -11641,7 +11814,7 @@ window.renderMyOdds=renderMyOdds;
           for(j=0;j<27;j++){ if(pmf[j]) N[(q+j*10)%BINS]+=D[q]*pmf[j]; }
         }
         D=N;
-        if(isAM) momAM=0.3*mean+0.7*momAM; else { momPM=0.3*mean+0.7*momPM; lastPMact=mean; }
+        if(isAM) momAM=0.3*meanRaw+0.7*momAM; else { momPM=0.3*meanRaw+0.7*momPM; lastPMact=meanRaw; }   /* #ladder — pace rolls on the ordinary mean */
 
         row.slots.push({ap:isAM?"AM":"PM",slot:slot,reach:reach,sharp:sharp,
                         band:(row.cal&&reach<0.09)?BANDS[0]:bandOf(reach),mean:mean});
