@@ -18764,8 +18764,12 @@ async function chatSendMedia(file,kind,cost){
   }catch(e){
     if(el)el.remove(); _chatSeen.delete(cid);
     try{addCredits(cost,'refund',true);}catch(_){}
-    try{console.warn('[chat] upload failed:',(e&&(e.message||e.error||e))||e);}catch(_){}
-    toast('Upload failed — check your connection');
+    const _m=String((e&&(e.message||e.error))||e||'');
+    try{console.warn('[chat] upload failed:',_m);}catch(_){}
+    toast(/mime|not supported|415/i.test(_m)?'⚓ chat-media doesn’t take this file type — add it under the bucket’s Allowed MIME types'
+      :/too large|413|exceed|maximum|size/i.test(_m)?'⚓ Over chat-media’s file size limit — raise it on the bucket'
+      :/policy|violates|denied|row-level|403/i.test(_m)?'⚓ The bucket refused this path — check chat-media’s policies'
+      :'Upload failed — check your connection');   /* #video2 — say which bucket limit it hit */
   }
 }
 window.chatOutbound=chatOutbound; window.chatSendMedia=chatSendMedia; window.chatJoin=chatJoin;
@@ -22116,7 +22120,7 @@ async function dmSendMedia(file){
   try{
     const ext=((file.name||'').split('.').pop()||(isVid?'mp4':'jpg')).toLowerCase().replace(/[^a-z0-9]/g,'')||'bin';
     const path='dm/'+String(window.__shkUid).replace(/[^a-zA-Z0-9_-]/g,'_')+'/'+id+'.'+ext;
-    const up=await window.SB.storage.from('chat-media').upload(path,typedUploadBody(file,ext,kind==='video'?'video':'image'),{contentType:mediaMime(file,ext,kind==='video'?'video':'image'),upsert:true,cacheControl:'31536000'});
+    const up=await window.SB.storage.from('chat-media').upload(path,typedUploadBody(file,ext,kind==='video'?'video':'image'),{contentType:mediaMime(file,ext,kind==='video'?'video':'image'),cacheControl:'31536000'});   /* no upsert: a fresh uuid never collides, so the bucket needs an INSERT policy only */
     if(up.error)throw up.error;
     const pub=window.SB.storage.from('chat-media').getPublicUrl(path);
     const url=pub&&pub.data&&pub.data.publicUrl; if(!url)throw new Error('no public url');
@@ -22132,6 +22136,8 @@ async function dmSendMedia(file){
     let why;
     if(step==='upload'){
       why=/policy|violates|denied|row-level|unauthorized|403/i.test(m) ? '⚓ The bucket refused dm/ — add the storage policy at the bottom of DM-MEDIA.sql'
+         : /mime|not supported|415/i.test(m) ? '⚓ chat-media doesn’t take this file type — add it under the bucket’s Allowed MIME types'
+         : /too large|413|exceed|maximum|size/i.test(m) ? '⚓ Over chat-media’s file size limit — raise it on the bucket'
          : /bucket not found|404/i.test(m) ? '⚓ No chat-media bucket on this backend'
          : 'Upload failed — '+(m?m.slice(0,90):'check your connection');
     } else {
