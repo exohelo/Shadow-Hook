@@ -1701,6 +1701,12 @@ html.daylight .btn{box-shadow:inset 0 1px 0 rgba(255,255,255,.5)}
 .hdr-handle{font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:10.5px;font-weight:600;color:var(--copper-hi);letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:0 1 auto}
 .hdr-circle{font-size:8px;letter-spacing:.13em;text-transform:uppercase;color:var(--steel);white-space:nowrap;flex:none;
   border:1px solid var(--line-soft);border-radius:5px;padding:1px 6px}
+/* #council(sep4) — the Shadow Council stands out: a gold chip on your own header, and a
+   small 🗝 (☠ for the Keymaster) beside the handle wherever other casuals are drawn */
+.hdr-council{color:var(--copper-hi);border-color:rgba(238,180,107,.55);text-shadow:0 0 8px rgba(238,180,107,.35)}
+.hdr-council.crown{color:var(--ember);border-color:rgba(224,73,46,.55);text-shadow:0 0 8px rgba(224,73,46,.35)}
+.ctag{display:inline-block;font-size:.85em;line-height:1;vertical-align:baseline;margin-left:2px;filter:drop-shadow(0 0 4px rgba(238,180,107,.55))}
+.ctag.crown{filter:drop-shadow(0 0 4px rgba(224,73,46,.6))}
 .hdr-wallet{display:none}                                /* #hdr — port bucks + hours hidden (still shown when you spend) */
 .mebucks{cursor:pointer;border:1px solid rgba(238,180,107,.5);background:linear-gradient(184deg,var(--btn-hi),var(--btn-lo));
   border-radius:99px;padding:3px 10px;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:11px;font-weight:700;color:var(--copper-hi);
@@ -4032,6 +4038,7 @@ window.DEVLOG=(function(){
         <div class="hdr-sub">
           <span class="hdr-handle" id="meHandle">—</span>
           <span class="hdr-circle" id="meCircle">unverified</span>
+          <span class="hdr-circle hdr-council" id="meCouncil" style="display:none">🗝 COUNCIL MEMBER</span><!-- #council — a seat, or the crown, on your own header -->
         </div>
       </div>
       <div class="hdr-wallet">
@@ -4662,6 +4669,12 @@ window.DEVLOG=(function(){
   /* #desk(sep4) — requests on the Keymaster's desk */
   .desk-row{border:1px solid rgba(238,180,107,.45);border-radius:10px;padding:8px 10px;margin-bottom:6px}
   .desk-row.done{border-color:var(--line-soft);opacity:.72}
+  /* #chamber(sep4) — motions and ballots */
+  .vote-btn{flex:1;padding:7px 0;font-size:11px}
+  .vote-btn.on{border-color:var(--copper-hi);color:var(--copper-hi);box-shadow:0 0 10px rgba(238,180,107,.35)}
+  .vote-btn.on.nay{border-color:var(--ember);color:var(--ember);box-shadow:0 0 10px rgba(224,73,46,.35)}
+  .tally{display:inline-flex;gap:6px;align-items:center}
+  .tally b{font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}
   #recentBoards .rb-empty{padding:22px 10px;text-align:center;color:var(--steel);font-size:12px}
   </style>
       <!-- #jul23b — the ✎ log/correct button moved INTO the Dev Log panel (bottom ⚙ chip):
@@ -8617,6 +8630,14 @@ function localEnter(){
           /* #km — the crown rides the profile: remember it and light the Command Center door */
           try{ window.__isKM=!!prof.is_keymaster; localStorage.setItem(K('km'), window.__isKM?'1':'');
                const _kb=document.getElementById('pfCommand'); if(_kb)_kb.style.display=window.__isKM?'':'none'; }catch(e){}
+          /* #council — the seat shows on the header the moment the key is known, and the
+             wall gets its catch-up pass (silent) so a seat handed before this build lands its mark */
+          try{ if(typeof renderCouncilChip==='function')renderCouncilChip(); }catch(e){}
+          try{ if(window.__isKM&&typeof checkMarks==='function')setTimeout(function(){ try{ checkMarks(true); }catch(e){} },1500); }catch(e){}
+          /* #council — Circle VI follows the key: a seat handed before this build (or on
+             another phone) lands here; a seat taken back while this phone was away hands
+             the old ring back here too */
+          try{ if(typeof councilRing==='function'){ if(window.__isKM)councilRing(true); else if(typeof circleLvl==='function'&&circleLvl()>=6)councilRing(false); } }catch(e){}
           /* #km2 — a banned card locks on sight, wherever it signs in */
           try{ if(prof.banned)showBanLock(''); }catch(e){}
           /* #fix4 — the server owns identity. `if(!a.since)` let a leftover local record
@@ -18069,6 +18090,13 @@ BADGES.push(
  ["💰","Payday Legend · 5,000 ⬡ earned",0,2],["🎰","Jackpot · hit an Order prize",0,1],
  ["🎟","Raffle Royalty · 3 prizes hit",0,2],["⭐","Dock Critic · put your word in the review book",0,1],
  ["💬","First Word · first message on the Hall Floor",0,0],["📸","Storyteller · a post on the board",0,1]);
+/* #council(sep4) — THE WALL GROWS TO 113. One RARE mark for a seat on the SHADOW
+   COUNCIL — Circle VI, the ring the app already calls "elected by the Brotherhood,
+   no buck buys this seat". The BODY is the Shadow Council; a MEMBER of it is a
+   Council Member, and the mark names the person. The Keymaster seats you, the mark lands (see checkMarks' #council line and the
+   coronation notice). APPEND ONLY, same as ever — an 8th page opens with one tile
+   on it, and the padding keeps the wall's shape. */
+BADGES.push(["🗝","Council Member · seated by the Keymaster",0,2]);
 /* #markspay(aug16) — AN EMPTY STRING IS NOT AN EMPTY LIST. The cloud apply() writes
    String(v!=null?v:'') for a null row; JSON.parse('') throws; this bare catch then
    restored ZERO flags and the whole wall read unearned while the earned list sat on
@@ -18467,6 +18495,12 @@ function checkMarks(silent){ // real rules on real data — marks are earned, ne
     if(vc>=1)unlockBadge(bix("Lantern Bearer"));
     if(vc>=5)unlockBadge(bix("Torch Bearer"));
     if(vc>=10)unlockBadge(bix("Beacon"));
+    /* #council(sep4) — a seat on the Shadow Council is a RARE mark, earned the moment
+       the Keymaster seats you (the key rides the profile: __isKM, minus the crown).
+       Once earned it stays on the wall like every other mark — the wall is a record
+       of what happened, and the seat happened; the live tag on your handle is what
+       comes and goes with the seat itself. */
+    if(window.__isKM&&!(typeof window.kmIsCrown==='function'&&window.kmIsCrown()))unlockBadge(bix("Council Member"));
   }catch(e){}
   _marksSilent=false;
   return BADGES.filter(b=>b[2]).length-_before;
@@ -18626,7 +18660,7 @@ function lbBoardHTML(scope,L,handle){
   const vTx=v=>v.toLocaleString()+' '+unit;
   const row=(r,name,val,mineRow)=>'<li class="'+(mineRow?'me':((typeof r==='number'&&r<=3)?'podium':''))+'">'
     +'<span class="rmed">'+med(r)+'</span>'
-    +'<span class="rid">'+esc(name)+(mineRow?'<span class="rtagme">YOU</span>':'')+'</span>'
+    +'<span class="rid">'+esc(name)+(window.councilTag?councilTag(name):'')+(mineRow?'<span class="rtagme">YOU</span>':'')+'</span>'   /* #council */
     +'<span class="rhrs">'+val+'</span></li>';
   const gapRow=(n,word)=>'<li class="gap"><span class="rmed">⋯</span><span class="rid" style="font-family:\'Inter\',system-ui,-apple-system,\'Segoe UI\',Roboto,sans-serif;font-size:10px;color:var(--steel)">'+n.toLocaleString()+' '+word+' between</span></li>';
   let html='<ol class="race-list">';
@@ -19110,7 +19144,7 @@ function renderChatRow(row){
   }
   const d=row.created_at?new Date(row.created_at):null;
   const t=(d&&!isNaN(d.getTime()))?d.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}):nowT();
-  const who=esc(self?chatMyHandle():(row.by_handle||'a casual'));
+  const who=esc(self?chatMyHandle():(row.by_handle||'a casual'))+(window.councilTag?councilTag(self?chatMyHandle():(row.by_handle||'')):'');   /* #council — the seat rides the handle */
   /* #chatedit — a row is yours to edit/delete if this device sent it OR the DB
      says you own it (owner = your uid, populated by a trigger). Controls only
      render on owned rows; the real gate is RLS. Edit is text-only. */
@@ -21915,7 +21949,7 @@ function svcRow(c){
   const re=!!c.reply_to;   /* #reply — a reply sits indented under its parent and names who it answers */
   return '<div class="svc-row'+(c.pend?' pend':'')+(re?' re':'')+'" data-crid="'+esc(String(c.id))+'"'+(re?' data-cparent="'+esc(String(c.reply_to))+'"':'')+'>'
     +avSlot('svc-av',c.owner||(c.local?window.__shkUid:''),'🎭')
-    +'<div class="svc-b"><div class="svc-h">'+esc(c.by_handle||'a casual')+'<time>'+agoShort(c.ts)+'</time></div>'
+    +'<div class="svc-b"><div class="svc-h">'+esc(c.by_handle||'a casual')+(window.councilTag?councilTag(c.by_handle):'')+'<time>'+agoShort(c.ts)+'</time></div>'   /* #council */
     +'<div class="svc-t">'+(re&&c.reply_handle?'<span class="svc-at">↩ '+esc(c.reply_handle)+'</span>':'')+esc(c.body||'')+'</div>'
     +(c.url?(c.kind==='video'
         ?'<video class="svc-media" src="'+esc(String(c.url))+'" controls playsinline preload="metadata"></video>'   /* #video2 */
@@ -22355,7 +22389,7 @@ function _floorSheetRepaint(){
     const tap=(!p.me&&!p.nameless&&p.uid&&!/^anon-/.test(p.uid)&&typeof openDmCard==='function')?' role="button" data-dmuid="'+esc(p.uid)+'" data-dmh="'+esc(p.h)+'"':'';   /* no door onto a key that can't take a wire */
     return '<div'+tap+' class="floor-row" onclick="if(this.dataset.dmuid)try{openDmCard(this.dataset.dmuid,this.dataset.dmh)}catch(e){}" style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line-soft)'+((p.me||p.nameless)?'':';cursor:pointer')+'">'
       +'<span'+((!p.nameless&&p.uid&&avatarOf(p.uid))?' data-avuid="'+esc(p.uid)+'"':'')+' style="flex:none;width:30px;height:30px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;font-family:\'Anton\',sans-serif;font-size:14px;background:'+(p.nameless?'var(--well);border:1px dashed var(--line);color:var(--steel)':'hsl('+(hue%360)+',42%,42%);color:#fff')+'">'+((!p.nameless&&p.uid&&avatarOf(p.uid))?avatarHTML(p.uid,esc(av)):esc(av))+'</span>'
-      +'<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:\'Inter\',system-ui,-apple-system,\'Segoe UI\',Roboto,sans-serif;font-size:12.5px;color:'+(p.nameless?'var(--steel)':'var(--bone)')+'">'+esc(nm)+(p.me?' <span class="rtagme">YOU</span>':'')+'</span>'
+      +'<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:\'Inter\',system-ui,-apple-system,\'Segoe UI\',Roboto,sans-serif;font-size:12.5px;color:'+(p.nameless?'var(--steel)':'var(--bone)')+'">'+esc(nm)+(p.nameless?'':(window.councilTag?councilTag(p.h):''))+(p.me?' <span class="rtagme">YOU</span>':'')+'</span>'   /* #council */
       +(p.nameless
           ? (p.me?'<button type="button" class="pill" onclick="try{goGateForHandle()}catch(e){}" style="flex:none;cursor:pointer;color:var(--ember);border-color:rgba(224,73,46,.55);background:none;font-family:inherit">⚓ take a handle</button>'
                  :'<span class="pill" style="flex:none;color:var(--ember);border-color:rgba(224,73,46,.45)">sign in at the gate</span>')
@@ -25285,7 +25319,8 @@ function renderCircles(){
   CIRCLES.forEach((c,i)=>{
     const lvl=i+1,held=lvl<=CIRCLE_LVL,next=lvl===CIRCLE_LVL+1&&c.p>0;
     const d=document.createElement('div');d.className='circ'+(held?' done':'');d.style.cursor='pointer';
-    const pill=c.p<0?'<span class="pill" style="margin-left:auto;align-self:center">ELECTED</span>'
+    const pill=(c.p<0&&held)?'<span class="pill gold" style="margin-left:auto;align-self:center">SEATED</span>'   /* #council — Circle VI is real now: a key is the seat */
+      :c.p<0?'<span class="pill" style="margin-left:auto;align-self:center">ELECTED</span>'
       :held?'<span class="pill gold" style="margin-left:auto;align-self:center">HELD</span>'
       :next?'<span class="pill gold" style="margin-left:auto;align-self:center">'+c.p.toLocaleString()+' ⬡</span>'
       :'<span class="pill" style="margin-left:auto;align-self:center;opacity:.6">'+c.p.toLocaleString()+' ⬡</span>';
@@ -25302,7 +25337,8 @@ function showCircleSheet(i){
     sh.addEventListener('click',e=>{if(e.target===sh)sh.classList.remove('on')});}
   const perks=c.perks.map(p=>'<div class="gaterow"><div class="g">◈ '+p+'</div></div>').join('');
   let action='';
-  if(council)action='<p class="sub" style="text-align:center;margin-top:12px">Council seats are <b style="color:var(--copper-hi)">elected by the Brotherhood</b>. Stack marks, feed the Wire, be known.</p>';
+  if(council&&held)action='<p class="sub" style="text-align:center;margin-top:12px;color:var(--ok)">✓ You hold this ring — seated on the Shadow Council by the Keymaster.</p>';   /* #council */
+  else if(council)action='<p class="sub" style="text-align:center;margin-top:12px">Council seats are <b style="color:var(--copper-hi)">elected by the Brotherhood</b> — the Keymaster seats the Order’s vote. Stack marks, feed the Wire, be known.</p>';
   else if(held)action='<p class="sub" style="text-align:center;margin-top:12px;color:var(--ok)">✓ You hold this ring.</p>';
   else if(next)action='<div class="sixstrip" style="margin:12px 0;justify-content:space-between"><span>Price <b class="mono" style="color:var(--copper-hi)">'+c.p.toLocaleString()+' ⬡</b></span><span>Your stack <b class="mono" style="color:'+(CREDITS>=c.p?'var(--ok)':'var(--ember)')+'">'+CREDITS.toLocaleString()+' ⬡</b></span></div>'
     +'<button class="btn" id="circGo" type="button">⬡ PAY '+c.p.toLocaleString()+' — TAKE THE RING</button>';
@@ -25333,6 +25369,38 @@ function showCircleSheet(i){
   });
   sh.classList.add('on');
 }
+/* ═══ #council(sep4) — CIRCLE VI IS THE SEAT ═══
+   "Elected by the Brotherhood — no buck buys this seat" has hung on the ladder since #7
+   with no way up to it: the buy path only fires for rings with a price, so nobody has
+   ever held Circle VI. The Keymaster's seat IS the election for now — the Order is
+   three votes wide, and the crown seats what it votes. A key raises the member to
+   Circle VI and remembers the ring they held (K('circle_prev') rides the same cloud
+   mirror as the ring itself, so a second device agrees); a seat taken back hands that
+   ring straight back. Every key holder sits at the top of the Order, the crown too.
+   The ring's perks come with it — Circle VI is above V, so rooms and renames read the
+   Boatswain price. Written, never removed: removeItem doesn't ride the mirror. */
+function councilRing(on){
+  try{
+    const cur=circleLvl();
+    if(on){
+      if(cur>=6)return false;
+      try{ localStorage.setItem(K('circle_prev'),String(cur)); }catch(e){}
+      CIRCLE_LVL=6; try{ localStorage.setItem(K('circle'),'6'); }catch(e){}
+      try{ renderCircles(); circleChip(); }catch(e){}
+      try{ if(typeof unlockBadge==='function')unlockBadge(bixLate("Ring Bearer")); }catch(e){}   /* #8 — Circle V and above */
+      try{ toast('◈ Circle VI — seated on the Shadow Council'); }catch(e){}
+      try{ DEVLOG.data('council',{ok:true,latest:'seated — Circle VI, ring '+ROMAN[cur-1]+' remembered'}); }catch(e){}
+      return true;
+    }
+    if(cur<6)return false;
+    let prev=1; try{ const p=parseInt(localStorage.getItem(K('circle_prev')),10); if(p>=1&&p<=5)prev=p; }catch(e){}
+    CIRCLE_LVL=prev; try{ localStorage.setItem(K('circle'),String(prev)); localStorage.setItem(K('circle_prev'),'0'); }catch(e){}
+    try{ renderCircles(); circleChip(); }catch(e){}
+    try{ DEVLOG.data('council',{ok:true,latest:'seat taken back — Circle '+ROMAN[prev-1]+' handed back'}); }catch(e){}
+    return true;
+  }catch(e){ return false; }
+}
+window.councilRing=councilRing;
 /* #circlemove(aug13) — THE CIRCLES SHEET. The ladder left the Order view; the CIRCLE
    tile on the profile opens it here. The list keeps its id (#circleList) so
    renderCircles and every existing caller stay untouched — the list simply lives in
@@ -27364,6 +27432,8 @@ function liveSync(){
       .on('postgres_changes',{event:'*',schema:'public',table:'km_flags'},       function(){try{sbLoadKmFlags();}catch(e){}})   /* #km — the Keymaster's word travels instantly */
       .on('postgres_changes',{event:'*',schema:'public',table:'km_notices'},     function(){try{sbLoadNotices();}catch(e){}})   /* #km2 — warnings & bans land live */
       .on('postgres_changes',{event:'*',schema:'public',table:'km_desk'},        function(p){try{if(window.kmDeskLive)window.kmDeskLive(p);}catch(e){}})   /* #desk — a request lands on the crown, a decision lands on the deputy */
+      .on('postgres_changes',{event:'*',schema:'public',table:'km_chamber'},     function(p){try{if(window.kmChamberLive)window.kmChamberLive(p);}catch(e){}})   /* #chamber — a motion, a closing */
+      .on('postgres_changes',{event:'*',schema:'public',table:'km_ballots'},     function(p){try{if(window.kmChamberLive)window.kmChamberLive(p);}catch(e){}})   /* #chamber — a ballot */
       .on('postgres_changes',{event:'*',schema:'public',table:'board_wire'},      function(){_rtCoalesce('bw',sbLoadBoardWire);})
       .on('postgres_changes',{event:'*',schema:'public',table:'dispatch_boards'}, function(p){try{ if(p&&p.new&&p.new.key&&p.new.data)ingestForecast(p.new.key,p.new.data); else sbLoadDispatch(true); }catch(e){}})   /* #egress2 — the event carries the row; no table re-pull */
       .on('postgres_changes',{event:'*',schema:'public',table:'hall_line_log'},   function(){_rtCoalesce('hl',sbLoadHallLine);})   /* #hallline — the phone bot's reads land live */
@@ -33990,9 +34060,23 @@ window.SEASON_STORY={
     <p class="sub" style="margin:6px 0 14px;text-align:center">The Keymaster sees all. Every switch here rides to every phone.</p>
 
     <!-- #desk(sep4) — deputies propose, the crown seals. The note shows on a deputy key only. -->
-    <div id="kmDeputyNote" class="sub" style="display:none;margin:-6px 0 12px;padding:9px 12px;border:1px solid rgba(238,180,107,.45);border-radius:10px;line-height:1.55;color:var(--bone)">🗝 <b>SHADOW COUNCIL</b> — you sit on the council, and you see everything the Keymaster sees. Every lever you pull goes to the Keymaster’s desk with your reason on it; nothing lands until the seal.</div>
+    <div id="kmDeputyNote" class="sub" style="display:none;margin:-6px 0 12px;padding:9px 12px;border:1px solid rgba(238,180,107,.45);border-radius:10px;line-height:1.55;color:var(--bone)">🗝 <b>COUNCIL MEMBER</b> — you sit on the Shadow Council, and you see everything the Keymaster sees. Every lever you pull goes to the Keymaster’s desk with your reason on it; nothing lands until the seal.</div>
     <div class="card-h" style="margin-top:4px">The Desk <span class="pill red" id="kmDeskN" style="display:none">0</span></div>
     <div id="kmDesk" class="sub" style="line-height:1.7;margin-bottom:14px">—</div>
+
+    <!-- #chamber(sep4) — where the Shadow Council decides how the app should go: a motion,
+         one ballot per key holder, the Keymaster's word closes it. km_chamber + km_ballots
+         in DEPUTY-DESK.sql, Part 1b. -->
+    <div class="card-h" style="margin-top:4px">The Chamber <span class="pill gold" id="kmChamberN" style="display:none">0</span></div>
+    <div class="sub" style="margin:-2px 0 8px;font-size:11px;line-height:1.6">Where the Shadow Council decides how the app should go. A motion, a ballot each, and the Keymaster’s word closes it.</div>
+    <div id="kmChamber" class="sub" style="line-height:1.7;margin-bottom:8px">—</div>
+    <details class="fold" id="kmMotionFold" style="margin-bottom:14px">
+      <summary>🗳 put a motion to the council</summary>
+      <input class="field" id="kmMotionTitle" placeholder="the motion — one line" style="margin:8px 0 6px">
+      <textarea class="field" id="kmMotionBody" rows="2" placeholder="the case for it (optional)" style="width:100%;resize:vertical;margin-bottom:6px"></textarea>
+      <button class="btn-ghost" id="kmMotionGo" type="button" style="width:100%">🗳 PUT IT TO THE COUNCIL</button>
+      <div class="sub" id="kmMotionMsg" style="margin-top:6px"></div>
+    </details>
 
     <div class="card-h" style="margin-top:4px">The Alarms <span class="pill red" id="kmAlarmN" style="display:none">0</span></div>
     <div id="kmAlarms" class="sub" style="line-height:1.7;margin-bottom:14px">—</div>
@@ -34225,6 +34309,49 @@ window.SEASON_STORY={
   </div>
 </div>
 <script>
+/* ═══════════ #council(sep4) — THE SHADOW COUNCIL STANDS OUT ═══════════
+   Every phone learns who sits on the council (and who wears the crown) off one
+   small read — council_list(), a security-definer RPC in DEPUTY-DESK.sql that
+   returns handle + seat and nothing else; a phone without it falls back to the
+   profiles rows it can already read. The roster feeds councilTag(handle): a 🗝
+   beside a council member's handle and a ☠ beside the Keymaster's, wherever a
+   handle is drawn for other casuals — the Hall Floor, ONLINE, the bucks boards,
+   the story comments — and the chip under your own handle in the header. The
+   tag is LIVE (it goes when the seat goes); the mark on the wall is the record. */
+window.COUNCIL={};   /* handle (lower) → 'crown' | 'council' */
+window.councilSeat=function(h){ try{ return window.COUNCIL[String(h||'').trim().toLowerCase()]||''; }catch(e){ return ''; } };
+window.councilTag=function(h){
+  const s=window.councilSeat(h); if(!s)return '';
+  return s==='crown'?' <span class="ctag crown" title="The Keymaster">☠</span>':' <span class="ctag" title="Council Member · Shadow Council">🗝</span>';
+};
+window.loadCouncil=async function(){
+  if(!window.SB)return;
+  let rows=null;
+  try{ const r=await window.SB.rpc('council_list'); if(r&&!r.error&&Array.isArray(r.data))rows=r.data.map(x=>({h:x.handle,seat:x.seat})); }catch(e){}
+  if(!rows){ /* no RPC yet — the profiles rows every phone can read; the crown can't be told apart here */
+    try{ const r=await window.SB.from('profiles').select('handle,is_keymaster').eq('is_keymaster',true);
+         if(r&&!r.error&&Array.isArray(r.data))rows=r.data.map(x=>({h:x.handle,seat:'council'})); }catch(e){}
+  }
+  if(!rows)return;
+  const m={}; rows.forEach(x=>{ if(x&&x.h)m[String(x.h).trim().toLowerCase()]=(x.seat==='crown'?'crown':'council'); });
+  /* this phone knows its own seat better than a fallback read does */
+  try{ const a=loadAcct()||{}; if(a.handle&&window.__isKM){ m[String(a.handle).toLowerCase()]=(typeof window.kmIsCrown==='function'&&window.kmIsCrown())?'crown':'council'; } }catch(e){}
+  window.COUNCIL=m;
+  try{ renderCouncilChip(); }catch(e){}
+  try{ if(typeof renderBoards==='function')renderBoards(); }catch(e){}
+  try{ if(typeof _floorSheetRepaint==='function')_floorSheetRepaint(); }catch(e){}
+};
+/* the chip under your own handle: 🗝 COUNCIL MEMBER, or ☠ THE KEYMASTER */
+window.renderCouncilChip=function(){
+  const el=document.getElementById('meCouncil'); if(!el)return;
+  if(!window.__isKM){ el.style.display='none'; return; }
+  const crown=(typeof window.kmIsCrown==='function'&&window.kmIsCrown());
+  el.textContent=crown?'☠ THE KEYMASTER':'🗝 COUNCIL MEMBER';
+  el.className='hdr-circle hdr-council'+(crown?' crown':'');
+  el.style.display='';
+};
+setTimeout(function(){ try{ renderCouncilChip(); }catch(e){} try{ loadCouncil(); }catch(e){} },2500);
+setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15*60000);   /* seats change rarely; a quarter-hour is plenty */
 /* ============ #km — Command Center logic ============ */
 (function(){
   const $=id=>document.getElementById(id);
@@ -34289,6 +34416,7 @@ window.SEASON_STORY={
       case 'ban': case 'unban':{ const on=(req.kind==='ban'); const r=await window.SB.rpc('km_ban',{p_handle:h,p_on:on,p_msg:String(p.msg||'')}); if(r.error)throw r.error;
         return on?(h+' is banned'):(h+' is back in the Order'); }
       case 'key': case 'unkey':{ const on=(req.kind==='key'); const r=await window.SB.rpc('km_crown',{p_handle:h,p_on:on,p_msg:String(p.msg||'')}); if(r.error)throw r.error;
+        try{ setTimeout(function(){ try{ loadCouncil(); }catch(e){} },800); }catch(e){}   /* #council — this phone's tags follow the seat */
         return on?(h+' sits on the Shadow Council'):('seat taken back from '+h); }
       case 'amb':{ await kmAmbLoad();
         const out=await kmAmbApply({handle:h,uid:req.target_uid||p.uid||_ambUids[h.toLowerCase()]||null,appId:p.appId||null},String(p.name||h),(+p.rate>=0?+p.rate:10),String(p.email||''));
@@ -34435,6 +34563,137 @@ window.SEASON_STORY={
       const sh=$('kmSheet'); if(sh&&sh.classList.contains('on'))_rtCoalesce('desk',kmDesk,1200); else kmDeskCount();
     }catch(e){}
   };
+  /* ═══════════ #chamber(sep4) — THE CHAMBER: WHERE THE COUNCIL DECIDES ═══════════
+     "The council chamber, when it convenes" — the third perk on Circle VI, real now.
+     Any key holder puts a MOTION (one line, and the case for it). Every key holder
+     casts ONE ballot — aye or nay, with a word — and can change it while the motion
+     is open. The tally is out loud, names and words included: the Order is three
+     votes wide and nobody here hides behind a number. The crown CLOSES a motion —
+     carried, failed — with a closing word; the mover may table their own. A vote
+     for the whole Order can grow out of this shape later; the tables don't care
+     how many ballots land. km_chamber + km_ballots, DEPUTY-DESK.sql Part 1b. */
+  let _motions=[], _ballots=[];
+  window.kmChamber=async function(){
+    const out=$('kmChamber'); if(!out)return;
+    if(!window.SB){out.textContent='backend off';return;}
+    try{
+      const r=await window.SB.from('km_chamber').select('*').order('created_at',{ascending:false}).limit(40);
+      if(r.error)throw r.error;
+      _motions=r.data||[];
+      const ids=_motions.map(m=>m.id);
+      let b={data:[]};
+      if(ids.length){ b=await window.SB.from('km_ballots').select('*').in('proposal_id',ids); if(b.error)throw b.error; }
+      _ballots=b.data||[];
+      kmChamberDraw();
+    }catch(e){
+      const m=String(e.message||'');
+      out.innerHTML=/km_chamber|km_ballots|does not exist|relation|schema cache|PGRST205|42P01/i.test(m)
+        ?'<span style="color:var(--steel)">the chamber isn’t built yet — run <b style="color:var(--bone)">DEPUTY-DESK.sql</b> once in Supabase → SQL Editor (Part 1b builds it).</span>'
+        :('the chamber failed: '+esc(m));
+    }
+  };
+  function kmChamberDraw(){
+    const out=$('kmChamber'); if(!out)return;
+    const crown=kmIsCrown(), me=kmMe();
+    const open=_motions.filter(x=>x.status==='open'), closed=_motions.filter(x=>x.status!=='open').slice(0,10);
+    const n=$('kmChamberN'); if(n){ n.textContent=open.length; n.style.display=open.length?'':'none'; }
+    const pill=s=>({open:'<span class="pill gold">OPEN</span>',carried:'<span class="pill grn">✓ CARRIED</span>',failed:'<span class="pill red">✕ FAILED</span>',tabled:'<span class="pill">↩ TABLED</span>'})[s]||('<span class="pill">'+esc(s)+'</span>');
+    const row=x=>{
+      const bs=_ballots.filter(v=>String(v.proposal_id)===String(x.id));
+      const ayes=bs.filter(v=>v.aye), nays=bs.filter(v=>!v.aye);
+      const mine=bs.find(v=>me.uid&&v.by===me.uid);
+      const isOpen=(x.status==='open'), mover=(me.uid&&x.by===me.uid);
+      const voter=v=>'<span class="sub" style="display:block;margin-top:2px;color:var(--steel)">'+(v.aye?'👍':'👎')+' <b style="color:var(--copper-hi)">'+esc(v.by_handle||'a key holder')+'</b>'+(v.word?' — “'+esc(v.word)+'”':'')+'</span>';
+      return '<div class="desk-row'+(isOpen?'':' done')+'" data-id="'+esc(x.id)+'">'
+        +'<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span style="font-size:15px">🗳</span>'
+        +'<b style="color:var(--bone)">'+esc(x.title||'')+'</b>'+pill(x.status)
+        +'<span style="margin-left:auto;color:var(--steel);font-size:10.5px">'+esc(_deskWhen(x.created_at))+'</span></div>'
+        +'<div class="sub" style="margin-top:3px">moved by <b style="color:var(--copper-hi)">'+esc(x.by_handle||'a key holder')+(mover?' (you)':'')+'</b></div>'
+        +(x.body?'<div class="sub" style="margin-top:3px;color:var(--bone);line-height:1.55">'+esc(x.body)+'</div>':'')
+        +'<div style="margin-top:6px"><span class="tally"><span class="pill grn">👍 <b>'+ayes.length+'</b></span><span class="pill red">👎 <b>'+nays.length+'</b></span>'
+        +(bs.length?'':'<span class="sub" style="color:var(--steel)">no ballots yet</span>')+'</span></div>'
+        +(bs.length?'<div style="margin-top:4px">'+bs.map(voter).join('')+'</div>':'')
+        +(x.status!=='open'&&x.status!=='tabled'
+            ?'<div class="sub" style="margin-top:4px;color:var(--steel)">closed '+(x.closed_handle?'by '+esc(x.closed_handle):'')+(x.closed_at?' · '+esc(_deskWhen(x.closed_at)):'')
+              +(x.verdict?' — <span style="color:var(--bone)">“'+esc(x.verdict)+'”</span>':'')+'</div>':'')
+        +(isOpen?'<div style="display:flex;gap:6px;margin-top:8px">'
+            +'<button class="btn-ghost vote-btn km-vote'+(mine&&mine.aye?' on':'')+'" data-do="aye">👍 AYE</button>'
+            +'<button class="btn-ghost vote-btn km-vote nay'+(mine&&!mine.aye?' on':'')+'" data-do="nay">👎 NAY</button></div>'
+           +(crown?'<div style="display:flex;gap:6px;margin-top:6px">'
+            +'<button class="btn-ghost km-vote" data-do="carried" style="flex:1;padding:6px 0;font-size:11px;color:var(--ok)">☠ CARRIED</button>'
+            +'<button class="btn-ghost km-vote" data-do="failed" style="flex:1;padding:6px 0;font-size:11px;color:var(--ember)">☠ FAILED</button></div>':'')
+           +(mover&&!crown?'<div style="margin-top:6px"><button class="btn-ghost km-vote" data-do="tabled" style="width:100%;padding:6px 0;font-size:11px;color:var(--steel)">↩ table it</button></div>':'')
+           :'')
+        +'</div>';
+    };
+    if(!_motions.length){ out.innerHTML='<span style="color:var(--steel)">the chamber is quiet — put a motion below and the council votes on it.</span>'; return; }
+    out.innerHTML=(open.length?open.map(row).join(''):'<div class="sub" style="color:var(--steel);margin-bottom:6px">no motion on the floor</div>')
+      +(closed.length?'<div class="sub" style="margin:8px 0 4px;color:var(--steel);letter-spacing:.12em;font-size:10px">DECIDED</div>'+closed.map(row).join(''):'');
+  }
+  async function kmMotionPut(){
+    const t=(($('kmMotionTitle')||{}).value||'').trim(), body=(($('kmMotionBody')||{}).value||'').trim(), msg=$('kmMotionMsg');
+    if(!t){ if(msg)msg.textContent='> the motion, in one line'; return; }
+    if(!window.SB){ if(msg)msg.textContent='> backend off'; return; }
+    const go=$('kmMotionGo'); if(go)go.disabled=true; if(msg)msg.textContent='putting it to the council…';
+    try{
+      const me=kmMe();
+      const r=await window.SB.from('km_chamber').insert({by_handle:me.handle,title:t.slice(0,140),body:body.slice(0,1000)||null,status:'open'}).select('id').single();
+      if(r.error)throw r.error;
+      if($('kmMotionTitle'))$('kmMotionTitle').value=''; if($('kmMotionBody'))$('kmMotionBody').value='';
+      if(msg)msg.textContent='✓ on the floor — the council can vote';
+      try{toast('🗳 motion put to the council');}catch(e){}
+      try{ const f=$('kmMotionFold'); if(f)f.open=false; }catch(e){}
+      kmChamber();
+    }catch(e){ if(msg)msg.textContent='✗ '+e.message+(/km_chamber|does not exist|schema cache|PGRST205|42P01/i.test(String(e.message))?' — run DEPUTY-DESK.sql (Part 1b)':''); }
+    if(go)go.disabled=false;
+  }
+  async function kmVote(x,aye){
+    const me=kmMe();
+    let word=''; try{ word=String(prompt((aye?'AYE':'NAY')+' on “'+x.title+'” — a word with it (optional)')||'').trim(); }catch(e){}
+    const row={proposal_id:x.id,by_handle:me.handle,aye:aye,word:word.slice(0,300)||null,cast_at:new Date().toISOString()};
+    const r=await window.SB.from('km_ballots').upsert(row,{onConflict:'proposal_id,by'});
+    if(r.error)throw r.error;
+    try{toast((aye?'👍 aye':'👎 nay')+' — '+x.title);}catch(e){}
+  }
+  async function kmClose(x,status){
+    const me=kmMe();
+    let verdict=''; try{ verdict=String(prompt('The word that closes it — “'+x.title+'” '+(status==='carried'?'CARRIED':'FAILED')+' (optional)')||'').trim(); }catch(e){}
+    const r=await window.SB.from('km_chamber').update({status:status,closed_at:new Date().toISOString(),closed_by:me.uid,closed_handle:me.handle,verdict:verdict.slice(0,500)||null}).eq('id',x.id);
+    if(r.error)throw r.error;
+    try{toast((status==='carried'?'☠ carried — ':'☠ failed — ')+x.title);}catch(e){}
+  }
+  async function kmTable(x){
+    const r=await window.SB.from('km_chamber').update({status:'tabled'}).eq('id',x.id);
+    if(r.error)throw r.error;
+    try{toast('↩ tabled — '+x.title);}catch(e){}
+  }
+  (function(){
+    const host=$('kmChamber'); if(!host)return;
+    host.addEventListener('click',async function(e){
+      const b=e.target.closest('button.km-vote'); if(!b)return;
+      const wrap=b.closest('.desk-row'); const id=wrap?wrap.dataset.id:null;
+      const x=_motions.find(m=>String(m.id)===String(id)); if(!x)return;
+      wrap.querySelectorAll('button').forEach(bb=>bb.disabled=true);
+      try{
+        if(b.dataset.do==='aye')await kmVote(x,true);
+        else if(b.dataset.do==='nay')await kmVote(x,false);
+        else if(b.dataset.do==='carried'||b.dataset.do==='failed'){ if(!kmIsCrown())throw new Error('only the crown closes a motion'); await kmClose(x,b.dataset.do); }
+        else if(b.dataset.do==='tabled')await kmTable(x);
+        await kmChamber();
+      }catch(err){ try{toast('✗ '+(err&&err.message||err));}catch(e2){} wrap.querySelectorAll('button').forEach(bb=>bb.disabled=false); }
+    });
+    const go=$('kmMotionGo'); if(go)go.addEventListener('click',kmMotionPut);
+  })();
+  /* realtime: a motion lands → every key holder hears it; a ballot or a closing lands → the chamber repaints */
+  window.kmChamberLive=function(p){
+    try{
+      if(!window.__isKM)return;
+      const row=(p&&p.new)||null; const me=kmMe();
+      if(row&&p.table==='km_chamber'&&p.eventType==='INSERT'&&row.by!==me.uid){ try{toast('🗳 '+(row.by_handle||'the council')+' put a motion to the council — '+(row.title||''));}catch(e){} }
+      if(row&&p.table==='km_chamber'&&p.eventType==='UPDATE'&&(row.status==='carried'||row.status==='failed')&&row.closed_by!==me.uid){ try{toast('☠ the Keymaster closed it — '+(row.title||'')+' · '+row.status.toUpperCase());}catch(e){} }
+      const sh=$('kmSheet'); if(sh&&sh.classList.contains('on'))_rtCoalesce('chamber',kmChamber,1200);
+    }catch(e){}
+  };
   /* the bulletin: every phone renders what the Keymaster pushed; dismiss is per-message */
   function bullHash(s){let h=5381;for(const c of String(s))h=((h*33)^c.charCodeAt(0))>>>0;return h.toString(36);}
   window.renderBulletin=function(text){
@@ -34530,6 +34789,7 @@ window.SEASON_STORY={
          const pb=$('kmPush'); if(pb)pb.textContent=dep?'🗝 SEND THE PUSH UP TO THE KEYMASTER':'☠ PUSH TO EVERY PHONE';
          const mb=$('kmMint'); if(mb)mb.textContent=dep?'🗝 ASK THE KEYMASTER TO MINT IT':'⬡ APPLY TO THEIR STACK'; }catch(e){}
     try{kmDesk();}catch(e){}       /* #desk — what waits for the seal, first thing */
+    try{kmChamber();}catch(e){}    /* #chamber — the motions on the floor */
     kmPulse();
     try{kmAlarms();}catch(e){}   /* #alarms — what jammed, first thing you see */
     try{kmSheetFlags();}catch(e){} /* #kmflag — sheets whose numbers don't square */
@@ -34858,7 +35118,7 @@ window.SEASON_STORY={
     const since=prof.since?new Date(prof.since):null;
     const hrsY=(prof.hrs_year!=null&&prof.hrs_year!=='')?(+prof.hrs_year||0):null;
     const tile=(v,k,c)=>'<div style="flex:1;border:1px solid var(--line-soft);border-radius:10px;padding:10px 6px;text-align:center"><div class="mono" style="font-size:16px;color:'+(c||'var(--bone)')+'">'+v+'</div><div class="sub" style="margin-top:2px;font-size:10.5px">'+k+'</div></div>';
-    const pillrow=(x.is_keymaster?'<span class="pill gold">'+(isF?'☠ the crown':'🗝 Shadow Council')+'</span>':'')   /* #council — one crown; every other key is a seat on the Shadow Council */
+    const pillrow=(x.is_keymaster?'<span class="pill gold">'+(isF?'☠ the crown':'🗝 Council Member')+'</span>':'')   /* #council — one crown; every other key is a seat on the Shadow Council */
       +(a?'<span class="pill gold">🎖 ambassador · '+(Number(a.rate)||0)+'%</span>':'')
       +(x.banned?'<span class="pill red">BANNED</span>':'')
       +(isF?'<span class="pill gold">⚓ founder</span>':'');
@@ -36458,12 +36718,18 @@ window.SEASON_STORY={
         else if(n.kind==='crown'){ /* #km3 — a key lands in their hand, live */
           try{ window.__isKM=true; localStorage.setItem(K('km'),'1');
                const kb=document.getElementById('pfCommand'); if(kb)kb.style.display=''; }catch(e){}
-          showCrown(n.message||''); }
+          showCrown(n.message||'');
+          /* #council — the seat is a RARE mark, and it lands with the coronation: chime, popup, the ⬡ */
+          try{ if(!(window.kmIsCrown&&kmIsCrown())&&typeof unlockBadge==='function')setTimeout(function(){ try{ unlockBadge(bixLate("Council Member")); }catch(e){} },900); }catch(e){}
+          try{ if(typeof councilRing==='function')setTimeout(function(){ try{ councilRing(true); }catch(e){} },1800); }catch(e){}   /* #council — and Circle VI, the seat itself */
+          try{ renderCouncilChip(); }catch(e){} try{ loadCouncil(); }catch(e){} }
         else if(n.kind==='uncrown'){ /* #km3 — the key dissolves, door closes */
           try{ window.__isKM=false; localStorage.setItem(K('km'),'');
                const kb=document.getElementById('pfCommand'); if(kb)kb.style.display='none';
                const ks=document.getElementById('kmSheet'); if(ks)ks.classList.remove('on'); }catch(e){}
-          try{toast('Your seat on the Shadow Council has been taken back');}catch(e){} }
+          try{toast('Your seat on the Shadow Council has been taken back');}catch(e){}
+          try{ if(typeof councilRing==='function')councilRing(false); }catch(e){}   /* #council — Circle VI goes with the seat; the ring they held comes back */
+          try{ renderCouncilChip(); }catch(e){} try{ loadCouncil(); }catch(e){} }
         else { showNotice(n.message||''); }
         try{await window.SB.from('km_notices').update({seen:true}).eq('id',n.id);}catch(e){}
       }
