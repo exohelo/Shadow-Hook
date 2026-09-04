@@ -4932,6 +4932,10 @@ window.DEVLOG=(function(){
     :is(#socialFeed,.soc-list) .epill{font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:8.5px;letter-spacing:.1em;color:var(--copper-hi);border:1px solid rgba(238,180,107,.4);border-radius:5px;padding:1px 6px;font-weight:400}
     :is(#socialFeed,.soc-list) .evt-meta{font-size:12px;color:var(--steel);margin-top:4px;display:flex;flex-wrap:wrap;gap:3px 12px}
     :is(#socialFeed,.soc-list) .evt-meta span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+    /* #evtdetails(sep04) — the first two lines of the details on the card, so a casual
+       scanning the board knows what a thing IS before tapping in. The page has the lot. */
+    :is(#socialFeed,.soc-list) .evt-desc{font-size:12px;line-height:1.4;color:var(--bone);opacity:.78;margin-top:5px;
+      display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
     :is(#socialFeed,.soc-list) .evt-foot{display:flex;align-items:center;gap:8px;margin-top:10px}
     :is(#socialFeed,.soc-list) .evt-host{font-size:11px;color:var(--steel);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     :is(#socialFeed,.soc-list) .evt-host b{color:var(--copper-hi);font-weight:700}
@@ -17481,7 +17485,7 @@ BADGES.push(
  ["🥇","First In Line ×10",0,2],["⚡","Lightning Rod · won 5 lightning challenges",0,2],
  // the order, deeper
  ["🕯","Torch Bearer · 5 recruits verified",0,2],["🏮","Beacon · 10 recruits verified",0,3],
- ["🗣","Room Founder · opened a room",0,1],["📣","Rally Caller · called a gathering",0,1],
+ ["🗣","Room Founder · opened a room",0,1],["📣","Rally Caller · called an event",0,1],
  ["🎭","Year in the Shadows · 12 mo masked",0,2],["💬","Voice of the Hall · 500 messages",0,2],
  ["⬡","Buck Baron · 5,000 Port Bucks held",0,2],["🏦","Port Tycoon · 10,000 Port Bucks held",0,3],
  ["💍","Ring Bearer · reached Circle V",0,2],
@@ -18358,8 +18362,12 @@ document.getElementById('roomBack').addEventListener('click',closeRoom);
   function closeTop(){
     try{
       /* #dm(aug13) — an open wire is the topmost thing there is */
-      const gp=document.getElementById('gathPage');   /* #gathpage — Back shuts the gathering first */
-      if(gp&&gp.classList.contains('on')){ closeGathPage(); return true; }
+      const ls=document.getElementById('lbStory');   /* #lbstory — the reader is topmost when it is up */
+      if(ls&&ls.classList.contains('on')){ closeSeasonStory(); return true; }
+      /* #gathpage — Back shuts the event page… #evtdetails(sep04) — …but not before what
+         it opened. The page sits at 65 now, UNDER the room, the details sheet and the
+         flyer placement; those are handled further down (the room by its own line,
+         the sheets by paint order — see the gathPage check just above the sheet sort). */
       const dv=document.getElementById('dmView');
       if(dv&&dv.style.display!=='none'&&dv.style.display!==''){ if(typeof closeDmThread==='function')closeDmThread(); else dv.style.display='none'; return true; }
       if(document.querySelector('.gifsheet.on')){ if(typeof closeGifPicker==='function')closeGifPicker(); else document.querySelectorAll('.gifsheet.on').forEach(s=>s.classList.remove('on')); return true; }
@@ -18387,8 +18395,18 @@ document.getElementById('roomBack').addEventListener('click',closeRoom);
          sheets by computed z-index (the sort is stable, so same-z falls back to DOM
          order) and close the topmost. */
       const _shts=Array.prototype.slice.call(document.querySelectorAll('.sheet.on'));
+      _shts.sort(function(a,b){return ((+getComputedStyle(a).zIndex)||0)-((+getComputedStyle(b).zIndex)||0);});
+      /* #evtdetails(sep04) — the event page is a page among sheets: the Events sheet
+         (60) can be open UNDER it and the details sheet (93) or the flyer placement
+         (96) open OVER it. So: a sheet painted above the page closes first; with none,
+         the page closes; the sheet beneath it waits its turn. */
+      const gp=document.getElementById('gathPage');
+      if(gp&&gp.classList.contains('on')){
+        const gz=(+getComputedStyle(gp).zIndex)||0, top=_shts[_shts.length-1];
+        if(top&&(((+getComputedStyle(top).zIndex)||0)>gz)){ top.classList.remove('on'); return true; }
+        closeGathPage(); return true;
+      }
       if(_shts.length){
-        _shts.sort(function(a,b){return ((+getComputedStyle(a).zIndex)||0)-((+getComputedStyle(b).zIndex)||0);});
         _shts[_shts.length-1].classList.remove('on'); return true;
       }
       const bp=document.getElementById('bpop'); if(bp&&bp.classList.contains('on')){ bp.classList.remove('on'); return true; }
@@ -18421,7 +18439,7 @@ async function inviteWord(kind,name,detail,id){
     if(id)url=SHARE_URL+"/?join="+id;
   }
   const text=(kind==='gath'
-    ?"🕯 You're called: "+name+(detail?" — "+detail:"")+". A gathering of The Order of The Shadow Hook. Get on: "
+    ?"🕯 You're called: "+name+(detail?" — "+detail:"")+". An event of The Order of The Shadow Hook. Get on: "
     :"⚓ You're called to \""+name+"\" — a room in The Order of The Shadow Hook. Masked handles only. Get on: ");
   if(navigator.share){
     try{await navigator.share({title:"The Order of The Shadow Hook",text:text,url:url});unlockBadge(TOWN_CRIER);}catch(e){}
@@ -19561,8 +19579,14 @@ async function sbMigrateSocial(){
     }
     if(liveGaths.length){
       const rows=liveGaths.map(g=>({name:g.n,ico:'🕯',when_txt:g.w||'',where_txt:g.p||'',owner:uid,by_id:ACCT_ID,by_handle:g.by||h,is_private:false}));
-      const r=await window.SB.from('gatherings').insert(rows);
+      const r=await window.SB.from('gatherings').insert(rows).select('id,name');
       if(r.error)throw r.error;
+      /* #evtdetails — an event called offline carries its details (d) up with it:
+         the rows come back with ids, so the notes can land in gath_extra beside
+         them. Best-effort per row; a miss here never sinks the migration. */
+      for(const row of (r.data||[])){
+        try{ const src=liveGaths.find(g=>g.n===row.name); if(src&&String(src.d||'').trim())await gathExtraSave(row.id,{notes:String(src.d).trim()}); }catch(e){}
+      }
     }
     localStorage.setItem(K('socialmig'),'1');   // rides user_kv → the member's other devices skip
     MY_ROOMS=[];MY_GATHS=[];saveSocial();
@@ -19752,14 +19776,23 @@ function _gathPageEl(){
 function closeGathPage(){ const v=document.getElementById('gathPage'); if(v)v.classList.remove('on'); }
 window.closeGathPage=closeGathPage;
 function openGathPage(gid){
-  const g=gathById(gid); if(!g){ toast('That gathering is gone'); return; }
+  const g=gathById(gid); if(!g){ toast('That event is gone'); return; }
   const v=_gathPageEl(), sc=v.querySelector('#gpScroll');
   const mine=(typeof isMineRow==='function')?isMineRow(g):false;
   const fly=gathFlyer(gid), ex=gathExtra(gid)||{};
   const sv=!!g.id, going=!!MY_RSVPS[gid], nGo=RSVP_N[gid]||0;
   const hs=(g.is_private?[]:(RSVP_NAMES[gid]||[]));
   const row=(ic,k,val,btn)=>val?('<div class="gp-row"><span class="ic">'+ic+'</span><span class="tx"><span class="k">'+k+'</span><span class="v">'+esc(val)+'</span></span>'+(btn||'')+'</div>'):'';
-  v.querySelector('#gpTop').textContent=g.name||'Gathering';
+  /* #evtdetails(sep04) — "there is nowhere to add event details". There was: the
+     ✎ up in the top bar, 15px wide, and nobody found it. So the caller now gets
+     the Details row itself as the door — empty, it says so in their own page and
+     carries an ✎ ADD button — plus a full-width ✎ EDIT DETAILS button down with the
+     other actions. The ✎ in the bar stays for whoever did find it. */
+  const hasNotes=!!String(ex.notes||'').trim();
+  const detailsRow=hasNotes
+    ? row('📝','Details',ex.notes||'')   /* filled: the words get the whole width — ✎ EDIT DETAILS waits below */
+    : ((mine&&sv)?'<div class="gp-row empty"><span class="ic">📝</span><span class="tx"><span class="k">Details</span><span class="v">Nothing here yet — what it is, who it’s for, what to bring</span></span><button type="button" id="gpEdRow">✎ ADD</button></div>':'');
+  v.querySelector('#gpTop').textContent=g.name||'Event';
   const ed=v.querySelector('#gpEdit'); ed.style.display=mine?'':'none';
   ed.onclick=()=>gathEditDetails(gid);
   sc.innerHTML=
@@ -19770,10 +19803,10 @@ function openGathPage(gid){
       +'<div class="gp-rows">'
         +row('🕓','When',g.when_txt||'')
         +row('📍','Where',g.where_txt||'',g.where_txt?'<button type="button" id="gpDir">'+DIR_ARROW+' DIRECTIONS</button>':'')
+        +detailsRow   /* #evtdetails — the description sits right under the where: it is what the event IS */
         +row('💵','Cover',ex.cost||'')
         +(ticketUrl(ex.tickets)?'<div class="gp-row"><span class="ic">🎟</span><span class="tx"><span class="k">Tickets</span><span class="v" style="font-size:14px;color:var(--copper-hi);word-break:break-all">'+esc(ticketUrl(ex.tickets).replace(/^https?:\/\//,''))+'</span></span></div>':'')
         +row('🅿️','Parking',ex.parking||'')
-        +row('📝','Details',ex.notes||'')
       +'</div>'
     +'</div>'
     +'<div class="gp-going">'+(g.is_private
@@ -19786,13 +19819,20 @@ function openGathPage(gid){
         +((sv&&(going||mine))?'<button class="btn-line" id="gpRoom" type="button">🗣 THE ROOM</button>':'')
         +'<button class="btn-line" id="gpInv" type="button">⤴ INVITE</button>'
       +'</div>'
-      +((mine&&!fly)?'<button class="btn-line" id="gpPic" type="button">📣 ADD A FLYER</button>':'')   /* #gathtidy — once there IS one, changing it is on the picture */
-      +(mine&&sv?'<button class="btn-line red" id="gpDel" type="button">✕ STRIKE THIS GATHERING</button>':'')
+      /* #evtdetails — the caller's own row: details, and the flyer while there isn't one.
+         #gathtidy — once there IS a flyer, changing it is on the picture */
+      +((mine&&(sv||!fly))?'<div class="gp-two">'
+          +(sv?'<button class="btn-line" id="gpEd" type="button">✎ '+((hasNotes||ex.cost||ex.parking||ticketUrl(ex.tickets))?'EDIT':'ADD')+' DETAILS</button>':'')
+          +(!fly?'<button class="btn-line" id="gpPic" type="button">📣 ADD FLYER</button>':'')
+        +'</div>':'')
+      +(mine&&sv?'<button class="btn-line red" id="gpDel" type="button">✕ STRIKE THIS EVENT</button>':'')
     +'</div>';
   const on=(id,fn)=>{ const b=sc.querySelector('#'+id); if(b)b.addEventListener('click',fn); };
+  on('gpEd',()=>gathEditDetails(gid));
+  on('gpEdRow',()=>gathEditDetails(gid));
   on('gpFly',()=>openFlyer(fly.url,'<b style="color:#fff">'+esc(g.name||'')+'</b>'+((g.when_txt||g.where_txt)?'<br>'+esc([g.when_txt,g.where_txt].filter(Boolean).join(' · ')):''),
     mine?[{t:'📷 REPLACE',go:()=>gathFlyerPick(gid)},
-          {t:'🗑 REMOVE',danger:true,go:()=>shConfirm('Take the flyer down? The gathering stays.',()=>{gathFlyerClear(gid);setTimeout(()=>openGathPage(gid),300);},{title:'Take it down?',icon:'📣',okText:'Take it down'})}]:null));
+          {t:'🗑 REMOVE',danger:true,go:()=>shConfirm('Take the flyer down? The event stays.',()=>{gathFlyerClear(gid);setTimeout(()=>openGathPage(gid),300);},{title:'Take it down?',icon:'📣',okText:'Take it down'})}]:null));
   on('gpTix',()=>openTickets(ex.tickets));
   on('gpDir',()=>openDirections(g.where_txt));
   on('gpRoom',()=>{ try{ openGathRoom(gid); }catch(e){} });
@@ -19808,15 +19848,17 @@ function openGathPage(gid){
   v.classList.add('on');
 }
 window.openGathPage=openGathPage;
-/* the caller filling in what a flyer would say */
+/* the caller filling in what a flyer would say
+   #evtdetails — the description leads now; it was the last box, labelled "Anything
+   else", which is not where anyone looks for the place to say what the event is */
 function gathEditDetails(gid){
   const g=gathById(gid); if(!g)return;
   const ex=gathExtra(gid)||{};
-  openPaySheet({title:"THE DETAILS",sub:"Whatever a casual needs to know before they drive out. All optional.",price:0,go:"SAVE THE DETAILS",
-    fields:[{k:"cost",label:"Cover / cost",ph:"e.g. $20 at the door · free",opt:true,max:60,v:ex.cost||''},
+  openPaySheet({title:"EVENT DETAILS",sub:"Whatever a casual needs to know before they drive out. All optional.",price:0,go:"SAVE THE DETAILS",
+    fields:[{k:"notes",label:"Details",type:"textarea",ph:"What it is, who it's for, what to bring — e.g. 21+ · bring a chair · doors at 7 · speakers from Local 13 · lunch after",opt:true,max:1000,v:ex.notes||''},
+            {k:"cost",label:"Cover / cost",ph:"e.g. $20 at the door · free",opt:true,max:60,v:ex.cost||''},
             {k:"tickets",label:"Ticket link",ph:"paste the ticket page — eventbrite, ticketmaster…",opt:true,max:300,v:ex.tickets||''},
-            {k:"parking",label:"Parking",ph:"e.g. lot behind the venue, $10",opt:true,max:80,v:ex.parking||''},
-            {k:"notes",label:"Anything else",type:"textarea",ph:"21+ · bring a chair · doors at 7",opt:true,max:400,v:ex.notes||''}],
+            {k:"parking",label:"Parking",ph:"e.g. lot behind the venue, $10",opt:true,max:80,v:ex.parking||''}],
     onPaid:async v2=>{ v2.tickets=ticketUrl(v2.tickets); if(await gathExtraSave(gid,v2)){ toast('✓ Details saved'); openGathPage(gid); } }});
 }
 window.gathEditDetails=gathEditDetails;
@@ -19841,7 +19883,7 @@ function openDirections(place){
 }
 window.openDirections=openDirections;
 function gathById(id){ try{ return (ALL_GATHS||[]).find(g=>String(g.id)===String(id))||null; }catch(e){ return null; } }
-function gathRoomName(g){ return (g&&g.room_name)||('🕯 '+((g&&g.name)||'gathering')); }
+function gathRoomName(g){ return (g&&g.room_name)||('🕯 '+((g&&g.name)||'event')); }
 function gathIsMine(g){ try{ return !!(g&&window.__shkUid&&g.owner===window.__shkUid); }catch(e){ return false; } }
 function gathGoing(g){ try{ return !!(g&&MY_RSVPS[g.id]); }catch(e){ return false; } }
 /* the RSVP is the key — hold it locally so the room opens without a round trip */
@@ -19861,13 +19903,13 @@ async function gathRoomEnsure(g){
   if(!g)return null;
   if(g.room_id)return g;
   if(!(window.SB&&window.__shkUid))return null;
-  if(!gathIsMine(g)){ toast('The caller hasn’t opened this gathering’s room yet'); return null; }
+  if(!gathIsMine(g)){ toast('The caller hasn’t opened this event’s room yet'); return null; }
   /* #gathroom — the directory pull already found out there are no room columns;
      don't mint a room row that nothing can point at, and name the real fix */
-  if(window.__shkNoGathRooms===true){ toast('Gathering rooms aren’t on the server yet — the Keymaster needs to run GATHERING-ROOMS.sql'); return null; }
+  if(window.__shkNoGathRooms===true){ toast('Event rooms aren’t on the server yet — the Keymaster needs to run GATHERING-ROOMS.sql'); return null; }
   const nm=gathRoomName(g), h=chatMyHandle();
   try{
-    if(serverRoomByName(nm)){ toast('A room called '+nm+' is already on the floor — rename the gathering first'); return null; }
+    if(serverRoomByName(nm)){ toast('A room called '+nm+' is already on the floor — rename the event first'); return null; }
     const r=await window.SB.from('rooms').insert({name:nm,ico:'🕯',owner:window.__shkUid,by_id:ACCT_ID,by_handle:h,is_private:true}).select().single();
     if(r.error)throw r.error;
     const u=await window.SB.from('gatherings').update({room_id:r.data.id,room_name:nm}).eq('id',g.id).select().single();
@@ -19880,7 +19922,7 @@ async function gathRoomEnsure(g){
     return g;
   }catch(e){
     toast(/does not exist|schema cache|PGRST204|42703/i.test((e&&e.message)||'')
-      ? 'Gathering rooms aren’t on the server yet — the Keymaster needs to run GATHERING-ROOMS.sql'
+      ? 'Event rooms aren’t on the server yet — the Keymaster needs to run GATHERING-ROOMS.sql'
       : 'Couldn’t open the room — check your connection');
     try{ if(window.shkAlert)shkAlert('gath room',e); }catch(_){}
     return null;
@@ -19893,7 +19935,7 @@ async function openGathRoom(gid){
   gathKeyRoom(g);
   try{ if(!ALL_ROOMS.some(r=>r.id===g.room_id))ALL_ROOMS.push({id:g.room_id,name:gathRoomName(g),ico:'🕯',owner:g.owner,by_handle:g.by_handle,is_private:true}); }catch(e){}
   try{ const sh=document.getElementById('socSheet'); if(sh)sh.classList.remove('on'); }catch(e){}
-  openRoom(gathRoomName(g),'🕯','the '+g.name+' gathering');
+  openRoom(gathRoomName(g),'🕯','the '+g.name+' event');
 }
 async function rsvpToggle(gid){
   if(!window.SB||!window.__shkUid){toast('Verify at the gate first — then your RSVP rides the wire');return null;}
@@ -21719,7 +21761,7 @@ function renderHallStats(){
      the board); ONLINE keeps opening the roster it always did. */
   box.innerHTML='<div class="st" data-soc="lobbies" role="button" tabindex="0" style="cursor:pointer"><b>'+nRooms.toLocaleString()+'</b><span>Lobbies ▸</span></div>'
     +'<div class="st" data-floorwho role="button" tabindex="0" style="cursor:pointer"><b>'+(onFloor==null?'—':onFloor.toLocaleString())+'</b><span>Online ▸</span></div>'
-    +'<div class="st" data-soc="gaths" role="button" tabindex="0" style="cursor:pointer"><b>'+nGaths.toLocaleString()+'</b><span>Gatherings ▸</span></div>'
+    +'<div class="st" data-soc="gaths" role="button" tabindex="0" style="cursor:pointer"><b>'+nGaths.toLocaleString()+'</b><span>Events ▸</span></div>'
     +'<div class="st" data-soc="clans" role="button" tabindex="0" style="cursor:pointer"><b>'+nClans.toLocaleString()+'</b><span>Clans ▸</span></div>';
 }
 /* ═══ #floorwho(aug13) — WHO'S ON THE FLOOR. The tile opens this sheet: every casual
@@ -22696,8 +22738,9 @@ function socRoomsModel(){
 }
 function socGathsModel(){
   const svrG=ALL_GATHS.map(g=>({n:g.name,ico:g.ico||'🕯',w:g.when_txt||'',p:g.where_txt||'',by:isMineRow(g)?'you':(g.by_handle||'the Order'),mine:isMineRow(g),id:g.id,priv:!!g.is_private,
-    room_id:g.room_id||null,room_name:g.room_name||null,fly:gathFlyer(g.id)}));   /* #gathroom — the card needs to know about its room · #flyer — and its poster */
-  const legacyG=MY_GATHS.filter(g=>!socIsStruck('gath',g.n)&&!svrG.some(s=>s.n===g.n)).map(g=>({n:g.n,ico:'🕯',w:g.w,p:g.p,by:g.by||'you',mine:true,local:true}));
+    room_id:g.room_id||null,room_name:g.room_name||null,fly:gathFlyer(g.id),   /* #gathroom — the card needs to know about its room · #flyer — and its poster */
+    d:String((gathExtra(g.id)||{}).notes||'').trim()}));   /* #evtdetails — and its details, for the two lines on the card */
+  const legacyG=MY_GATHS.filter(g=>!socIsStruck('gath',g.n)&&!svrG.some(s=>s.n===g.n)).map(g=>({n:g.n,ico:'🕯',w:g.w,p:g.p,d:String(g.d||'').trim(),by:g.by||'you',mine:true,local:true}));
   return BUILTIN_GATHS.concat(svrG,legacyG);
 }
 /* ---------- THE FLOOR (rooms) — the LOBBIES sheet ---------- */
@@ -22760,8 +22803,8 @@ function floorSectionHTML(step,rooms){
 function gathsSectionHTML(step,gaths){
   gaths=gaths||socGathsModel();
   let html='<div class="fsec">'
-    +'<div class="fsec-h"><span class="ttl">Gatherings</span>'+(gaths.length?'<span class="more">'+gaths.length+' open</span>':'')+'</div>';
-  if(!gaths.length)html+='<p class="sub" style="padding:2px 4px 12px">Nothing called yet — the first gathering on the board is yours to start.</p>';
+    +'<div class="fsec-h"><span class="ttl">Events</span>'+(gaths.length?'<span class="more">'+gaths.length+' open</span>':'')+'</div>';
+  if(!gaths.length)html+='<p class="sub" style="padding:2px 4px 12px">Nothing called yet — the first event on the board is yours to start.</p>';
   gaths.forEach(g=>{
     const d=eventDate(g.w);
     const badge=d?('<div class="evt-date"><div class="mo">'+d.mo+'</div><div class="dy">'+d.dy+'</div></div>')
@@ -22792,6 +22835,7 @@ function gathsSectionHTML(step,gaths){
       +'<div class="evt-main">'
         +'<div class="evt-name">'+esc(g.n)+(g.pill?' <span class="epill">'+esc(g.pill)+'</span>':'')+(sv&&g.priv?' <span class="epill">🗝 PRIVATE</span>':'')+'</div>'
         +'<div class="evt-meta">'+(g.w?'<span>🕓 '+esc(g.w)+'</span>':'')+(g.p?'<span>📍 '+esc(g.p)+'</span>':'')+'</div>'
+        +(g.d?'<div class="evt-desc">'+esc(g.d)+'</div>':'')   /* #evtdetails — two lines of what it is; the page has the rest */
         +goLine
         +'<div class="evt-foot"><span class="evt-host">called by <b>'+esc(g.by||'the Order')+'</b></span>'
           +'<div class="evt-cta">'
@@ -22814,7 +22858,7 @@ function gathsSectionHTML(step,gaths){
       +'</div></div>';
   });
   html+='<div class="evt create feedIn"'+step()+' data-new="gath"><div class="evt-date glyph">📣</div>'
-    +'<div class="evt-main"><div class="evt-name">Start a Gathering</div><div class="evt-meta"><span>BBQ, meet-up, watch party — rally the Order</span></div></div>'
+    +'<div class="evt-main"><div class="evt-name">Start an Event</div><div class="evt-meta"><span>BBQ, meet-up, watch party — rally the Order</span></div></div>'
     +'<span class="pill gold">'+((circleLvl()>=4)?100:GATH_COST)+' ⬡</span></div>';   // #fix3 — Quartermaster rate, same as the pay sheet
   html+='</div>';
   return html;
@@ -22846,7 +22890,7 @@ function hotSectionHTML(){
     let kind='',stat='',data='';
     if(it.k==='room'){ kind='🗣 LOBBY'; data=' data-room="'+esc(it.n)+'" data-ico="'+esc(it.ico)+'" data-who="'+esc(it.who)+'"';
       stat=it.on>0?'<i class="dot"></i><b>'+it.on+'</b> on now':(it.priv?'🗝 <b>'+it.keys+'</b> hold a key':'<span class="q">open — tap in</span>'); }
-    else if(it.k==='gath'){ kind='🕯 GATHERING'; data=' data-hgath="'+esc(it.id)+'"';
+    else if(it.k==='gath'){ kind='🕯 EVENT'; data=' data-hgath="'+esc(it.id)+'"';
       stat='<b>'+it.going+'</b> going'+(it.d?' · '+esc(it.d.mo)+' '+esc(it.d.dy):''); }
     else { kind='🎮 CLAN'; data=' data-hclan="'+esc(it.id)+'"';
       stat='<b>'+it.in+'</b> in · '+esc(it.game)+(it.cross?' · 🌐':''); }
@@ -23008,7 +23052,7 @@ window.newTextPostFlow=newTextPostFlow;
 let _socSheetKind=null;
 function socSheetSpec(kind){
   if(kind==='lobbies')return {ttl:'LOBBIES',sub:'every room on the floor — public halls, private rooms with a door, and yours. A clan’s room lives inside its clan.',build:s=>floorSectionHTML(s)};
-  if(kind==='gaths')  return {ttl:'GATHERINGS',sub:'everything the Order has called — BBQs, meet-ups, watch parties',build:s=>gathsSectionHTML(s)};
+  if(kind==='gaths')  return {ttl:'EVENTS',sub:'everything the Order has called — BBQs, meet-ups, watch parties',build:s=>gathsSectionHTML(s)};
   return {ttl:'CLANS',sub:'pick your game, squad up, get the room key',build:s=>clansSection(s)};
 }
 function openSocSheet(kind,focusId){
@@ -24439,7 +24483,7 @@ function bindFeed(host){
   /* #gathtidy — the ✕ on the flyer strikes the GATHERING */
   host.querySelectorAll('[data-gdel]').forEach(b=>b.addEventListener('click',e=>{ e.stopPropagation();
     const gid=b.getAttribute('data-gdel'), gg=gathById(gid);
-    shConfirm('Strike '+((gg&&gg.name)||'this gathering')+'? It comes off the board for everyone.',
+    shConfirm('Strike '+((gg&&gg.name)||'this event')+'? It comes off the board for everyone.',
       async()=>{ try{ await socialDelete('gath',gid); }catch(_){} },{title:'Strike it?',icon:'🕯',okText:'Strike it'}); }));
   host.querySelectorAll('[data-gathroom]').forEach(b=>b.addEventListener('click',async e=>{
     e.stopPropagation();
@@ -24538,11 +24582,17 @@ window.newRoomFlow=function(){
 };
 window.newGatheringFlow=function(){
   const price=(typeof CIRCLE_LVL!=='undefined'&&CIRCLE_LVL>=4)?100:GATH_COST;   // #7 — Quartermaster perk
-  openPaySheet({title:"START A GATHERING",sub:"Call the Order together. It posts here for every casual to see."+(price<GATH_COST?" Quartermaster rate.":""),
+  openPaySheet({title:"START AN EVENT",sub:"Call the Order together. It posts here for every casual to see."+(price<GATH_COST?" Quartermaster rate.":""),
     price:price,go:"CALL IT",fields:[
       {k:"n",label:"What is it",ph:"e.g. C-List BBQ at Cabrillo"},
       {k:"w",label:"When",ph:"e.g. Sat Aug 8 · 2 PM"},
       {k:"p",label:"Where",ph:"e.g. Cabrillo Beach pits"},
+      /* #evtdetails(sep04) — the description. "There is nowhere to add event details":
+         the sheet took a name, a time and a place and nothing else in words, so the
+         caller had no way to say what the thing IS — who it's for, what to bring,
+         what happens when. It rides in gath_extra.notes, the same column the page's
+         ✎ sheet already edits, so nothing on the server changes. */
+      {k:"notes",label:"Details (optional)",type:"textarea",ph:"What it is, who it's for, what to bring — e.g. 21+ · bring a chair · doors at 7 · speakers from Local 13 · lunch after",opt:true,max:1000},
       {k:"v",label:"The RSVP list",type:"select",opts:[["","— pick one —"],["0","⚓ Public — list every casual going"],["1","🗝 Private — show the count, mask the names"]]},
       /* #makepic — put the poster up while you are calling it */
       {k:"cost",label:"Cover / cost (optional)",ph:"e.g. $20 at the door · free",opt:true,max:60},
@@ -24564,23 +24614,24 @@ window.newGatheringFlow=function(){
           try{ if(r.data)await gathRoomEnsure(r.data); }catch(e){}
           /* #makepic — the flyer they placed on the way in */
           try{ if(v.img&&v.img.src&&r.data&&r.data.id)await gathFlyerSend(r.data.id,r.data,v.img.src,v.img.fy); }catch(e){}
-          /* #gathpage — and what it costs / where to park, if they said */
-          try{ if(r.data&&r.data.id&&((v.cost||'').trim()||(v.park||'').trim()||(v.tix||'').trim()))
-                 await gathExtraSave(r.data.id,{cost:(v.cost||'').trim(),parking:(v.park||'').trim(),notes:'',tickets:ticketUrl(v.tix)}); }catch(e){}
+          /* #gathpage — and what it costs / where to park, if they said
+             #evtdetails — and the details, the same write */
+          try{ if(r.data&&r.data.id&&((v.cost||'').trim()||(v.park||'').trim()||(v.tix||'').trim()||(v.notes||'').trim()))
+                 await gathExtraSave(r.data.id,{cost:(v.cost||'').trim(),parking:(v.park||'').trim(),notes:(v.notes||'').trim(),tickets:ticketUrl(v.tix)}); }catch(e){}
           renderSocialFeed();
           unlockBadge(bixLate("Rally Caller"));                   // #8
-          try{armoryBuyMark()}catch(e){}   // #fix2 — only once the gathering actually posted
-          toast("🕯 Gathering called — every casual sees it. Tap its ⤴ to invite directly");
+          try{armoryBuyMark()}catch(e){}   // #fix2 — only once the event actually posted
+          toast("🕯 Event called — every casual sees it. Tap its ⤴ to invite directly");
         }catch(e){
           try{addCredits(price,'refund',true)}catch(_){}
           toast('The wire dropped — bucks returned, try again');
         }
         return;
       }
-      const h=document.getElementById('meHandle');MY_GATHS.push({n:v.n,w:v.w,p:v.p,by:h?h.textContent:'you'});
+      const h=document.getElementById('meHandle');MY_GATHS.push({n:v.n,w:v.w,p:v.p,d:(v.notes||'').trim(),by:h?h.textContent:'you'});   /* #evtdetails — d rides up with it at sign-in */
       saveSocial();renderSocialFeed();unlockBadge(bixLate("Rally Caller"));  // #8
       try{armoryBuyMark()}catch(e){}       // #fix2
-      toast("🕯 Gathering called — rides up Order-wide next sign-in");}});
+      toast("🕯 Event called — rides up Order-wide next sign-in");}});
 };
 /* legacy hooks kept so any other caller still works — both refresh the feed */
 function renderMyRooms(){renderSocialFeed();}
@@ -24649,9 +24700,9 @@ setTimeout(function(){try{processPendingJoin()}catch(e){} try{processPendingShar
 const ROMAN=["I","II","III","IV","V","VI"];
 const CIRCLES=[
  {n:"Initiate",p:0,perks:["Verified at the gate — handle issued","The Book, the Wire, the Hall Floor — full run of the tool","Every docket, report & tip mints Port Bucks"]},
- {n:"Deckhand",p:100,perks:["RSVP to gatherings & enter Order raffles when they run","Deckhand ring on your handle — the Order sees you're in the climb","Priority word: your Send Word reports read first"]},
+ {n:"Deckhand",p:100,perks:["RSVP to events & enter Order raffles when they run","Deckhand ring on your handle — the Order sees you're in the climb","Priority word: your Send Word reports read first"]},
  {n:"Watchman",p:300,perks:["Start a clan at half price — 250 ⬡ → 125 ⬡","First look when new terminals & yard maps land","Watchman ring on your handle"]},
- {n:"Quartermaster",p:750,perks:["Start gatherings 150 ⬡ → 100 ⬡","Early door when the Armory gates open","Quartermaster ring on your handle"]},
+ {n:"Quartermaster",p:750,perks:["Start events 150 ⬡ → 100 ⬡","Early door when the Armory gates open","Quartermaster ring on your handle"]},
  {n:"Boatswain",p:1500,perks:["Open rooms at half price — 250 ⬡ → 125 ⬡","Handle changes free — the rename desk is yours (250 ⬡ below this ring)","Boatswain ring — the copper number"]},
  {n:"Shadow Council",p:-1,perks:["Elected by the Brotherhood — no buck buys this seat","Moderation duties beside the Keymaster","The council chamber, when it convenes"]},
 ];
@@ -32200,7 +32251,13 @@ html.arcade.daylight .btn-line.red:active{box-shadow:none;transform:translateY(3
    gatherings by an explicit column list. Re-run GATH-FLYER.sql; it carries both
    tables now and is safe to run twice. Nothing here needs them: a gathering with
    no extras just shows fewer rows. */
-#gathPage{position:fixed;inset:0;z-index:97;display:none;flex-direction:column;background:var(--void)}
+/* #evtdetails(sep04) — THE PAGE WAS ON TOP OF ITS OWN DOORS. It sat at 97: above the
+   details sheet (#paySheet 93), the flyer placement (#cbPlace 96), the room (80) and
+   the mark pop (70) — every one of which it opens. Tap ✎, and the sheet came up
+   BEHIND the page; tap THE ROOM, same. "There is nowhere to add event details" was
+   literally true. It only has to clear what it opens FROM — the board and the
+   Events sheet (60) — so it sits at 65 now, and everything it opens paints over it. */
+#gathPage{position:fixed;inset:0;z-index:65;display:none;flex-direction:column;background:var(--void)}
 #gathPage.on{display:flex}
 #gathPage .gp-top{flex:none;display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line);background:var(--plate)}
 #gathPage .gp-top b{flex:1;min-width:0;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:13px;
@@ -32222,6 +32279,9 @@ html.arcade.daylight .btn-line.red:active{box-shadow:none;transform:translateY(3
 #gathPage .gp-row .tx{display:block;flex:1;min-width:0}
 #gathPage .gp-row .k{display:block;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:9.5px;letter-spacing:.18em;color:var(--steel);text-transform:uppercase}
 #gathPage .gp-row .v{display:block;font-size:16px;line-height:1.4;color:var(--bone);margin-top:3px;white-space:pre-wrap;word-break:break-word}
+/* #evtdetails(sep04) — the caller's empty Details row: an invitation, not a fact */
+#gathPage .gp-row.empty .v{color:var(--steel);font-style:italic;font-size:14.5px}
+#gathPage .gp-row.empty .ic{opacity:.6}
 #gathPage .gp-row button{flex:none;align-self:center;cursor:pointer;padding:9px 13px;border-radius:10px;border:1px solid rgba(238,180,107,.45);
   background:rgba(238,180,107,.08);color:var(--copper-hi);
   font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:10.5px;letter-spacing:.1em}
@@ -32569,6 +32629,49 @@ html.daylight .sn-decor{opacity:.5}
   background-image:repeating-linear-gradient(90deg,transparent 0 3px,var(--bn-ridge) 3px 4px)}
 @keyframes bnLoad{0%,4%{transform:translateY(0)}42%,54%{transform:translateY(141.2%)}92%,100%{transform:translateY(0)}}
 @keyframes bnCable{0%,4%{transform:scaleY(1)}42%,54%{transform:scaleY(3.4)}92%,100%{transform:scaleY(1)}}
+/* ═══ #lbstory(sep04) — THE READER ═══
+   It wears the banner's own palette (the --bn-* tokens the card already sets), so
+   the page reads as the card opened up rather than a different room, and any
+   future holiday's colours come along for free. Body copy is Inter at 15.5px —
+   the same size #dmbig settled on for the wire, because this is a long read on a
+   phone and the condensed headline face is a strain past two lines. */
+#lbStory{position:fixed;inset:0;z-index:98;display:none;flex-direction:column;background:var(--void)}
+#lbStory.on{display:flex}
+#lbStory .ls-top{flex:none;display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line);background:var(--plate)}
+#lbStory .ls-top b{flex:1;min-width:0;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:13px;letter-spacing:.06em;color:var(--bone);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#lbStory .ls-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding-bottom:calc(34px + env(safe-area-inset-bottom))}
+#lbStory .ls-hero{position:relative;aspect-ratio:360/150;width:100%;overflow:hidden;background:var(--bn-sky-fallback,#141322)}
+#lbStory .ls-hero svg{position:absolute;inset:0;width:100%;height:100%;display:block}
+#lbStory .ls-body{padding:18px 17px 0;max-width:640px;margin:0 auto}
+#lbStory .ls-lede{font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:calc(16px * var(--chatfs,1));line-height:1.55;color:var(--bone);opacity:.92}
+#lbStory .ls-part{margin-top:30px;padding-top:22px;border-top:1px solid var(--line-soft)}
+#lbStory .ls-k{font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:9.5px;font-weight:700;letter-spacing:.24em;color:var(--bn-kick-b,var(--copper-hi))}
+#lbStory .ls-h{margin:8px 0 14px;font-family:'Anton',sans-serif;font-size:25px;line-height:1.1;letter-spacing:.015em;color:var(--bone)}
+#lbStory .ls-p{font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:calc(15.5px * var(--chatfs,1));line-height:1.62;color:var(--bone);opacity:.88;margin:0 0 13px}
+#lbStory .ls-quote{margin:4px 0 16px;padding:14px 16px;border-radius:12px;border-left:3px solid var(--bn-kick-b,var(--copper-hi));
+  background:var(--well);border-top:1px solid var(--line-soft);border-right:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft)}
+#lbStory .ls-quote q{display:block;font-family:'Barlow Condensed',system-ui,sans-serif;font-size:19px;line-height:1.32;color:var(--bone);quotes:'“' '”'}
+#lbStory .ls-quote cite{display:block;margin-top:9px;font-style:normal;font-family:'Inter',system-ui,sans-serif;font-size:9.5px;letter-spacing:.16em;color:var(--steel)}
+#lbStory .ls-fact{padding:13px 0;border-top:1px solid var(--line-soft)}
+#lbStory .ls-fact:last-of-type{border-bottom:1px solid var(--line-soft)}
+#lbStory .ls-part:last-of-type .ls-fact:last-of-type{border-bottom:0}   /* the close draws its own rule */
+#lbStory .ls-fact dt{font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:10px;font-weight:700;letter-spacing:.16em;color:var(--bn-kick-b,var(--copper-hi))}
+#lbStory .ls-fact dd{margin:6px 0 0;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:calc(15px * var(--chatfs,1));line-height:1.55;color:var(--bone);opacity:.88}
+#lbStory .ls-note{margin-top:15px;padding:12px 14px;border-radius:11px;background:rgba(238,180,107,.07);border:1px solid rgba(238,180,107,.3);
+  font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:13px;line-height:1.5;color:var(--copper-hi)}
+#lbStory .ls-close{margin:34px 0 0;padding:26px 6px;text-align:center;border-top:1px solid var(--line-soft)}
+#lbStory .ls-close b{display:block;font-family:'Barlow Condensed',system-ui,sans-serif;font-size:22px;letter-spacing:.03em;color:var(--bone)}
+#lbStory .ls-close small{display:block;margin-top:10px;font-family:'Inter',system-ui,sans-serif;font-size:8.5px;letter-spacing:.26em;color:var(--steel)}
+#lbStory .ls-src{margin:8px 0 0;padding:16px 0 0;border-top:1px solid var(--line-soft)}
+#lbStory .ls-src h4{margin:0 0 8px;font-family:'Inter',system-ui,sans-serif;font-size:9px;font-weight:700;letter-spacing:.24em;color:var(--steel)}
+#lbStory .ls-src li{list-style:none;margin:0 0 5px;font-family:'Inter',system-ui,sans-serif;font-size:11.5px;line-height:1.45;color:var(--steel)}
+#lbStory .ls-src ul{margin:0;padding:0}
+/* the tap target on the card itself */
+#snBanner .bn-open{position:absolute;inset:0;background:none;border:0;padding:0;cursor:pointer}
+#snBanner .bn-read{position:absolute;right:9px;bottom:11px;pointer-events:none;font-style:normal;padding:5px 10px;border-radius:99px;
+  background:rgba(6,8,20,.5);border:1px solid rgba(255,255,255,.24);backdrop-filter:blur(2px);
+  font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:8px;font-weight:600;letter-spacing:.16em;color:rgba(255,255,255,.9)}
 /* ═══ #lbtrim(sep04) — THE COUNTER COMES DOWN ═══
    By request: "too much going on." Under the harbour there used to be a strip —
    SAN PEDRO BAY / LABOR DAY IN, then DAYS : HRS : MIN : SEC ticking. Two type
@@ -32841,6 +32944,16 @@ window.SEASON_DECOR={
     w.innerHTML='<div class="bn-art">'+svg
       +'<div class="bn-cable a"></div><div class="bn-cable b"></div><div class="bn-load"></div></div>'
       ;   /* #lbtrim(sep04) — the card is the picture and the two lines drawn into it. Nothing under it. */
+    /* #lbstory(sep04) — a card with something to read behind it says so and takes a
+       tap. No entry in SEASON_STORY, no chip and no button: a decoration stays a
+       decoration, and the next holiday that grows a page picks this up for free. */
+    if((window.SEASON_STORY||{})[id]){
+      var ob=document.createElement('button'); ob.type='button'; ob.className='bn-open';
+      ob.setAttribute('aria-label','Read about '+(b.title||'this holiday'));
+      ob.addEventListener('click',function(){ openSeasonStory(id,b); });
+      var rd=document.createElement('i'); rd.className='bn-read'; rd.textContent='⊕ READ THE DAY';
+      w.appendChild(ob); w.appendChild(rd);
+    }
     host.insertBefore(w,host.firstChild);
     BANNER={el:w,id:id,spec:b,last:''};
     bannerTick(); bannerArm();
@@ -32875,6 +32988,60 @@ window.SEASON_DECOR={
       bannerArm(60000);
     }catch(e){ try{console.warn('[banner]',e)}catch(_){} }
   }
+  /* ═══ #lbstory(sep04) — OPEN THE CARD ═══
+     The reader is built from SEASON_STORY on every open — the copy is static but the
+     palette is not, and rebuilding costs nothing next to keeping a stale one around.
+     The hero re-uses SEASON_ART with the live palette, so the page opens on the exact
+     picture the card was wearing: no second asset, no second download. */
+  function _lbStoryEl(){
+    var v=document.getElementById('lbStory');
+    if(v)return v;
+    v=document.createElement('div'); v.id='lbStory'; v.setAttribute('role','dialog'); v.setAttribute('aria-label','About this holiday');
+    v.innerHTML='<div class="ls-top"><button class="pdp-back" id="lsBack" type="button" style="padding:2px 8px;font-size:18px" aria-label="Back">‹</button>'
+      +'<b id="lsTop">—</b></div><div class="ls-scroll" id="lsScroll"></div>';
+    document.body.appendChild(v);
+    v.querySelector('#lsBack').addEventListener('click',closeSeasonStory);
+    return v;
+  }
+  function closeSeasonStory(){ var v=document.getElementById('lbStory'); if(v)v.classList.remove('on'); }
+  window.closeSeasonStory=closeSeasonStory;
+  function openSeasonStory(id,spec){
+    try{
+      var st=(window.SEASON_STORY||{})[id]; if(!st)return;
+      var v=_lbStoryEl(), sc=v.querySelector('#lsScroll');
+      var E=window.esc||function(x){ return String(x==null?'':x).replace(/[&<>"]/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); };
+      var hero='';
+      try{
+        var PAL=window.SEASON_PALETTES||{}, P=PAL[(spec&&spec.pal)||'sunset']||PAL.sunset;
+        var art=(window.SEASON_ART||{})[(spec&&spec.art)||'harbor'];
+        if(art&&P)hero='<div class="ls-hero">'+art(P)+'</div>';
+      }catch(e){}
+      var h='';
+      (st.parts||[]).forEach(function(pt){
+        h+='<div class="ls-part">';
+        if(pt.k)h+='<div class="ls-k">'+E(pt.k)+'</div>';
+        if(pt.h)h+='<h3 class="ls-h">'+E(pt.h)+'</h3>';
+        if(pt.quote)h+='<div class="ls-quote"><q>'+E(pt.quote[0])+'</q><cite>'+E(pt.quote[1])+'</cite></div>';
+        (pt.p||[]).forEach(function(x){ h+='<p class="ls-p">'+E(x)+'</p>'; });
+        if(pt.facts&&pt.facts.length){ h+='<dl style="margin:14px 0 0">';
+          pt.facts.forEach(function(f){ h+='<div class="ls-fact"><dt>'+E(f[0])+'</dt><dd>'+E(f[1])+'</dd></div>'; });
+          h+='</dl>'; }
+        (pt.p2||[]).forEach(function(x){ h+='<p class="ls-p" style="margin-top:15px">'+E(x)+'</p>'; });
+        if(pt.note)h+='<div class="ls-note">'+E(pt.note)+'</div>';
+        h+='</div>';
+      });
+      var cl=st.close||[];
+      sc.innerHTML=hero+'<div class="ls-body">'
+        +(st.lede?'<p class="ls-lede">'+E(st.lede)+'</p>':'')+h
+        +'<div class="ls-close"><b>“'+E(cl[0]||'')+'”</b><small>'+E(cl[1]||'')+'</small></div>'
+        +'<div class="ls-src"><h4>WHERE THIS CAME FROM</h4><ul>'
+          +(st.src||[]).map(function(x){ return '<li>· '+E(x)+'</li>'; }).join('')
+        +'</ul></div></div>';
+      v.querySelector('#lsTop').textContent=st.title||'';
+      sc.scrollTop=0; v.classList.add('on');
+    }catch(e){ try{console.warn('[lbstory]',e)}catch(_){} }
+  }
+  window.openSeasonStory=openSeasonStory;
   /* preview only: pin the banner's clock — setBannerClock('2026-09-07T09:00') · setBannerClock() to release */
   window.setBannerClock=function(v){ window._bannerClock=v||null; if(BANNER){ BANNER.last=''; bannerTick(); bannerArm(); } return v?'banner clock pinned to '+v:'banner clock released'; };
 
@@ -32986,6 +33153,61 @@ window.SEASON_GREET={
   veterans:    ['🎖','VETERANS DAY','To every casual who served — thank you.'],
   thanksgiving:['🦃','HAPPY THANKSGIVING','Grateful for the ones who work the holiday.'],
   xmas:        ['🎄','MERRY CHRISTMAS','From the Order — mind the ice on the ladder.']
+};
+/* ═══ #lbstory(sep04) — TAP THE CARD, READ THE DAY ═══
+   By request: "we can do more to it." A banner that only counts is a decoration.
+   This one is a door. SEASON_STORY is keyed the same way SEASON_GREET is, so any
+   holiday can grow a page later — only Labor Day has one written, and a banner
+   with no entry here simply isn't tappable.
+   Every fact below is sourced and the sources are printed at the foot of the page,
+   because this is a room full of men who will call you on a wrong number: the pay
+   language is quoted out of the PCLCD 2022–2028 rather than paraphrased, and the
+   one thing the page insists on is that the hall outranks the app. */
+window.SEASON_STORY={
+  labor:{
+    title:'LABOR DAY',
+    lede:'The rest of the country gets a mattress sale. Here is what the day actually is, what the book says about your Monday, and why this union has holidays nobody else in America gets.',
+    parts:[
+      {k:'THE PRACTICAL PART',h:'NOBODY WORKS MONDAY',
+       quote:['No work shall be performed between 8:00 a.m. on Labor Day and 7:00 a.m. the day after Labor Day.','PCLCD 2022–2028 · Section 5.2'],
+       p:['The Sunday third shift finishes out at eight. Then the harbor is shut for twenty-three hours and the board picks back up Tuesday morning at seven.',
+          'The contract names three exceptions and no others: passenger ships, essential military cargo, emergencies. If a Labor Day job does come down the board, it is one of those three.'],
+       facts:[['IF YOU WORK IT','1.5× the basic straight-time rate on the first and second shift. 1.8× on the third. (§4.142, §4.153)'],
+              ['THE 8-HOUR HOLIDAY CHECK','Registered only. Section 5.3 wants three things: registration held on the day, enough hours in the last payroll year to have earned at least one week of basic vacation, and the availability rule met — out of the hall, that means available at least two of the five workdays that week.'],
+              ['SO, AS A CASUAL','You do not draw the holiday check. Work one of the exception jobs and you are paid the premium rate for the hours you actually work. That is the whole of it.']],
+       note:'The hall is the authority here, not this app. This is what the book says — where the two disagree, the book and the dispatcher win.'},
+
+      {k:'1882',h:'TEN THOUSAND MEN TOOK A DAY THEY WEREN’T PAID FOR',
+       p:['September 5, 1882. Ten thousand workers walked off the job in New York and marched from City Hall to Union Square. Nobody handed them the day. They took it, and they lost the pay for taking it.',
+          'What they were walking out of: twelve-hour days, seven days a week, and children of five and six working the mills.',
+          'Oregon wrote it into law first, February 21, 1887. Twenty-three more states followed before Washington moved.',
+          'Then June 28, 1894 — Grover Cleveland signs it federal. He signs it in the middle of the Pullman strike. Five days later he sends federal troops into Chicago, and by July 7 the National Guard has fired into a crowd and killed as many as thirty people. The holiday was the hand he offered while the other one reached for the Army.',
+          'And the first Monday in September, not the first of May, because May Day already belonged to workers everywhere else in the world after Haymarket and Washington wanted no part of it. September was the safe one.',
+          'Who thought of it is still argued about: Peter J. McGuire of the carpenters, or Matthew Maguire of the machinists. Two men one letter apart, and a hundred and forty years of nobody being certain.']},
+
+      {k:'1934',h:'BEFORE THE HALL, THERE WAS THE SHAPE-UP',
+       p:['Every morning at eight, men stood on the Embarcadero and waited for a hiring boss to point at a face. They called it the slave market. More men than jobs, every single morning, on purpose — a man who might not eat tomorrow does not complain about today.',
+          'May 9, 1934: two thousand miles of coast goes down. Eighty-three days.'],
+       facts:[['MAY 15, 1934 · SAN PEDRO','Police fired into a crowd of strikers. Dick Parker and John Knudsen were killed. Not a story from up north — right here, in this harbor.'],
+              ['JULY 5, 1934 · SAN FRANCISCO','Howard Sperry, a longshoreman and a veteran of the last war, and Nick Bordoise, a cook who fed the strike kitchen, shot in the back outside the union hall. More than a hundred hurt. Four days later fifty thousand people stood along Market Street in silence and watched the coffins go by.'],
+              ['JULY 16–19','The whole city stops. Every trade out, by the tens of thousands.'],
+              ['THE BILL','Nine dead up and down the coast. More than a thousand hurt. Over five hundred arrested.']],
+       p2:['October 12, 1934 — the arbitration award. A coastwide contract. Ninety-five cents an hour. And the hiring hall, with a dispatcher the union picks.',
+           'That last one is the board. The letters, the rotation, low man out, a job that reaches you by rule instead of by somebody’s favor — that is the thing nine men died for. Every time your letter comes up, you are standing in it.']},
+
+      {k:'THE CONTRACT',h:'THREE DAYS NOBODY ELSE IN AMERICA GETS PAID FOR',
+       facts:[['BLOODY THURSDAY · JULY 5','The day the police killed Sperry and Bordoise is a paid holiday written into the employers’ own contract, and every port on the West Coast stops.'],
+              ['HARRY BRIDGES’ BIRTHDAY · JULY 28','The union put the man who led it on the calendar.'],
+              ['CESAR CHAVEZ’ BIRTHDAY · MARCH 31','On the list beside the rest.']],
+       p:['Read that again. A paid holiday for two men the police shot, paid for by the side that was holding the guns. No other industry in this country has anything like it, and it was not given — it was bargained for, by people who remembered.']}
+    ],
+    close:['An injury to one is an injury to all.','THE ORDER OF THE SHADOW HOOK'],
+    src:['Pacific Coast Longshore Contract Document 2022–2028 (ILWU–PMA), Sections 4 and 5',
+         '2026 ILWU / PMA paid-holiday calendar',
+         'U.S. Department of Labor — History of Labor Day',
+         'ILWU — Bloody Thursday, July 5, 1934',
+         'Public histories of the 1934 West Coast waterfront strike and the Pullman strike']
+  }
 };
 (function(){try{
   var KEY='shadowhook_greeted';
