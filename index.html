@@ -721,6 +721,15 @@ html.daylight .heist{background:rgba(64,54,38,.6)}
 .wire-runaway b{color:var(--copper-hi)}
 .rw-l{display:block;font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;line-height:1.5}
 .rw-n{display:block;font-size:10.5px;letter-spacing:.02em;white-space:nowrap;line-height:1.5;margin-top:2px}
+/* #cycle(sep4) — the cycle line wraps (it's a sentence, not a stat), and the label
+   carries the colour: ember for the alert, warn for the watch. The rested letters on
+   the ladder go dashed and hatched — out of play, not just outside the band. */
+.wire-runaway.cyc{color:var(--ember)}
+.wire-runaway.cyc.watch{color:var(--warn)}
+.rw-c{display:block;font-size:11px;letter-spacing:.01em;line-height:1.5;margin:3px auto 0;max-width:34em;color:var(--bone);white-space:normal}
+.wire-cell.rest{color:#4a5057;border:1px dashed rgba(220,214,201,.22);opacity:.75;
+  background:repeating-linear-gradient(135deg,rgba(220,214,201,.09) 0 2px,transparent 2px 6px),var(--well)}
+.wire-cell.rest .tick{color:var(--ember)}
 /* #wirebtns(aug24) — the .wire-btns row is retired with the two buttons it held.
    #myOdds keeps its id (renderMyOdds writes into it) and now stands on its own:
    empty in the normal case and hidden by :empty, a full-width dashed panel when
@@ -2589,6 +2598,7 @@ html.daylight .wire-cell.stop .tick{color:var(--copper-hi)}
 html.daylight .wire-cell.youcell{border:2px solid var(--ok);box-shadow:none}
 html.daylight .wire-cell .you{filter:none}
 html.daylight .wire-cell .tick{color:var(--steel)}
+html.daylight .wire-cell.rest{background:repeating-linear-gradient(135deg,rgba(0,0,0,.07) 0 2px,transparent 2px 6px),#fff;color:#a39d94;border:1px dashed #cfc7bb;opacity:1}   /* #cycle */
 
 /* ── PORTS ── */
 html.daylight #scr-ports #portList > .card{
@@ -3128,6 +3138,8 @@ html.arcade .wire-cell.youcell{
   border-color:rgba(182,255,61,.85);
   box-shadow:inset 0 0 16px rgba(182,255,61,.26),0 0 18px rgba(182,255,61,.45)}
 html.arcade .wire-cell .tick{color:var(--steel);letter-spacing:.14em}
+html.arcade .wire-cell.rest{border:1px dashed rgba(255,122,24,.4);color:#5c636a;box-shadow:none;opacity:.8;
+  background:repeating-linear-gradient(135deg,rgba(255,122,24,.12) 0 2px,transparent 2px 6px),linear-gradient(180deg,rgba(36,31,66,.7),rgba(13,11,24,.9))}   /* #cycle */
 
 /* ── meters as EQ segments — the music motif ─────────────────────────────── */
 html.arcade .bar,html.arcade .wm-bar{
@@ -3225,6 +3237,7 @@ html.arcade .wire-baby{border:1px dashed rgba(182,255,61,.35);background:rgba(18
 html.arcade .wire-baby b{color:var(--neon3)}
 html.arcade .wire-runaway{color:var(--neon2)}
 html.arcade .wire-runaway.steady{color:var(--steel)}
+html.arcade .wire-runaway.cyc{color:var(--neon2)}html.arcade .wire-runaway.cyc.watch{color:var(--warn)}   /* #cycle */
 
 /* ── pills, tags, toasts ─────────────────────────────────────────────────── */
 html.arcade .pill{border-radius:99px;border:1px solid var(--line);background:rgba(123,92,255,.12)}
@@ -9989,15 +10002,18 @@ function renderWireStage(o){
   const span=Math.min(16, Math.max(o.hi+2, o.med+2, 8));
   const myId=(typeof myBoardId==='function')?myBoardId():null;
   const myDist=myId?((((AZ2.indexOf(myId[0])-o.base)%26)+26)%26):-1;
+  const restAt=(o.cycle&&o.cycle.d>0)?o.cycle.d:-1;   /* #cycle — first rested letter, if it's on the ladder */
   let cells='';
   for(let k=0;k<=span;k++){
     let cls='wire-cell', inner=AZ2[(o.base+k)%26];
     if(k>=o.lo&&k<=o.hi)cls+=' band';
     if(k===0)cls+=' start';
     if(k===o.med)cls+=' stop';
+    if(restAt>0&&k>=restAt)cls+=' rest';
     if(myDist===k)cls+=' youcell';
     if(k===0)inner+='<span class="tick">START</span>';
     else if(k===o.med)inner+='<span class="tick">STOP</span>';
+    else if(k===restAt)inner+='<span class="tick">REST</span>';
     if(myDist===k&&myDist!==0)inner='<span class="you">📍</span>'+inner;
     cells+='<div class="'+cls+'">'+inner+'</div>';
   }
@@ -10009,13 +10025,31 @@ function renderWireStage(o){
     '<div class="wm-move"><div class="wm-lbl">CHANCE IT MOVES<span class="pct">'+o.pmove+'%</span></div>'
     +'<div class="wm-bar"><div class="wm-fill" style="width:'+Math.max(3,o.pmove)+'%"></div></div></div>'
     +'<div class="heat '+heat+'">'+heatTxt+'</div>');
-  /* runaway watch — its own line, only loud when the tail is real */
+  /* #cycle(sep4) — THE CYCLE LINE takes the runaway slot. See publishCall for the
+     why. Three voices: ALERT when the call more likely than not reaches the rested
+     letters, WATCH when the tail is real (the old 12% bar), steady otherwise — and
+     the steady line still names the letter and the distance, because "how far to
+     the rest zone" is worth knowing on every board. One line each: the hall knows
+     why a board cycles, so the line only says WHERE and HOW LIKELY. The old 6+/10+
+     odds only show when there is no sealed last board to measure a rest zone from. */
+  const oddsWord=p=>p>=0.85?'near certain':p>=0.6?'better than even':p>=0.4?'about even':'about 1-in-'+Math.max(2,Math.round(1/Math.max(p,1e-6)));
   const run=document.getElementById('wRun');
   if(run){
     run.style.display='block';
-    if(o.p6>=0.12){ run.className='wire-runaway';
-      run.innerHTML='<span class="rw-l">⚠ runaway watch</span><span class="rw-n">6+ cards about <b>1-in-'+Math.round(1/o.p6)+'</b>'+(o.p10>=0.08?' · 10+ about <b>1-in-'+Math.round(1/o.p10)+'</b>':'')+'</span>';
-    } else { run.className='wire-runaway steady'; run.innerHTML='steady run · no blowout signal'; }
+    const c=o.cycle;
+    if(c){
+      const arrow=c.letter+'&rarr;'+c.end;
+      /* one line each — the hall knows why a board cycles; the line just says where and how likely */
+      const body='<span class="rw-c"><b>'+c.letter+'</b> is <b>'+c.d+' card'+(c.d===1?'':'s')+'</b> out &middot; '+arrow+' worked '+c.when+'</span>';
+      if(c.p>=0.5){ run.className='wire-runaway cyc';
+        run.innerHTML='<span class="rw-l">&#10227; cycle alert &middot; '+oddsWord(c.p)+'</span>'+body;
+      } else if(c.p>=0.12){ run.className='wire-runaway cyc watch';
+        run.innerHTML='<span class="rw-l">&#10227; cycle watch &middot; '+oddsWord(c.p)+'</span>'+body;
+      } else { run.className='wire-runaway steady';
+        run.innerHTML='steady run &middot; <b>'+c.letter+'</b> is '+c.d+' cards out &middot; no cycle signal'; }
+    } else if(o.p6>=0.12){ run.className='wire-runaway';
+      run.innerHTML='<span class="rw-l">&#9888; runaway watch</span><span class="rw-n">6+ cards <b>'+oddsWord(o.p6)+'</b>'+(o.p10>=0.08?' &middot; 10+ <b>'+oddsWord(o.p10)+'</b>':'')+'</span>';
+    } else { run.className='wire-runaway steady'; run.innerHTML='steady run &middot; no blowout signal'; }
   }
 }
 window.renderWireStage=renderWireStage;
@@ -10658,7 +10692,36 @@ function publishCall(){
   /* #204/#unlock — the chip labels the COUNT SOURCE only (no freezing anywhere):
      FINAL/LIVE off the real sheet, EARLY off the early count, EST/AM off nothing yet. */
   const lock = finalIn ? (live?'LIVE':'FINAL') : (source==='EARLY'?'EARLY':(isAM?'AM':'EST'));
-  const o={base:base,start:lastStart,med:med,lo:lo,hi:hi,pmove:pmove,mom:mom,p6:p6,p10:p10,source:source,isAM:isAM,lock:lock};
+  /* ═══ #cycle(sep4) — THE REST ZONE, AND THE CYCLE IT CAUSES ═══
+     By request. No back-to-backs: a casual who worked the last dispatch has to let
+     one pass before taking another job (rest — a safety rule, not a courtesy). So
+     the letters the LAST board called — its start card through its end card — are
+     mostly out of play on THIS board. The board runs through fresh letters until it
+     reaches the last board's first letter; from there it is rolling through people
+     who can't take the job, so it barrels on through the whole rested stretch and
+     comes back around to where this board started. That is a CYCLE, and on a big
+     count it matters more than the 6+/10+ tails did (which read "1-in-1" on the
+     night of 9/3 — an odds line with nothing left to say).
+     Numbers: d = fresh cards from the opening letter to the last board's start
+     letter; p = P(run ≥ d) straight off the published distribution, the same
+     survival read renderMyOdds uses for a casual's own card. Presentation happens
+     in renderWireStage (the ladder hatches the rested letters; the runaway line
+     becomes the cycle line). Null when the last board isn't sealed — the stage
+     then falls back to the old runaway odds. */
+  let cycle=null;
+  try{
+    const lb=(typeof lastCompletedBoard==='function')?lastCompletedBoard():null;
+    if(lb&&lb.start&&lb.end){
+      const rs=AZ.indexOf(String(lb.start)[0]), re=AZ.indexOf(String(lb.end)[0]);
+      if(rs>=0&&re>=0){
+        let d=((rs-base)%26+26)%26; if(d===0)d=26;                       /* the rest zone opens at the last board's first letter */
+        const p=pmf.slice(Math.min(d,pmf.length)).reduce((a,x)=>a+x,0);   /* chance the call gets that far */
+        const zone=((re-rs)%26+26)%26+1;                                  /* letters that worked, start..end inclusive */
+        cycle={letter:AZ[rs],end:AZ[re],d:d,p:p,zone:zone,when:String(lb.slot).endsWith('PM')?'last night':'this morning'};
+      }
+    }
+  }catch(_ce){}
+  const o={base:base,start:lastStart,med:med,lo:lo,hi:hi,pmove:pmove,mom:mom,p6:p6,p10:p10,source:source,isAM:isAM,lock:lock,cycle:cycle};
   window._lastStageO=o; window._publishedKey=key;
   try{ renderWireStage(o); }catch(e){ console.warn('wire stage',e); }
   /* the pending row on Recent Boards reads this same call */
@@ -31250,9 +31313,9 @@ html.daylight .sn-decor{opacity:.5}
      props [[glyph, 'l'|'r'|'l top'|'r top', size, opacity], …]
      lights [colours…]                             — the garland under the header
      fog   {color, opacity}
-     banner {art, title, day, to, sub?}         — #lbbanner: the title card + countdown
-            art: a key in SEASON_ART · title: before the day · day: on the day ·
-            to: a FLOAT_HOLIDAYS id or [month,day] · sub: the small line (default THREE-DAY WEEKEND)
+     banner {art, title, to, day?, sub?}        — #lbbanner: the title card + countdown
+            art: a key in SEASON_ART · title: the wordmark · day: a different wordmark on the day itself ·
+            to: a FLOAT_HOLIDAYS id or [month,day] · sub: words after the date line ("MON SEP 7 · …")
    Leave a season out and it stays a pure palette, which is the right answer for
    the remembrance days. */
 /* ═══ #faces(sep3) — THE OUTCOME FACES PUT ON A COSTUME ═══
@@ -31354,7 +31417,7 @@ window.SEASON_DECOR={
           lights:['#d02c2c','#ffffff','#1f4fa8','#ffffff'] },
   mayday:{ rise:{n:14,color:'#ff8f74',size:[3,6],dur:[8,15],opacity:.7} },   /* the brazier on the line */
   labor:{ rise:{n:14,color:'#ff7a18',size:[2,5],dur:[6,11],opacity:.7},      /* sparks off the steel */
-          banner:{art:'harbor',title:'LABOR DAY WEEKEND',day:'HAPPY LABOR DAY',to:'labor'} },   /* #lbbanner */
+          banner:{art:'harbor',title:'HAPPY LABOR DAY',to:'labor'} },   /* #lbbanner — "HAPPY LABOR DAY" all weekend, "MON SEP 7" under it */
   dogdays:{ fall:{n:14,glyph:'dot',size:[2,4],dur:[16,26],opacity:.35} },    /* dust in the August light */
   earth:{ rise:{n:14,color:'#6fd8cc',size:[4,9],dur:[11,20],opacity:.5} },   /* the harbor breathing */
   juneteenth:{ rise:{n:12,color:'#ffd166',size:[3,6],dur:[9,16],opacity:.55} }
@@ -31490,8 +31553,7 @@ window.SEASON_DECOR={
       var isDay=state==='day';
       el.classList.toggle('day',isDay);
       var title=isDay?(b.day||b.title):b.title;
-      var sub=isDay?(DAYS[day.getDay()]+' · '+MONS[day.getMonth()]+' '+day.getDate()+' · '+day.getFullYear())
-                   :(DAYS[day.getDay()]+' '+MONS[day.getMonth()]+' '+day.getDate()+' · '+(b.sub||'THREE-DAY WEEKEND'));
+      var sub=DAYS[day.getDay()]+' '+MONS[day.getMonth()]+' '+day.getDate()+(b.sub?' · '+b.sub:'');   /* "MON SEP 7" — by request, just the date */
       var key=title+'|'+sub+'|'+state;
       if(key!==BANNER.last){ BANNER.last=key;
         el.querySelector('.bn-title').textContent=title; el.querySelector('.bn-sub').textContent=sub;
