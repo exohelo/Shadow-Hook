@@ -4659,6 +4659,9 @@ window.DEVLOG=(function(){
   #recentBoards .rb-stat.miss .rb-word{color:var(--steel)}
   #recentBoards .rb-stat.prog .rb-word{color:var(--copper-hi)}
   #recentBoards .rb-stat.off .rb-word{color:#8db4cc}   /* #offboard(sep4) — worked the board before: not eligible, not a flop */
+  /* #desk(sep4) — requests on the Keymaster's desk */
+  .desk-row{border:1px solid rgba(238,180,107,.45);border-radius:10px;padding:8px 10px;margin-bottom:6px}
+  .desk-row.done{border-color:var(--line-soft);opacity:.72}
   #recentBoards .rb-empty{padding:22px 10px;text-align:center;color:var(--steel);font-size:12px}
   </style>
       <!-- #jul23b — the ✎ log/correct button moved INTO the Dev Log panel (bottom ⚙ chip):
@@ -27360,6 +27363,7 @@ function liveSync(){
       .on('postgres_changes',{event:'*',schema:'public',table:'live_wire'},      function(){_rtCoalesce('lw',sbLoadLiveCalls,3000);})   /* #onewire — every scan moves every reel */
       .on('postgres_changes',{event:'*',schema:'public',table:'km_flags'},       function(){try{sbLoadKmFlags();}catch(e){}})   /* #km — the Keymaster's word travels instantly */
       .on('postgres_changes',{event:'*',schema:'public',table:'km_notices'},     function(){try{sbLoadNotices();}catch(e){}})   /* #km2 — warnings & bans land live */
+      .on('postgres_changes',{event:'*',schema:'public',table:'km_desk'},        function(p){try{if(window.kmDeskLive)window.kmDeskLive(p);}catch(e){}})   /* #desk — a request lands on the crown, a decision lands on the deputy */
       .on('postgres_changes',{event:'*',schema:'public',table:'board_wire'},      function(){_rtCoalesce('bw',sbLoadBoardWire);})
       .on('postgres_changes',{event:'*',schema:'public',table:'dispatch_boards'}, function(p){try{ if(p&&p.new&&p.new.key&&p.new.data)ingestForecast(p.new.key,p.new.data); else sbLoadDispatch(true); }catch(e){}})   /* #egress2 — the event carries the row; no table re-pull */
       .on('postgres_changes',{event:'*',schema:'public',table:'hall_line_log'},   function(){_rtCoalesce('hl',sbLoadHallLine);})   /* #hallline — the phone bot's reads land live */
@@ -33985,6 +33989,11 @@ window.SEASON_STORY={
     <div class="big" style="font-size:20px;letter-spacing:.08em;text-align:center;color:var(--ember)">☠ COMMAND CENTER</div>
     <p class="sub" style="margin:6px 0 14px;text-align:center">The Keymaster sees all. Every switch here rides to every phone.</p>
 
+    <!-- #desk(sep4) — deputies propose, the crown seals. The note shows on a deputy key only. -->
+    <div id="kmDeputyNote" class="sub" style="display:none;margin:-6px 0 12px;padding:9px 12px;border:1px solid rgba(238,180,107,.45);border-radius:10px;line-height:1.55;color:var(--bone)">🗝 <b>SHADOW COUNCIL</b> — you sit on the council, and you see everything the Keymaster sees. Every lever you pull goes to the Keymaster’s desk with your reason on it; nothing lands until the seal.</div>
+    <div class="card-h" style="margin-top:4px">The Desk <span class="pill red" id="kmDeskN" style="display:none">0</span></div>
+    <div id="kmDesk" class="sub" style="line-height:1.7;margin-bottom:14px">—</div>
+
     <div class="card-h" style="margin-top:4px">The Alarms <span class="pill red" id="kmAlarmN" style="display:none">0</span></div>
     <div id="kmAlarms" class="sub" style="line-height:1.7;margin-bottom:14px">—</div>
 
@@ -34003,7 +34012,7 @@ window.SEASON_STORY={
          in once below and lives only in this device's localStorage, behind the
          keymaster door. Use a fine-grained PAT scoped to Actions:write on this
          repo alone, with an expiry. -->
-    <div class="card-h" style="margin-top:4px">The Bots <span class="pill gold" id="kmBotState" style="display:none">—</span></div>
+    <div class="card-h" id="kmBotsHead" style="margin-top:4px">The Bots <span class="pill gold" id="kmBotState" style="display:none">—</span></div>
     <div id="kmBotsWrap" class="sub" style="line-height:1.7;margin-bottom:14px">
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
         <button class="btn-line gold" id="kmBotPdf" type="button" style="flex:1 1 100%;padding:11px">⟳ Re-read today’s dispatch PDF</button>
@@ -34189,6 +34198,9 @@ window.SEASON_STORY={
     <input class="field mono" id="kmAmbRate" inputmode="decimal" value="10" style="margin-bottom:4px">
     <div class="sub" style="margin:8px 0 2px">Their email — only needed if their app login can’t be linked automatically</div>
     <input class="field" id="kmAmbEmail" type="email" placeholder="optional" style="margin-bottom:6px">
+    <!-- #desk — a deputy's crowning is a request: the reason rides with it -->
+    <div id="kmAmbWhyWrap" style="display:none"><div class="sub" style="margin:4px 0 2px">Reason for the Keymaster</div>
+    <input class="field" id="kmAmbWhy" placeholder="why this casual, why now" style="margin-bottom:6px"></div>
     <div class="sub" id="kmAmbMsg" style="margin:6px 0;line-height:1.6"></div>
     <button class="btn" id="kmAmbGo" type="button" style="width:100%">🎖 SET THE CROWN</button>
     <button class="btn-ghost" id="kmAmbCancel" type="button" style="width:100%;margin-top:8px">Never mind</button>
@@ -34216,6 +34228,213 @@ window.SEASON_STORY={
 /* ============ #km — Command Center logic ============ */
 (function(){
   const $=id=>document.getElementById(id);
+  /* ═══════════ #desk(sep4) — THE DESK: DEPUTIES PROPOSE, THE CROWN SEALS ═══════════
+     Two keys are going out. A key used to be THE key: profiles.is_keymaster opens
+     every door on the server, so a holder could mint, ban and crown with nobody
+     in the loop. Now there is one crown — the founder's card — and every other
+     key is a DEPUTY key: the same Command Center, the same eyes on everything,
+     but every lever a deputy pulls becomes a REQUEST on the desk (km_desk —
+     DEPUTY-DESK.sql, one paste) with a reason on it. The crown seals it, and the
+     action runs then, from the crown's own phone, through the very same code the
+     crown would run by hand — same RPC, same ledger line, same notice — or denies
+     it with a note. Nothing touches a member until the seal.
+       kmLever(req)  — the one gate. Crown → kmApply now. Deputy → a row on the desk.
+       kmApply(req)  — the levers, by kind: word · mint · ban · unban · key · unkey ·
+                       amb · ambpull · flags · app · trade · stock.
+       kmDesk()      — the section at the top of the Command Center: the crown's
+                       seal/deny, a deputy's own requests (withdraw while pending).
+     Housekeeping (an alarm marked seen, mail marked handled) stays direct — it
+     moves nothing. The bots (a GitHub token on this phone) are the crown's alone.
+     The server still only knows "has a key"; the wrapper in DEPUTY-DESK.sql Part 2
+     is what makes km_bucks / km_ban / km_crown / km_warn refuse a deputy at the API. */
+  const KM_CROWN_CARD='D4928';   /* THE crown — the founder's card. Mirrored in km_is_crown() in DEPUTY-DESK.sql. */
+  function kmMyCard(){ try{ const a=(typeof loadAcct==='function'&&loadAcct())||{}; return String(a.id||(typeof ACCT_ID!=='undefined'?ACCT_ID:'')||'').toUpperCase().trim(); }catch(e){ return ''; } }
+  function kmIsCrown(){ return !!window.__isKM && kmMyCard()===KM_CROWN_CARD; }
+  function kmIsDeputy(){ return !!window.__isKM && !kmIsCrown(); }
+  window.kmIsCrown=kmIsCrown; window.kmIsDeputy=kmIsDeputy;
+  function kmMe(){ try{ const a=(typeof loadAcct==='function'&&loadAcct())||{}; return {uid:window.__shkUid||null,handle:String(a.handle||'a key holder').toUpperCase()}; }catch(e){ return {uid:null,handle:'a key holder'}; } }
+  /* a reason typed on the spot, for the levers that have no reason field of their own */
+  function kmWhy(what){ if(!kmIsDeputy())return ''; try{ return String(prompt('Reason for the Keymaster — '+what)||'').trim(); }catch(e){ return ''; } }
+  const KIND_GLYPH={word:'✉',mint:'⬡',ban:'🔨',unban:'✓',key:'☠',unkey:'✕',amb:'🎖',ambpull:'✕',flags:'⚙',app:'🎖',trade:'🛠',stock:'🛡'};
+  function kmQuiet(msg){ const e=new Error(msg); e.quiet=true; return e; }
+  async function kmLever(req){
+    if(!window.SB){ try{toast('backend off');}catch(e){} throw kmQuiet('backend off'); }
+    if(kmIsCrown()) return kmApply(req);
+    const why=String(req.reason||'').trim();
+    if(!why){ try{toast('🗝 Give the Keymaster a reason — it rides with the request');}catch(e){} throw kmQuiet('a reason is the ticket'); }
+    const me=kmMe();
+    const row={by_handle:me.handle,kind:req.kind,label:String(req.label||req.kind).slice(0,140),target:String(req.target||'').slice(0,80),
+               target_uid:req.target_uid||null,payload:req.payload||{},reason:why.slice(0,500),status:'pending'};
+    const r=await window.SB.from('km_desk').insert(row).select('id').single();
+    if(r.error){
+      const m=String(r.error.message||'');
+      const hint=/km_desk|does not exist|schema cache|PGRST205|42P01/i.test(m)?' — the desk isn’t built yet: the Keymaster runs DEPUTY-DESK.sql once'
+                :(/policy|permission|security|42501/i.test(m)?' — the desk refused it (is this key on the roster?)':'');
+      try{toast('✗ '+m+hint);}catch(e){}
+      throw kmQuiet(m);
+    }
+    try{toast('🗝 on the Keymaster’s desk — '+(req.label||req.kind));}catch(e){}
+    try{kmDesk();}catch(e){}
+    return {desk:true,id:r.data&&r.data.id};
+  }
+  window.kmLever=kmLever;
+  /* THE LEVERS. One place, by kind — the crown's own taps and the seal both land here. */
+  async function kmApply(req){
+    const p=req.payload||{}, h=String(req.target||'');
+    switch(req.kind){
+      case 'word':{ const r=await window.SB.rpc('km_warn',{p_handle:h,p_msg:String(p.msg||'')}); if(r.error)throw r.error; return 'word sent to '+h; }
+      case 'mint':{ const d=parseInt(p.delta,10); if(!d)throw new Error('no amount on the request');
+        const bal=await kmMintApply(h,d,String(p.reason||req.reason||'the house moved it'),req.target_uid||null);
+        return h+' now holds '+(bal!=null?(+bal).toLocaleString()+' ⬡':'the new stack'); }
+      case 'ban': case 'unban':{ const on=(req.kind==='ban'); const r=await window.SB.rpc('km_ban',{p_handle:h,p_on:on,p_msg:String(p.msg||'')}); if(r.error)throw r.error;
+        return on?(h+' is banned'):(h+' is back in the Order'); }
+      case 'key': case 'unkey':{ const on=(req.kind==='key'); const r=await window.SB.rpc('km_crown',{p_handle:h,p_on:on,p_msg:String(p.msg||'')}); if(r.error)throw r.error;
+        return on?(h+' sits on the Shadow Council'):('seat taken back from '+h); }
+      case 'amb':{ await kmAmbLoad();
+        const out=await kmAmbApply({handle:h,uid:req.target_uid||p.uid||_ambUids[h.toLowerCase()]||null,appId:p.appId||null},String(p.name||h),(+p.rate>=0?+p.rate:10),String(p.email||''));
+        if(out.minted&&out.tempPass){ /* a fresh Dock Office pass — the crown hands it over; it is never written to the desk */
+          try{ const sh2=$('kmAmbSheet'); if(sh2){ $('kmAmbWho').innerHTML='Sealed for <b style="color:var(--bone)">'+esc(h)+'</b>.'; $('kmAmbName').value=String(p.name||h); $('kmAmbRate').value=String(p.rate||10); $('kmAmbEmail').value=String(p.email||'');
+            $('kmAmbMsg').innerHTML='🗝 Crown set and a fresh Dock Office pass minted. Hand these over yourself — they won’t be shown again:<br><b class="mono" style="color:var(--bone)">'+esc(p.email||'')+'</b> · temp password <b class="mono" style="color:var(--bone)">'+esc(out.tempPass)+'</b>'; sh2.classList.add('on'); } }catch(e){}
+          return 'crown set for '+h+' — a pass was minted; it shows on this phone only'; }
+        return 'crown set for '+h+(out.linked?' — their usual sign-in opens the Dock Office':' — no login linked yet'); }
+      case 'ambpull':{ await kmAmbLoad(); const a=kmAmbOf(h); if(!a)throw new Error(h+' carries no crown'); await kmAmbPull(a.id,h,String(p.msg||'')); return '🎖 crown pulled from '+h; }
+      case 'flags':{ const note=await kmFlagsPush(p.row||{}); return 'pushed to every phone'+(note||''); }
+      case 'app':{ if(p.do==='pass'){ const r=await window.SB.from('amb_applications').update({status:'passed'}).eq('user_id',p.user_id); if(r.error)throw r.error; try{kmApps();}catch(e){} return 'passed on '+(p.name||h); }
+        throw new Error('the desk does not know that application call'); }
+      case 'trade':{ await kmTradeDecide({user_id:p.user_id,handle:p.handle||h,headline:p.headline||''},p.do==='live',String(p.msg||'')); return (p.do==='live'?'posted':'passed')+' — '+(p.headline||h); }
+      case 'stock':{ await kmStockDecide(p.pid,p.do); return (p.do==='live'?'on the floor':'passed')+' — '+(p.name||p.pid); }
+      default: throw new Error('the desk does not know "'+req.kind+'"');
+    }
+  }
+  /* ── the desk itself ── */
+  let _desk=[], _deskAt=0;
+  const _deskWhen=ts=>{try{const d=new Date(ts);return d.toLocaleDateString([],{month:'short',day:'numeric'})+' · '+d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});}catch(e){return '';}};
+  window.kmDesk=async function(){
+    const out=$('kmDesk'); if(!out)return;
+    if(!window.SB){out.textContent='backend off';return;}
+    try{
+      const r=await window.SB.from('km_desk').select('*').order('created_at',{ascending:false}).limit(80);
+      if(r.error)throw r.error;
+      _desk=(r.data||[]); _deskAt=Date.now();
+      kmDeskDraw();
+    }catch(e){
+      const m=String(e.message||'');
+      out.innerHTML=/km_desk|does not exist|relation|schema cache|PGRST205|42P01/i.test(m)
+        ?'<span style="color:var(--steel)">the desk isn’t built yet — run <b style="color:var(--bone)">DEPUTY-DESK.sql</b> once in Supabase → SQL Editor. Until then a deputy’s levers have nowhere to land.</span>'
+        :('the desk failed: '+esc(m));
+    }
+  };
+  function kmDeskDraw(){
+    const out=$('kmDesk'); if(!out)return;
+    const crown=kmIsCrown(), me=kmMe();
+    const pend=_desk.filter(x=>x.status==='pending'), done=_desk.filter(x=>x.status!=='pending').slice(0,12);
+    const n=$('kmDeskN'); if(n){ n.textContent=pend.length; n.style.display=pend.length?'':'none'; }
+    try{ kmDoorPill(pend.length); }catch(e){}
+    const pill=s=>({pending:'<span class="pill gold">AWAITING THE SEAL</span>',sealed:'<span class="pill grn">☠ SEALED</span>',denied:'<span class="pill red">✕ DENIED</span>',
+                    withdrawn:'<span class="pill">↩ WITHDRAWN</span>',failed:'<span class="pill red">⚠ FAILED</span>'})[s]||('<span class="pill">'+esc(s)+'</span>');
+    const row=x=>{
+      const mine=(me.uid&&x.by===me.uid), open=(x.status==='pending');
+      const glyph=KIND_GLYPH[x.kind]||'•';
+      return '<div class="desk-row'+(open?'':' done')+'" data-id="'+esc(x.id)+'">'
+        +'<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span style="font-size:15px">'+glyph+'</span>'
+        +'<b style="color:var(--bone)">'+esc(x.label||x.kind)+'</b>'+pill(x.status)
+        +'<span style="margin-left:auto;color:var(--steel);font-size:10.5px">'+esc(_deskWhen(x.created_at))+'</span></div>'
+        +'<div class="sub" style="margin-top:3px">asked by <b style="color:var(--copper-hi)">'+esc(x.by_handle||'a key holder')+(mine?' (you)':'')+'</b>'
+        +(x.target?' · for <span class="mono">'+esc(x.target)+'</span>':'')+'</div>'
+        +'<div class="sub" style="margin-top:3px;color:var(--bone);line-height:1.55">“'+esc(x.reason||'')+'”</div>'
+        +(x.kind==='word'||x.kind==='ban'||x.kind==='unban'||x.kind==='key'||x.kind==='unkey'||x.kind==='ambpull'
+            ?'' /* the reason IS the word that rides to the member */
+            :(x.payload&&x.payload.msg?'<div class="sub" style="margin-top:2px;color:var(--steel)">word to them: “'+esc(x.payload.msg)+'”</div>':''))
+        +(x.status!=='pending'&&x.status!=='withdrawn'
+            ?'<div class="sub" style="margin-top:3px;color:var(--steel)">'+esc(x.status==='sealed'?'sealed':x.status==='denied'?'denied':'sealed, but it failed')
+              +(x.decided_handle?' by '+esc(x.decided_handle):'')+(x.decided_at?' · '+esc(_deskWhen(x.decided_at)):'')
+              +(x.note?' — <span style="color:var(--bone)">“'+esc(x.note)+'”</span>':'')
+              +(x.error?' — <span style="color:var(--ember)">'+esc(x.error)+'</span>':'')+'</div>':'')
+        +(crown&&open?'<div style="display:flex;gap:6px;margin-top:7px">'
+            +'<button class="btn-ghost km-desk" data-do="seal" style="flex:1;padding:6px 0;font-size:11px;color:var(--ok)">☠ SEAL IT</button>'
+            +'<button class="btn-ghost km-desk" data-do="deny" style="flex:1;padding:6px 0;font-size:11px;color:var(--ember)">✕ DENY</button></div>':'')
+        +(crown&&x.status==='failed'?'<div style="margin-top:7px"><button class="btn-ghost km-desk" data-do="seal" style="width:100%;padding:6px 0;font-size:11px;color:var(--warn)">↻ TRY THE SEAL AGAIN</button></div>':'')
+        +(!crown&&mine&&open?'<div style="margin-top:7px"><button class="btn-ghost km-desk" data-do="withdraw" style="width:100%;padding:6px 0;font-size:11px;color:var(--steel)">↩ take it back</button></div>':'')
+        +'</div>';
+    };
+    if(!_desk.length){
+      out.innerHTML='<span style="color:var(--steel)">'+(crown?'quiet — when the Shadow Council pulls a lever, it waits here for your seal.':'nothing on the desk yet — pull a lever and it lands here with your reason, waiting on the Keymaster.')+'</span>';
+      return;
+    }
+    out.innerHTML=(pend.length?pend.map(row).join(''):'<div class="sub" style="color:var(--steel);margin-bottom:6px">nothing awaiting the seal</div>')
+      +(done.length?'<div class="sub" style="margin:8px 0 4px;color:var(--steel);letter-spacing:.12em;font-size:10px">DECIDED</div>'+done.map(row).join(''):'');
+  }
+  async function kmSeal(x,btn){
+    const req={kind:x.kind,label:x.label,target:x.target,target_uid:x.target_uid,payload:x.payload||{},reason:x.reason};
+    let result='',error='';
+    try{ result=String((await kmApply(req))||'done'); }catch(e){ error=String((e&&e.message)||e||'failed'); }
+    const me=kmMe(), note=(($('kmNotice')||{}).value||'').trim();
+    const patch={status:error?'failed':'sealed',decided_at:new Date().toISOString(),decided_by:me.uid,decided_handle:me.handle,note:note||null,error:error||null};
+    const r=await window.SB.from('km_desk').update(patch).eq('id',x.id);
+    if(r.error){ try{toast('✗ the desk would not take the decision: '+r.error.message);}catch(e){} }
+    try{toast(error?('⚠ the seal did not land — '+error):('☠ sealed — '+result));}catch(e){}
+    try{ if(!error&&(x.kind==='mint'||x.kind==='ban'||x.kind==='unban'||x.kind==='key'||x.kind==='unkey')){ await kmRoster(); } }catch(e){}
+    try{ if(!error&&x.kind==='flags')kmPulse(); }catch(e){}
+    kmDesk();
+  }
+  async function kmDeny(x){
+    let note=(($('kmNotice')||{}).value||'').trim();
+    if(!note){ try{ note=String(prompt('A word back to '+(x.by_handle||'them')+' (optional)')||'').trim(); }catch(e){} }
+    const me=kmMe();
+    const r=await window.SB.from('km_desk').update({status:'denied',decided_at:new Date().toISOString(),decided_by:me.uid,decided_handle:me.handle,note:note||null}).eq('id',x.id);
+    if(r.error){ try{toast('✗ '+r.error.message);}catch(e){} return; }
+    try{toast('✕ denied — '+(x.label||x.kind));}catch(e){}
+    kmDesk();
+  }
+  async function kmWithdraw(x){
+    const r=await window.SB.from('km_desk').update({status:'withdrawn'}).eq('id',x.id);
+    if(r.error){ try{toast('✗ '+r.error.message);}catch(e){} return; }
+    try{toast('↩ taken back');}catch(e){}
+    kmDesk();
+  }
+  (function(){
+    const host=$('kmDesk'); if(!host)return;
+    host.addEventListener('click',async function(e){
+      const b=e.target.closest('button.km-desk'); if(!b)return;
+      const wrap=b.closest('.desk-row'); const id=wrap?wrap.dataset.id:null;
+      const x=_desk.find(r=>String(r.id)===String(id)); if(!x)return;
+      wrap.querySelectorAll('button').forEach(bb=>bb.disabled=true);
+      try{
+        if(b.dataset.do==='seal'){ if(!kmIsCrown())throw new Error('only the crown seals'); await kmSeal(x,b); }
+        else if(b.dataset.do==='deny'){ if(!kmIsCrown())throw new Error('only the crown decides'); await kmDeny(x); }
+        else if(b.dataset.do==='withdraw'){ await kmWithdraw(x); }
+      }catch(err){ try{toast('✗ '+(err&&err.message||err));}catch(e2){} wrap.querySelectorAll('button').forEach(bb=>bb.disabled=false); }
+    });
+  })();
+  /* the door carries the count: "☠ COMMAND CENTER · 2 on the desk" */
+  function kmDoorPill(n){
+    const d=$('pfCommand'); if(!d)return;
+    d.textContent=(kmIsCrown()&&n>0)?('☠ COMMAND CENTER · '+n+' on the desk'):'☠ COMMAND CENTER';
+  }
+  window.kmDeskCount=async function(){
+    try{ if(!window.SB||!window.__isKM||!kmIsCrown())return;
+      const r=await window.SB.from('km_desk').select('id',{count:'exact',head:true}).eq('status','pending');
+      if(!r.error&&typeof r.count==='number')kmDoorPill(r.count); }catch(e){}
+  };
+  setTimeout(function(){try{kmDeskCount();}catch(e){}},6000);
+  /* realtime: a request lands → the crown hears it; a decision lands → the deputy hears it */
+  window.kmDeskLive=function(p){
+    try{
+      if(!window.__isKM)return;
+      const row=(p&&p.new)||null; if(!row)return;
+      const me=kmMe();
+      if(p.eventType==='INSERT'&&kmIsCrown()&&row.status==='pending'&&row.by!==me.uid){
+        try{toast('🗝 '+(row.by_handle||'the Shadow Council')+' sent a request to your desk — '+(row.label||row.kind));}catch(e){}
+        try{buzz([40,60,40]);}catch(e){}
+      }
+      if(p.eventType==='UPDATE'&&row.by===me.uid&&!kmIsCrown()){
+        if(row.status==='sealed'){ try{toast('☠ the Keymaster sealed it — '+(row.label||row.kind)+(row.note?' · “'+row.note+'”':''));}catch(e){} }
+        else if(row.status==='denied'){ try{toast('✕ the Keymaster denied it — '+(row.label||row.kind)+(row.note?' · “'+row.note+'”':''));}catch(e){} }
+        else if(row.status==='failed'){ try{toast('⚠ sealed, but it failed — '+(row.label||row.kind)+(row.error?' · '+row.error:''));}catch(e){} }
+      }
+      const sh=$('kmSheet'); if(sh&&sh.classList.contains('on'))_rtCoalesce('desk',kmDesk,1200); else kmDeskCount();
+    }catch(e){}
+  };
   /* the bulletin: every phone renders what the Keymaster pushed; dismiss is per-message */
   function bullHash(s){let h=5381;for(const c of String(s))h=((h*33)^c.charCodeAt(0))>>>0;return h.toString(36);}
   window.renderBulletin=function(text){
@@ -34305,6 +34524,12 @@ window.SEASON_STORY={
     seg($('kmRain'),f.rain||'auto');seg($('kmStop'),f.stopwork||'auto');seg($('kmSix'),(f.six_rule===false)?'off':'on');
     seg($('kmSeason'),f.season||'auto');
     if($('kmBull'))$('kmBull').value=f.bulletin||'';
+    /* #desk — a deputy key wears its note, and the bots (a token on this phone) are the crown's alone */
+    try{ const dep=kmIsDeputy(); const dn=$('kmDeputyNote'); if(dn)dn.style.display=dep?'':'none';
+         ['kmBotsHead','kmBotsWrap'].forEach(id=>{const el=$(id); if(el)el.style.display=dep?'none':'';});
+         const pb=$('kmPush'); if(pb)pb.textContent=dep?'🗝 SEND THE PUSH UP TO THE KEYMASTER':'☠ PUSH TO EVERY PHONE';
+         const mb=$('kmMint'); if(mb)mb.textContent=dep?'🗝 ASK THE KEYMASTER TO MINT IT':'⬡ APPLY TO THEIR STACK'; }catch(e){}
+    try{kmDesk();}catch(e){}       /* #desk — what waits for the seal, first thing */
     kmPulse();
     try{kmAlarms();}catch(e){}   /* #alarms — what jammed, first thing you see */
     try{kmSheetFlags();}catch(e){} /* #kmflag — sheets whose numbers don't square */
@@ -34337,55 +34562,72 @@ window.SEASON_STORY={
         +'<br>sheet feed thru <b>'+s1+'</b> · hotline last read <b>'+esc(h1)+'</b> · wire last board <b>'+esc(b1)+'</b>';
     }catch(e){out.textContent='pulse failed: '+e.message;}
   }
+  /* #desk — THE MINT, one function: the crown's tap and the seal both run it */
+  async function kmMintApply(h,d,why,uid){
+    const r=await window.SB.rpc('km_bucks',{p_handle:h,p_delta:d,p_reason:why||'the house moved it'});
+    if(r.error)throw r.error;
+    try{const u=uid||_ambUids[String(h||'').toLowerCase()];if(u)window.SB.from('bucks_book').insert({user_id:u,delta:d,reason:(why||'minted by the desk')}).then(()=>{},()=>{});}catch(e){} /* #bank */
+    return (r.data!=null&&isFinite(+r.data))?+r.data:null;
+  }
   const mint=$('kmMint');
   if(mint)mint.addEventListener('click',async function(){
     const msg=$('kmMintMsg');msg.textContent='';
     const h=($('kmHandle').value||'').trim(), d=parseInt(($('kmDelta').value||'').replace(/[^0-9-]/g,''),10), why=($('kmReason').value||'').trim();
     if(!h||!isFinite(d)||!d){msg.textContent='> handle and a non-zero ±amount';return;}
     if(!window.SB){msg.textContent='> backend off';return;}
-    mint.disabled=true;mint.textContent='MINTING…';
+    const dep=kmIsDeputy();
+    if(dep&&!why){msg.textContent='> a reason — it rides to the Keymaster with the request';return;}
+    mint.disabled=true;mint.textContent=dep?'SENDING IT UP…':'MINTING…';
     try{
-      const r=await window.SB.rpc('km_bucks',{p_handle:h,p_delta:d,p_reason:why||'the Keymaster willed it'});
-      if(r.error)throw r.error;
-      msg.innerHTML='✓ '+esc(h)+' now holds <b class="mono" style="color:var(--copper-hi)">'+(+r.data).toLocaleString()+' ⬡</b> — lands on their next open';
-      try{const u=_ambUids[String(h||'').toLowerCase()];if(u)window.SB.from('bucks_book').insert({user_id:u,delta:d,reason:(why||'minted by the desk')}).then(()=>{},()=>{});}catch(e){} /* #bank */
-      try{toast('⬡ '+(d>0?'+':'')+d+' → '+h);}catch(e){}
-      kmPulse();
-    }catch(e){msg.textContent='✗ '+e.message;}
-    mint.disabled=false;mint.textContent='⬡ APPLY TO THEIR STACK';
+      const res=await kmLever({kind:'mint',label:(d>0?'+':'')+d+' ⬡ → '+h,target:h,target_uid:_ambUids[String(h||'').toLowerCase()]||null,
+                               payload:{delta:d,reason:why||'the Keymaster willed it'},reason:why});
+      if(res&&res.desk){ msg.textContent='🗝 on the Keymaster’s desk — nothing moves until the seal'; }
+      else{ msg.innerHTML='✓ '+esc(String(res||''))+' — lands on their next open';
+        try{toast('⬡ '+(d>0?'+':'')+d+' → '+h);}catch(e){}
+        kmPulse(); }
+    }catch(e){ if(!e.quiet)msg.textContent='✗ '+e.message; }
+    mint.disabled=false;mint.textContent=dep?'🗝 ASK THE KEYMASTER TO MINT IT':'⬡ APPLY TO THEIR STACK';
   });
+  /* #desk — THE PUSH, one function: the switches + bulletin land on km_flags */
+  async function kmFlagsPush(row){
+    row=Object.assign({},row,{id:1,updated_at:new Date().toISOString()});
+    let r=await window.SB.from('km_flags').upsert(row,{onConflict:'id'});
+    let seasonNote='';
+    if(r.error&&/season/i.test(String(r.error.message))&&/column|schema|find/i.test(String(r.error.message))){
+      /* #seasons — the column isn't born yet: land every other switch, then say
+         exactly what to run so the season one rides the next push */
+      delete row.season;
+      r=await window.SB.from('km_flags').upsert(row,{onConflict:'id'});
+      seasonNote=" · season switch needs the column — run once in Supabase: alter table km_flags add column if not exists season text default 'auto';";
+    }
+    if(r.error)throw r.error;
+    /* #seasons2 — the pushed season IS the real word now, so record it locally at
+       once. sbLoadKmFlags() below confirms it from the wire, but it is async and
+       the Keymaster can hit Close first — without this the restore-on-close would
+       briefly yank the phone back to the PREVIOUS season, which reads as a failed
+       push. (Skipped when the column doesn't exist yet: seasonNote says so.) */
+    try{ if(!seasonNote){ window.KM_FLAGS=window.KM_FLAGS||{}; window.KM_FLAGS.season=row.season||'auto'; } }catch(e){}
+    try{ const n=$('kmSeasonNote'); if(n){ n.textContent='Pushed — every phone wears this now.'; n.style.color='var(--ok)'; } }catch(e){}
+    try{sbLoadKmFlags();}catch(e){}
+    return seasonNote;
+  }
   const push=$('kmPush');
   if(push)push.addEventListener('click',async function(){
     const msg=$('kmPushMsg');msg.textContent='';
     if(!window.SB){msg.textContent='> backend off';return;}
-    push.disabled=true;push.textContent='PUSHING…';
+    const dep=kmIsDeputy();
+    const row={rain:segVal($('kmRain'),'auto'),stopwork:segVal($('kmStop'),'auto'),
+               six_rule:segVal($('kmSix'),'on')!=='off',season:segVal($('kmSeason'),'auto'),
+               bulletin:($('kmBull').value||'').trim()};
+    const why=dep?kmWhy('this push — switches: rain '+row.rain+' · stop-work '+row.stopwork+' · six-month '+(row.six_rule?'on':'off')+' · season '+row.season+(row.bulletin?' · bulletin: “'+row.bulletin.slice(0,60)+'”':'')):'';
+    if(dep&&!why){msg.textContent='> a reason — it rides to the Keymaster with the push';return;}
+    push.disabled=true;push.textContent=dep?'SENDING IT UP…':'PUSHING…';
     try{
-      const row={id:1,rain:segVal($('kmRain'),'auto'),stopwork:segVal($('kmStop'),'auto'),
-                 six_rule:segVal($('kmSix'),'on')!=='off',season:segVal($('kmSeason'),'auto'),
-                 bulletin:($('kmBull').value||'').trim(),
-                 updated_at:new Date().toISOString()};
-      let r=await window.SB.from('km_flags').upsert(row,{onConflict:'id'});
-      let seasonNote='';
-      if(r.error&&/season/i.test(String(r.error.message))&&/column|schema|find/i.test(String(r.error.message))){
-        /* #seasons — the column isn't born yet: land every other switch, then say
-           exactly what to run so the season one rides the next push */
-        delete row.season;
-        r=await window.SB.from('km_flags').upsert(row,{onConflict:'id'});
-        seasonNote=" · season switch needs the column — run once in Supabase: alter table km_flags add column if not exists season text default 'auto';";
-      }
-      if(r.error)throw r.error;
-      msg.textContent='✓ pushed — every phone picks it up live'+seasonNote;
-      /* #seasons2 — the pushed season IS the real word now, so record it locally at
-         once. sbLoadKmFlags() below confirms it from the wire, but it is async and
-         the Keymaster can hit Close first — without this the restore-on-close would
-         briefly yank the phone back to the PREVIOUS season, which reads as a failed
-         push. (Skipped when the column doesn't exist yet: seasonNote says so.) */
-      try{ if(!seasonNote){ window.KM_FLAGS=window.KM_FLAGS||{}; window.KM_FLAGS.season=row.season||'auto'; } }catch(e){}
-      try{ const n=$('kmSeasonNote'); if(n){ n.textContent='Pushed — every phone wears this now.'; n.style.color='var(--ok)'; } }catch(e){}
-      try{sbLoadKmFlags();}catch(e){}
-      try{toast('☠ The word is out');}catch(e){}
-    }catch(e){msg.textContent='✗ '+e.message+(/policy|permission|security/i.test(e.message||'')?' — is this account crowned in profiles.is_keymaster?':'');}
-    push.disabled=false;push.textContent='☠ PUSH TO EVERY PHONE';
+      const res=await kmLever({kind:'flags',label:'push: '+(row.bulletin?'bulletin + switches':'switches'),target:'',payload:{row:row},reason:why});
+      if(res&&res.desk){ msg.textContent='🗝 on the Keymaster’s desk — every phone keeps its current word until the seal'; try{kmSeasonRestore();}catch(e){} }
+      else{ msg.textContent='✓ '+res; try{toast('☠ The word is out');}catch(e){} }
+    }catch(e){ if(!e.quiet)msg.textContent='✗ '+e.message+(/policy|permission|security/i.test(e.message||'')?' — is this account crowned in profiles.is_keymaster?':''); }
+    push.disabled=false;push.textContent=dep?'🗝 SEND THE PUSH UP TO THE KEYMASTER':'☠ PUSH TO EVERY PHONE';
   });
   const dv=$('kmDevLog');
   if(dv)dv.addEventListener('click',function(){
@@ -34441,7 +34683,7 @@ window.SEASON_STORY={
         +'<div style="flex:1;min-width:0">'
         +'<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><b style="color:var(--bone)">'+h+'</b>'
         +'<span class="mono" style="color:var(--copper-hi)">'+esc(x.card_id||'—')+'</span>'
-        +(x.is_keymaster?'<span class="pill gold">☠</span>':'')
+        +(x.is_keymaster?'<span class="pill gold">'+(String(x.card_id||'').trim().toUpperCase()===KM_CROWN_CARD?'☠':'🗝')+'</span>':'')   /* #council — the crown, or a seat on the Shadow Council */
         +(a?'<span class="pill gold">🎖</span>':'')
         +(x.banned?'<span class="pill red">BANNED</span>':'')
         +(mail?'<span class="pill" style="border-color:rgba(77,226,255,.5);color:#4de2ff">✉ '+mail+'</span>':'')
@@ -34523,7 +34765,7 @@ window.SEASON_STORY={
       +tile(bucks.toLocaleString()+' ⬡','IN CIRCULATION','var(--copper-hi)')
       +tile(mail,'REPORTS WAITING',mail?'#4de2ff':'var(--steel)')
       +'</div>'
-      +'<div class="sub" style="margin-top:6px;line-height:1.7">☠ '+keys+' key'+(keys===1?'':'s')+' · 🎖 '+crowns+' crown'+(crowns===1?'':'s')+' · 🔨 '+banned+' banned'
+      +'<div class="sub" style="margin-top:6px;line-height:1.7">🗝 '+Math.max(0,keys-1)+' on the Shadow Council · 🎖 '+crowns+' crown'+(crowns===1?'':'s')+' · 🔨 '+banned+' banned'   /* #council — the crown is not counted among its own council */
       +(newest?' · ⚓ newest casual: <b style="color:var(--bone)">'+esc(newest)+'</b>'+(newestT?' <span style="color:var(--steel)">('+new Date(newestT).toLocaleDateString([],{month:'short',day:'numeric'})+')</span>':''):'')
       +'</div>'
       +kmGhostLine();   /* #ghosts */
@@ -34616,7 +34858,7 @@ window.SEASON_STORY={
     const since=prof.since?new Date(prof.since):null;
     const hrsY=(prof.hrs_year!=null&&prof.hrs_year!=='')?(+prof.hrs_year||0):null;
     const tile=(v,k,c)=>'<div style="flex:1;border:1px solid var(--line-soft);border-radius:10px;padding:10px 6px;text-align:center"><div class="mono" style="font-size:16px;color:'+(c||'var(--bone)')+'">'+v+'</div><div class="sub" style="margin-top:2px;font-size:10.5px">'+k+'</div></div>';
-    const pillrow=(x.is_keymaster?'<span class="pill gold">☠ holds a key</span>':'')
+    const pillrow=(x.is_keymaster?'<span class="pill gold">'+(isF?'☠ the crown':'🗝 Shadow Council')+'</span>':'')   /* #council — one crown; every other key is a seat on the Shadow Council */
       +(a?'<span class="pill gold">🎖 ambassador · '+(Number(a.rate)||0)+'%</span>':'')
       +(x.banned?'<span class="pill red">BANNED</span>':'')
       +(isF?'<span class="pill gold">⚓ founder</span>':'');
@@ -34659,7 +34901,7 @@ window.SEASON_STORY={
       +'<button class="btn-ghost" id="mmMint" type="button" style="width:100%">⬡ APPLY TO THEIR STACK</button>'
       +'<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">'
       +(isF?'':'<button class="btn-ghost mm-act" data-a="ban" style="flex:1;min-width:46%;padding:10px 0;color:'+(x.banned?'var(--ok)':'var(--ember)')+'">'+(x.banned?'✓ UNBAN':'🔨 BAN')+'</button>')
-      +(isF?'':'<button class="btn-ghost mm-act" data-a="crown" style="flex:1;min-width:46%;padding:10px 0;color:'+(x.is_keymaster?'var(--steel)':'var(--copper-hi)')+'">'+(x.is_keymaster?'✕ TAKE BACK THE KEY':'☠ HAND THEM A KEY')+'</button>')
+      +(isF?'':'<button class="btn-ghost mm-act" data-a="crown" style="flex:1;min-width:46%;padding:10px 0;color:'+(x.is_keymaster?'var(--steel)':'var(--copper-hi)')+'">'+(x.is_keymaster?'✕ TAKE BACK THEIR SEAT':'🗝 SEAT THEM ON THE SHADOW COUNCIL')+'</button>')
       +(isF?'':(a
         ?'<button class="btn-ghost mm-act" data-a="ambview" style="flex:1;min-width:46%;padding:10px 0;color:var(--warn)">👁 THEIR DASHBOARD</button>'
          +'<button class="btn-ghost mm-act" data-a="ambpull" style="flex:1;min-width:46%;padding:10px 0;color:var(--steel)">✕ PULL THE 🎖</button>'
@@ -34774,24 +35016,23 @@ window.SEASON_STORY={
     const h=_mem.handle;
     const btn=e.target.closest('button'); if(!btn)return;
     const msg=(($('mmWord')||{}).value||'').trim();
+    /* #desk — every lever below goes through kmLever: the crown's tap happens now,
+       a deputy's becomes a request with the word/reason typed here riding along */
     if(btn.id==='mmSend'){
       if(!msg){try{toast('Type the word first');}catch(e2){}return;}
       btn.disabled=true;
-      try{const r=await window.SB.rpc('km_warn',{p_handle:h,p_msg:msg});if(r.error)throw r.error;
-        $('mmWord').value='';try{toast('✉ sent — lands on their next open');}catch(e2){}}
-      catch(err){try{toast('✗ '+err.message);}catch(e2){}}
+      try{const res=await kmLever({kind:'word',label:'word to '+h,target:h,target_uid:_mem.uid||null,payload:{msg:msg},reason:msg});
+        if(!(res&&res.desk)){ $('mmWord').value=''; try{toast('✉ sent — lands on their next open');}catch(e2){} }}
+      catch(err){ if(!err.quiet){try{toast('✗ '+err.message);}catch(e2){}} }
       btn.disabled=false;return;
     }
     if(btn.id==='mmMint'){
-      const d=parseInt(($('mmDelta')||{}).value,10);
+      const d=parseInt(($('mmDelta')||{}).value,10), why=(($('mmReason')||{}).value||'').trim();
       if(!d){try{toast('How many ⬡? Negative pulls back');}catch(e2){}return;}
       btn.disabled=true;
-      try{const r=await window.SB.rpc('km_bucks',{p_handle:h,p_delta:d,p_reason:(($('mmReason')||{}).value||'').trim()||'the house moved it'});
-        if(r.error)throw r.error;
-        try{if(_mem.uid)window.SB.from('bucks_book').insert({user_id:_mem.uid,delta:d,reason:((($('mmReason')||{}).value||'').trim()||'minted by the desk')}).then(()=>{},()=>{});}catch(e2){} /* #bank */
-        try{toast('⬡ '+(d>0?'+':'')+d+' to '+h);}catch(e2){}
-        await kmRoster(); kmMemberOpen(h);}
-      catch(err){try{toast('✗ '+err.message);}catch(e2){}}
+      try{const res=await kmLever({kind:'mint',label:(d>0?'+':'')+d+' ⬡ → '+h,target:h,target_uid:_mem.uid||null,payload:{delta:d,reason:why||'the house moved it'},reason:why});
+        if(!(res&&res.desk)){ try{toast('⬡ '+(d>0?'+':'')+d+' to '+h);}catch(e2){} await kmRoster(); kmMemberOpen(h); }}
+      catch(err){ if(!err.quiet){try{toast('✗ '+err.message);}catch(e2){}} }
       btn.disabled=false;return;
     }
     if(btn.classList.contains('mm-handled')){
@@ -34810,26 +35051,29 @@ window.SEASON_STORY={
     if(act==='ambview'){ const a2=kmAmbOf(h); if(a2)ambViewOpen(a2.id,h); return; }
     btn.disabled=true;
     try{
+      const crown=kmIsCrown(); let res=null;
       if(act==='ban'){
         const on=!_mem.row.banned;
-        if(on&&!confirm('Ban '+h+'? Their card locks on their next open.')){btn.disabled=false;return;}
-        const r=await window.SB.rpc('km_ban',{p_handle:h,p_on:on,p_msg:msg});
-        if(r.error)throw r.error;
-        try{toast(on?('🔨 '+h+' is banned'):('✓ '+h+' is back in the Order'));}catch(e2){}
+        if(on&&crown&&!confirm('Ban '+h+'? Their card locks on their next open.')){btn.disabled=false;return;}
+        if(!crown&&!msg){ try{toast('🗝 Say why — the word above rides to the Keymaster and, if sealed, to '+h);}catch(e2){} btn.disabled=false;return; }
+        res=await kmLever({kind:on?'ban':'unban',label:(on?'🔨 ban ':'✓ unban ')+h,target:h,target_uid:_mem.uid||null,payload:{msg:msg},reason:msg});
+        if(!(res&&res.desk)){try{toast(on?('🔨 '+h+' is banned'):('✓ '+h+' is back in the Order'));}catch(e2){}}
       }else if(act==='crown'){
         const on=!_mem.row.is_keymaster;
-        const r=await window.SB.rpc('km_crown',{p_handle:h,p_on:on,p_msg:msg});
-        if(r.error)throw r.error;
-        try{toast(on?('☠ '+h+' now holds a key to the Command Center'):('✕ key taken back from '+h));}catch(e2){}
+        if(!crown&&!msg){ try{toast('🗝 Say why — the word above rides to the Keymaster with the request');}catch(e2){} btn.disabled=false;return; }
+        res=await kmLever({kind:on?'key':'unkey',label:(on?'🗝 seat on the Shadow Council: ':'✕ take back the seat: ')+h,target:h,target_uid:_mem.uid||null,payload:{msg:msg},reason:msg});
+        if(!(res&&res.desk)){try{toast(on?('🗝 '+h+' sits on the Shadow Council now'):('✕ '+h+'’s seat on the Shadow Council is taken back'));}catch(e2){}}
       }else if(act==='ambpull'){
         const a2=kmAmbOf(h);
         if(a2){
-          if(!confirm('Pull the ambassador crown from '+h+'? Their recruits and commission history stay on the books — new sales just stop booking them.')){btn.disabled=false;return;}
-          await kmAmbPull(a2.id,h,msg);
+          if(crown&&!confirm('Pull the ambassador crown from '+h+'? Their recruits and commission history stay on the books — new sales just stop booking them.')){btn.disabled=false;return;}
+          if(!crown&&!msg){ try{toast('🗝 Say why — the word above rides to the Keymaster with the request');}catch(e2){} btn.disabled=false;return; }
+          res=await kmLever({kind:'ambpull',label:'✕ pull the 🎖 from '+h,target:h,target_uid:_mem.uid||null,payload:{msg:msg,ambId:a2.id},reason:msg});
         }
       }
+      if(res&&res.desk){ btn.disabled=false; return; }   /* on the desk — the page stays as it is until the seal */
       await kmRoster(); kmMemberOpen(h);
-    }catch(err){try{toast('✗ '+err.message);}catch(e2){}}
+    }catch(err){ if(!err.quiet){try{toast('✗ '+err.message);}catch(e2){}} }
     btn.disabled=false;
   });
   (function(){const s8=$('kmMemberSheet');if(s8)s8.addEventListener('click',e=>{if(e.target===s8)s8.classList.remove('on');});})();
@@ -34937,61 +35181,80 @@ window.SEASON_STORY={
     $('kmAmbWho').innerHTML='For <b style="color:var(--bone)">'+esc(handle)+'</b> — they recruit vendors to the Armory and book a cut of the house margin on everything their recruits sell.'
       +(_ambTarget.uid?'':'<br><span style="color:var(--ember)">No app account found for this handle — fill in their email so the gate can mint their pass.</span>');
     $('kmAmbName').value=handle;$('kmAmbRate').value='10';$('kmAmbEmail').value=opts.email||'';$('kmAmbMsg').textContent='';
+    /* #desk — a deputy's crowning is a request: show the reason field, name the button for it */
+    try{ const dep=kmIsDeputy(); const ww=$('kmAmbWhyWrap'); if(ww)ww.style.display=dep?'':'none'; if($('kmAmbWhy'))$('kmAmbWhy').value='';
+         const go0=$('kmAmbGo'); if(go0)go0.textContent=dep?'🗝 SEND THE CROWN UP TO THE KEYMASTER':'🎖 SET THE CROWN'; }catch(e){}
     sh2.classList.add('on');
   };
+  /* #desk — THE CROWNING, one function: the crown's tap and the seal both run it.
+     target = {handle, uid, appId}. Returns {amb, linked, minted, tempPass}. */
+  async function kmAmbApply(target,name,rate,email){
+    /* a retired crown with this name gets revived, not duplicated — the books stay clean */
+    let amb=null;
+    const oldA=_ambs.find(x=>String(x.name||'').toLowerCase()===name.toLowerCase());
+    if(oldA){
+      const up=await window.SB.from('ambassadors').update({active:true,rate:Math.round(rate*100)/100,email:email||oldA.email||null}).eq('id',oldA.id).select().single();
+      if(up.error)throw up.error; amb=up.data;
+    }else{
+      const ins=await window.SB.from('ambassadors').insert({name:name,email:email||null,rate:Math.round(rate*100)/100}).select().single();
+      if(ins.error)throw ins.error; amb=ins.data;
+    }
+    let linked=false,minted=false,tempPass='';
+    if(target&&target.uid){ /* the good path: their existing login carries the crown */
+      const lk=await window.SB.from('ambassador_members').insert({user_id:target.uid,ambassador_id:amb.id});
+      if(!lk.error)linked=true;
+      else{ const lk2=await window.SB.from('ambassador_members').update({ambassador_id:amb.id}).eq('user_id',target.uid).select();
+            if(!lk2.error&&lk2.data&&lk2.data.length)linked=true; }
+    }
+    if(!linked&&email){ /* the gate's own mint — creates the account, or links the email as-is */
+      tempPass=_genPass();
+      try{
+        const s=await window.SB.auth.getSession();
+        const tok=s&&s.data&&s.data.session?s.data.session.access_token:'';
+        const rr=await fetch(String(window.SUPABASE_URL).replace(/\/+$/,'')+'/functions/v1/vendor-invite',{method:'POST',
+          headers:{'Content-Type':'application/json','apikey':window.SUPABASE_ANON_KEY||'','Authorization':'Bearer '+tok},
+          body:JSON.stringify({email:email,ambassador_id:amb.id,temp_password:tempPass})});
+        const j=await rr.json().catch(()=>null);
+        if(rr.ok&&j&&j.ok){minted=true;if(j.linked_existing){linked=true;tempPass='';}}
+        else shkAlert('crowning · pass mint',(j&&j.error)||('mint jammed '+rr.status));   /* #alarms */
+      }catch(e2){shkAlert('crowning · pass mint',e2);}
+    }
+    /* word to the newly crowned — rides the same notice wire as ⚠ warn */
+    if(linked&&target&&target.handle){try{await window.SB.rpc('km_warn',{p_handle:target.handle,p_msg:'🎖 You’ve been crowned an AMBASSADOR of the Order. Your deck is open — theshadowhook.com/ambassador — your usual email and password. Recruit vendors to the Armory and '+(Number(rate)||0)+'% of the house margin on their sales is yours.'});}catch(e3){}}
+    if(target&&target.appId){ /* #amb — this crown answers an application: mark it ruled */
+      try{await window.SB.from('amb_applications').update({status:'crowned'}).eq('user_id',target.appId);}catch(e6){}
+      try{kmApps();}catch(e6){}
+    }
+    await kmAmbLoad(); kmRosterDraw();
+    try{if(typeof kmMemberRefresh==='function')kmMemberRefresh();}catch(e7){} /* #mempage — the page under this sheet stays honest */
+    return {amb:amb,linked:linked,minted:minted,tempPass:tempPass};
+  }
   async function kmAmbGo(){
     const msgEl=$('kmAmbMsg'),name=($('kmAmbName').value||'').trim(),rate=parseFloat($('kmAmbRate').value),email=($('kmAmbEmail').value||'').trim();
     if(!name){msgEl.textContent='✗ a name for the crown';return;}
     if(!(rate>=0&&rate<=100)){msgEl.textContent='✗ rate is 0–100 (% of house margin)';return;}
     if(!window.SB){msgEl.textContent='✗ backend off';return;}
-    const go=$('kmAmbGo');go.disabled=true;msgEl.textContent='setting the crown…';
+    const go=$('kmAmbGo');go.disabled=true;
+    if(kmIsDeputy()){ /* #desk — a request, with the reason typed on the sheet */
+      msgEl.textContent='sending it up…';
+      try{
+        await kmLever({kind:'amb',label:'🎖 crown '+name+' at '+rate+'%',target:(_ambTarget&&_ambTarget.handle)||name,target_uid:(_ambTarget&&_ambTarget.uid)||null,
+                       payload:{name:name,rate:rate,email:email,appId:(_ambTarget&&_ambTarget.appId)||null},reason:(($('kmAmbWhy')||{}).value||'').trim()});
+        msgEl.textContent=''; $('kmAmbSheet').classList.remove('on');
+      }catch(err){ msgEl.textContent=err.quiet?'✗ a reason for the Keymaster — it rides with the request':('✗ '+err.message); }
+      go.disabled=false; return;
+    }
+    msgEl.textContent='setting the crown…';
     try{
-      /* a retired crown with this name gets revived, not duplicated — the books stay clean */
-      let amb=null;
-      const oldA=_ambs.find(x=>String(x.name||'').toLowerCase()===name.toLowerCase());
-      if(oldA){
-        const up=await window.SB.from('ambassadors').update({active:true,rate:Math.round(rate*100)/100,email:email||oldA.email||null}).eq('id',oldA.id).select().single();
-        if(up.error)throw up.error; amb=up.data;
-      }else{
-        const ins=await window.SB.from('ambassadors').insert({name:name,email:email||null,rate:Math.round(rate*100)/100}).select().single();
-        if(ins.error)throw ins.error; amb=ins.data;
-      }
-      let linked=false,minted=false,tempPass='';
-      if(_ambTarget&&_ambTarget.uid){ /* the good path: their existing login carries the crown */
-        const lk=await window.SB.from('ambassador_members').insert({user_id:_ambTarget.uid,ambassador_id:amb.id});
-        if(!lk.error)linked=true;
-        else{ const lk2=await window.SB.from('ambassador_members').update({ambassador_id:amb.id}).eq('user_id',_ambTarget.uid).select();
-              if(!lk2.error&&lk2.data&&lk2.data.length)linked=true; }
-      }
-      if(!linked&&email){ /* the gate's own mint — creates the account, or links the email as-is */
-        tempPass=_genPass();
-        try{
-          const s=await window.SB.auth.getSession();
-          const tok=s&&s.data&&s.data.session?s.data.session.access_token:'';
-          const rr=await fetch(String(window.SUPABASE_URL).replace(/\/+$/,'')+'/functions/v1/vendor-invite',{method:'POST',
-            headers:{'Content-Type':'application/json','apikey':window.SUPABASE_ANON_KEY||'','Authorization':'Bearer '+tok},
-            body:JSON.stringify({email:email,ambassador_id:amb.id,temp_password:tempPass})});
-          const j=await rr.json().catch(()=>null);
-          if(rr.ok&&j&&j.ok){minted=true;if(j.linked_existing){linked=true;tempPass='';}}
-          else shkAlert('crowning · pass mint',(j&&j.error)||('mint jammed '+rr.status));   /* #alarms */
-        }catch(e2){shkAlert('crowning · pass mint',e2);}
-      }
-      /* word to the newly crowned — rides the same notice wire as ⚠ warn */
-      if(linked){try{await window.SB.rpc('km_warn',{p_handle:_ambTarget.handle,p_msg:'🎖 You’ve been crowned an AMBASSADOR of the Order. Your deck is open — theshadowhook.com/ambassador — your usual email and password. Recruit vendors to the Armory and '+(Number(rate)||0)+'% of the house margin on their sales is yours.'});}catch(e3){}}
-      if(_ambTarget&&_ambTarget.appId){ /* #amb — this crown answers an application: mark it ruled */
-        try{await window.SB.from('amb_applications').update({status:'crowned'}).eq('user_id',_ambTarget.appId);}catch(e6){}
-        try{kmApps();}catch(e6){}
-      }
-      await kmAmbLoad(); kmRosterDraw();
-      try{if(typeof kmMemberRefresh==='function')kmMemberRefresh();}catch(e7){} /* #mempage — the page under this sheet stays honest */
-      if(minted&&tempPass){ /* fresh pass — leave the sheet up so the credentials can be copied */
+      const out=await kmAmbApply(_ambTarget,name,rate,email);
+      if(out.minted&&out.tempPass){ /* fresh pass — leave the sheet up so the credentials can be copied */
         msgEl.innerHTML='🗝 Crown set and a fresh Dock Office pass minted. Hand these over yourself — they won’t be shown again:<br>'
-          +'<b class="mono" style="color:var(--bone)">'+esc(email)+'</b> · temp password <b class="mono" style="color:var(--bone)">'+esc(tempPass)+'</b>';
+          +'<b class="mono" style="color:var(--bone)">'+esc(email)+'</b> · temp password <b class="mono" style="color:var(--bone)">'+esc(out.tempPass)+'</b>';
         try{toast('🎖 '+name+' is crowned');}catch(e4){}
       }else{
         $('kmAmbSheet').classList.remove('on');
-        try{toast('🎖 '+name+' is crowned'+(linked?' — their usual sign-in now opens the Dock Office':' — crown set, but no login linked yet (add their email, or mint from the Dock Office)'));}catch(e4){}
-        ambViewOpen(amb.id,_ambTarget?_ambTarget.handle:name); /* straight into the spyglass — see what they now see */
+        try{toast('🎖 '+name+' is crowned'+(out.linked?' — their usual sign-in now opens the Dock Office':' — crown set, but no login linked yet (add their email, or mint from the Dock Office)'));}catch(e4){}
+        ambViewOpen(out.amb.id,_ambTarget?_ambTarget.handle:name); /* straight into the spyglass — see what they now see */
       }
     }catch(err){msgEl.textContent='✗ '+err.message+(/policy|permission|security/i.test(err.message||'')?' — is this account crowned in profiles.is_keymaster?':'');shkAlert('crowning',err);}
     go.disabled=false;
@@ -35551,17 +35814,25 @@ window.SEASON_STORY={
         :('stockroom failed: '+esc(m));
     }
   };
+  /* #desk — the stockroom call, one function */
+  async function kmStockDecide(pid,doWhat){
+    const r=await window.SB.from('products').update({status:doWhat}).eq('id',pid);
+    if(r.error)throw r.error;
+    try{kmStock();}catch(e){}
+    try{sbLoadProducts();}catch(e3){}   /* the shelf follows the word immediately */
+  }
   const kst=$('kmStock');
   if(kst)kst.addEventListener('click',async function(e){
     const b=e.target.closest('button.km-stock');if(!b)return;
+    const nm=(function(){try{return b.closest('div[style*="border"]').querySelector('b').textContent;}catch(e){return b.dataset.pid;}})();
+    const why=kmWhy((b.dataset.do==='live'?'put on the floor: ':'pass on: ')+nm);
+    if(kmIsDeputy()&&!why)return;
     b.disabled=true;
     try{
-      const r=await window.SB.from('products').update({status:b.dataset.do}).eq('id',b.dataset.pid);
-      if(r.error)throw r.error;
+      const res=await kmLever({kind:'stock',label:(b.dataset.do==='live'?'⚓ floor: ':'✕ pass: ')+nm,target:'',payload:{pid:b.dataset.pid,do:b.dataset.do,name:nm},reason:why});
+      if(res&&res.desk){ b.disabled=false; return; }
       try{toast(b.dataset.do==='live'?'⚓ on the floor — every phone sees it':'✕ passed — the vendor can rework it');}catch(e2){}
-      kmStock();
-      try{sbLoadProducts();}catch(e3){}   /* the shelf follows the word immediately */
-    }catch(err){try{toast('✗ '+err.message);}catch(e2){} b.disabled=false;}
+    }catch(err){ if(!err.quiet){try{toast('✗ '+err.message);}catch(e2){}} b.disabled=false;}
   });
 
   /* ═══════════ #pulse2(aug13) — THE TRAFFIC: footfall through the door ═══════════
@@ -35777,14 +36048,16 @@ window.SEASON_STORY={
     const app=_apps.find(x=>x.user_id===b.dataset.app); if(!app)return;
     if(b.dataset.do==='crown'){ kmAmbOpen(app.handle||app.name,{uid:app.user_id,email:app.email||'',appId:app.user_id}); return; }
     if(b.dataset.do==='pass'){
-      if(!confirm('Pass on '+(app.name||app.handle||'this casual')+'? They can apply again down the line.'))return;
+      const who=(app.name||app.handle||'this casual');
+      if(kmIsCrown()&&!confirm('Pass on '+who+'? They can apply again down the line.'))return;
+      const why=kmWhy('pass on the ambassador application from '+who);   /* #desk */
+      if(kmIsDeputy()&&!why)return;
       b.disabled=true;
       try{
-        const r=await window.SB.from('amb_applications').update({status:'passed'}).eq('user_id',app.user_id);
-        if(r.error)throw r.error;
+        const res=await kmLever({kind:'app',label:'✕ pass on 🎖 application — '+who,target:app.handle||'',target_uid:app.user_id||null,payload:{do:'pass',user_id:app.user_id,name:who},reason:why});
+        if(res&&res.desk){ b.disabled=false; return; }
         try{toast('✕ passed — the book remembers');}catch(e2){}
-        kmApps();
-      }catch(err){try{toast('✗ '+err.message);}catch(e2){} b.disabled=false;}
+      }catch(err){ if(!err.quiet){try{toast('✗ '+err.message);}catch(e2){}} b.disabled=false;}
     }
   });
 
@@ -36134,23 +36407,31 @@ window.SEASON_STORY={
         :('trade desk failed: '+esc(e.message));
     }
   };
+  /* #desk — the trade call, one function: the crown's tap and the seal both run it */
+  async function kmTradeDecide(t,on,msg){
+    const r=await window.SB.from('trade_posts').update({status:on?'live':'passed'}).eq('user_id',t.user_id);
+    if(r.error)throw r.error;
+    try{await window.SB.rpc('km_warn',{p_handle:t.handle,p_msg:on
+      ?('🛠 Your trade post is on the board — “'+(t.headline||'')+'” now shows in THE TRADES for every casual in the Order.')
+      :(msg||'Your trade post didn’t clear this round. Rework it and send it through again.')});}catch(e2){}
+    try{kmTrades();}catch(e){}
+  }
   const kt=$('kmTrades');
   if(kt)kt.addEventListener('click',async function(e){
     const b=e.target.closest('button.km-trade');if(!b)return;
     const t=_tradePend.find(x=>x.user_id===b.dataset.u);if(!t)return;
     const msg=(($('kmNotice')||{}).value||'').trim();
-    if(b.dataset.do==='pass'&&!confirm('Pass on '+(t.handle||t.name||'this post')+'? They can rework it and resubmit.'))return;
+    const on=b.dataset.do==='live';
+    if(!on&&kmIsCrown()&&!confirm('Pass on '+(t.handle||t.name||'this post')+'? They can rework it and resubmit.'))return;
+    const why=kmWhy((on?'post: ':'pass on: ')+(t.headline||t.handle||'this post'));   /* #desk */
+    if(kmIsDeputy()&&!why)return;
     b.disabled=true;
     try{
-      const on=b.dataset.do==='live';
-      const r=await window.SB.from('trade_posts').update({status:on?'live':'passed'}).eq('user_id',t.user_id);
-      if(r.error)throw r.error;
-      try{await window.SB.rpc('km_warn',{p_handle:t.handle,p_msg:on
-        ?('🛠 Your trade post is on the board — “'+(t.headline||'')+'” now shows in THE TRADES for every casual in the Order.')
-        :(msg||'Your trade post didn’t clear this round. Rework it and send it through again.')});}catch(e2){}
+      const res=await kmLever({kind:'trade',label:(on?'✓ post: ':'✕ pass: ')+(t.headline||t.handle||'trade post'),target:t.handle||'',target_uid:t.user_id||null,
+                               payload:{do:on?'live':'pass',user_id:t.user_id,handle:t.handle||'',headline:t.headline||'',msg:msg},reason:why});
+      if(res&&res.desk){ b.disabled=false; return; }
       try{toast(on?'✓ on the board':'✕ passed');}catch(e2){}
-      kmTrades();
-    }catch(err){try{toast('✗ '+err.message);}catch(e2){} b.disabled=false;}
+    }catch(err){ if(!err.quiet){try{toast('✗ '+err.message);}catch(e2){}} b.disabled=false;}
   });
 
   /* ═══ #km2 — member side: notices land, bans lock ═══ */
@@ -36182,7 +36463,7 @@ window.SEASON_STORY={
           try{ window.__isKM=false; localStorage.setItem(K('km'),'');
                const kb=document.getElementById('pfCommand'); if(kb)kb.style.display='none';
                const ks=document.getElementById('kmSheet'); if(ks)ks.classList.remove('on'); }catch(e){}
-          try{toast('Your key to the Command Center has been taken back');}catch(e){} }
+          try{toast('Your seat on the Shadow Council has been taken back');}catch(e){} }
         else { showNotice(n.message||''); }
         try{await window.SB.from('km_notices').update({seen:true}).eq('id',n.id);}catch(e){}
       }
@@ -36204,8 +36485,9 @@ window.SEASON_STORY={
     if(!sh3){sh3=document.createElement('div');sh3.className='sheet';sh3.id='crownSheet';document.body.appendChild(sh3);}
     sh3.innerHTML='<div class="sheet-card" style="text-align:center">'
       +'<div style="font-size:40px">☠</div>'
-      +'<div class="big" style="font-size:19px;letter-spacing:.07em;color:var(--copper-hi)">YOU HOLD A KEY NOW</div>'
-      +'<p class="sub" style="margin:12px 0 6px;line-height:1.65">The Keymaster has crowned you. The Command Center is yours — open your profile and look for the ☠ door.</p>'
+      +'<div class="big" style="font-size:19px;letter-spacing:.07em;color:var(--copper-hi)">YOU SIT ON THE SHADOW COUNCIL</div>'
+      /* #council — every key but the crown's is a seat on the council: the room is theirs to see, the seal is the Keymaster's */
+      +'<p class="sub" style="margin:12px 0 6px;line-height:1.65">The Keymaster has seated you on the Shadow Council. The Command Center is open to you — open your profile and look for the ☠ door. Every lever you pull rides to the Keymaster’s desk with your reason on it, and nothing lands until the seal.</p>'
       +(msg?'<p class="sub" style="margin:0 0 16px;text-align:left;line-height:1.65;color:var(--bone)">'+esc(msg)+'</p>':'<div style="height:10px"></div>')
       +'<button class="btn" id="crownOk" type="button" style="width:100%">CLAIM IT</button></div>';
     sh3.querySelector('#crownOk').addEventListener('click',()=>sh3.classList.remove('on'));
