@@ -13149,6 +13149,17 @@ function xpEarlyCompact(dd){
     +' · <span class="xp-more" style="color:var(--copper-hi);cursor:pointer">full sheet ▾</span></div>';
   return h;
 }
+/* #four(sep04) — THE LIST IS FOUR BOARDS. By request: the open sheet shows Hold,
+   UTR, Dock and Key Hold, and nothing else. This is DISPLAY ONLY — sheetTotals()
+   still counts every board the sheet carries, the header's Total / Casual figures
+   are what they always were, and the prediction reads the same numbers it always
+   did (casualJobsOf → sheetTotals → t.cas; nothing here is in that path). Matched
+   through normBoardName, so an OCR'd "KEY HOLD" / "Keyhold" still lands. Same
+   lazy-Set shape as membersOnlyBoards(), for the same TDZ reason. */
+let _sheetShow=null;
+function sheetRowShown(name){
+  return (_sheetShow||(_sheetShow=new Set(["HOLD","UTR","DOCK","KEY HOLD","KEYHOLD"]))).has(normBoardName(name));
+}
 function xpSheet(d,label){
   /* #sheetfix — every figure here comes from sheetTotals(), the same call the
      collapsed board row and the prediction use, so the panel can't contradict
@@ -13159,12 +13170,21 @@ function xpSheet(d,label){
   h+='<div class="xp-tot">Total <b>'+(t.grand!=null?t.grand.toLocaleString():'—')+'</b>'
     +(t.cas!=null?' · Casual <b style="color:var(--copper-hi)">'+t.cas.toLocaleString()+'</b>':'')+'</div>';
   if(t.casual.length||t.members.length){
-    const max=Math.max(1,...t.casual.map(x=>x[1]));
-    t.casual.forEach(([k,n])=>{const pct=Math.round(n/max*100);
+    /* #four — the four boards, in the count order they already come in. A sheet
+       with none of the four (a bad scan) falls back to the whole list rather than
+       an empty panel. */
+    let rows=t.casual.filter(x=>sheetRowShown(x[0]));
+    const trimmed=rows.length>0&&rows.length<t.casual.length;
+    if(!rows.length)rows=t.casual;
+    const max=Math.max(1,...rows.map(x=>x[1]));
+    rows.forEach(([k,n])=>{const pct=Math.round(n/max*100);
       h+='<div class="xp-row"><span class="xp-name">'+acEsc(k)+'</span>'
         +'<span class="xp-track" title="'+acEsc(xpOrderLine(d.boards[k]||{}))+'"><i style="width:'+pct+'%"></i></span>'
         +'<b>'+n.toLocaleString()+'</b></div>';});
-    if(t.summed!=null)
+    /* #four — the CASUAL BOARDS subtotal sums EVERY casual board; under four rows it
+       would read as a sum that doesn't add up. The header's Casual figure carries
+       that number already, so the subtotal only prints when nothing was trimmed. */
+    if(t.summed!=null&&!trimmed)
       h+='<div class="xp-row xp-sum"><span class="xp-name">CASUAL BOARDS</span><span class="xp-track"></span><b>'+t.summed.toLocaleString()+'</b></div>';
     /* the sheet states one casual figure and its own rows add to another. That
        means the breakdown and the total came from different reads of the scan —
