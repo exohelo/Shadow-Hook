@@ -812,6 +812,7 @@ html.daylight .heist{background:rgba(64,54,38,.6)}
 .cat.S,.cat.SL,.cat.SD{background:#24190f;color:var(--copper-hi);border:1px solid rgba(238,180,107,.3)}
 .cat.DA{background:#101a24;color:#8ab2d6;border:1px solid rgba(138,178,214,.3)}
 .cat.CLERK{background:#211326;color:#c79ad4;border:1px solid rgba(199,154,212,.35)}
+.cat.KDP{background:#12232a;color:#7fcde8;border:1px solid rgba(127,205,232,.35)}   /* #kdp */
 /* ═══ #emgread(aug24) — THE ONE CARD THAT CANNOT BE SQUINTED AT ═══
    Scoped to #emgCard. Size is the whole fix, plus one structural change: the shout is a
    BLOCK now, so "GET ON THE RADIO! CALL THE BOSS." is a line of its own instead of the
@@ -2546,6 +2547,7 @@ html.daylight .cat.UTR{background:#eaf4e4;color:#2c6318;border-color:#bcdcab}
 html.daylight .cat.S,html.daylight .cat.SL,html.daylight .cat.SD{background:#fff4e8;color:var(--copper-hi);border-color:#e3bb92}
 html.daylight .cat.DA{background:#e9f1fa;color:#1f527f;border-color:#b3cee7}
 html.daylight .cat.CLERK{background:#f4ecf8;color:#6c3e83;border-color:#d8c2e4}
+html.daylight .cat.KDP{background:#e6f3f8;color:#155a72;border-color:#addbea}   /* #kdp */
 
 /* ─────────── 7 · ICON PLATES (were dark sockets punched in the card) ─────────── */
 html.daylight .seal,
@@ -7624,6 +7626,12 @@ const JOB_CATALOG_DEFAULT = {
   "GEAR":  {name:"Gearman",               diff:0.00, hrs:0, tier:"Basic",     casual:true},
   // Skill Wage I — entry operator/driver work casuals are tested & dispatched for
   "UTR":   {name:"UTR Driver (tractor)",  diff:2.40, hrs:0, tier:"Skill I",   casual:true},
+  /* #kdp(sep04) — off a real docket: D4928, 9/3/26 3:00 AM, APM, POTOMAC EXPRESS, T1 400.
+     The casual who worked it: "like Swing, but it pays like UTR" — so the work sits with
+     the swing gang and the money sits on Skill I. KDP was already in SIDE_DOCK (the gate
+     list), it just had no pay row, which is why it never priced a take. Name it plainly
+     rather than guess at what the letters stand for; the log form can rename it. */
+  "KDP":   {name:"KDP (swing work · UTR rate)", diff:2.40, hrs:0, tier:"Skill I",   casual:true},
   "SD":    {name:"Semi-Dock Tractor",     diff:2.40, hrs:0, tier:"Skill I",   casual:true},
   "LIFT":  {name:"Lift Truck Operator",   diff:2.40, hrs:0, tier:"Skill I",   casual:true},
   "JIT":   {name:"Jitney / Combo Lift",   diff:2.40, hrs:0, tier:"Skill I",   casual:true},
@@ -22845,6 +22853,16 @@ async function sbLoadClans(){
           ALL_CLANS.forEach(c=>{ c.join_mode=M[c.id]||'open'; }); }
       }catch(e){ window.__shkNoClanAsk=true; }
     }
+    /* #clanbanner — the covers, in their own narrow table for the same reason the
+       join modes are: clan_board stays as it is. No table yet → the generated art. */
+    if(window.__shkNoClanBanner!==true){
+      try{
+        const bn=await window.SB.from('clan_banners').select('id,url');
+        if(bn.error){ window.__shkNoClanBanner=true; console.info('[clans] no covers yet — run CLAN-BANNER.sql'); }
+        else{ CLAN_BANNER={}; (bn.data||[]).forEach(x=>{ if(x&&x.id&&x.url)CLAN_BANNER[x.id]=x.url; });
+              ALL_CLANS.forEach(c=>{ if(CLAN_BANNER[c.id])c.banner_url=CLAN_BANNER[c.id]; }); }
+      }catch(e){ window.__shkNoClanBanner=true; }
+    }
     let m=null;
     if(window.__shkNoClanStatus!==true){
       m=await window.SB.from('clan_members').select('clan_id,user_id,handle,platform,tag,joined_at,status').order('joined_at',{ascending:true});
@@ -22884,8 +22902,10 @@ function clansSection(step){
     +'<div class="fsec-h"><span class="ttl">🎮 Clans</span><span class="more">squad up off the docks</span></div>';
   ALL_CLANS.forEach(c=>{
     const inn=clanIn(c), mine=clanMine(c), n=+c.n||0;
+    const _bu=clanBannerUrl(c);   /* #clanbanner — the cover, small, is the tile */
     html+='<div class="evt feedIn'+(mine?' mine':'')+'"'+step()+' data-clan="'+esc(c.id)+'">'
-      +'<div class="evt-date glyph">🎮</div>'
+      +(_bu?'<div class="evt-date glyph clan-thumb" style="background-image:url('+esc(_bu).replace(/[()]/g,'')+')"></div>'
+           :'<div class="evt-date glyph clan-thumb" style="'+clanArtStyle(c.game)+'"></div>')
       +'<div class="evt-main">'
         +'<div class="evt-name">'+esc(c.name)+' <span class="epill">'+esc(c.game)+'</span> '+clanJoinPill(c)+(mine?' <span class="epill">★ YOURS</span>':'')+'</div>'
         +'<div class="evt-meta">'+(clanPlatLine(c)||'<span>nobody yet</span>')+'</div>'
@@ -22909,6 +22929,91 @@ function bindClans(host){
   host.querySelectorAll('[data-copen]').forEach(b=>b.addEventListener('click',e=>{ e.stopPropagation(); openClanRoom(b.getAttribute('data-copen')); }));
   const cc=host.querySelector('[data-new="clan"]'); if(cc)cc.addEventListener('click',()=>{ try{newClanFlow();}catch(e){} });
 }
+/* ═══ #clanbanner(sep04) — the cover. See the sheet up in the styles. ═══ */
+window.CLAN_BANNER={};                                   /* clan id → url, read beside the board */
+function clanBannerUrl(c){ try{ return (c&&(CLAN_BANNER[c.id]||c.banner_url))||''; }catch(e){ return ''; } }
+/* the generated cover: one hue pair per GAME, so every clan on the same game matches */
+function clanHue(sx){ var h=0, t=String(sx||'shadow').toUpperCase(); for(var i=0;i<t.length;i++)h=(h*31+t.charCodeAt(i))%360; return h; }
+function clanArtStyle(game){
+  var h=clanHue(game), h2=(h+46)%360;
+  return 'background:'
+    +'radial-gradient(ellipse 90% 70% at 18% 0%,hsla('+h2+',85%,58%,.38),transparent 62%),'
+    +'radial-gradient(ellipse 70% 90% at 92% 100%,hsla('+h+',90%,52%,.34),transparent 60%),'
+    +'repeating-linear-gradient(115deg,rgba(255,255,255,.045) 0 2px,transparent 2px 13px),'
+    +'linear-gradient(135deg,hsl('+h+',52%,22%),hsl('+h2+',58%,10%))';
+}
+function clanBannerHTML(c,mine){
+  var url=clanBannerUrl(c);
+  return '<div class="clan-banner" id="clanBanner">'
+    +(url?'<img src="'+esc(url)+'" alt="" loading="lazy">'
+         :'<div class="cb-art" style="'+clanArtStyle(c.game)+'"><b>'+esc(String(c.game||'GAME ON').slice(0,18))+'</b></div>')
+    +'<div class="cb-scrim"></div>'
+    +'<div class="cb-txt"><div class="cb-name">'+esc(c.name)+'</div><span class="cb-game">🎮 '+esc(c.game||'—')+'</span></div>'
+    +(mine?'<div class="cb-edit"><button type="button" id="cbPick" aria-label="'+(url?'Change the cover':'Add a cover')+'" title="'+(url?'Change the cover':'Add a cover')+'">📷</button>'
+           +(url?'<button type="button" id="cbClear" aria-label="Take the cover down" title="Take the cover down">✕</button>':'')+'</div>':'')
+    +'</div>';
+}
+/* the leader's picker: squeeze on the phone, land it in clans/<id>/ */
+function clanBannerPick(clanId){
+  var i=document.getElementById('clanBannerFile');
+  if(!i){ i=document.createElement('input'); i.type='file'; i.id='clanBannerFile'; i.accept='image/*'; i.hidden=true; document.body.appendChild(i);
+    i.addEventListener('change',function(e){ var f=e.target.files&&e.target.files[0]; e.target.value=''; if(f)clanBannerSet(i.dataset.clan,f); }); }
+  i.dataset.clan=String(clanId); i.value=''; i.click();
+}
+function clanCoverCanvas(src,W,H){   /* cover-crop to W×H — the banner's own shape, never squashed */
+  var w=src.width||src.naturalWidth, h=src.height||src.naturalHeight;
+  if(!(w>0&&h>0))throw Object.assign(new Error('empty'),{code:'DECODE'});
+  var c=document.createElement('canvas'); c.width=W; c.height=H; var g=c.getContext('2d');
+  g.imageSmoothingEnabled=true; g.imageSmoothingQuality='high';
+  var k=Math.max(W/w,H/h), sw=Math.round(W/k), sh=Math.round(H/k);
+  g.drawImage(src,Math.round((w-sw)/2),Math.round((h-sh)/2),sw,sh,0,0,W,H);
+  return c;
+}
+async function clanBannerSet(clanId,file){
+  if(typeof guestWall==='function'&&guestWall())return;
+  var c=clanById(clanId); if(!c||!clanMine(c))return;
+  if(!(window.SB&&window.__shkUid)){ toast('Sign in to set a cover'); return; }
+  var el=document.getElementById('clanBanner'); if(el)el.classList.add('busy');
+  try{
+    var src=await decodePicture(file);
+    var blob=await canvasBlob(clanCoverCanvas(src,1200,480),.82);
+    try{ if(src&&src.close)src.close(); }catch(e){}
+    var path='clans/'+String(clanId).replace(/[^a-zA-Z0-9_-]/g,'_')+'/banner-'+Date.now().toString(36)+'.jpg';
+    var up=await window.SB.storage.from('chat-media').upload(path,blob,{contentType:'image/jpeg',cacheControl:'31536000'});
+    if(up.error)throw up.error;
+    var pub=window.SB.storage.from('chat-media').getPublicUrl(path);
+    var url=pub&&pub.data&&pub.data.publicUrl; if(!url)throw new Error('no public url');
+    var old=clanBannerUrl(c);
+    var r=await window.SB.from('clan_banners').upsert({id:clanId,url:url,set_by:window.__shkUid},{onConflict:'id'});
+    if(r.error)throw r.error;
+    CLAN_BANNER[clanId]=url; try{ c.banner_url=url; }catch(e){}
+    try{ var k=String(old||'').match(/\/chat-media\/(clans\/[^?#]+)/); if(k)window.SB.storage.from('chat-media').remove([decodeURIComponent(k[1])]).catch(function(){}); }catch(e){}   /* the last cover goes */
+    toast('🎮 Cover set — the clan wears it');
+    try{ openClanSheet(clanId); }catch(e){}
+    try{ renderSocialFeed(); }catch(e){}
+  }catch(e){
+    if(el)el.classList.remove('busy');
+    var m=String((e&&(e.message||e.error))||e||''); try{console.warn('[clanbanner]',m);}catch(_){}
+    toast(/clan_banners|does not exist|42P01|schema cache|PGRST205/i.test(m)?'⚓ Covers need CLAN-BANNER.sql — run it in Supabase → SQL Editor'
+      :/row-level security|policy|42501|403/i.test(m)?'The wire refused it — only the leader can set the cover'
+      :/mime|not supported|415/i.test(m)?'That file type isn’t allowed on the bucket — try a JPG or PNG'
+      :/too large|payload|413|exceeded/i.test(m)?'Too big for the wire — pick a smaller picture'
+      :'DECODE'===String(e&&e.code)?'Couldn’t read that picture — try a JPG or PNG'
+      :'Couldn’t set the cover — '+(m?m.slice(0,80):'check your connection'));
+  }
+}
+async function clanBannerClear(clanId){
+  var c=clanById(clanId); if(!c||!clanMine(c)||!window.SB)return;
+  var old=clanBannerUrl(c);
+  try{
+    var r=await window.SB.from('clan_banners').delete().eq('id',clanId); if(r.error)throw r.error;
+    try{ var k=String(old||'').match(/\/chat-media\/(clans\/[^?#]+)/); if(k)window.SB.storage.from('chat-media').remove([decodeURIComponent(k[1])]).catch(function(){}); }catch(e){}
+    delete CLAN_BANNER[clanId]; try{ c.banner_url=null; }catch(e){}
+    toast('✕ Cover down — back to the house art');
+    try{ openClanSheet(clanId); }catch(e){} try{ renderSocialFeed(); }catch(e){}
+  }catch(e){ toast('Couldn’t take it down — try again'); }
+}
+window.clanBannerPick=clanBannerPick; window.clanBannerSet=clanBannerSet; window.clanBannerClear=clanBannerClear;
 function clanById(id){ return ALL_CLANS.find(c=>String(c.id)===String(id))||null; }
 function clanKeyRoom(c){   /* the room key rides this phone like an invite does */
   try{ if(!c||!c.room_id)return; const j=joinedRooms();
@@ -23103,8 +23208,8 @@ function openClanSheet(id){
     ? (R.length?R.map(row).join(''):'<p class="sub" style="text-align:center;padding:10px 0">Nobody on the roster yet.</p>')
     : '<p class="sub" style="text-align:center;padding:12px 0"><b style="color:var(--bone)">'+(+c.n||0)+'</b> in the clan. Join to see who — gamer tags are for clanmates only.</p>';
   sh.innerHTML='<div class="sheet-card" style="text-align:left">'
-    +'<div class="big" style="font-size:20px;letter-spacing:.06em;text-align:center">🎮 '+esc(c.name)+'</div>'
-    +'<p class="sub" style="margin:6px 0 4px;text-align:center"><b style="color:var(--bone)">'+esc(c.game)+'</b> · led by <b style="color:var(--copper-hi)">'+esc(c.owner_handle||'a casual')+'</b></p>'
+    +clanBannerHTML(c,mine)   /* #clanbanner — the cover carries the name and the game now */
+    +'<p class="sub" style="margin:0 0 4px;text-align:center">led by <b style="color:var(--copper-hi)">'+esc(c.owner_handle||'a casual')+'</b></p>'
     +'<p class="sub" style="margin:0 0 4px;text-align:center">'+(clanCross(c)?'🌐 <b style="color:var(--ok)">Cross-play</b> — any platform can join':(CLAN_PICON[c.platforms]||'')+' <b style="color:var(--bone)">'+esc(CLAN_PNAME[c.platforms]||c.platforms)+' only</b>')+'</p>'
     +(c.blurb?'<p class="sub" style="margin:0 0 8px;text-align:center;font-style:italic">“'+esc(c.blurb)+'”</p>':'')
     /* #clanask(sep01) — say how this clan lets people in, and give the leader the
@@ -23138,6 +23243,9 @@ function openClanSheet(id){
     +'</div>'
     +'<button class="btn-ghost" id="clanX" type="button" style="width:100%;margin-top:10px;border:0;color:#586067">Close</button></div>';
   sh.querySelector('#clanX').addEventListener('click',()=>sh.classList.remove('on'));
+  /* #clanbanner — the leader's two chips */
+  const cbp=sh.querySelector('#cbPick'); if(cbp)cbp.addEventListener('click',()=>clanBannerPick(c.id));
+  const cbc=sh.querySelector('#cbClear'); if(cbc)cbc.addEventListener('click',()=>shConfirm('Take the cover down? '+c.name+' goes back to the house art.',()=>clanBannerClear(c.id),{title:'Take it down?',icon:'🎮',okText:'Take it down'}));
   const j=sh.querySelector('#clanJoin'); if(j)j.addEventListener('click',()=>{ sh.classList.remove('on'); joinClanFlow(c.id); });
   const o=sh.querySelector('#clanRoom'); if(o)o.addEventListener('click',()=>openClanRoom(c.id));
   /* #clanask — the leader's two verdicts */
@@ -31481,6 +31589,44 @@ html.fs-md .msg .who time{font-size:calc(11px * var(--chatfs,1))}
 html.fs-lg .msg .txt{font-size:calc(17px * var(--chatfs,1));line-height:1.42}
 html.fs-lg .msg .who{font-size:calc(14px * var(--chatfs,1))}
 html.fs-lg .msg .who time{font-size:calc(12px * var(--chatfs,1))}
+/* ═══════════ #clanbanner(sep04) — THE CLAN WEARS THE GAME ═══════════
+   By request. A clan sheet opened on a 🎮 and a name; the game it plays was a
+   word. Now the sheet leads with a COVER — the leader's own picture of whatever
+   they run (the game's art, a squad shot, a screenshot), full-bleed across the
+   top with the clan's name and game laid over it, the way a store page does it.
+   No picture yet? The slot is NOT empty: it draws its own cover from the game's
+   NAME — a colour pair hashed off the letters, so every clan playing 2K27 wears
+   the same colours and a clan playing Call of Duty wears different ones, with
+   the title set big and faded behind the glass. Same art, small, becomes the
+   clan's tile on the board, so the list reads at a glance.
+   WHO CAN CHANGE IT: the leader only, from the two chips on the banner itself
+   (📷 replace · ✕ take it down). The file is squeezed to 1200×480 on the phone
+   before it ever leaves — a 4 MB camera shot lands as ~120 KB — and goes to the
+   chat-media bucket under clans/<id>/, the same folder the clips already use, so
+   no new bucket rule. The url rides its own narrow table (clan_banners) read
+   beside the board, exactly like #clanask's join modes, so clan_board never had
+   to be rewritten. Run CLAN-BANNER.sql once; until then the generated covers
+   stand and the chips say what to run. */
+.clan-banner{position:relative;display:block;margin:-22px -20px 14px;border-radius:22px 22px 0 0;overflow:hidden;aspect-ratio:5/2;background:#0e1013}
+.clan-banner img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.clan-banner .cb-art{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.clan-banner .cb-art b{font-family:'Anton',sans-serif;font-size:clamp(38px,13vw,72px);line-height:.9;letter-spacing:.02em;
+  color:rgba(255,255,255,.14);text-transform:uppercase;transform:rotate(-7deg);white-space:nowrap;max-width:none}
+.clan-banner .cb-scrim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(6,5,12,.12),rgba(6,5,12,.38) 48%,rgba(6,5,12,.93))}
+.clan-banner .cb-txt{position:absolute;left:16px;right:16px;bottom:11px}
+.clan-banner .cb-name{font-family:'Anton',sans-serif;font-size:26px;line-height:1.02;letter-spacing:.03em;color:#fff;
+  text-shadow:0 2px 12px rgba(0,0,0,.8);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.clan-banner .cb-game{display:inline-block;margin-top:6px;padding:3px 10px;border-radius:99px;
+  font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:10px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;
+  color:#fff;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.3)}
+.clan-banner .cb-edit{position:absolute;top:9px;right:9px;display:flex;gap:6px}
+.clan-banner .cb-edit button{width:32px;height:32px;border-radius:50%;cursor:pointer;font-size:14px;line-height:1;padding:0;
+  color:#fff;background:rgba(8,6,16,.62);border:1px solid rgba(255,255,255,.28);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
+.clan-banner .cb-edit button:active{transform:scale(.92)}
+.clan-banner.busy{opacity:.6}
+/* the same cover, small, as the clan's tile on the board */
+.evt-date.clan-thumb{min-height:52px;background-size:cover;background-position:center;font-size:0;border-color:rgba(238,180,107,.3)}
+
 /* ═══ #pinchtext(sep04) — TWO FINGERS SIZE THE CHAT ═══
    The feeds own the pinch: pan-y leaves one-finger scrolling to the browser and
    hands a two-finger spread to the script (see the #pinchtext block). No readout,
