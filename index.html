@@ -19568,6 +19568,7 @@ async function sbLoadSocial(){
     const rr=q[0],gg=q[1],vv=q[2],cc=q[3];
     if(rr.error||gg.error){console.warn('[social] load:',(rr.error||gg.error).message,'— run SOCIAL-SETUP.sql');return;}
     ALL_ROOMS=rr.data||[]; ALL_GATHS=gg.data||[];
+    try{ await sbLoadGathFlyers(); }catch(e){}   /* #flyer — the posters, one small read */
     try{ await sbLoadClans(); }catch(e){}   /* #clans — the gamer wing rides the same pull */
     try{ await sbLoadAvatars(); }catch(e){}   /* #avatar — everyone's picture, one small read */
     try{ await sbLoadRoomKeys(); roomKeysSub(); }catch(e){}   /* #keys — who holds a key, who's asking */
@@ -19608,6 +19609,79 @@ async function sbLoadSocial(){
    Gatherings called BEFORE this existed have no room yet, so the room is opened
    lazily the first time the caller taps the button — nobody has to re-create an
    old gathering to get its room, and nobody but the owner can conjure one. ═══ */
+/* ═══ #flyer(sep04) — THE GATHERING'S FLYER. See the sheet up in the styles. ═══ */
+window.GATH_FLYER={};   /* id → {url,pos} — pos is the 0..1 anchor of the 16:9 band */
+function gathFlyer(id){ try{ return GATH_FLYER[id]||null; }catch(e){ return null; } }
+async function sbLoadGathFlyers(){
+  if(!window.SB||window.__shkNoFlyer===true)return;
+  try{
+    const r=await window.SB.from('gath_flyers').select('id,url,pos');
+    if(r.error){ window.__shkNoFlyer=true; console.info('[gath] no flyers yet — run GATH-FLYER.sql'); return; }
+    GATH_FLYER={}; (r.data||[]).forEach(x=>{ if(x&&x.id&&x.url)GATH_FLYER[x.id]={url:x.url,pos:(x.pos==null?.5:+x.pos)}; });
+  }catch(e){ window.__shkNoFlyer=true; }
+}
+/* the whole poster goes up — a band is what the CARD shows, never what is kept */
+function flyerFitCanvas(src,MAX){
+  var w=src.width||src.naturalWidth, h=src.height||src.naturalHeight;
+  if(!(w>0&&h>0))throw Object.assign(new Error('empty'),{code:'DECODE'});
+  var k=Math.min(1,MAX/Math.max(w,h));
+  var c=document.createElement('canvas'); c.width=Math.round(w*k); c.height=Math.round(h*k);
+  var g=c.getContext('2d'); g.imageSmoothingEnabled=true; g.imageSmoothingQuality='high';
+  g.drawImage(src,0,0,c.width,c.height);
+  return c;
+}
+function gathFlyerPick(gid){
+  var i=document.getElementById('gathFlyerFile');
+  if(!i){ i=document.createElement('input'); i.type='file'; i.id='gathFlyerFile'; i.accept='image/*'; i.hidden=true; document.body.appendChild(i);
+    i.addEventListener('change',function(e){ var f=e.target.files&&e.target.files[0]; e.target.value=''; if(f)gathFlyerSet(i.dataset.gid,f); }); }
+  i.dataset.gid=String(gid); i.value=''; i.click();
+}
+async function gathFlyerSet(gid,file){
+  if(typeof guestWall==='function'&&guestWall())return;
+  var g=gathById(gid); if(!g)return;
+  if(!(window.SB&&window.__shkUid)){ toast('Sign in to put up a flyer'); return; }
+  var src;
+  try{ src=await decodePicture(file); }
+  catch(e){ toast('Couldn’t read that picture — try a JPG or PNG'); return; }
+  coverPlace({src:src,ratio:'wide16',plain:true,
+    head:'📣 PLACE THE FLYER', note:'The whole flyer is kept — this only picks the strip the card shows. Tapping it on the board opens the lot.',
+    onOk:function(fx,fy){ gathFlyerSend(gid,g,src,fy); }});
+}
+async function gathFlyerSend(gid,g,src,pos){
+  try{
+    var blob=await canvasBlob(flyerFitCanvas(src,1400),.85);
+    try{ if(src&&src.close)src.close(); }catch(e){}
+    var old=(gathFlyer(gid)||{}).url||'';
+    var path='gath/'+String(gid).replace(/[^a-zA-Z0-9_-]/g,'_')+'/flyer-'+Date.now().toString(36)+'.jpg';
+    var up=await window.SB.storage.from('chat-media').upload(path,blob,{contentType:'image/jpeg',cacheControl:'31536000'});
+    if(up.error)throw up.error;
+    var pub=window.SB.storage.from('chat-media').getPublicUrl(path);
+    var url=pub&&pub.data&&pub.data.publicUrl; if(!url)throw new Error('no public url');
+    var r=await window.SB.from('gath_flyers').upsert({id:gid,url:url,pos:+(+pos).toFixed(3),set_by:window.__shkUid},{onConflict:'id'});
+    if(r.error)throw r.error;
+    GATH_FLYER[gid]={url:url,pos:+pos};
+    try{ var k=String(old||'').match(/\/chat-media\/(gath\/[^?#]+)/); if(k)window.SB.storage.from('chat-media').remove([decodeURIComponent(k[1])]).catch(function(){}); }catch(e){}
+    toast('📣 Flyer up — tap it to open');
+    try{ renderSocialFeed(); }catch(e){}
+  }catch(e){
+    var m=String((e&&(e.message||e.error))||e||''); try{console.warn('[flyer]',m);}catch(_){}
+    toast(/gath_flyers|does not exist|42P01|schema cache|PGRST205/i.test(m)?'⚓ Flyers need GATH-FLYER.sql — run it in Supabase → SQL Editor'
+      :/row-level security|policy|42501|403/i.test(m)?'⚓ The bucket refused gath/ — the policy is at the bottom of GATH-FLYER.sql'
+      :/mime|not supported|415/i.test(m)?'That file type isn’t allowed on the bucket — try a JPG or PNG'
+      :/too large|payload|413|exceeded/i.test(m)?'Too big for the wire — pick a smaller picture'
+      :'Couldn’t put the flyer up — '+(m?m.slice(0,80):'check your connection'));
+  }
+}
+async function gathFlyerClear(gid){
+  var f=gathFlyer(gid); if(!f||!window.SB)return;
+  try{
+    var r=await window.SB.from('gath_flyers').delete().eq('id',gid); if(r.error)throw r.error;
+    try{ var k=String(f.url||'').match(/\/chat-media\/(gath\/[^?#]+)/); if(k)window.SB.storage.from('chat-media').remove([decodeURIComponent(k[1])]).catch(function(){}); }catch(e){}
+    delete GATH_FLYER[gid]; toast('✕ Flyer down');
+    try{ renderSocialFeed(); }catch(e){}
+  }catch(e){ toast('Couldn’t take it down — try again'); }
+}
+window.gathFlyerPick=gathFlyerPick; window.gathFlyerClear=gathFlyerClear;
 function gathById(id){ try{ return (ALL_GATHS||[]).find(g=>String(g.id)===String(id))||null; }catch(e){ return null; } }
 function gathRoomName(g){ return (g&&g.room_name)||('🕯 '+((g&&g.name)||'gathering')); }
 function gathIsMine(g){ try{ return !!(g&&window.__shkUid&&g.owner===window.__shkUid); }catch(e){ return false; } }
@@ -22464,7 +22538,7 @@ function socRoomsModel(){
 }
 function socGathsModel(){
   const svrG=ALL_GATHS.map(g=>({n:g.name,ico:g.ico||'🕯',w:g.when_txt||'',p:g.where_txt||'',by:isMineRow(g)?'you':(g.by_handle||'the Order'),mine:isMineRow(g),id:g.id,priv:!!g.is_private,
-    room_id:g.room_id||null,room_name:g.room_name||null}));   /* #gathroom — the card needs to know about its room */
+    room_id:g.room_id||null,room_name:g.room_name||null,fly:gathFlyer(g.id)}));   /* #gathroom — the card needs to know about its room · #flyer — and its poster */
   const legacyG=MY_GATHS.filter(g=>!socIsStruck('gath',g.n)&&!svrG.some(s=>s.n===g.n)).map(g=>({n:g.n,ico:'🕯',w:g.w,p:g.p,by:g.by||'you',mine:true,local:true}));
   return BUILTIN_GATHS.concat(svrG,legacyG);
 }
@@ -22543,7 +22617,16 @@ function gathsSectionHTML(step,gaths){
       else{const hs=RSVP_NAMES[g.id]||[];
         goLine='<div class="evt-going">⚓ <b>'+nGo+'</b> going'+(hs.length?' · '+esc(hs.slice(0,3).join(', '))+(hs.length>3?' +'+(hs.length-3)+' more':''):'')+'</div>';}
     }
-    html+='<div class="evt feedIn'+(g.mine?' mine':'')+'"'+step()+'>'+badge
+    /* #flyer(sep04) — the poster is the head of the card: a 16:9 band the caller
+       placed, and a tap opens the whole thing. Only the caller sees the ＋. */
+    const fly=g.fly, flyHTML=fly
+      ? '<button class="gath-flyer" type="button" data-flyer="'+esc(g.id)+'" aria-label="Open the flyer for '+esc(g.n)+'"'
+        +' style="background-image:url(&quot;'+esc(fly.url)+'&quot;);background-position:50% '+((fly.pos==null?.5:fly.pos)*100).toFixed(1)+'%">'
+        +'<i>⤢ TAP TO OPEN</i>'
+        +(g.mine?'<b><span data-flyswap="'+esc(g.id)+'" role="button" aria-label="Change the flyer">📷</span><span data-flyx="'+esc(g.id)+'" role="button" aria-label="Take the flyer down">✕</span></b>':'')
+        +'</button>'
+      : ((g.mine&&sv)?'<button class="gath-add" type="button" data-flyswap="'+esc(g.id)+'">📣 ＋ ADD A FLYER</button>':'');
+    html+='<div class="evt feedIn'+(fly?' gath-card':'')+((g.mine&&sv&&!fly)?' gath-card':'')+(g.mine?' mine':'')+'"'+step()+'>'+flyHTML+badge
       +'<div class="evt-main">'
         +'<div class="evt-name">'+esc(g.n)+(g.pill?' <span class="epill">'+esc(g.pill)+'</span>':'')+(sv&&g.priv?' <span class="epill">🗝 PRIVATE</span>':'')+'</div>'
         +'<div class="evt-meta">'+(g.w?'<span>🕓 '+esc(g.w)+'</span>':'')+(g.p?'<span>📍 '+esc(g.p)+'</span>':'')+'</div>'
@@ -22969,10 +23052,65 @@ function clanBannerHTML(c,mine){
          :'<div class="cb-art" style="'+clanArtStyle(c.game)+'"><b>'+esc(String(c.game||'GAME ON').slice(0,18))+'</b></div>')
     +'<div class="cb-scrim"></div>'
     +'<div class="cb-txt"><div class="cb-name">'+esc(c.name)+'</div><span class="cb-game">🎮 '+esc(c.game||'—')+'</span></div>'
+    +(url?'<button type="button" id="cbOpen" aria-label="Open the cover" style="position:absolute;inset:0;background:none;border:0;cursor:zoom-in"></button>':'')   /* #flyer — the cover opens full-screen too */
     +(mine?'<div class="cb-edit"><button type="button" id="cbPick" aria-label="'+(url?'Change the cover':'Add a cover')+'" title="'+(url?'Change the cover':'Add a cover')+'">📷</button>'
            +(url?'<button type="button" id="cbClear" aria-label="Take the cover down" title="Take the cover down">✕</button>':'')+'</div>':'')
     +'</div>';
 }
+/* ═══ #flyer(sep04) — OPEN IT. Pinch, double-tap or drag to read the small print. ═══ */
+function openFlyer(url,cap){
+  if(!url)return;
+  var v=document.getElementById('flyerView');
+  if(!v){ v=document.createElement('div'); v.id='flyerView'; v.setAttribute('role','dialog');
+    v.innerHTML='<button class="fv-x" type="button" aria-label="Close">✕</button><div class="fv-hint">PINCH OR DOUBLE-TAP TO ZOOM</div><img alt=""><div class="fv-cap"></div>';
+    document.body.appendChild(v); }
+  var img=v.querySelector('img'); img.src=url;
+  v.querySelector('.fv-cap').innerHTML=cap||'';
+  var z=1, tx=0, ty=0, moved=false, lastTap=0, pts={}, base=0, bz=1;
+  function paint(){ img.style.transform='translate('+tx.toFixed(1)+'px,'+ty.toFixed(1)+'px) scale('+z.toFixed(3)+')';
+    v.classList.toggle('zoomed',z>1.02); }
+  function clampPan(){
+    var r=img.getBoundingClientRect(), vw=v.clientWidth, vh=v.clientHeight;
+    var ox=Math.max(0,(r.width-vw)/2), oy=Math.max(0,(r.height-vh)/2);
+    tx=Math.max(-ox,Math.min(ox,tx)); ty=Math.max(-oy,Math.min(oy,ty));
+  }
+  function setZ(nz){ z=Math.max(1,Math.min(5,nz)); if(z<=1.02){z=1;tx=0;ty=0;} else clampPan(); paint(); }
+  var close=function(){ v.classList.remove('on'); img.removeAttribute('src'); };
+  v.querySelector('.fv-x').onclick=close;
+  var keys=function(o){ return Object.keys(o); };
+  v.onpointerdown=function(e){
+    if(e.target.classList.contains('fv-x'))return;
+    pts[e.pointerId]={x:e.clientX,y:e.clientY,sx:e.clientX,sy:e.clientY};
+    try{ v.setPointerCapture(e.pointerId); }catch(_){}
+    var k=keys(pts);
+    if(k.length===2){ var a=pts[k[0]], b=pts[k[1]];
+      base=Math.hypot(a.x-b.x,a.y-b.y)||1; bz=z; }
+    moved=false;
+  };
+  v.onpointermove=function(e){
+    var p=pts[e.pointerId]; if(!p)return;
+    var k=keys(pts);
+    if(k.length>=2){
+      p.x=e.clientX; p.y=e.clientY;
+      var a=pts[k[0]], b=pts[k[1]], d=Math.hypot(a.x-b.x,a.y-b.y)||1;
+      setZ(bz*(d/base)); moved=true; return;
+    }
+    if(z>1.02){ tx+=e.clientX-p.x; ty+=e.clientY-p.y; clampPan(); paint(); }
+    p.x=e.clientX; p.y=e.clientY;
+    if(Math.abs(e.clientX-p.sx)>6||Math.abs(e.clientY-p.sy)>6)moved=true;
+  };
+  v.onpointerup=v.onpointercancel=function(e){
+    var p=pts[e.pointerId]; delete pts[e.pointerId];
+    try{ v.releasePointerCapture(e.pointerId); }catch(_){}
+    if(!p||moved||keys(pts).length)return;
+    var now=Date.now();
+    if(now-lastTap<300){ lastTap=0; setZ(z>1.02?1:2.6); return; }   /* double-tap */
+    lastTap=now;
+    setTimeout(function(){ if(lastTap&&Date.now()-lastTap>=290&&z<=1.02)close(); },310);   /* a single tap on the backdrop shuts it */
+  };
+  setZ(1); v.classList.add('on');
+}
+window.openFlyer=openFlyer;
 /* the leader's picker: squeeze on the phone, land it in clans/<id>/ */
 function clanBannerPick(clanId){
   var i=document.getElementById('clanBannerFile');
@@ -23000,7 +23138,14 @@ function clanCoverCanvas(src,W,H,fx,fy){   /* cover-crop to W×H — the banner'
    and it cannot be dragged past its own edge, so a cover can never end up with a
    bar of nothing down one side. The anchor is a fraction, handed straight to the
    crop, so what is under the glass is what gets cut. */
-function clanBannerPlace(c,src,onOk){
+function clanBannerPlace(c,src,onOk){ return coverPlace({src:src,title:c.name,sub:c.game,onOk:onOk}); }
+/* #coverplace — one placer, two jobs: a clan cover (5:2, with the title shown on it)
+   and a gathering flyer (16:9, plain). opts: src · ratio 'wide16' · title/sub · plain */
+function coverPlace(opts){
+  var c={name:opts.title||'',game:opts.sub||''}, src=opts.src, onOk=opts.onOk;
+  return _coverPlaceRun(c,src,onOk,opts.ratio||'',opts.plain?' plain':'',opts.head||'🎮 PLACE THE COVER',opts.note||'Drag the picture to where it should sit. This is the real frame — the name sits where you see it.');
+}
+function _coverPlaceRun(c,src,onOk,ratio,plain,head,note){
   var W=src.width||src.naturalWidth, H=src.height||src.naturalHeight;
   var url=''; try{ url=(src instanceof Blob)?URL.createObjectURL(src):(src.src||''); }catch(e){}
   var made=false;
@@ -23009,11 +23154,11 @@ function clanBannerPlace(c,src,onOk){
   var fx=.5, fy=.5;
   var sh=document.getElementById('cbPlace');
   if(!sh){ sh=document.createElement('div'); sh.className='sheet'; sh.id='cbPlace'; sh.style.zIndex='96'; document.body.appendChild(sh); }
-  var wide=(W/H)>2.5;   /* wider than the frame → it slides sideways; taller → up and down */
+  var wide=(W/H)>(ratio==='wide16'?(16/9):2.5);   /* wider than the frame → it slides sideways; taller → up and down */
   sh.innerHTML='<div class="sheet-card" style="text-align:left">'
-    +'<div class="big" style="font-size:20px;letter-spacing:.06em;text-align:center">🎮 PLACE THE COVER</div>'
-    +'<p class="sub" style="margin:6px 0 12px;text-align:center">Drag the picture to where it should sit. This is the real frame — the name sits where you see it.</p>'
-    +'<div class="clan-banner cbp" id="cbpFrame" style="background-image:url(&quot;'+String(url).replace(/"/g,'%22')+'&quot;);background-position:50% 50%">'
+    +'<div class="big" style="font-size:20px;letter-spacing:.06em;text-align:center">'+head+'</div>'
+    +'<p class="sub" style="margin:6px 0 12px;text-align:center">'+note+'</p>'
+    +'<div class="clan-banner cbp '+ratio+plain+'" id="cbpFrame" style="background-image:url(&quot;'+String(url).replace(/"/g,'%22')+'&quot;);background-position:50% 50%">'
       +'<div class="cb-scrim"></div>'
       +'<div class="cb-txt"><div class="cb-name">'+esc(c.name)+'</div><span class="cb-game">🎮 '+esc(c.game||'—')+'</span></div>'
       +'<div class="cbp-hint">'+(wide?'↔ DRAG TO PLACE':'↕ DRAG TO PLACE')+'</div>'
@@ -23329,6 +23474,7 @@ function openClanSheet(id){
     +'<button class="btn-ghost" id="clanX" type="button" style="width:100%;margin-top:10px;border:0;color:#586067">Close</button></div>';
   sh.querySelector('#clanX').addEventListener('click',()=>sh.classList.remove('on'));
   /* #clanbanner — the leader's two chips */
+  const cbo=sh.querySelector('#cbOpen'); if(cbo)cbo.addEventListener('click',()=>openFlyer(clanBannerUrl(c),esc(c.name)+' · '+esc(c.game||'')));   /* #flyer */
   const cbp=sh.querySelector('#cbPick'); if(cbp)cbp.addEventListener('click',()=>clanBannerPick(c.id));
   const cbc=sh.querySelector('#cbClear'); if(cbc)cbc.addEventListener('click',()=>shConfirm('Take the cover down? '+c.name+' goes back to the house art.',()=>clanBannerClear(c.id),{title:'Take it down?',icon:'🎮',okText:'Take it down'}));
   const j=sh.querySelector('#clanJoin'); if(j)j.addEventListener('click',()=>{ sh.classList.remove('on'); joinClanFlow(c.id); });
@@ -24100,6 +24246,16 @@ function bindFeed(host){
     else await socialDelete(dk,b.getAttribute('data-id'));
   }));
   /* #gathroom(sep01) — open a gathering's own room straight off its card */
+  /* #flyer — open it, change it, take it down */
+  host.querySelectorAll('[data-flyer]').forEach(b=>b.addEventListener('click',e=>{
+    if(e.target.closest('[data-flyswap],[data-flyx]'))return;
+    e.stopPropagation();
+    const g=gathById(b.getAttribute('data-flyer')), f=gathFlyer(b.getAttribute('data-flyer'));
+    if(f)openFlyer(f.url, g?('<b style="color:#fff">'+esc(g.name||'')+'</b>'+((g.when_txt||g.where_txt)?'<br>'+esc([g.when_txt,g.where_txt].filter(Boolean).join(' · ')):'')):'');
+  }));
+  host.querySelectorAll('[data-flyswap]').forEach(b=>b.addEventListener('click',e=>{ e.stopPropagation(); gathFlyerPick(b.getAttribute('data-flyswap')); }));
+  host.querySelectorAll('[data-flyx]').forEach(b=>b.addEventListener('click',e=>{ e.stopPropagation();
+    shConfirm('Take the flyer down?',()=>gathFlyerClear(b.getAttribute('data-flyx')),{title:'Take it down?',icon:'📣',okText:'Take it down'}); }));
   host.querySelectorAll('[data-gathroom]').forEach(b=>b.addEventListener('click',async e=>{
     e.stopPropagation();
     if(b.disabled)return; b.disabled=true;
@@ -31762,11 +31918,57 @@ html.fs-lg .msg .who time{font-size:calc(12px * var(--chatfs,1))}
 .clan-banner.cbp{margin:0;border-radius:14px;border:1px solid var(--line);background-size:cover;background-repeat:no-repeat;
   touch-action:none;cursor:grab;-webkit-user-select:none;user-select:none}
 .clan-banner.cbp.drag{cursor:grabbing}
+.clan-banner.cbp.wide16{aspect-ratio:16/9}   /* #flyer — a poster gets a taller band to sit in */
+.clan-banner.cbp.plain .cb-scrim,.clan-banner.cbp.plain .cb-txt{display:none}
 .clan-banner .cbp-hint{position:absolute;top:9px;left:50%;transform:translateX(-50%);pointer-events:none;
   padding:5px 12px;border-radius:99px;background:rgba(8,6,16,.6);border:1px solid rgba(255,255,255,.22);
   font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:10px;letter-spacing:.14em;color:#fff;
   transition:opacity .25s}
 .clan-banner.cbp.drag .cbp-hint{opacity:0}
+/* ═══════════ #flyer(sep04) — THE GATHERING'S FLYER, AND THE FULL VIEW ═══════════
+   By request. A gathering is a poster on a wall in real life — a BBQ flyer, a
+   watch-party card — so the caller can put the real one on the card. Two things
+   make it work where the clan's cover would not:
+   · THE WHOLE FLYER IS KEPT. A clan cover is cut to 5:2 on the way up, which is
+     fine for game art and fatal for a poster: the fine print is the point. A
+     flyer is uploaded WHOLE (long side 1400px) and the card shows a 16:9 BAND of
+     it, chosen by the caller with the same drag. The band is a window, not a cut.
+   · IT OPENS. Tapping the flyer throws it full-screen — pinch, double-tap and
+     drag to read the small print — because a band on a card was never going to
+     be enough to read an address off. The clan's cover opens the same way.
+   The band's position rides in gath_flyers.pos, so moving it later is one small
+   write, no re-upload. Run GATH-FLYER.sql once; until then the ＋ says so. */
+:is(#socialFeed,.soc-list) .evt.gath-card{display:block;padding-top:0;overflow:hidden}
+:is(#socialFeed,.soc-list) .gath-flyer{position:relative;display:block;width:calc(100% + 26px);margin:0 -13px 11px;
+  aspect-ratio:16/9;background-size:cover;background-position:center;background-repeat:no-repeat;background-color:#0b0a12;
+  border:0;border-bottom:1px solid var(--line-soft);cursor:zoom-in;padding:0}
+:is(#socialFeed,.soc-list) .gath-flyer i{position:absolute;right:9px;bottom:9px;display:flex;align-items:center;gap:5px;
+  padding:5px 10px;border-radius:99px;background:rgba(8,6,16,.66);border:1px solid rgba(255,255,255,.24);
+  font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-style:normal;font-size:9.5px;letter-spacing:.14em;color:#fff}
+:is(#socialFeed,.soc-list) .gath-flyer b{position:absolute;top:9px;right:9px;display:flex;gap:6px}
+:is(#socialFeed,.soc-list) .gath-flyer b span{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:13px;color:#fff;background:rgba(8,6,16,.62);border:1px solid rgba(255,255,255,.28)}
+:is(#socialFeed,.soc-list) .gath-add{display:flex;align-items:center;justify-content:center;gap:8px;width:calc(100% + 26px);
+  margin:0 -13px 11px;padding:12px 0;border:0;border-bottom:1px dashed var(--line-soft);background:rgba(238,180,107,.05);
+  cursor:pointer;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:11px;letter-spacing:.14em;color:var(--copper-hi)}
+/* the card is a stack now, so the date tile floats and the words wrap around it —
+   the same row it always was, just living under the poster */
+:is(#socialFeed,.soc-list) .evt.gath-card .evt-date{float:left;margin:0 13px 6px 0}
+:is(#socialFeed,.soc-list) .evt.gath-card .evt-main{overflow:hidden}
+/* the full view — a poster you can actually read */
+#flyerView{position:fixed;inset:0;z-index:112;display:none;align-items:center;justify-content:center;
+  background:rgba(4,4,9,.95);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);overflow:hidden;touch-action:none}
+#flyerView.on{display:flex}
+#flyerView img{max-width:100%;max-height:100%;object-fit:contain;transform-origin:center center;
+  will-change:transform;-webkit-user-select:none;user-select:none;-webkit-user-drag:none}
+#flyerView .fv-x{position:absolute;top:calc(10px + env(safe-area-inset-top));right:12px;width:38px;height:38px;border-radius:50%;
+  background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.28);color:#fff;font-size:17px;cursor:pointer;z-index:2}
+#flyerView .fv-cap{position:absolute;left:0;right:0;bottom:calc(14px + env(safe-area-inset-bottom));text-align:center;pointer-events:none;
+  font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:11.5px;letter-spacing:.06em;color:#cfd4dc;
+  text-shadow:0 1px 6px rgba(0,0,0,.9);padding:0 20px;line-height:1.5}
+#flyerView .fv-hint{position:absolute;left:0;right:0;top:calc(16px + env(safe-area-inset-top));text-align:center;pointer-events:none;
+  font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:9.5px;letter-spacing:.18em;color:rgba(255,255,255,.5);transition:opacity .3s}
+#flyerView.zoomed .fv-hint{opacity:0}
 /* the same cover, small, as the clan's tile on the board */
 .evt-date.clan-thumb{min-height:52px;background-size:cover;background-position:center;font-size:0;border-color:rgba(238,180,107,.3)}
 
