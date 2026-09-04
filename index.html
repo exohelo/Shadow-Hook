@@ -6672,7 +6672,7 @@ window.guestWall=guestWall;
     ['insert','upsert','update','delete'].forEach(function(k){ if(typeof q[k]==='function')q[k]=refused; });
     return q;
   };
-  const RPC_OK={claim_account:1,reset_by_card:1,rsvp_counts:1,scan_tape_count:1,amb_ledger:1,km_roster:1,km_book:1,km_book_scan:1};   /* the way in (claim, and #pwreset's reset), and the read-only ones */
+  const RPC_OK={claim_account:1,reset_by_card:1,rsvp_counts:1,scan_tape_count:1,scan_tape_held:1,amb_ledger:1,km_roster:1,km_book:1,km_book_scan:1};   /* the way in (claim, and #pwreset's reset), and the read-only ones · #lofwitness: held positions, no names */
   const rpc0=window.SB.rpc.bind(window.SB);
   window.SB.rpc=function(name,args,opts){ if(isGuest()&&!RPC_OK[name])return refused(); return rpc0(name,args,opts); };
   try{   /* storage is a getter that builds a fresh client each time — wrap the getter, not one instance */
@@ -9467,6 +9467,7 @@ const LOF_LETTERS=5;                 // the line of fire: the called letter + th
    the window's first real call lands. Boards move 2-7 letters on a normal day
    (SLOTSTATS avgmv 0.4-6.7); 8 covers that without letting an 18-letter jump through. */
 const LOF_OPEN_LETTERS=8;            // …measured from the opening card, before any call is confirmed
+                                     // #lofdrops(sep04) — and a second edge, the published call's reach: see lofReach() below
 let farHold=[];                      // held calls — {pos, ts, win, src:'local'|'wire'}
 function lofJump(from,to){           // letters forward from one card's letter to another's (wraps A→Z→A)
   try{const j=((AZ.indexOf(String(to).charAt(0))-AZ.indexOf(String(from).charAt(0)))+26)%26;return isNaN(j)?99:j}catch(e){return 99}
@@ -9474,6 +9475,94 @@ function lofJump(from,to){           // letters forward from one card's letter t
 function lofAnchor(){                // where the line of fire is measured from
   if(lastCall&&lastCall.pos)return lastCall.pos;
   try{return OPENP()}catch(e){return null}
+}
+/* ═══ #lofdrops(sep04) — THE LINE OF FIRE HEARS THE DROPS ═══
+   Fri 9/4 day board: the reel was confirmed at K4883 at 7:23, a lot of jobs came
+   down, and — short on casuals scanning — nobody posted a card between K and U.
+   At 7:46 U4888 sealed a real slip and got "held — past the line of fire": ten
+   letters from K, twice the line. Meanwhile the app's own call for that board,
+   published off the sheet and fed live by the drop log (#liverecalc), read
+   "stop ~S · band P–Y · 100% moves". The gate was holding a scan the app had
+   already told every casual to expect.
+   So the line has a second edge now. A scan is inside the line of fire if EITHER
+     · it is within LOF_LETTERS of the last confirmed call (the Aug 6 rule, kept
+       exactly), OR
+     · it is no further from the opening card than the CALL'S REACH — the 75th-
+       percentile run (_lastStageO.hi) the engine published for THIS board on a
+       real count (FINAL / LIVE / EARLY — never the EST/AM weekday guess). The
+       drop log is inside that number: every drop logged raises the expected
+       count and the reach with it, so "take the drops into account" is exactly
+       what this does, through the one figure the app already shows for it.
+   Aug 6 stays dead: the board sat on B with a call that never reached T, so an
+   18-letter scan is still held. What changes is a scan the call vouches for.
+   Held cards are re-checked whenever the call re-figures (publishCall → lofPromote),
+   so a slip held at 7:46 posts the moment the drops push the reach past it. */
+function lofReach(){                 // {letters, from, to} — how far the published call says THIS board runs; null when it can't vouch
+  try{
+    const o=window._lastStageO; if(!o||!liveWindow())return null;
+    if(typeof _predKey==='function'&&window._publishedKey&&window._publishedKey!==_predKey())return null;   // a call for some other board says nothing about this one
+    if(!/^(FINAL|LIVE|EARLY)$/.test(String(o.lock||o.source||'')))return null;   // a weekday guess doesn't get to widen the line
+    const hi=+o.hi; if(!(hi>0)||!o.start)return null;
+    return {letters:hi, from:String(o.start), to:AZ[((+o.base+hi)%26+26)%26]};
+  }catch(e){return null}
+}
+function lofInReach(pos){            // is this card no further from the opening card than the call's reach?
+  try{const r=lofReach(); return !!(r&&lofJump(r.from,pos)<=r.letters);}catch(e){return false}
+}
+window.lofReach=lofReach;
+/* ═══ #lofwitness(sep04) — HELD CARDS THAT AGREE WITH EACH OTHER MOVE THE BOARD ═══
+   Same morning, twenty minutes later: U4888 at 7:46, T5057 at 7:49, U4901 and
+   U4909 at 7:50 — four casuals, four slips, one neighbourhood of the board, every
+   one of them "held — past the line of fire" against a K4883 confirmed at 7:23.
+   The Aug 6 rule exists to stop ONE far scan dragging the reel; it has nothing to
+   say about four. Four strangers reporting T/U within four minutes IS the board.
+   So: LOF_WITNESSES distinct casuals, held, within LOF_LETTERS of one another,
+   post — the lowest card first, then the walk-line chains the rest up.
+   The catch is that a held scan never rides live_wire (by design), so no phone
+   can see another phone's held card. The tape can: scan_tape has every swipe,
+   and a security-definer RPC (scan_tape_held — SCAN-TAPE-HELD.sql, one paste)
+   hands back the held POSITIONS for the window plus a per-window hash per
+   casual — a token to count strangers by, never a name. Polled every 20 s while
+   a window is live and the page is on screen; without the RPC the poll switches
+   itself off and the reach rule above still stands on its own. A phone's own
+   scans all share one token ("me"): one casual with three cards is one witness. */
+const LOF_WITNESSES=3;
+let _stHeldAt=0,_stHeldBusy=false; window.__shkNoHeldRpc=false;
+async function stHeldRefresh(force){
+  try{
+    if(!window.SB||!liveWindow()||window.__shkNoHeldRpc===true)return;
+    if(!force&&Date.now()-_stHeldAt<20000)return;
+    if(_stHeldBusy)return; _stHeldBusy=true;
+    const wk=winKey();
+    const r=await window.SB.rpc('scan_tape_held',{p_k:wk});
+    _stHeldBusy=false; _stHeldAt=Date.now();
+    if(!r||r.error){
+      if(r&&r.error&&/function|does not exist|404|PGRST202|schema cache/i.test(r.error.message||'')){
+        window.__shkNoHeldRpc=true; try{console.info('[lof] no scan_tape_held on the server — run SCAN-TAPE-HELD.sql; held cards agree on this phone only');}catch(e){} }
+      return;
+    }
+    if(wk!==winKey())return;                              // the window rolled while we waited
+    const cur=(lastCall&&lastCall.pos)||null; let added=0;
+    (Array.isArray(r.data)?r.data:[]).forEach(function(x){
+      const pos=String(x.pos||'').toUpperCase().trim(); if(posVal(pos)<0)return;
+      if(cur&&posVal(pos)<=posVal(cur))return;            // the board is already there, or past it
+      let h=farHold.find(function(y){return y.pos===pos;});
+      if(!h){ h={pos:pos,ts:+x.first_ts||Date.now(),win:wk,src:'tape',hands:[]}; farHold.push(h); added++; }
+      h.hands=h.hands||[]; const t=String(x.hand||''); if(t&&h.hands.indexOf(t)<0)h.hands.push(t);
+    });
+    if(added){ farHold.sort(function(a,b){return posVal(a.pos)-posVal(b.pos);}); if(farHold.length>12)farHold=farHold.slice(0,12); }
+    lofPromote();
+  }catch(e){_stHeldBusy=false;}
+}
+window.stHeldRefresh=stHeldRefresh;
+function lofHands(h){ return (h.hands&&h.hands.length)?h.hands:[h.src==='local'?'me':('?'+h.pos)]; }   // who vouches for a held card: tape tokens, or "me" for my own scans
+function lofAgreed(h){               // is this held card the low end of a cluster of LOF_WITNESSES distinct casuals within LOF_LETTERS?
+  try{
+    const seen={}; let n=0;
+    farHold.forEach(function(g){ if(lofJump(h.pos,g.pos)>LOF_LETTERS)return;
+      lofHands(g).forEach(function(t){ if(!seen[t]){seen[t]=1;n++;} }); });
+    return n>=LOF_WITNESSES;
+  }catch(e){return false}
 }
 /* ===== #tape(aug26) — THE SCAN TAPE: EVERY SWIPE, NOT JUST THE ONES THAT MOVED =====
    THE COMPLAINT: "only one person updates from the scan — more than one swipe is
@@ -9503,7 +9592,7 @@ function stPush(pos,outcome,boardAt,src){
       k:winKey()||'off-window', pos:String(pos||'').toUpperCase().trim(),
       ts:Date.now(), outcome:outcome, board_at:boardAt||null,
       by:a.id||'', by_handle:a.handle||'a casual', src:src||'scan'
-    }).then(function(){try{stCountRefresh(true);}catch(e){}},function(){});
+    }).then(function(){try{stCountRefresh(true);}catch(e){} if(outcome==='held'){try{stHeldRefresh(true);}catch(e){}}},function(){});   /* #lofwitness — my held swipe is on the tape now; see who's out there with me */
   }catch(e){}
 }
 /* #tape — THE CREW SEES COUNTS, NEVER NAMES. Reading scan_tape is crown-only, so
@@ -9550,8 +9639,11 @@ function submitLiveCall(pos,src){ // the reel takes no identity — the TAPE doe
       if(n>=30)unlockBadge(bixLate("Watchman"));
       if(n>=100)unlockBadge(bixLate("Oracle")); }catch(e){} }
   else if(r==="far"){                                    /* #lof — the red flag, said out loud */
-    try{const p=String(pos||'').toUpperCase().trim(),a=lofAnchor(),d=a?lofJump(a,p):null;
-      toast("⚠ HELD — board's at "+(a||"the gate")+(d!=null?" and "+p+" is "+d+" letters out, past the "+((lastCall&&lastCall.pos)?LOF_LETTERS:LOF_OPEN_LETTERS)+"-letter line of fire":"")+". It posts only if the board works up close — and it IS on the tape either way.");}catch(e){}
+    try{const p=String(pos||'').toUpperCase().trim(),a=lofAnchor(),d=a?lofJump(a,p):null,rc=lofReach();
+      toast("⚠ HELD — board's at "+(a||"the gate")+(d!=null?" and "+p+" is "+d+" letters out, past the "+((lastCall&&lastCall.pos)?LOF_LETTERS:LOF_OPEN_LETTERS)+"-letter line of fire":"")
+        +(rc?" and past "+rc.to+", as far as the call reaches on today's count":"")   /* #lofdrops — the second edge, named */
+        +". It posts if the board works up close"+(rc?", the drops push the call past it":"")+" or "+(LOF_WITNESSES-1)+" more casuals swipe near it — and it IS on the tape either way.");}catch(e){}
+    try{ setTimeout(function(){ stHeldRefresh(true); },1500); }catch(e){}   /* #lofwitness — go see who else is standing out there */
   }
   return r;
 }
@@ -9578,7 +9670,8 @@ function applyLiveCall(pos,ts,src){
      where the board IS; OPENP() is only where it was predicted to start. Gate them
      differently — see LOF_OPEN_LETTERS. */
   const lofLim=(lastCall&&lastCall.pos)?LOF_LETTERS:LOF_OPEN_LETTERS;
-  if(a&&lofJump(a,pos)>lofLim){   /* #lof — past the line: hold it, flag it, don't post it */
+  /* #lofdrops — past the walk-line AND past the call's reach: hold it. Inside either: post. */
+  if(a&&lofJump(a,pos)>lofLim&&!lofInReach(pos)){   /* #lof — past the line: hold it, flag it, don't post it */
     const wk=winKey();
     farHold=farHold.filter(h=>h.win===wk&&posVal(h.pos)>(lastCall?posVal(lastCall.pos):-1)); // stale windows + passed cards drop out
     if(!farHold.some(h=>h.pos===pos)){
@@ -9593,16 +9686,20 @@ function applyLiveCall(pos,ts,src){
   lofPromote();                        /* #lof — the board moved: a held card now inside the line posts */
   return true;
 }
-function lofPromote(){ // a held call posts ONLY once the confirmed board walks up close to it
+function lofPromote(){ // a held call posts ONLY once the confirmed board walks up close to it — or (#lofdrops) the call's reach grows to cover it
   try{
     const wk=winKey(); let guard=0;
     while(guard++<27){
-      farHold=farHold.filter(h=>h.win===wk&&posVal(h.pos)>posVal(lastCall.pos)); // stale + passed holds die
-      const next=farHold.find(h=>lofJump(lastCall.pos,h.pos)<=LOF_LETTERS);      // nearest first — the board WALKS, it never leaps
+      const cur=(lastCall&&lastCall.pos)||null;
+      farHold=farHold.filter(h=>h.win===wk&&(!cur||posVal(h.pos)>posVal(cur))); // stale + passed holds die
+      /* nearest first — the board WALKS, it never leaps. #lofdrops: with no confirmed
+         call yet, only the reach can promote (the walk-line has nothing to walk from). */
+      const next=farHold.find(h=>(cur&&lofJump(cur,h.pos)<=LOF_LETTERS)||lofInReach(h.pos)||lofAgreed(h));   /* #lofwitness — or the crowd vouches */
       if(!next)break;
+      const via=(cur&&lofJump(cur,next.pos)<=LOF_LETTERS)?'walk':(lofInReach(next.pos)?'reach':'agree');
       farHold=farHold.filter(h=>h.pos!==next.pos);
       lastCall={pos:next.pos,ts:Date.now(),win:wk};
-      try{DEVLOG.data('live board POSTED from hold (#lof)',{pos:next.pos});}catch(e){}
+      try{DEVLOG.data('live board POSTED from hold (#lof)',{pos:next.pos,via:via});}catch(e){}
       if(next.src==='local'){try{lwPush(next.pos);}catch(e){}}                   // it never rode the wire while held — it rides now
     }
   }catch(e){}
@@ -9638,6 +9735,9 @@ setInterval(()=>{ // render both the header ticker and the Wire-tab live board
   /* #107 — a scan left over from an earlier board doesn't carry into this one:
      new window opens on STAND BY until its own first scan lands */
   if(lastCall&&w&&lastCall.win!==winKey()){lastCall=null;window._reelPos=null;farHold=[];}   /* #lof — held calls die with their window */
+  /* #lofwitness — while a window is live and the page is on screen, keep an eye on the
+     tape's held cards (throttled to 20 s inside) so cards that agree can post */
+  try{ if(w&&document.visibilityState!=='hidden')stHeldRefresh(false); }catch(e){}
   if(!w||!lastCall){ if(el)el.style.display="none";
     if(reel)reel.style.display="none"; if(clk)clk.style.display=""; return; }
   const s=Math.max(0,(Date.now()-lastCall.ts)/1000|0);
@@ -10950,6 +11050,10 @@ function publishCall(){
   try{ renderWireStage(o); }catch(e){ console.warn('wire stage',e); }
   /* the pending row on Recent Boards reads this same call */
   window._lastCall={stop:AZ[(base+med)%26], lo:AZ[(base+lo)%26], hi:AZ[(base+hi)%26], pmove:pmove};
+  /* #lofdrops(sep04) — the call just re-figured (a drop landed, a sheet came in, a
+     correction posted). Its reach may now cover a card that was held past the line
+     of fire — re-run the promotion so that slip posts now, not at the next scan. */
+  try{ if(liveWindow()&&typeof lofPromote==='function'&&farHold&&farHold.length)lofPromote(); }catch(e){}
   /* #record(aug13) — SNAPSHOT THE CALL, but only while the board hasn't started:
      during the live run the call re-figures off real member scans, and scoring
      THAT against the seal would grade the bot on an open-book exam. The last
