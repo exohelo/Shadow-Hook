@@ -4913,6 +4913,20 @@ window.DEVLOG=(function(){
     :is(#socialFeed,.soc-list) .evt-date .mo{font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:9px;letter-spacing:.14em;color:var(--copper-hi);background:rgba(238,180,107,.12);padding:3px 0}
     :is(#socialFeed,.soc-list) .evt-date .dy{font-family:'Anton',sans-serif;font-size:22px;color:var(--bone);padding:4px 0 5px;line-height:1}
     :is(#socialFeed,.soc-list) .evt-date.glyph{display:flex;align-items:center;justify-content:center;height:52px;font-size:24px;color:var(--copper-hi)}
+    /* #clancard(sep04) — a clan's cover is the card's HEAD, edge to edge, in the same
+       5:2 the leader placed it in — so the board reads like a shelf of games instead of
+       a list with stamps on it. The row underneath is unchanged; the 52px tile is gone. */
+    /* the card stops being a flex ROW and becomes a stack: a flex item with
+       flex-basis:100% still refused to break the line here, and a stack is what this
+       shape actually is — head on top, the row of words under it. */
+    :is(#socialFeed,.soc-list) .evt.clan-card{display:block;padding-top:0;overflow:hidden}
+    :is(#socialFeed,.soc-list) .clan-strip{position:relative;width:calc(100% + 26px);margin:0 -13px 11px;
+      aspect-ratio:5/2;background-size:cover;background-position:center;border-bottom:1px solid var(--line-soft);
+      display:flex;align-items:center;justify-content:center;overflow:hidden}
+    :is(#socialFeed,.soc-list) .clan-strip::after{content:"";position:absolute;inset:0;
+      background:linear-gradient(180deg,transparent 52%,rgba(7,6,12,.55))}
+    :is(#socialFeed,.soc-list) .clan-strip b{font-family:'Anton',sans-serif;font-size:clamp(30px,11vw,58px);line-height:.9;
+      letter-spacing:.02em;color:rgba(255,255,255,.15);text-transform:uppercase;transform:rotate(-7deg);white-space:nowrap}
     :is(#socialFeed,.soc-list) .evt-main{flex:1;min-width:0}
     :is(#socialFeed,.soc-list) .evt-name{font-weight:800;font-size:14.5px;color:var(--bone);letter-spacing:.01em;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
     :is(#socialFeed,.soc-list) .epill{font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:8.5px;letter-spacing:.1em;color:var(--copper-hi);border:1px solid rgba(238,180,107,.4);border-radius:5px;padding:1px 6px;font-weight:400}
@@ -22907,10 +22921,11 @@ function clansSection(step){
     +'<div class="fsec-h"><span class="ttl">🎮 Clans</span><span class="more">squad up off the docks</span></div>';
   ALL_CLANS.forEach(c=>{
     const inn=clanIn(c), mine=clanMine(c), n=+c.n||0;
-    const _bu=clanBannerUrl(c);   /* #clanbanner — the cover, small, is the tile */
-    html+='<div class="evt feedIn'+(mine?' mine':'')+'"'+step()+' data-clan="'+esc(c.id)+'">'
-      +(_bu?'<div class="evt-date glyph clan-thumb" style="background-image:url('+esc(_bu).replace(/[()]/g,'')+')"></div>'
-           :'<div class="evt-date glyph clan-thumb" style="'+clanArtStyle(c.game)+'"></div>')
+    const _bu=clanBannerUrl(c);   /* #clancard — the cover is the head of the card */
+    html+='<div class="evt feedIn clan-card'+(mine?' mine':'')+'"'+step()+' data-clan="'+esc(c.id)+'">'
+      +'<div class="clan-strip" style="'+(_bu?'background-image:url(&quot;'+esc(_bu)+'&quot;)':clanArtStyle(c.game))+'">'
+        +(_bu?'':'<b>'+esc(String(c.game||'GAME ON').slice(0,18))+'</b>')
+      +'</div>' 
       +'<div class="evt-main">'
         +'<div class="evt-name">'+esc(c.name)+' <span class="epill">'+esc(c.game)+'</span> '+clanJoinPill(c)+(mine?' <span class="epill">★ YOURS</span>':'')+'</div>'
         +'<div class="evt-meta">'+(clanPlatLine(c)||'<span>nobody yet</span>')+'</div>'
@@ -22965,23 +22980,88 @@ function clanBannerPick(clanId){
     i.addEventListener('change',function(e){ var f=e.target.files&&e.target.files[0]; e.target.value=''; if(f)clanBannerSet(i.dataset.clan,f); }); }
   i.dataset.clan=String(clanId); i.value=''; i.click();
 }
-function clanCoverCanvas(src,W,H){   /* cover-crop to W×H — the banner's own shape, never squashed */
+function clanCoverCanvas(src,W,H,fx,fy){   /* cover-crop to W×H — the banner's own shape, never squashed.
+     fx/fy are 0..1 anchors, the same numbers CSS background-position uses, so the
+     picture the leader dragged in the frame is the picture that gets cut. */
   var w=src.width||src.naturalWidth, h=src.height||src.naturalHeight;
   if(!(w>0&&h>0))throw Object.assign(new Error('empty'),{code:'DECODE'});
+  fx=(fx==null)?.5:Math.max(0,Math.min(1,fx)); fy=(fy==null)?.5:Math.max(0,Math.min(1,fy));
   var c=document.createElement('canvas'); c.width=W; c.height=H; var g=c.getContext('2d');
   g.imageSmoothingEnabled=true; g.imageSmoothingQuality='high';
   var k=Math.max(W/w,H/h), sw=Math.round(W/k), sh=Math.round(H/k);
-  g.drawImage(src,Math.round((w-sw)/2),Math.round((h-sh)/2),sw,sh,0,0,W,H);
+  g.drawImage(src,Math.round((w-sw)*fx),Math.round((h-sh)*fy),sw,sh,0,0,W,H);
   return c;
+}
+/* ═══ #coverplace(sep04) — PLACE IT BEFORE IT LANDS ═══
+   By request. A cover is 5:2 and a phone shoots 3:4, so a centred crop threw away
+   the top and the bottom — on a game cover that is exactly where the face is. The
+   picture now opens in the banner's OWN frame, scrim and title and all, and is
+   dragged to where it should sit. Only the axis with something to give will move,
+   and it cannot be dragged past its own edge, so a cover can never end up with a
+   bar of nothing down one side. The anchor is a fraction, handed straight to the
+   crop, so what is under the glass is what gets cut. */
+function clanBannerPlace(c,src,onOk){
+  var W=src.width||src.naturalWidth, H=src.height||src.naturalHeight;
+  var url=''; try{ url=(src instanceof Blob)?URL.createObjectURL(src):(src.src||''); }catch(e){}
+  var made=false;
+  if(!url){ try{ var cc=document.createElement('canvas'); cc.width=Math.min(1400,W); cc.height=Math.round(cc.width*H/W);
+      cc.getContext('2d').drawImage(src,0,0,cc.width,cc.height); url=cc.toDataURL('image/jpeg',.85); made=true; }catch(e){} }
+  var fx=.5, fy=.5;
+  var sh=document.getElementById('cbPlace');
+  if(!sh){ sh=document.createElement('div'); sh.className='sheet'; sh.id='cbPlace'; sh.style.zIndex='96'; document.body.appendChild(sh); }
+  var wide=(W/H)>2.5;   /* wider than the frame → it slides sideways; taller → up and down */
+  sh.innerHTML='<div class="sheet-card" style="text-align:left">'
+    +'<div class="big" style="font-size:20px;letter-spacing:.06em;text-align:center">🎮 PLACE THE COVER</div>'
+    +'<p class="sub" style="margin:6px 0 12px;text-align:center">Drag the picture to where it should sit. This is the real frame — the name sits where you see it.</p>'
+    +'<div class="clan-banner cbp" id="cbpFrame" style="background-image:url(&quot;'+String(url).replace(/"/g,'%22')+'&quot;);background-position:50% 50%">'
+      +'<div class="cb-scrim"></div>'
+      +'<div class="cb-txt"><div class="cb-name">'+esc(c.name)+'</div><span class="cb-game">🎮 '+esc(c.game||'—')+'</span></div>'
+      +'<div class="cbp-hint">'+(wide?'↔ DRAG TO PLACE':'↕ DRAG TO PLACE')+'</div>'
+    +'</div>'
+    +'<button class="btn" id="cbpGo" type="button" style="margin-top:14px">✓ USE THIS</button>'
+    +'<button class="btn-ghost" id="cbpNo" type="button" style="width:100%;margin-top:10px;border:0;color:#586067">Never mind</button></div>';
+  var fr=sh.querySelector('#cbpFrame');
+  var clean=function(){ if(made||/^blob:/.test(url)){ try{URL.revokeObjectURL(url)}catch(e){} } };
+  var close=function(){ sh.classList.remove('on'); clean(); };
+  sh.querySelector('#cbpNo').addEventListener('click',function(){ close(); try{ if(src&&src.close)src.close(); }catch(e){} });
+  sh.querySelector('#cbpGo').addEventListener('click',function(){ sh.classList.remove('on'); clean(); onOk(fx,fy); });
+  /* the drag: pixels of overflow → a fraction, so the picture tracks the finger exactly */
+  var down=null;
+  var over=function(){
+    var r=fr.getBoundingClientRect(), k=Math.max(r.width/W,r.height/H);
+    return {x:Math.max(0,W*k-r.width), y:Math.max(0,H*k-r.height)};
+  };
+  fr.addEventListener('pointerdown',function(e){
+    var o=over(); if(o.x<1&&o.y<1)return;                       /* nothing to give — nothing to drag */
+    down={x:e.clientX,y:e.clientY,fx:fx,fy:fy,o:o}; fr.classList.add('drag');
+    try{ fr.setPointerCapture(e.pointerId); }catch(_){}
+    e.preventDefault();
+  });
+  fr.addEventListener('pointermove',function(e){
+    if(!down)return; e.preventDefault();
+    if(down.o.x>=1)fx=Math.max(0,Math.min(1,down.fx-(e.clientX-down.x)/down.o.x));
+    if(down.o.y>=1)fy=Math.max(0,Math.min(1,down.fy-(e.clientY-down.y)/down.o.y));
+    fr.style.backgroundPosition=(fx*100).toFixed(2)+'% '+(fy*100).toFixed(2)+'%';
+  });
+  var up=function(e){ if(!down)return; down=null; fr.classList.remove('drag');
+    try{ fr.releasePointerCapture(e.pointerId); }catch(_){} };
+  fr.addEventListener('pointerup',up); fr.addEventListener('pointercancel',up);
+  sh.classList.add('on');
 }
 async function clanBannerSet(clanId,file){
   if(typeof guestWall==='function'&&guestWall())return;
   var c=clanById(clanId); if(!c||!clanMine(c))return;
   if(!(window.SB&&window.__shkUid)){ toast('Sign in to set a cover'); return; }
+  /* #coverplace — decode, let them place it, and only then cut and send */
+  var src;
+  try{ src=await decodePicture(file); }
+  catch(e){ toast('Couldn’t read that picture — try a JPG or PNG'); return; }
+  clanBannerPlace(c,src,function(fx,fy){ clanBannerSend(clanId,c,src,fx,fy); });
+}
+async function clanBannerSend(clanId,c,src,fx,fy){
   var el=document.getElementById('clanBanner'); if(el)el.classList.add('busy');
   try{
-    var src=await decodePicture(file);
-    var blob=await canvasBlob(clanCoverCanvas(src,1200,480),.82);
+    var blob=await canvasBlob(clanCoverCanvas(src,1200,480,fx,fy),.82);
     try{ if(src&&src.close)src.close(); }catch(e){}
     var path='clans/'+String(clanId).replace(/[^a-zA-Z0-9_-]/g,'_')+'/banner-'+Date.now().toString(36)+'.jpg';
     var up=await window.SB.storage.from('chat-media').upload(path,blob,{contentType:'image/jpeg',cacheControl:'31536000'});
@@ -31677,6 +31757,16 @@ html.fs-lg .msg .who time{font-size:calc(12px * var(--chatfs,1))}
   color:#fff;background:rgba(8,6,16,.62);border:1px solid rgba(255,255,255,.28);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
 .clan-banner .cb-edit button:active{transform:scale(.92)}
 .clan-banner.busy{opacity:.6}
+/* #coverplace(sep04) — the placing frame is a .clan-banner with its full-bleed
+   margins taken off, so the scrim and the title sit exactly where they will */
+.clan-banner.cbp{margin:0;border-radius:14px;border:1px solid var(--line);background-size:cover;background-repeat:no-repeat;
+  touch-action:none;cursor:grab;-webkit-user-select:none;user-select:none}
+.clan-banner.cbp.drag{cursor:grabbing}
+.clan-banner .cbp-hint{position:absolute;top:9px;left:50%;transform:translateX(-50%);pointer-events:none;
+  padding:5px 12px;border-radius:99px;background:rgba(8,6,16,.6);border:1px solid rgba(255,255,255,.22);
+  font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:10px;letter-spacing:.14em;color:#fff;
+  transition:opacity .25s}
+.clan-banner.cbp.drag .cbp-hint{opacity:0}
 /* the same cover, small, as the clan's tile on the board */
 .evt-date.clan-thumb{min-height:52px;background-size:cover;background-position:center;font-size:0;border-color:rgba(238,180,107,.3)}
 
