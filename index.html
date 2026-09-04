@@ -4651,6 +4651,7 @@ window.DEVLOG=(function(){
   #recentBoards .rb-stat.close .rb-word{color:var(--copper-hi)}
   #recentBoards .rb-stat.miss .rb-word{color:var(--steel)}
   #recentBoards .rb-stat.prog .rb-word{color:var(--copper-hi)}
+  #recentBoards .rb-stat.off .rb-word{color:#8db4cc}   /* #offboard(sep4) — worked the board before: not eligible, not a flop */
   #recentBoards .rb-empty{padding:22px 10px;text-align:center;color:var(--steel);font-size:12px}
   </style>
       <!-- #jul23b — the ✎ log/correct button moved INTO the Dev Log panel (bottom ⚙ chip):
@@ -6529,6 +6530,15 @@ window.DEVLOG=(function(){
   .lb-tiles>div{flex:1;text-align:center;padding:9px 6px;border-radius:10px;background:rgba(11,13,15,.55);border:1px solid var(--line-soft)}
   .lb-tiles b{display:block;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:23px;color:var(--bone)}
   .lb-tiles span{font-size:9px;letter-spacing:.22em;color:var(--steel);font-weight:700}
+  .lb-tiles.lb-four{flex-wrap:wrap}.lb-tiles.lb-four>div{flex:1 1 calc(50% - 5px)}   /* #cycle — a lap's four tiles sit two by two on a phone */
+  /* #cycle(sep4) — the one question the cards alone can't answer: held, or a lap of the book? */
+  .lb-cyc{display:none;margin:0 0 10px;padding:10px 12px;border-radius:10px;background:var(--well);border:1px solid var(--line-soft)}
+  .lb-cyc.show{display:block}
+  .lb-cyc label{display:flex;align-items:center;gap:10px;cursor:pointer;font-size:12.5px;letter-spacing:.14em;font-weight:800;color:var(--bone)}
+  .lb-cyc input{width:18px;height:18px;flex:none;accent-color:var(--copper-hi)}
+  .lb-cyc .why{font-size:11px;color:var(--steel);margin-top:6px;line-height:1.45;letter-spacing:.02em}
+  .lb-cyc.on{border-color:rgba(238,180,107,.45)}
+  .lb-cyc.on label{color:var(--copper-hi)}
   </style>
   <!-- log the board result (come-down) -->
   <div class="sheet" id="boardSheet">
@@ -6548,6 +6558,11 @@ window.DEVLOG=(function(){
       <div class="row2" style="margin-bottom:10px">
         <div><span class="lbl">2nd came down</span><input class="field" id="br2" type="number" inputmode="numeric" placeholder="62"></div>
         <div><span class="lbl">Dispatch ended (card)</span><input class="field" id="brEnd" placeholder="B4887" autocapitalize="characters"></div>
+      </div>
+      <!-- #cycle(sep4) — shows only when the end card sits on or behind the start: held, or a lap of the book? -->
+      <div class="lb-cyc" id="brCycRow">
+        <label><input type="checkbox" id="brCyc"><span>&#10227; CYCLED THE BOOK</span></label>
+        <div class="why" id="brCycWhy"></div>
       </div>
       <div id="brPreview" class="sub" style="margin:6px 0 12px;padding:10px 12px;background:var(--well);border:1px solid var(--line-soft);border-radius:10px">Enter the start &amp; end cards to see the flop math.</div>
       <button class="btn" id="brSave" style="width:100%">&#9654; LOG IT &#183; RECALIBRATE THE WIRE</button>
@@ -9629,6 +9644,73 @@ function stCountPaint(){
   }catch(e){}
 }
 window.stCountRefresh=stCountRefresh;
+/* ═══ #witness(sep4) — THE TAPE VOUCHES FOR A SEALED BOARD ═══
+   A casual swiping a docket got dispatched, and a dispatch means a card got called
+   — so the tape's swipe count for a window is proof that window's board MOVED.
+   That is the missing witness for the one geometry the cards can't settle (a seal
+   on, or one card behind, the opening card: held, or a lap of the book?). The
+   count is fetched once per board per load (cached in window.SWIPES), lands on the
+   row as r.swipes when a board is sealed, and rides the wire with the log so the
+   other phones don't have to ask again. Egress: one small call per seal, and one
+   when the Log the Board sheet is opened on a board — never a sweep of the record.
+   Guarded end to end: a refused or failed call changes nothing. */
+window.SWIPES={};
+/* "2026-09-04_Fri_AM" → the tape's window key for that board ("Fri Sep 04 2026_DAY"):
+   the same shape winKey() writes, built from the board's own date instead of the clock */
+function boardWinKey(key){
+  const m=/^(\d{4}-\d{2}-\d{2})_[A-Za-z]{3}_(AM|PM)$/.exec(String(key||''));
+  if(!m)return null;
+  const d=new Date(m[1]+"T12:00"); if(isNaN(d.getTime()))return null;
+  return d.toDateString()+"_"+(m[2]==="AM"?"DAY":"NIGHT");
+}
+async function fetchBoardSwipes(key,force){
+  try{
+    if(!window.SB||!key)return null;
+    if(!force&&typeof window.SWIPES[key]==="number")return window.SWIPES[key];
+    const wk=boardWinKey(key); if(!wk)return null;
+    let n=null;
+    /* the crown-only tape is read through its tally function — counts, never names */
+    try{
+      const r=await window.SB.rpc('scan_tape_count',{p_k:wk});
+      const c=r&&!r.error&&(Array.isArray(r.data)?r.data[0]:r.data);
+      /* real docket swipes: the ones that moved the reel, the ones on the card it was
+         standing on, and the ones it was already past. A bad card vouches for nothing,
+         and a far-out hold might be a wrong card — neither counts. */
+      if(c&&c.swipes!=null)n=(+c.posted||0)+(+c.same||0)+(+c.behind||0);
+    }catch(e){}
+    if(n==null){   /* no tally function — fall back to the calls that moved the reel */
+      try{
+        const r=await window.SB.from('live_wire').select('pos',{count:'exact',head:true}).eq('k',wk);
+        if(r&&!r.error&&typeof r.count==="number")n=r.count;
+      }catch(e){}
+    }
+    if(n==null){try{DEVLOG.data('scan tape witness',{ok:false,err:'no count for '+key});}catch(e){} return null;}
+    window.SWIPES[key]=n;
+    try{DEVLOG.data('scan tape witness',{ok:true,rows:n,latest:key});}catch(e){}
+    return n;
+  }catch(e){return null;}
+}
+/* after a seal: land the count on the row, ride it out on the wire, and if it turns a
+   "held" into a lap, say so and re-anchor the chain */
+function witnessBoard(key){
+  fetchBoardSwipes(key,true).then(function(n){
+    try{
+      if(n==null)return;
+      const r=RECENT.find(x=>x&&x.date+"_"+x.slot===key); if(!r)return;
+      const before=boardMoved(r);
+      r.swipes=n;
+      try{const st=_brStore();st[key]=Object.assign(st[key]||{},{date:r.date,slot:r.slot,swipes:n});localStorage.setItem(K('boardresults'),JSON.stringify(st));}catch(e){}
+      try{const row=window.BW&&window.BW[key]; if(row&&row.patch&&row.patch.swipes!==n){row.patch.swipes=n;bwPush(row);}}catch(e){}   /* quietly — same log, one more number on it */
+      if(before===false&&boardMoved(r)===true){
+        try{chainBoards(key);}catch(e){}
+        try{toast('⟳ '+n+' docket swipe'+(n===1?'':'s')+' on the tape — the board moved: it cycled the book');}catch(e){}
+      }
+      try{renderRecentBoards();}catch(e){}
+      try{repredict();}catch(e){}
+    }catch(e){}
+  }).catch(function(){});
+}
+window.fetchBoardSwipes=fetchBoardSwipes; window.witnessBoard=witnessBoard;
 function submitLiveCall(pos,src){ // the reel takes no identity — the TAPE does, and only the crown reads it
   const _was=(lastCall&&lastCall.pos)||null;                    /* where the board stood when this landed */
   const r=applyLiveCall(pos,Date.now(),'local');
@@ -9821,6 +9903,10 @@ try{(function(){
   for(let i=0;i<sorted.length-1;i++){
     const cur=sorted[i],nxt=sorted[i+1],cs=snap[i],ns=snap[i+1];
     if(!cs.start||!cs.end||!sameCard(cs.start,cs.end))continue;          // this board moved, or isn't sealed
+    /* #cycle — same card in and out but the record says it walked (a logged come-down,
+       swipes on the tape, or a casual's flag): a lap, not a hold. Its follower's
+       start one card past it is RIGHT — dragging it back would erase the lap. */
+    if(boardEvidence(cur))continue;
     if(nxt.date+"_"+nxt.slot!==nextBoardKey(cur))continue;               // gap in the record — never ripple across it
     if(ns.start!==nextCard(cs.end))continue;                             // not the stale value — leave it be
     if(ns.end&&sameCard(ns.start,ns.end))continue;                       // the follower was HELD too — moving its start would invent movement it never made
@@ -9916,34 +10002,133 @@ function oneCardBack(start,end){
 }
 /* how many cards are on the board right now (joiners included) */
 function activeTotal(){ let n=0; try{ for(const L in ACTIVE) n+=(ACTIVE[L]||[]).length; }catch(e){} return n; }
+/* ═══════════ #cycle(sep4) — A LAP THAT LANDS ON ITS OWN CARD ═══════════
+   Sep 4 AM: the board opened on E5069, ran the whole book and came back to it.
+   Logged E5069 → E5069 the record read BOARD HELD, because everything above
+   decides from the two cards alone, and the wrap branch in the span walk only
+   fires when the end sits BEHIND the start. A lap onto its own card was never
+   representable — the #noflop0 note admits as much.
+   The record already holds two things a held board can never have:
+     · a COME-DOWN. Held means "nobody was called, 0 flopped" — so 805 jobs
+       coming down to the hall is proof the window walked. (Only a LOGGED
+       come-down counts — r.down / the Drop Log. The seeded rows carry the
+       sheet's casual-hall count as r.ch, which is jobs OFFERED, not jobs
+       caught, and several held rows on the seed carry one. It does not vouch.)
+     · DOCKET SWIPES on the scan tape for that window. A casual swiping a
+       docket got dispatched, so cards got called. (#witness, below.)
+   And a casual can simply say so: r.cyc — true (it lapped) or false (it held)
+   — set from the ⟳ CYCLED THE BOOK toggle on Log the Board. The word of the
+   casual who logged it beats the inference either way; an absent flag leaves
+   the inference live, so a swipe count landing later can still flip it.
+   Everything that reads held/cycled comes through boardMoved/boardLap, so the
+   pills, the flop line, the handoff and the chain can't disagree. */
+/* the end sits ON or BEHIND the start inside one letter — the only geometry that
+   can mean either HELD or CYCLED (E5069 → E5069, E5069 → E5068, E5069 → E5066) */
+function backOnItself(start,end){
+  const m1=/^([A-Z])(\d+)$/.exec(String(start||"").toUpperCase()), m2=/^([A-Z])(\d+)$/.exec(String(end||"").toUpperCase());
+  return !!(m1&&m2&&m1[1]===m2[1]&&parseInt(m2[2],10)<=parseInt(m1[2],10));
+}
+/* docket swipes the tape holds for this board's window: the row's own count (it
+   rides the wire with the log), else what this phone fetched (#witness), else unknown */
+function boardSwipes(r){
+  if(!r)return null;
+  if(typeof r.swipes==="number")return r.swipes;
+  try{ const v=window.SWIPES&&window.SWIPES[r.date+"_"+r.slot]; if(typeof v==="number")return v; }catch(e){}
+  return null;
+}
+/* WHY a board whose cards say "held" is believed to have moved:
+     'flag'   — a casual said so (r.cyc === true)
+     'down'   — a logged come-down: a held board has nothing come down
+     'swipes' — docket swipes on the tape for that window
+   null — nothing vouches for it (or a casual said it held: r.cyc === false) */
+function boardEvidence(r){
+  if(!r)return null;
+  if(r.cyc===true)return 'flag';
+  if(r.cyc===false)return null;
+  let dn=null; try{ dn=boardDown(r); }catch(e){}
+  if(dn!=null&&dn>0)return 'down';
+  const sw=boardSwipes(r);
+  if(sw!=null&&sw>0)return 'swipes';
+  return null;
+}
 /* true = it walked (or cycled) · false = HELD · null = not sealed yet, unknown */
 function boardMoved(r){
   if(!r||!r.start||!r.end)return null;
-  if(sameCard(r.start,r.end))return false;        // logged straight: it sat there
-  if(oneCardBack(r.start,r.end))return false;     // stale start: it sat on its end
+  if(r.cyc===false&&backOnItself(r.start,r.end))return false;                    // #cycle — a casual said it held
+  if(sameCard(r.start,r.end)||oneCardBack(r.start,r.end))return !!boardEvidence(r);   // #cycle — the cards say held; the record may say otherwise
   return true;
+}
+/* walk this board's span as a LAP of the book — the cards alone can't show it
+   (same card in and out, or a casual's flag on any pair) */
+function boardLap(r){
+  if(!r||!r.start||!r.end)return false;
+  if(r.cyc===true)return true;
+  return sameCard(r.start,r.end)&&!!boardEvidence(r);
 }
 /* the card a HELD board is actually sitting on (null if it moved) */
 function heldCard(r){
   if(boardMoved(r)!==false)return null;
-  return oneCardBack(r.start,r.end)?r.end:r.start;   // a stale start defers to the sealed end
+  return sameCard(r.start,r.end)?r.start:r.end;   // a stale start (or a casual's "it held" on a back-sitting end) defers to the sealed end
 }
 /* a genuine CYCLE — it came back around onto itself. Defined by the DISTANCE it
    walked, not by the letters: V3064 → U5056 is just as much a lap of the book as
    C4900 → C4850, and both have to be called what they are. */
 function boardCycled(r){
   if(!r||!r.start||!r.end||boardMoved(r)===false)return false;
-  const sp=countActiveSpan(r.start,r.end), tot=activeTotal();
+  if(r.cyc===true)return true;                                   // #cycle — said so
+  const sp=countActiveSpan(r.start,r.end,boardLap(r)), tot=activeTotal();
   return !!(sp!=null&&tot&&sp>=Math.floor(tot*0.95));
 }
 /* CARDS THIS BOARD ACTUALLY CALLED. Same as the raw span, except a held board
-   calls nobody. A cycle still counts every card — that's the point of a cycle. */
-function calledSpan(start,end){
+   calls nobody. A cycle still counts every card — that's the point of a cycle.
+   ctx carries what the cards can't say (down / swipes / cyc / date+slot). */
+function calledSpan(start,end,ctx){
   if(!start||!end)return null;
-  if(boardMoved({start:start,end:end})===false)return 0;
-  return countActiveSpan(start,end);
+  const r=Object.assign({},ctx||{},{start:start,end:end});
+  if(boardMoved(r)===false)return 0;
+  return countActiveSpan(start,end,boardLap(r));
 }
-function boardCalled(r){ return r?calledSpan(r.start,r.end):null; }
+function boardCalled(r){ return r?calledSpan(r.start,r.end,r):null; }
+/* ═══ #offboard(sep4) — THE ONES WHO COULDN'T COME: they worked the board before ═══
+   A casual who worked the night before cannot take a day job the next morning
+   (and a day casual can't double onto that night's board). When the window
+   reaches their card again they are not at the window and they did not flop —
+   they're OFF THE BOARD. On a normal board that never happens: the board walks
+   forward and the crew that just worked sits BEHIND the opening card. It only
+   happens when this board's walk reaches back into the last board's span — a
+   lap, or a long wrap. Sep 4 AM lapped the book after 516 casuals worked Sep 3
+   PM: 516 called cards that could not answer, and 4,704 "flops" was 4,188.
+   We can't know WHICH cards worked, so the count is proportional: the last
+   board's come-down, scaled by how much of its span this board re-called. */
+function prevBoardOf(r){
+  try{
+    if(!r||!r.date||!r.slot)return null;
+    let date=r.date, slot;
+    if(String(r.slot).endsWith("AM")){
+      const d=new Date(r.date+"T12:00"); d.setDate(d.getDate()-1);
+      date=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+      slot=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d.getDay()]+"_PM";
+    } else slot=String(r.slot).slice(0,3)+"_AM";
+    return RECENT.find(x=>x&&x.date===date&&x.slot===slot)||null;
+  }catch(e){return null;}
+}
+function offBoardCount(r){
+  try{
+    if(!r||!r.start||!r.end||boardMoved(r)===false)return 0;
+    const p=prevBoardOf(r); if(!p||!p.start||!p.end||boardMoved(p)===false)return 0;
+    const pd=boardDown(p); if(!(pd>0))return 0;
+    const theirs=spanCards(p.start,p.end,boardLap(p)); if(!theirs||!theirs.size)return 0;
+    const mine=spanCards(r.start,r.end,boardLap(r));   if(!mine||!mine.size)return 0;
+    let ov=0; theirs.forEach(c=>{ if(mine.has(c))ov++; });
+    if(!ov)return 0;
+    return Math.max(0,Math.min(pd,ov,Math.round(pd*ov/theirs.size)));
+  }catch(e){return 0;}
+}
+/* called cards that could actually answer: the span minus the ones off the board */
+function eligibleSpan(r){
+  const sp=boardCalled(r); if(sp==null)return null;
+  return Math.max(0,sp-(offBoardCount(r)||0));
+}
 /* ===== #cardpos(aug2) — WHERE ONE CARD SAT ON ONE BOARD, READ TO THE NUMBER =====
    Letters alone cannot answer this. The start letter is shared by hands on BOTH sides
    of the opening card, and the end letter by hands on both sides of the closing card,
@@ -9956,8 +10141,10 @@ function boardCalled(r){ return r?calledSpan(r.start,r.end):null; }
                 behind the window who were next up when it closed
      'past'   — it sits BEHIND the opening card: called on an earlier board, not this one
      'short'  — the board died before reaching it
-   null = can't tell (card or end missing / malformed) — callers fall back. */
-function cardRunPos(card,start,end){
+   null = can't tell (card or end missing / malformed) — callers fall back.
+   #cycle — lap: walk it as a lap of the book even where the cards can't show one
+   (same card in and out, or a casual's flag). A lap calls every card. */
+function cardRunPos(card,start,end,lap){
   const M=s=>/^([A-Z])(\d+)$/.exec(String(s||"").toUpperCase());
   const c=M(card), s=M(start), e=M(end);
   if(!c||!s||!e)return null;
@@ -9965,10 +10152,11 @@ function cardRunPos(card,start,end){
   if(cl<0||sl<0||el<0)return null;
   const cn=+c[2], sn=+s[2], en=+e[2];
   if(cl===el&&cn===en)return 'at';                              // the board died on this card
-  let letters=(el-sl+26)%26; if(letters===0&&en<sn)letters=26;  // it lapped the book
+  let letters=(el-sl+26)%26; const geoWrap=(letters===0&&en<sn); if(geoWrap)letters=26;  // it lapped the book
   const k=(cl-sl+26)%26;
   let called;
-  if(letters===26)        called=(cl!==sl)||cn>=sn||cn<=en;     // a lap calls everything but the gap
+  if(lap&&!geoWrap)       called=true;                          // #cycle — a lap the cards can't show: everyone got called
+  else if(letters===26)   called=(cl!==sl)||cn>=sn||cn<=en;     // a lap calls everything but the gap
   else if(k>letters)      called=false;                         // never got to this letter
   else if(letters===0)    called=(cn>=sn&&cn<=en);              // opened and died inside one letter
   else if(k===0)          called=cn>=sn;                        // start letter: from the opening card up
@@ -10000,7 +10188,11 @@ function normalizeHeld(r){
      branch), so it fired every time and disabled normalisation completely.
      start/end alone genuinely cannot separate "stale start" from "lapped the
      book" — the documented call stands: one card back is the off-by-one, because
-     a board cannot call 5,332 cards off a sheet carrying a few hundred jobs. */
+     a board cannot call 5,332 cards off a sheet carrying a few hundred jobs.
+     #cycle — but the RECORD can separate them: a logged come-down, swipes on the
+     tape, or a casual's flag say the window walked. Then it's a lap that landed
+     one card short, and the start is real. Leave it alone. */
+  if(boardMoved(r)!==false)return false;
   r.start=r.end; r.act=0;
   return true;
 }
@@ -12937,6 +13129,21 @@ setInterval(()=>{
     toast("New board up — the wire reset for "+s.replace("_"," "));
   }
 },60000);
+/* #offboard(sep4) — a docket of YOURS on the board directly before this one:
+     day board  → the night before (that night's docket is dated the night's own date)
+     night board → that same morning
+   Hoot owl and night both come off the night board, same as the "worked" test above. */
+function workedPriorBoard(r){
+  try{
+    if(!r||!r.date||!r.slot)return false;
+    if(String(r.slot).endsWith("AM")){
+      const d=new Date(r.date+"T12:00"); d.setDate(d.getDate()-1);
+      const prev=d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+      return DOCKETS.some(j=>j&&j.date===prev&&j.shift!=="Day");
+    }
+    return DOCKETS.some(j=>j&&j.date===r.date&&j.shift==="Day");
+  }catch(e){return false;}
+}
 // recent boards — started/ended, totals, and YOUR outcome on each board
 function myBoardStatus(r){
   const isAM=r.slot.endsWith("AM");
@@ -12949,6 +13156,12 @@ function myBoardStatus(r){
     const st=new Date(r.date+"T"+(isAM?"08:00":"18:00"));
     return (Date.now()<st.getTime()+8*3600000)?V('prog',F('prog','💪'),'Working'):V('worked',F('worked','🤑'),'Worked');
   }
+  /* #offboard(sep4) — you worked the board DIRECTLY before this one (the night before
+     a day board, or that morning before a night board), so you could not take a job
+     on it. A call on your card is not a flop: you were OFF THE BOARD. Sep 4 AM lapped
+     the book and handed a 😢 to every casual who'd worked Sep 3 PM. Checked before
+     the verdicts below, because it's about you, not the board. */
+  if(workedPriorBoard(r))return V('off',F('off','🛌'),'Off the Board');
   if(r.act==null)return '';
   /* #fix(derivedAM) — same class as the render guard: a partial row (wire patch or
      old storage) can carry act with NO start card. cardRunPos already answers null
@@ -12968,7 +13181,7 @@ function myBoardStatus(r){
      in the odds block) and scored that same casual a full book away, so the record and
      the prediction were calling one casual two different things. Now both read the card. */
   const myCard=savedAcct.id;
-  switch(cardRunPos(myCard,r.start,r.end)){
+  switch(cardRunPos(myCard,r.start,r.end,boardLap(r))){   /* #cycle — a lap onto its own card calls everyone */
     case 'called': return V('flop',F('flop','😢'),'Flop');
     case 'at':     return V('close',F('close','😬'),'At the Window');
     case 'past':   return V('miss',F('miss','😴'),'Not Called');   // behind the opening card
@@ -12995,29 +13208,43 @@ function myBoardStatus(r){
    log that call in the Drop Log (for Port Bucks) — and ONLY then does a flop
    count show: flops ≈ called − came down. No drop data, no number. We don't
    print guesses built on information we don't have. */
-function countActiveSpan(start,end){
+/* #cycle — ONE walk for every reader of a span. fn(letter,num) is called for each
+   active card the board called, in board order; the return is the count (null if
+   the cards are unreadable). lap = walk it as a lap of the book where the cards
+   alone can't show one: same card in and out, or a casual's flag on any pair.
+   A lap calls every card in the book once — the few cards it re-called past its
+   own start are not counted twice; nobody flops twice on one board. */
+function spanWalk(start,end,lap,fn){
   if(!start||!end||start.length<2||end.length<2)return null;
   const sl=LSEQ.indexOf(start[0].toUpperCase()), el=LSEQ.indexOf(end[0].toUpperCase());
   if(sl<0||el<0)return null;
   const sn=parseInt(start.slice(1),10), en=parseInt(end.slice(1),10);
   if(isNaN(sn)||isNaN(en))return null;
   /* #noflop0 — start === end: the window never advanced. Nobody was called, so the
-     span is ZERO, not the one card it's sitting on. (A board that wrapped the whole
-     book back onto its own card was never representable here either way — the
-     wrap branch below only triggers on end < start.) */
-  if(sl===el&&sn===en)return 0;
-  let letters=(el-sl+26)%26; if(letters===0&&en<sn)letters=26;  // board wrapped the whole book
+     span is ZERO, not the one card it's sitting on. (#cycle: unless the record says
+     it lapped — then it's the whole book, and the caller passes lap.) */
+  if(sl===el&&sn===en&&!lap)return 0;
+  let letters=(el-sl+26)%26; const geoWrap=(letters===0&&en<sn);
+  if(lap&&!geoWrap){                                             // a lap the cards can't show: the whole book, once
+    let n=0;
+    for(let k=0;k<26;k++){const L=LSEQ[(sl+k)%26]; for(const num of (ACTIVE[L]||[])){ n++; if(fn)fn(L,num); }}
+    return n;
+  }
+  if(geoWrap)letters=26;                                         // board wrapped the whole book
   let count=0;
   for(let k=0;k<=letters;k++){
-    const arr=ACTIVE[LSEQ[(sl+k)%26]]||[];
+    const L=LSEQ[(sl+k)%26], arr=ACTIVE[L]||[];
     for(const num of arr){
       if(k===0&&num<sn)continue;
       if(k===letters&&num>en)break;
-      count++;
+      count++; if(fn)fn(L,num);
     }
   }
   return count;
 }
+function countActiveSpan(start,end,lap){ return spanWalk(start,end,lap,null); }
+/* the cards themselves, as a Set of ids — for asking which of one board's cards another board reached */
+function spanCards(start,end,lap){ const s=new Set(); const n=spanWalk(start,end,lap,(L,num)=>s.add(L+num)); return n==null?null:s; }
 function boardDown(r){
   if(r.down!=null)return r.down;                          // came in with the record (backend)
   try{                                                     // or summed off this device's Drop Log
@@ -13034,7 +13261,10 @@ function flopCount(r){
      a known ZERO, not missing data, so it prints without waiting on the Drop Log. */
   if(span===0)return 0;
   const down=boardDown(r);
-  if(down!=null&&span>=down)return span-down;   // the speaker call — real math
+  /* #offboard — called − came down − the ones who worked the board before and could
+     not answer. On a normal board that last term is 0; on a lap it's the whole crew
+     from the last shift. */
+  if(down!=null&&span>=down)return Math.max(0,span-down-(offBoardCount(r)||0));   // the speaker call — real math
   return null;  // no come-down data → no number. The Drop Log fills this in.
 }
 /* ===== THE DATASET — every ilwu13.com pull becomes OUR data =====
@@ -13504,7 +13734,10 @@ function renderRecentBoards(){
          The range line below already hides itself when r.start is missing. */
       const endP=r.end||(r.act!=null&&r.start?AZ[(AZ.indexOf(r.start[0])+r.act)%26]:"pending");
       const fl=flopCount(r), sp=boardCalled(r), dn=boardDown(r);   /* #noflop0 */
-      const att=(sp&&dn!=null)?Math.round(dn/sp*100):null;
+      /* #offboard — attendance is figured against the cards that could answer: the
+         span minus the crew that worked the board before (only ever > 0 on a lap) */
+      const off=offBoardCount(r)||0, elig=(sp!=null)?Math.max(0,sp-off):null;
+      const att=(elig&&dn!=null)?Math.min(100,Math.round(dn/elig*100)):null;
       const key=r.date+'_'+r.slot, dd=DISPATCH_DATA[key];
       /* #115c — the familiar wording, better set: weighted, quietly tinted numbers */
       const hi=(v,cls)=>'<b class="rbn'+(cls?' '+cls:'')+'">'+v+'</b>';
@@ -13516,7 +13749,7 @@ function renderRecentBoards(){
       const still=(boardMoved(r)===false), hc=still?heldCard(r):null, cyc=boardCycled(r);
       const line2=still
         ? (hi('0','fl')+' Casual Flopped · <b class="rbn">the board did not move</b>')
-        : (fl!=null?hi(fl.toLocaleString(),'fl')+' Casual Flopped'+(att!=null?' · '+hi(att+'%','att')+' Attendance':'')+(cyc?' · <b class="rbn">cycled the book</b>':''):'');
+        : (fl!=null?hi(fl.toLocaleString(),'fl')+' Casual Flopped'+(off>0?' · '+hi(off.toLocaleString(),'dn')+' off the board':'')+(att!=null?' · '+hi(att+'%','att')+' Attendance':'')+(cyc?' · <b class="rbn">cycled the book</b>':''):'');   /* #offboard */
       const score=(line1?'<div class="rb-line">'+line1+'</div>':'')
                  +(line2?'<div class="rb-line">'+line2+'</div>':'');
       const when=(r.rain?'🌧 ':'')+(r.hol?'🕯 ':'');
@@ -26340,12 +26573,56 @@ function brSyncStart(){const r=_brCur(),s=document.getElementById('brStart');
      the last completed board's end (the chain rule, applied forward) */
   try{const l=lastCompletedBoard();s.value=l?handoffCard(l):'';}catch(e){s.value='';}   /* #noflop0 */
 }
-function brPreview(){
+/* ═══ #cycle(sep4) — THE ⟳ CYCLED THE BOOK TOGGLE ═══
+   Shows only when the end card sits on or behind the start inside one letter —
+   the one geometry that can mean held OR a lap. The sheet sets it by itself from
+   what the record can vouch for (a come-down keyed in, swipes on the tape, the
+   cards two-plus back) and says why; the casual can flip it either way and their
+   word wins. Touched or on → the flag is stored (cyc true/false). Off and never
+   touched → nothing is stored, so the inference stays live for a swipe count that
+   lands later. */
+let _brCyc={touched:false,on:false};
+function brBoardCtx(){   // everything the flop math needs about the board on the sheet, cards included
+  const sel=document.getElementById('brBoard'); const k=sel?sel.value:'';
+  const parts=String(k).split('_'), date=parts[0], slot=parts.slice(1).join('_');
   const start=((document.getElementById('brStart')||{}).value||'').toUpperCase().trim();
   const end=((document.getElementById('brEnd')||{}).value||'').toUpperCase().trim();
   const came=_brNum('brFlex')+_brNum('br1')+_brNum('br2');
+  const r=_brCur();
+  let sw=null; try{ sw=(r&&typeof r.swipes==="number")?r.swipes:((window.SWIPES&&typeof window.SWIPES[k]==="number")?window.SWIPES[k]:null); }catch(e){}
+  /* down: an EMPTY sheet says nothing (null), so boardDown can still read this phone's
+     Drop Log for the board; a number keyed in is the word. came: the raw sum, for the tiles. */
+  return {k:k,date:date,slot:slot,start:start,end:end,came:came,down:(came>0?came:null),swipes:sw,row:r};
+}
+function brCycRead(){   // {show, on, why, store} — store: the cyc value the seal should write (true/false/undefined)
+  const c=brBoardCtx();
+  const show=!!(c.start&&c.end&&(backOnItself(c.start,c.end)||oneCardBack(c.start,c.end)));   // incl. the one-back that rolls a letter (V5056 ← W3031)
+  if(!show)return {show:false,on:false,why:'',store:undefined};
+  const probe={date:c.date,slot:c.slot,start:c.start,end:c.end,down:c.down,swipes:c.swipes};
+  const ev=boardEvidence(probe), twoBack=!sameCard(c.start,c.end)&&!oneCardBack(c.start,c.end);
+  let on, why;
+  if(_brCyc.touched){ on=_brCyc.on; why=on?'your call — logging it as a lap of the book':'your call — logging it as held on '+(sameCard(c.start,c.end)?c.start:c.end); }
+  else if(c.row&&c.row.cyc===true){ on=true; why='on the record as a cycle'; }
+  else if(c.row&&c.row.cyc===false){ on=false; why='on the record as held'; }
+  else if(ev==='down'){ let dn=c.down; try{ if(dn==null)dn=boardDown(probe); }catch(e){} on=true; why=(dn!=null?dn.toLocaleString():'jobs')+' came down — a held board has nothing come down, so the window walked: a lap of the book'; }
+  else if(ev==='swipes'){ on=true; why=c.swipes.toLocaleString()+' docket swipe'+(c.swipes===1?'':'s')+' on the tape for this board — casuals got dispatched, so the window walked: a lap of the book'; }
+  else if(twoBack){ on=true; why='the end sits behind the start — read as a lap of the book. Flip it off if the start was just written too far.'; }
+  else { on=false; why='nothing came down and no swipes on the tape — reads as held. Flip it on if the board ran all the way around.'; }
+  return {show:true,on:on,why:why,store:(_brCyc.touched||on)?on:undefined};
+}
+function brCycPaint(st){
+  const row=document.getElementById('brCycRow'), box=document.getElementById('brCyc'), why=document.getElementById('brCycWhy');
+  if(!row||!box)return;
+  row.classList.toggle('show',!!st.show); row.classList.toggle('on',!!(st.show&&st.on));
+  if(box.checked!==!!st.on)box.checked=!!st.on;
+  if(why)why.textContent=st.show?st.why:'';
+}
+function brPreview(){
+  const c=brBoardCtx(), start=c.start, end=c.end, came=c.came;
   const el=document.getElementById('brPreview'); if(!el)return;
-  let called=null; try{called=calledSpan(start,end);}catch(e){}   /* #noflop0 */
+  const cs=brCycRead(); brCycPaint(cs);
+  const ctx={date:c.date,slot:c.slot,down:c.down,swipes:c.swipes,cyc:cs.show?cs.store:undefined};
+  let called=null; try{called=calledSpan(start,end,ctx);}catch(e){}   /* #noflop0 · #cycle */
   const when=String((_brCur()||{}).slot||'').endsWith('AM')?'THIS MORNING':'TONIGHT';
   if(!start||!end||called==null){
     el.innerHTML='<div class="lb-score" style="opacity:.6"><div class="lb-flop"><div class="lb-flop-num">&mdash;</div>'
@@ -26354,7 +26631,8 @@ function brPreview(){
      left one card ahead of the seal) never moved: 0 flopped, no attendance to
      figure against a span of zero, and the next board opens right back on it.
      Whatever was keyed into the come-down boxes is still shown, never swallowed. */
-  const _hc=heldCard({start:start,end:end});
+  const probe=Object.assign({start:start,end:end},ctx);
+  const _hc=heldCard(probe);
   if(_hc){
     el.innerHTML='<div class="lb-score"><div class="lb-flop">'
       +'<div class="lb-flop-num">0</div>'
@@ -26364,14 +26642,22 @@ function brPreview(){
       +'<div class="lb-tiles"><div><b>0</b><span>CALLED</span></div>'
       +'<div><b>'+came.toLocaleString()+'</b><span>CAUGHT</span></div>'
       +'<div><b>'+_hc+'</b><span>NEXT BOARD OPENS ON</span></div></div></div>';return;}
-  const flops=Math.max(0,called-came), att=called?Math.round(came/called*100):0;
+  /* #cycle · #offboard — a lap calls the whole book, and the crew that worked the
+     board before couldn't answer: they come off the flop count, and attendance is
+     figured against the cards that could actually come. */
+  const lap=boardCycled(probe), off=offBoardCount(probe)||0, elig=Math.max(0,called-off);
+  const flops=Math.max(0,called-came-off), att=elig?Math.min(100,Math.round(came/elig*100)):0;
   el.innerHTML='<div class="lb-score">'
     +'<div class="lb-flop"><div class="lb-flop-num">'+flops.toLocaleString()+'</div>'
     +'<div class="lb-flop-lbl">CASUALS FLOPPED '+when+'</div></div>'
+    +(lap?'<div class="lb-att-row" style="justify-content:center;gap:8px;margin-bottom:8px"><b style="font-size:13px">&#10227; CYCLED THE BOOK &mdash; EVERY CARD GOT CALLED</b></div>':'')
     +'<div class="lb-att-row"><span>ATTENDANCE</span><b>'+att+'%</b></div>'
     +'<div class="lb-att-bar"><i style="width:'+Math.min(100,att)+'%"></i></div>'
-    +'<div class="lb-tiles"><div><b>'+called.toLocaleString()+'</b><span>CALLED</span></div>'
-    +'<div><b>'+came.toLocaleString()+'</b><span>CAUGHT</span></div></div></div>';
+    +'<div class="lb-tiles'+((off>0?1:0)+(lap?1:0)>=2?' lb-four':'')+'"><div><b>'+called.toLocaleString()+'</b><span>CALLED</span></div>'
+    +'<div><b>'+came.toLocaleString()+'</b><span>CAUGHT</span></div>'
+    +(off>0?'<div><b>'+off.toLocaleString()+'</b><span>OFF THE BOARD</span></div>':'')
+    +(lap?'<div><b>'+nextCard(end)+'</b><span>NEXT BOARD OPENS ON</span></div>':'')
+    +'</div></div>';
 }
 function openBoardSheet(){
   const sel=document.getElementById('brBoard'); if(!sel)return;
@@ -26392,30 +26678,46 @@ function openBoardSheet(){
   if(liveKey&&sel.querySelector('option[value="'+liveKey+'"]'))sel.value=liveKey;
   else if(def)sel.value=def.date+'_'+def.slot;
   ['brFlex','br1','br1end','br2','brEnd'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  _brCyc={touched:false,on:false};   /* #cycle — a fresh sheet, a fresh call */
   brSyncStart(); brPreview();
+  try{brWitness();}catch(e){}        /* #witness — ask the tape about this board while the casual types */
   document.getElementById('boardSheet').classList.add('on');
+}
+/* #witness — the swipe count for the board on the sheet lands in the cache and the
+   preview re-figures; the toggle's "why" line picks it up on its own */
+function brWitness(){
+  const sel=document.getElementById('brBoard'); const k=sel?sel.value:''; if(!k)return;
+  fetchBoardSwipes(k).then(n=>{ try{ const s2=document.getElementById('brBoard'); if(n!=null&&s2&&s2.value===k)brPreview(); }catch(e){} }).catch(()=>{});
 }
 function saveBoardResult(){
   const sel=document.getElementById('brBoard'); if(!sel)return; const k=sel.value;
-  let start=((document.getElementById('brStart')||{}).value||'').toUpperCase().trim();
-  const end=((document.getElementById('brEnd')||{}).value||'').toUpperCase().trim();
-  const came=_brNum('brFlex')+_brNum('br1')+_brNum('br2');
-  let called=null; try{called=calledSpan(start,end);}catch(e){}   /* #noflop0 */
+  const c=brBoardCtx(); let start=c.start; const end=c.end, came=c.came;
+  /* #cycle — the toggle's word rides with the cards: true (a lap), false (held), or
+     nothing at all (off and never touched — the inference stays live) */
+  const cs=brCycRead(); const cyc=cs.show?cs.store:undefined;
+  const ctx={date:c.date,slot:c.slot,down:c.down,swipes:c.swipes,cyc:cyc};
+  let called=null; try{called=calledSpan(start,end,ctx);}catch(e){}   /* #noflop0 · #cycle */
   if(!start||!end||called==null){try{toast('Add the start & end cards');}catch(e){}return;}
   /* #noflop0 — a start left one card ahead of the seal is the old off-by-one, not a
-     cycle. Store the board on the card it actually sat on, the way it's previewed. */
-  if(oneCardBack(start,end))start=end;
+     cycle. Store the board on the card it actually sat on, the way it's previewed.
+     #cycle — only when it IS held: heldCard reads the record, so a lap that landed a
+     card short (or that a casual flagged) keeps its real start. */
+  const _hc=heldCard(Object.assign({start:start,end:end},ctx)); if(_hc)start=_hc;
   const act=(AZ.indexOf(end[0])-AZ.indexOf(start[0])+26)%26;
   const parts=k.split('_'), date=parts[0], slot=parts.slice(1).join('_');
   const r=RECENT.find(x=>x.date+'_'+x.slot===k);
   const patch={date:date,slot:slot,start:start,end:end,act:act,ch:came,down:came,
     firstEnd:((document.getElementById('br1end')||{}).value||'').toUpperCase().trim()||undefined,
     flex:_brNum('brFlex'),tot:(r&&r.tot),rain:(r&&r.rain)||false,hol:(r&&r.hol)||false};
+  if(typeof cyc==="boolean")patch.cyc=cyc; else if(r)delete r.cyc;          /* #cycle — the toggle's word, or no word at all */
+  if(typeof c.swipes==="number")patch.swipes=c.swipes;                        /* #witness — what the tape already told this phone */
   if(r)Object.assign(r,patch); else {RECENT.push(patch);RECENT.sort((a,b)=>{const ka=a.date+(String(a.slot).endsWith('AM')?'_1':'_2'),kb=b.date+(String(b.slot).endsWith('AM')?'_1':'_2');return ka<kb?-1:ka>kb?1:0;});}
   try{const st=_brStore();st[k]=patch;localStorage.setItem(K('boardresults'),JSON.stringify(st));}catch(e){}
   /* #111 — the record is a chain: a corrected end ripples into the next board's start */
   try{const n=chainBoards(k);if(n)toast('⛓ '+n+' later board'+(n>1?'s':'')+' re-anchored to this end');}catch(e){}
-  try{window.addComeDown(k,came,called);}catch(e){}   // recalibrate the catch rate
+  /* #offboard — the catch rate is figured against the cards that could actually answer */
+  try{window.addComeDown(k,came,Math.max(0,called-(offBoardCount(r||patch)||0)));}catch(e){}   // recalibrate the catch rate
+  try{witnessBoard(k);}catch(e){}                      /* #witness — and ask the tape to vouch for it */
   try{renderRecentBoards();}catch(e){}
   try{repredict();}catch(e){}                          // #114 — "Starting on" + odds follow the new end
   try{drawWG();}catch(e){}                             // refresh the chart
@@ -26519,6 +26821,9 @@ function bwApplyRow(row){
   if(!r){r={date:date,slot:slot,rain:false,hol:false};RECENT.push(r);
     RECENT.sort((a,b)=>{const ka=a.date+(String(a.slot).endsWith('AM')?'_1':'_2'),kb=b.date+(String(b.slot).endsWith('AM')?'_1':'_2');return ka<kb?-1:ka>kb?1:0;});}
   Object.assign(r,row.patch);
+  /* #cycle — the wire is the record: a log with no held/cycled word on it clears any
+     word this phone had, so the inference (come-down, swipes) decides here like everywhere */
+  if(!('cyc' in row.patch))delete r.cyc;
   /* #record(aug13) — a sealed end is the exam answer: score the bot's pre-run call */
   try{ if(r.end&&typeof predScore==='function')predScore(k,r.end); }catch(e){}
   /* #noflop0 — the wire carries rows logged BEFORE the held rule existed, so a
@@ -26738,6 +27043,10 @@ try{sbLoadSheetLog();}catch(e){}
 function bwSubmitResult(k,patch){
   const me=bwMe(), L=bwL(); L[k]=L[k]||{};
   const wp={start:patch.start,end:patch.end,act:patch.act,ch:patch.ch,down:patch.down,flex:patch.flex,firstEnd:patch.firstEnd||null};
+  /* #cycle · #witness — the casual's held/cycled call and the tape's swipe count ride
+     with the log, so every phone reads the same board. Absent = no word given. */
+  if(typeof patch.cyc==="boolean")wp.cyc=patch.cyc;
+  if(typeof patch.swipes==="number")wp.swipes=patch.swipes;
   const prev=window.BW[k];
   const firstEver=!(prev&&prev.patch);
   /* #fix3(bucks) — the jackpot is for logging the board you just worked, but the sheet
@@ -26913,28 +27222,38 @@ function noFlopSeal(){
      card too far by the old chain rule. The board sat on the card just sealed; log
      it that way rather than as a 5,540-card cycle around the whole book. */
   let start=r.start||"";
-  if(oneCardBack(start,end))start=end;
   const came=u.total||r.down||0;
+  /* #cycle — the drops are the come-down, and a come-down means the window walked:
+     a seal that lands on (or one card behind) the opening card with drops on the
+     log is a lap of the book, not a stale start. Only a HELD board gets its start
+     snapped onto the sealed card. A casual's flag / the tape's swipes ride along. */
+  const ctx={date:date,slot:slot,down:(came>0?came:null),swipes:(typeof r.swipes==="number"?r.swipes:null),cyc:(typeof r.cyc==="boolean"?r.cyc:undefined)};
+  const _hc0=start?heldCard(Object.assign({start:start,end:end},ctx)):null; if(_hc0)start=_hc0;
   const flex=u.list.filter(x=>x.cat==="FLEX").reduce((a,x)=>a+x.n,0);
   const patch={date:date,slot:slot,start:start,end:end,
     act:start?(AZ.indexOf(end[0])-AZ.indexOf(start[0])+26)%26:undefined,
     ch:came,down:came,flex:flex,tot:r.tot,rain:r.rain||false,hol:r.hol||false};
+  if(typeof r.cyc==="boolean")patch.cyc=r.cyc;
+  if(typeof r.swipes==="number")patch.swipes=r.swipes;
   Object.assign(r,patch);
   try{const st=_brStore();st[k]=Object.assign(st[k]||{},patch);localStorage.setItem(K('boardresults'),JSON.stringify(st));}catch(e){}
   try{chainBoards(k);}catch(e){}
-  try{const called=calledSpan(start,end);if(called!=null)window.addComeDown(k,came,called);}catch(e){}   /* #noflop0 */
+  try{const called=calledSpan(start,end,r);if(called!=null)window.addComeDown(k,came,Math.max(0,called-(offBoardCount(r)||0)));}catch(e){}   /* #noflop0 · #offboard */
   try{renderRecentBoards();}catch(e){}
   try{repredict();}catch(e){}
   try{bwSubmitResult(k,patch);}catch(e){}
+  try{witnessBoard(k);}catch(e){}   /* #witness — ask the tape to vouch for the seal */
   inp.disabled=true;
   const b=document.getElementById('noflopBtn');
   /* #noflop0 — a board sealed on the card it opened on NEVER MOVED. Say so plainly:
-     0 casuals flopped, and the next dispatch opens back on that same card. */
-  const hc=heldCard({start:start,end:end});
-  if(b){b.disabled=true;b.textContent=hc?("⚑ HELD ON "+hc+" — BOARD DID NOT MOVE"):("⚑ SEALED AT "+end+" — ON THE WIRE");}
+     0 casuals flopped, and the next dispatch opens back on that same card.
+     #cycle — unless the record says it walked: then it's a lap, said out loud too. */
+  const hc=heldCard(r), lapped=boardCycled(r);
+  if(b){b.disabled=true;b.textContent=hc?("⚑ HELD ON "+hc+" — BOARD DID NOT MOVE"):lapped?("⟳ SEALED AT "+end+" — CYCLED THE BOOK"):("⚑ SEALED AT "+end+" — ON THE WIRE");}
   if(hc)msg.textContent="> the board did not move — 0 casuals flopped · next dispatch opens back on "+hc;
+  else if(lapped)msg.textContent="> the board ran all the way around the book · next dispatch opens on "+nextCard(end);
   try{buzz(80);}catch(e){}   /* #haptics — the go-home call lands in the casual */
-  try{toast(hc?("⚑ NO FLOP — the board never moved off "+hc):("⚑ NO FLOP — board sealed at "+end));}catch(e){}
+  try{toast(hc?("⚑ NO FLOP — the board never moved off "+hc):lapped?("⟳ NO FLOP — the board cycled the book, sealed at "+end):("⚑ NO FLOP — board sealed at "+end));}catch(e){}
 }
 (function(){
   const on=(id,ev,fn)=>{const e=document.getElementById(id);if(e)e.addEventListener(ev,fn);};
@@ -26942,8 +27261,9 @@ function noFlopSeal(){
   /* #jul23b — rbLogBtn left the Recent Boards header; the Dev Log panel owns the ✎ button now */
   on('brCancel','click',()=>{const s=document.getElementById('boardSheet');if(s)s.classList.remove('on');});
   on('brSave','click',saveBoardResult);
-  on('brBoard','change',()=>{brSyncStart();brPreview();});
+  on('brBoard','change',()=>{_brCyc={touched:false,on:false};brSyncStart();brPreview();try{brWitness();}catch(e){}});   /* #cycle · #witness */
   ['brStart','brEnd','brFlex','br1','br2'].forEach(id=>on(id,'input',brPreview));
+  on('brCyc','change',()=>{const b=document.getElementById('brCyc');_brCyc={touched:true,on:!!(b&&b.checked)};brPreview();});   /* #cycle — the casual's word */
   window.__wireBtnsBound=1;   /* #dev(jul23) — tells the safety-net delegation (end of page) these are wired */
 })();
 
@@ -32859,16 +33179,17 @@ html.daylight .sn-decor{opacity:.5}
    Leave a season out and it stays a pure palette, which is the right answer for
    the remembrance days. */
 /* ═══ #faces(sep3) — THE OUTCOME FACES PUT ON A COSTUME ═══
-   The six faces on the board record (Working · Worked · At the Window · Flop ·
-   Not Called · Board Held) are the app's own little cast, so the seasons get to
-   dress them too. THE WORD UNDER EACH FACE NEVER CHANGES — the emoji is the
-   costume, the label is the record — so a casual reading the log at a glance
-   still reads the same six outcomes on Halloween as in March.
+   The seven faces on the board record (Working · Worked · At the Window · Flop ·
+   Not Called · Board Held · Off the Board) are the app's own little cast, so the
+   seasons get to dress them too. THE WORD UNDER EACH FACE NEVER CHANGES — the
+   emoji is the costume, the label is the record — so a casual reading the log at
+   a glance still reads the same seven outcomes on Halloween as in March.
+   (#offboard(sep4): 'off' 🛌 — worked the board before, couldn't take this one.)
    A season overrides only the faces it has a good idea for; anything it leaves
    out keeps the house face. Same rule as the decor: the remembrance days get
    nothing, because a costume on Memorial Day is the wrong joke. */
 window.SEASON_FACES={
-  halloween:{ prog:'🧟', worked:'🍬', close:'😱', flop:'👻', miss:'💀', held:'⚰' },
+  halloween:{ prog:'🧟', worked:'🍬', close:'😱', flop:'👻', miss:'💀', held:'⚰', off:'🧛' },
   xmas:{      prog:'🧝', worked:'🎁', close:'🔔', flop:'🧦', miss:'☃'          },
   valentine:{ prog:'💌', worked:'💝', close:'😍', flop:'💔', miss:'🥀'         },
   thanksgiving:{ prog:'🍳', worked:'🍗', close:'🥧', flop:'🦴', miss:'🍽'      },
