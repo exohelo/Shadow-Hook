@@ -304,6 +304,25 @@ select.field{appearance:none}
 .pw-eye{position:absolute;right:5px;top:50%;transform:translateY(-50%);width:34px;height:34px;border:0;background:transparent;cursor:pointer;font-size:16px;line-height:1;display:flex;align-items:center;justify-content:center;color:var(--steel);opacity:.72;padding:0;-webkit-tap-highlight-color:transparent}
 .pw-eye:active{transform:translateY(-50%) scale(.9)}
 .pw-eye.on{opacity:1;color:var(--copper-hi)}
+/* ═══ #dmbig(sep04) — THE WIRE READS LIKE MESSENGER ═══
+   By request: 13px condensed type in a 14px-radius box was a strain next to a
+   phone messenger. Bubbles now set in Inter at 15.5px (17 on LARGE text), wider
+   and roomier, the corner tucked toward its own side the way Messenger does it,
+   timestamps legible instead of 8.5px. A photo or GIF is the whole bubble. */
+#dmFeed{gap:6px!important;padding:14px 12px!important}
+.dm-b{position:relative;max-width:82%;padding:10px 14px;border-radius:18px;border:1px solid var(--line-soft);
+  font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:15.5px;line-height:1.4;letter-spacing:.005em;color:var(--bone);
+  word-break:break-word;overflow-wrap:anywhere;white-space:pre-wrap}
+.dm-b.me{align-self:flex-end;background:linear-gradient(184deg,rgba(238,180,107,.18),rgba(238,180,107,.06));border-color:rgba(238,180,107,.38);border-bottom-right-radius:6px}
+.dm-b.them{align-self:flex-start;background:var(--well);border-bottom-left-radius:6px}
+.dm-b.media{padding:5px 5px 6px;white-space:normal}
+.dm-b.pend{opacity:.55}
+.dm-b.run{margin-bottom:-3px}   /* inside a run the bubbles sit closer */
+.dm-b .dm-t{display:block;font-size:10.5px;line-height:1;color:var(--steel);margin-top:6px;letter-spacing:.04em;white-space:nowrap}
+.dm-b.me .dm-t{text-align:right}
+.dm-b.media .dm-t{padding:0 6px}
+html.fs-lg .dm-b{font-size:17px}
+html.daylight .dm-b.them{background:#fff;border-color:var(--line)}
 /* #pwreset — the forgot-it line: fine print with the link inside it */
 .pw-forgot{background:none;border:0;padding:4px 0;font:inherit;font-size:12.5px;line-height:1.45;color:var(--steel);cursor:pointer;-webkit-tap-highlight-color:transparent}
 .pw-forgot b{color:var(--copper-hi);font-weight:600;text-decoration:underline;text-underline-offset:2px}
@@ -22058,16 +22077,18 @@ window.burnCollapse=burnCollapse;
 function dmDrawThread(){
   const f=document.getElementById('dmFeed');if(!f||!DM.openPeer)return;
   const t=DM.threads[DM.openPeer];
-  f.innerHTML=(t&&t.msgs.length)?t.msgs.map(m=>{
+  f.innerHTML=(t&&t.msgs.length)?t.msgs.map((m,i,arr)=>{   /* #dmbig — index + array: a run knows its neighbour */
     const tm=(function(){try{const d=new Date(m.at);return d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});}catch(e){return'';}})();
     /* #dmmedia — a photo or GIF is the bubble; a clip plays inline; a pending upload sits at half strength */
     const k=m.kind||'text', u=String(m.url||'');
     const body=(k==='text'||!u)?esc(m.tx)
       :(k==='video'?'<video src="'+esc(u)+'" controls playsinline preload="metadata" style="display:block;max-width:100%;border-radius:10px;background:#000"></video>'
         :'<img src="'+esc(u)+'" alt="'+(k==='gif'?'GIF':'')+'" loading="lazy" style="display:block;max-width:100%;max-height:320px;border-radius:10px">');
-    return '<div data-dmid="'+esc(String(m.id))+'" style="max-width:78%;padding:'+(k==='text'?'9px 12px':'5px 5px 6px')+';border-radius:14px;font-size:13px;line-height:1.45;border:1px solid var(--line-soft);'+(m.pend?'opacity:.55;':'')
-      +(m.mine?'align-self:flex-end;background:linear-gradient(184deg,rgba(238,180,107,.16),rgba(238,180,107,.05));border-color:rgba(238,180,107,.35)':'align-self:flex-start;background:var(--well)')+'">'
-      +body+'<div style="font-size:8.5px;color:var(--steel);margin-top:4px;letter-spacing:.06em;'+(k==='text'?'':'padding:0 6px')+'">'+tm+'</div></div>';
+    /* #dmbig — classes carry the look (see the sheet); a media bubble is the picture itself.
+       A RUN (same side, next one inside 4 min) shows the time once, on its last bubble — Messenger's rhythm. */
+    const nx=arr[i+1], run=!!(nx&&nx.mine===m.mine&&(new Date(nx.at)-new Date(m.at))<240000);
+    return '<div data-dmid="'+esc(String(m.id))+'" class="dm-b '+(m.mine?'me':'them')+((k!=='text'&&u)?' media':'')+(m.pend?' pend':'')+(run?' run':'')+'">'
+      +body+(run?'':'<span class="dm-t">'+tm+'</span>')+'</div>';
   }).join('')
   :'<p class="sub" style="text-align:center;margin-top:30px">A closed wire, just you two. Masked handles, and talk is free.</p>';
   f.scrollTop=f.scrollHeight;
