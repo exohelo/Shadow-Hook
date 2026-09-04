@@ -311,17 +311,17 @@ select.field{appearance:none}
    timestamps legible instead of 8.5px. A photo or GIF is the whole bubble. */
 #dmFeed{gap:6px!important;padding:14px 12px!important}
 .dm-b{position:relative;max-width:82%;padding:10px 14px;border-radius:18px;border:1px solid var(--line-soft);
-  font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:15.5px;line-height:1.4;letter-spacing:.005em;color:var(--bone);
+  font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:calc(15.5px * var(--chatfs,1));line-height:1.4;letter-spacing:.005em;color:var(--bone);
   word-break:break-word;overflow-wrap:anywhere;white-space:pre-wrap}
 .dm-b.me{align-self:flex-end;background:linear-gradient(184deg,rgba(238,180,107,.18),rgba(238,180,107,.06));border-color:rgba(238,180,107,.38);border-bottom-right-radius:6px}
 .dm-b.them{align-self:flex-start;background:var(--well);border-bottom-left-radius:6px}
 .dm-b.media{padding:5px 5px 6px;white-space:normal}
 .dm-b.pend{opacity:.55}
 .dm-b.run{margin-bottom:-3px}   /* inside a run the bubbles sit closer */
-.dm-b .dm-t{display:block;font-size:10.5px;line-height:1;color:var(--steel);margin-top:6px;letter-spacing:.04em;white-space:nowrap}
+.dm-b .dm-t{display:block;font-size:calc(10.5px * var(--chatfs,1));line-height:1;color:var(--steel);margin-top:6px;letter-spacing:.04em;white-space:nowrap}
 .dm-b.me .dm-t{text-align:right}
 .dm-b.media .dm-t{padding:0 6px}
-html.fs-lg .dm-b{font-size:17px}
+html.fs-lg .dm-b{font-size:calc(17px * var(--chatfs,1))}
 html.daylight .dm-b.them{background:#fff;border-color:var(--line)}
 /* #pwreset — the forgot-it line: fine print with the link inside it */
 .pw-forgot{background:none;border:0;padding:4px 0;font:inherit;font-size:12.5px;line-height:1.45;color:var(--steel);cursor:pointer;-webkit-tap-highlight-color:transparent}
@@ -6352,7 +6352,7 @@ window.DEVLOG=(function(){
         <!-- #textsize — by request from casuals squinting at the messager: three sizes, app-wide -->
         <div class="alrow"><div class="alm">
             <div class="alt">Text size</div>
-            <div class="als">Scales the whole app — messages most of all. The Aa button in any chatroom does the same.</div>
+            <div class="als">Scales the whole app — messages most of all. The Aa button in any chatroom does the same. Pinch two fingers on any chat to fine-tune just the chat.</div>
           </div><div class="fsz-seg" role="group" aria-label="Text size">
             <button class="fsz-btn" data-fsz="sm" type="button" aria-label="Small text">A</button>
             <button class="fsz-btn" data-fsz="md" type="button" aria-label="Medium text">A</button>
@@ -18414,6 +18414,7 @@ document.getElementById('roomInvite').addEventListener('click',()=>{
    START on the emoji strip (it scrolls sideways) or the send bar don't count. */
 (function(){const rv=document.getElementById('roomView');let x0=null,y0=null;
   rv.addEventListener('touchstart',e=>{const t=e.touches[0];
+    if(e.touches.length>1){x0=null;return;}   /* #pinchtext — two fingers are sizing the type, not swiping back */
     if(e.target.closest('.emoji-row')||e.target.closest('.sendbar')){x0=null;return;}
     /* #edgeswipe(aug12) — a swipe that STARTS at the screen edge IS the phone's own
        back gesture. Let the browser drive that one: the history back-stop (openRoom)
@@ -18422,7 +18423,7 @@ document.getElementById('roomInvite').addEventListener('click',()=>{
     const ew=window.innerWidth||(screen&&screen.width)||360;
     if(t.clientX<=24||t.clientX>=ew-24){x0=null;return;}
     x0=t.clientX;y0=t.clientY;},{passive:true});
-  rv.addEventListener('touchend',e=>{if(x0==null)return;const t=e.changedTouches[0];
+  rv.addEventListener('touchend',e=>{if(x0==null||!(e.changedTouches&&e.changedTouches[0]))return;const t=e.changedTouches[0];
     const dx=t.clientX-x0,dy=t.clientY-y0;
     if(Math.abs(dx)>75&&Math.abs(dx)>Math.abs(dy)*1.6)closeRoom();
     x0=null;},{passive:true});
@@ -21818,6 +21819,7 @@ function _dmView(){
     +'<input id="dmIn" placeholder="Say your piece…" autocomplete="off" style="flex:1;min-width:0;background:var(--void);border:1px solid var(--line);border-radius:99px;padding:11px 15px;color:var(--bone);font-family:inherit;font-size:16px;outline:none">'
     +'<button id="dmSendBtn" type="button" style="flex:none;width:42px;height:42px;border-radius:50%;border:1px solid rgba(238,180,107,.5);background:linear-gradient(184deg,var(--btn-hi),var(--btn-lo));color:var(--copper-hi);font-size:16px;cursor:pointer">➤</button></div>';
   document.body.appendChild(v);
+  try{ if(window.pinchTextArm)pinchTextArm(v.querySelector('#dmFeed')); }catch(e){}   /* #pinchtext — two fingers size the wire too */
   v.querySelector('#dmBack').addEventListener('click',closeDmThread);
   v.querySelector('#dmWipe').addEventListener('click',()=>burnSheet('dms',{peer:DM.openPeer}));   /* #burn — this wire, pre-picked */
   v.querySelector('#dmSendBtn').addEventListener('click',dmSend);
@@ -31461,6 +31463,37 @@ html.fs-lg .msg .who time{font-size:13px}
 html.fs-lg .sendbar #chatInput{font-size:20px}
 html.fs-lg .msg.keymaster .txt{font-size:17px}
 html.fs-lg .msg .reacts{font-size:14px}
+/* ═══ #roombig(sep04) — THE ROOMS READ LIKE MESSENGER, same as the wire (#dmbig) ═══
+   By request. The room's bubbles were already big (17px on MEDIUM, ×1.15 zoom) but
+   set in the condensed headline face, which is what made them a strain: narrow
+   letters, tall lines. Same fix as the wire — Inter, a touch smaller in px because
+   Inter runs wider, roomier padding, a wider bubble. The MEDIUM/LARGE pushes above
+   are re-tuned for the new face (they were sized for condensed). These sit AFTER
+   the #textsize rules on purpose: same specificity, later wins. The Keymaster's
+   bulletin keeps its own face — it is a notice, not a chat line. */
+.msg .txt{font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:calc(15px * var(--chatfs,1));line-height:1.4;letter-spacing:.005em;padding:10px 14px;max-width:84%}
+.msg.keymaster .txt{font-family:'Barlow Condensed',sans-serif;max-width:none}
+.msg .who{font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:calc(12.5px * var(--chatfs,1));letter-spacing:.02em}
+.msg .who time{font-size:calc(10.5px * var(--chatfs,1))}
+html.fs-md .msg .txt{font-size:calc(15.5px * var(--chatfs,1));line-height:1.4}
+html.fs-md .msg .who{font-size:calc(13px * var(--chatfs,1))}
+html.fs-md .msg .who time{font-size:calc(11px * var(--chatfs,1))}
+html.fs-lg .msg .txt{font-size:calc(17px * var(--chatfs,1));line-height:1.42}
+html.fs-lg .msg .who{font-size:calc(14px * var(--chatfs,1))}
+html.fs-lg .msg .who time{font-size:calc(12px * var(--chatfs,1))}
+/* ═══ #pinchtext(sep04) — TWO FINGERS SIZE THE CHAT ═══
+   The feeds own the pinch: pan-y leaves one-finger scrolling to the browser and
+   hands a two-finger spread to the script (see the #pinchtext block). The badge is
+   the readout while the fingers are down; it stays a beat after, and a tap on it
+   puts the size back to 100%. */
+#chatFeed,#dmFeed{touch-action:pan-y}
+.chatfs-badge{position:fixed;left:50%;top:42%;transform:translate(-50%,-50%);z-index:111;pointer-events:none;
+  display:none;align-items:center;gap:8px;padding:10px 16px;border-radius:14px;
+  background:rgba(10,8,20,.9);border:1px solid rgba(238,180,107,.55);box-shadow:0 12px 30px rgba(0,0,0,.5),0 0 20px rgba(238,180,107,.25);
+  font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:13px;letter-spacing:.06em;color:var(--copper-hi)}
+.chatfs-badge b{font-family:'Anton',sans-serif;font-size:22px;letter-spacing:.04em;color:#fff}
+.chatfs-badge small{font-size:9.5px;letter-spacing:.16em;color:var(--steel);text-transform:uppercase}
+.chatfs-badge.on{display:flex;pointer-events:auto;cursor:pointer}
 .fsz-seg{display:flex;gap:6px;flex:none;align-items:center}
 .fsz-btn{width:38px;height:38px;border-radius:10px;border:1px solid var(--line);background:var(--plate);color:var(--steel);cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-weight:700;line-height:1;padding:0}
 .fsz-btn[data-fsz="sm"]{font-size:12px}
@@ -31471,6 +31504,56 @@ html.fs-lg .msg .reacts{font-size:14px}
 #aaBtn{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px}
 </style>
 <script>
+/* ═══ #pinchtext(sep04) — TWO FINGERS SIZE THE CHAT ═══
+   By request: SMALL / MEDIUM / LARGE are three stops; eyes come in more sizes than
+   that. Spread two fingers on a room or a wire and the type grows under them, pinch
+   and it shrinks — 75% to 200% of whatever the Aa setting gives, in a figure that
+   sticks on this phone (shadowhook_chatfs) and rides the --chatfs token every chat
+   size is multiplied by. Live readout in a badge while the fingers are down; tap the
+   badge to go back to 100%. Desktop gets Ctrl + wheel over a feed. The gesture
+   belongs to the feed: pan-y keeps one-finger scrolling native, two fingers are
+   caught before the browser can zoom the page (touchmove preventDefault, non-passive
+   — the same trick the yard maps use). */
+(function(){
+  var MIN=.75, MAX=2, KEY='shadowhook_chatfs';
+  var cur=1; try{ var v=parseFloat(localStorage.getItem(KEY)); if(v>=MIN&&v<=MAX)cur=v; }catch(e){}
+  function put(v){ cur=Math.max(MIN,Math.min(MAX,v)); document.documentElement.style.setProperty('--chatfs',cur.toFixed(3)); return cur; }
+  function save(){ try{ if(Math.abs(cur-1)<.02){ cur=1; localStorage.removeItem(KEY); } else localStorage.setItem(KEY,cur.toFixed(3)); }catch(e){} put(cur); }
+  put(cur);
+  var badge=null, hideT=null;
+  function show(hold){
+    if(!badge){ badge=document.createElement('div'); badge.className='chatfs-badge'; badge.setAttribute('role','status');
+      badge.innerHTML='<span>Aa</span><b></b><small>tap to reset</small>';
+      badge.addEventListener('click',function(){ put(1); save(); show(false); });
+      (document.body||document.documentElement).appendChild(badge); }
+    badge.querySelector('b').textContent=Math.round(cur*100)+'%';
+    badge.classList.add('on'); clearTimeout(hideT);
+    if(!hold)hideT=setTimeout(function(){ badge.classList.remove('on'); },1400);
+  }
+  window.setChatScale=function(v){ put(v==null?1:+v); save(); show(false); return Math.round(cur*100)+'%'; };
+  function dist(t){ var dx=t[0].clientX-t[1].clientX, dy=t[0].clientY-t[1].clientY; return Math.hypot(dx,dy); }
+  function arm(el){
+    if(!el||el._pinchArmed)return; el._pinchArmed=1;
+    var d0=0, s0=1, live=false;
+    el.addEventListener('touchstart',function(e){
+      if(e.touches.length===2){ d0=dist(e.touches); s0=cur; live=true; show(true); e.preventDefault(); }
+    },{passive:false});
+    el.addEventListener('touchmove',function(e){
+      if(!live||e.touches.length<2)return;
+      e.preventDefault();
+      var d=dist(e.touches); if(d0>0&&d>0){ put(s0*(d/d0)); show(true); }
+    },{passive:false});
+    var end=function(e){ if(!live)return; if(e.touches&&e.touches.length>=2)return; live=false; save(); show(false); };
+    el.addEventListener('touchend',end); el.addEventListener('touchcancel',end);
+    /* iOS Safari in the browser (not the installed app) zooms the page on a pinch unless told not to */
+    el.addEventListener('gesturestart',function(e){ e.preventDefault(); },{passive:false});
+    el.addEventListener('gesturechange',function(e){ e.preventDefault(); },{passive:false});
+    /* desktop: Ctrl + wheel over a feed */
+    el.addEventListener('wheel',function(e){ if(!(e.ctrlKey||e.metaKey))return; e.preventDefault(); put(cur*(e.deltaY<0?1.05:1/1.05)); save(); show(false); },{passive:false});
+  }
+  window.pinchTextArm=arm;
+  arm(document.getElementById('chatFeed'));
+})();
 /* #textsize — one persisted figure drives the profile row, the chatroom Aa, and the CSS. */
 (function(){
 "use strict";
@@ -31491,7 +31574,7 @@ function apply(boot){
 function setSize(v,quiet){ if(ORDER.indexOf(v)<0)return; cur=v;
   try{ localStorage.setItem(KEYF,v); }catch(e){}
   apply();
-  if(!quiet){ try{ toast('Aa \u00b7 text '+NAME[v]); }catch(e){} }
+  if(!quiet){ try{ toast('Aa \u00b7 text '+NAME[v]+' \u00b7 pinch a chat to fine-tune'); }catch(e){} }   /* #pinchtext */
 }
 window.setTextSize=setSize;
 document.querySelectorAll('.fsz-btn').forEach(b=>b.addEventListener('click',()=>setSize(b.dataset.fsz)));
