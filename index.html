@@ -4665,7 +4665,7 @@ window.DEVLOG=(function(){
   #recentBoards .rb-stat.close .rb-word{color:var(--copper-hi)}
   #recentBoards .rb-stat.miss .rb-word{color:var(--steel)}
   #recentBoards .rb-stat.prog .rb-word{color:var(--copper-hi)}
-  #recentBoards .rb-stat.off .rb-word{color:#8db4cc}   /* #offboard(sep4) — worked the board before: not eligible, not a flop */
+  #recentBoards .rb-stat.off .rb-word{color:#8db4cc}   /* #nodouble(sep4) — the board passed you, but you'd worked the board before: not eligible, not a flop */
   /* #desk(sep4) — requests on the Keymaster's desk */
   .desk-row{border:1px solid rgba(238,180,107,.45);border-radius:10px;padding:8px 10px;margin-bottom:6px}
   .desk-row.done{border-color:var(--line-soft);opacity:.72}
@@ -4736,8 +4736,12 @@ window.DEVLOG=(function(){
   .rd .num-tiles>div{flex:1;min-width:0;text-align:center;padding:8px 4px;border-radius:10px;background:var(--well);border:1px solid var(--line-soft)}
   .rd .num-tiles b{display:block;font-size:19px;font-weight:700;color:var(--bone);line-height:1.1}
   .rd .num-tiles span{display:block;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--steel);margin-top:3px}
-  .rd .num-strip{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
-  .rd .num-strip>div{text-align:center;border-radius:8px;padding:5px 2px;background:var(--well);border:1px solid var(--line-soft);font-size:10.5px;line-height:1.3;color:var(--steel)}
+  /* #stripscroll — the day tiles keep their full width (a sealer's handle is never
+     squeezed or cut) and the strip scrolls sideways inside the card instead of
+     hanging out past its edge. overscroll-behavior keeps a swipe on the strip from
+     chaining into the sheet; the bottom padding keeps a desktop scrollbar off the tiles. */
+  .rd .num-strip{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;scrollbar-width:thin;padding-bottom:4px;max-width:100%}
+  .rd .num-strip>div{text-align:center;border-radius:8px;padding:5px 3px;background:var(--well);border:1px solid var(--line-soft);font-size:10.5px;line-height:1.3;color:var(--steel);white-space:nowrap}
   .rd .num-strip b{display:block;font-size:12.5px;color:var(--bone)}
   .rd .num-ok{color:var(--ok)!important} .rd .num-warn{color:var(--warn)!important} .rd .num-bad{color:#f2a184!important}
   .rd .num-grid{width:100%;border-collapse:collapse;font-size:12px}
@@ -10200,7 +10204,7 @@ function boardCalled(r){ return r?calledSpan(r.start,r.end,r):null; }
    A casual who worked the night before cannot take a day job the next morning
    (and a day casual can't double onto that night's board). When the window
    reaches their card again they are not at the window and they did not flop —
-   they're OFF THE BOARD. On a normal board that never happens: the board walks
+   that's NO DOUBLE BACK. On a normal board that never happens: the board walks
    forward and the crew that just worked sits BEHIND the opening card. It only
    happens when this board's walk reaches back into the last board's span — a
    lap, or a long wrap. Sep 4 AM lapped the book after 516 casuals worked Sep 3
@@ -13429,12 +13433,15 @@ function myBoardStatus(r){
     const st=new Date(r.date+"T"+(isAM?"08:00":"18:00"));
     return (Date.now()<st.getTime()+8*3600000)?V('prog',F('prog','💪'),'Working'):V('worked',F('worked','🤑'),'Worked');
   }
-  /* #offboard(sep4) — you worked the board DIRECTLY before this one (the night before
-     a day board, or that morning before a night board), so you could not take a job
-     on it. A call on your card is not a flop: you were OFF THE BOARD. Sep 4 AM lapped
-     the book and handed a 😢 to every casual who'd worked Sep 3 PM. Checked before
-     the verdicts below, because it's about you, not the board. */
-  if(workedPriorBoard(r))return V('off',F('off','🛌'),'Off the Board');
+  /* #nodouble(sep4) — you worked the board DIRECTLY before this one (the night before
+     a day board, or that morning before a night board), so the no-double-back rule
+     kept you from taking a job on it. That only matters if the board actually PASSED
+     your card: then the call on your card is not a flop, it's NO DOUBLE BACK. Sep 4 AM
+     lapped the book and handed a 😢 to every casual who'd worked Sep 3 PM. If the board
+     never reached you, the rule cost you nothing and the record reads as it would for
+     anyone else (Not Called · At the Window · Board Held). So this is decided down at
+     the verdicts, where a called card would otherwise be told it flopped. */
+  const CALLED=()=>workedPriorBoard(r)?V('off',F('off','🛌'),'No Double Back'):V('flop',F('flop','😢'),'Flop');
   if(r.act==null)return '';
   /* #fix(derivedAM) — same class as the render guard: a partial row (wire patch or
      old storage) can carry act with NO start card. cardRunPos already answers null
@@ -13455,7 +13462,7 @@ function myBoardStatus(r){
      the prediction were calling one casual two different things. Now both read the card. */
   const myCard=savedAcct.id;
   switch(cardRunPos(myCard,r.start,r.end,boardLap(r))){   /* #cycle — a lap onto its own card calls everyone */
-    case 'called': return V('flop',F('flop','😢'),'Flop');
+    case 'called': return CALLED();                                  /* #nodouble — a flop, unless the rule kept you off */
     case 'at':     return V('close',F('close','😬'),'At the Window');
     case 'past':   return V('miss',F('miss','😴'),'Not Called');   // behind the opening card
     case 'short':  return V('miss',F('miss','😴'),'Not Called');   // it died before your number
@@ -13466,7 +13473,7 @@ function myBoardStatus(r){
   const dd=(AZ.indexOf(myL)-AZ.indexOf(r.start[0])+26)%26;
   const myN=parseInt(myCard.slice(1),10), stN=parseInt(String(r.start).slice(1),10);
   if(dd===0&&isFinite(myN)&&isFinite(stN)&&myN<stN)return V('miss',F('miss','😴'),'Not Called');
-  if(dd<r.act)return V('flop',F('flop','😢'),'Flop');
+  if(dd<r.act)return CALLED();                                       /* #nodouble */
   if(dd===r.act)return V('close',F('close','😬'),'At the Window');
   return V('miss',F('miss','😴'),'Not Called');
 }
@@ -14022,7 +14029,7 @@ function renderRecentBoards(){
       const still=(boardMoved(r)===false), hc=still?heldCard(r):null, cyc=boardCycled(r);
       const line2=still
         ? (hi('0','fl')+' Casual Flopped · <b class="rbn">the board did not move</b>')
-        : (fl!=null?hi(fl.toLocaleString(),'fl')+' Casual Flopped'+(off>0?' · '+hi(off.toLocaleString(),'dn')+' off the board':'')+(att!=null?' · '+hi(att+'%','att')+' Attendance':'')+(cyc?' · <b class="rbn">cycled the book</b>':''):'');   /* #offboard */
+        : (fl!=null?hi(fl.toLocaleString(),'fl')+' Casual Flopped'+(off>0?' · '+hi(off.toLocaleString(),'dn')+' no double back':'')+(att!=null?' · '+hi(att+'%','att')+' Attendance':'')+(cyc?' · <b class="rbn">cycled the book</b>':''):'');   /* #offboard · #nodouble — the crew the rule kept off this board */
       const score=(line1?'<div class="rb-line">'+line1+'</div>':'')
                  +(line2?'<div class="rb-line">'+line2+'</div>':'');
       const when=(r.rain?'🌧 ':'')+(r.hol?'🕯 ':'');
@@ -26975,7 +26982,7 @@ function brPreview(){
     +'<div class="lb-att-bar"><i style="width:'+Math.min(100,att)+'%"></i></div>'
     +'<div class="lb-tiles'+((off>0?1:0)+(lap?1:0)>=2?' lb-four':'')+'"><div><b>'+called.toLocaleString()+'</b><span>CALLED</span></div>'
     +'<div><b>'+came.toLocaleString()+'</b><span>CAUGHT</span></div>'
-    +(off>0?'<div><b>'+off.toLocaleString()+'</b><span>OFF THE BOARD</span></div>':'')
+    +(off>0?'<div><b>'+off.toLocaleString()+'</b><span>NO DOUBLE BACK</span></div>':'')
     +(lap?'<div><b>'+nextCard(end)+'</b><span>NEXT BOARD OPENS ON</span></div>':'')
     +'</div></div>';
 }
@@ -33503,11 +33510,12 @@ html.daylight .sn-decor{opacity:.5}
    the remembrance days. */
 /* ═══ #faces(sep3) — THE OUTCOME FACES PUT ON A COSTUME ═══
    The seven faces on the board record (Working · Worked · At the Window · Flop ·
-   Not Called · Board Held · Off the Board) are the app's own little cast, so the
+   Not Called · Board Held · No Double Back) are the app's own little cast, so the
    seasons get to dress them too. THE WORD UNDER EACH FACE NEVER CHANGES — the
    emoji is the costume, the label is the record — so a casual reading the log at
    a glance still reads the same seven outcomes on Halloween as in March.
-   (#offboard(sep4): 'off' 🛌 — worked the board before, couldn't take this one.)
+   (#nodouble(sep4): 'off' 🛌 — the board passed you, but you'd worked the board
+   before, so the no-double-back rule kept you from taking this one.)
    A season overrides only the faces it has a good idea for; anything it leaves
    out keeps the house face. Same rule as the decor: the remembrance days get
    nothing, because a costume on Memorial Day is the wrong joke. */
@@ -33970,26 +33978,15 @@ window.SEASON_GREET={
 window.SEASON_STORY={
   labor:{
     title:'LABOR DAY',
-    lede:'The rest of the country gets a mattress sale. Here is what the day actually is, what the book says about your Monday, and why this union has holidays nobody else in America gets.',
     parts:[
       {k:'THE PRACTICAL PART',h:'NOBODY WORKS MONDAY',
        quote:['No work shall be performed between 8:00 a.m. on Labor Day and 7:00 a.m. the day after Labor Day.','PCLCD 2022–2028 · Section 5.2'],
-       p:['The Sunday third shift finishes out at eight. Then the harbor is shut for twenty-three hours and the board picks back up Tuesday morning at seven.',
-          'The contract names three exceptions and no others: passenger ships, essential military cargo, emergencies. If a Labor Day job does come down the board, it is one of those three.'],
+       p:['The contract names three exceptions and no others: passenger ships, essential military cargo, emergencies. If a Labor Day job does come down the board, it is one of those three.'],
        /* #lbstory(sep04b) — the "8-HOUR HOLIDAY CHECK" fact (Section 5.3's three tests for the
           registered man's paid holiday) came out by request: it does not apply to casuals,
           and this is a casual's page. What a casual actually gets stays, below. */
        facts:[['IF YOU WORK IT','1.5× the basic straight-time rate on the first and second shift. 1.8× on the third. (§4.142, §4.153)'],
-              ['SO, AS A CASUAL','You do not draw the holiday check. Work one of the exception jobs and you are paid the premium rate for the hours you actually work. That is the whole of it.']],
-       note:'The hall is the authority here, not this app. This is what the book says — where the two disagree, the book and the dispatcher win.'},
-
-      {k:'1882',h:'TEN THOUSAND MEN TOOK A DAY THEY WEREN’T PAID FOR',
-       p:['September 5, 1882. Ten thousand workers walked off the job in New York and marched from City Hall to Union Square. Nobody handed them the day. They took it, and they lost the pay for taking it.',
-          'What they were walking out of: twelve-hour days, seven days a week, and children of five and six working the mills.',
-          'Oregon wrote it into law first, February 21, 1887. Twenty-three more states followed before Washington moved.',
-          'Then June 28, 1894 — Grover Cleveland signs it federal. He signs it in the middle of the Pullman strike. Five days later he sends federal troops into Chicago, and by July 7 the National Guard has fired into a crowd and killed as many as thirty people. The holiday was the hand he offered while the other one reached for the Army.',
-          'And the first Monday in September, not the first of May, because May Day already belonged to workers everywhere else in the world after Haymarket and Washington wanted no part of it. September was the safe one.',
-          'Who thought of it is still argued about: Peter J. McGuire of the carpenters, or Matthew Maguire of the machinists. Two men one letter apart, and a hundred and forty years of nobody being certain.']},
+              ['SO, AS A CASUAL','You do not draw the holiday check. Work one of the exception jobs and you are paid the premium rate for the hours you actually work. That is the whole of it.']]},
 
       {k:'1934',h:'BEFORE THE HALL, THERE WAS THE SHAPE-UP',
        p:['Every morning at eight, men stood on the Embarcadero and waited for a hiring boss to point at a face. They called it the slave market. More men than jobs, every single morning, on purpose — a man who might not eat tomorrow does not complain about today.',
@@ -35010,7 +35007,7 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
       +(n?'<div class="num-tiles"><div><b class="'+_numCls(aAM)+'">'+(aAM==null?'—':aAM+'%')+'</b><span>day boards</span></div>'
           +'<div><b class="'+_numCls(aPM)+'">'+(aPM==null?'—':aPM+'%')+'</b><span>night boards</span></div>'
           +'<div><b class="'+(cyc?'num-warn':'')+'">'+cyc+'</b><span>cycled the book</span></div></div>'+grid
-          +'<div class="num-foot">came down ÷ the cards that could answer (the crew off the board is left out). Green from 26%, amber from 15%, red below.'
+          +'<div class="num-foot">came down ÷ the cards that could answer (the no-double-back crew is left out). Green from 26%, amber from 15%, red below.'
           +(thin!=null?' The next board opens into thin letters worth <b style="color:var(--bone)">'+thin+'%</b> of a full one.':'')+'</div>'
         :'<div class="sub">no sealed boards with a come-down in the last fortnight — the Drop Log and NO FLOP feed this.</div>')
       +'</div>';
