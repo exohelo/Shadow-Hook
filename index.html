@@ -13149,16 +13149,29 @@ function xpEarlyCompact(dd){
     +' · <span class="xp-more" style="color:var(--copper-hi);cursor:pointer">full sheet ▾</span></div>';
   return h;
 }
-/* #four(sep04) — THE LIST IS FOUR BOARDS. By request: the open sheet shows Hold,
-   UTR, Dock and Key Hold, and nothing else. This is DISPLAY ONLY — sheetTotals()
-   still counts every board the sheet carries, the header's Total / Casual figures
-   are what they always were, and the prediction reads the same numbers it always
-   did (casualJobsOf → sheetTotals → t.cas; nothing here is in that path). Matched
-   through normBoardName, so an OCR'd "KEY HOLD" / "Keyhold" still lands. Same
-   lazy-Set shape as membersOnlyBoards(), for the same TDZ reason. */
+/* #four(sep04) — THE LIST IS THE HALL'S FOUR BOARDS, AND THE CASUAL FIGURE IS THEIRS.
+   By request, and then by arithmetic. The hall posts a casual count; on 9/4 it
+   said 1,438, and the sheet's rows say why: Hold 669 + UTR 476 + Dock 175 +
+   Swamper 118 = 1,438, to the job. That is the hall's casual count — the four
+   basic boards. CY, Jitney, Key Hold and Gear are casual-eligible work but the
+   hall does not count them, and neither did the word that came down ("keep four")
+   — it just arrived as "key hold" where the numbers say Swamper.
+
+   The panel used to print Casual 1,652: every board that isn't crane/winch/
+   mechanic, summed. That is NOT wrong, it is a different number with a different
+   job: it is what the record carries and what the call runs on, and the engine
+   already knows the two scales differ (boardsToCh, learned ≈0.85: 1,652 × 0.85 ≈
+   the hall's 1,438). So this is DISPLAY ONLY, twice over:
+     · the rows are the hall's four, and the header's Casual is their sum — the
+       number a casual reads off the hall's own post, and the rows add up to it;
+     · the engine's figure still prints, one line down, named for what it is.
+   sheetTotals() is untouched; casualJobsOf → t.cas still feeds publishCall the
+   same value it always did. Matched through normBoardName, so an OCR'd "SWAMPERS"
+   / "U.T.R." still lands. Same lazy-Set shape as membersOnlyBoards(), same TDZ
+   reason. */
 let _sheetShow=null;
 function sheetRowShown(name){
-  return (_sheetShow||(_sheetShow=new Set(["HOLD","UTR","DOCK","KEY HOLD","KEYHOLD"]))).has(normBoardName(name));
+  return (_sheetShow||(_sheetShow=new Set(["HOLD","HOLDS","UTR","UTRS","DOCK","DOCKS","SWAMPER","SWAMPERS","SWMP"]))).has(normBoardName(name));
 }
 function xpSheet(d,label){
   /* #sheetfix — every figure here comes from sheetTotals(), the same call the
@@ -13166,24 +13179,36 @@ function xpSheet(d,label){
      the row above it. Board names are escaped: they are OCR output and free
      text from the Sheet Editor, and they used to go into innerHTML raw. */
   const t=sheetTotals(d);
+  /* #four — the hall's four, in the count order they already come in. A sheet
+     with none of the four (a bad scan) falls back to the whole list — and to
+     the every-board casual figure — rather than an empty panel. */
+  let rows=t.casual.filter(x=>sheetRowShown(x[0]));
+  const trimmed=rows.length>0&&rows.length<t.casual.length;
+  if(!rows.length)rows=t.casual;
+  const hallCas=trimmed?rows.reduce((s,x)=>s+x[1],0):null;
+  const casShown=(hallCas!=null)?hallCas:t.cas;
   let h='<div class="xp-h">'+acEsc(label)+'</div>';
   h+='<div class="xp-tot">Total <b>'+(t.grand!=null?t.grand.toLocaleString():'—')+'</b>'
-    +(t.cas!=null?' · Casual <b style="color:var(--copper-hi)">'+t.cas.toLocaleString()+'</b>':'')+'</div>';
+    +(casShown!=null?' · Casual <b style="color:var(--copper-hi)">'+casShown.toLocaleString()+'</b>':'')+'</div>';
   if(t.casual.length||t.members.length){
-    /* #four — the four boards, in the count order they already come in. A sheet
-       with none of the four (a bad scan) falls back to the whole list rather than
-       an empty panel. */
-    let rows=t.casual.filter(x=>sheetRowShown(x[0]));
-    const trimmed=rows.length>0&&rows.length<t.casual.length;
-    if(!rows.length)rows=t.casual;
     const max=Math.max(1,...rows.map(x=>x[1]));
     rows.forEach(([k,n])=>{const pct=Math.round(n/max*100);
       h+='<div class="xp-row"><span class="xp-name">'+acEsc(k)+'</span>'
         +'<span class="xp-track" title="'+acEsc(xpOrderLine(d.boards[k]||{}))+'"><i style="width:'+pct+'%"></i></span>'
         +'<b>'+n.toLocaleString()+'</b></div>';});
+    /* #four — the every-board figure, named. It is the number the record row shows
+       and the call runs on, so it must not vanish just because the header now
+       carries the hall's; and the boards that make the difference are listed so
+       nobody has to work out where 214 jobs went. */
+    if(trimmed&&t.cas!=null&&t.cas!==hallCas){
+      const rest=t.casual.filter(x=>!sheetRowShown(x[0])&&x[1]>0);
+      h+='<div class="xp-mem" style="color:var(--steel)">⚓ The call runs on <b>'+t.cas.toLocaleString()+'</b> — these four'
+        +(rest.length?' plus '+rest.map(([k,n])=>'<b>'+acEsc(k)+' '+n.toLocaleString()+'</b>').join(' · ')+',':',')
+        +' every board a casual can take</div>';
+    }
     /* #four — the CASUAL BOARDS subtotal sums EVERY casual board; under four rows it
-       would read as a sum that doesn't add up. The header's Casual figure carries
-       that number already, so the subtotal only prints when nothing was trimmed. */
+       would read as a sum that doesn't add up, and the line above says it. It only
+       prints when nothing was trimmed. */
     if(t.summed!=null&&!trimmed)
       h+='<div class="xp-row xp-sum"><span class="xp-name">CASUAL BOARDS</span><span class="xp-track"></span><b>'+t.summed.toLocaleString()+'</b></div>';
     /* the sheet states one casual figure and its own rows add to another. That
@@ -13191,7 +13216,7 @@ function xpSheet(d,label){
        say so rather than printing two numbers and letting the eye pick. */
     if(t.mismatch)
       h+='<div class="xp-mem" style="color:var(--ember)">&#9888; the stated casual count ('+t.stated.toLocaleString()
-        +') doesn\u2019t match these rows ('+t.summed.toLocaleString()+') \u2014 the breakdown is from a different read of the sheet. Trust the paper.</div>';
+        +') doesn\u2019t match the sheet\u2019s own rows ('+t.summed.toLocaleString()+') \u2014 the breakdown is from a different read of the sheet. Trust the paper.</div>';
     /* #sheetguard(aug20) \u2014 say WHICH numbers were reconciled (the scan read the
        hall's pen marks; the sheet's own columns outvoted the misread cells), and
        flag the one shape that can't be auto-fixed instead of printing nonsense */
