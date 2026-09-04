@@ -18358,6 +18358,8 @@ document.getElementById('roomBack').addEventListener('click',closeRoom);
   function closeTop(){
     try{
       /* #dm(aug13) — an open wire is the topmost thing there is */
+      const gp=document.getElementById('gathPage');   /* #gathpage — Back shuts the gathering first */
+      if(gp&&gp.classList.contains('on')){ closeGathPage(); return true; }
       const dv=document.getElementById('dmView');
       if(dv&&dv.style.display!=='none'&&dv.style.display!==''){ if(typeof closeDmThread==='function')closeDmThread(); else dv.style.display='none'; return true; }
       if(document.querySelector('.gifsheet.on')){ if(typeof closeGifPicker==='function')closeGifPicker(); else document.querySelectorAll('.gifsheet.on').forEach(s=>s.classList.remove('on')); return true; }
@@ -19640,6 +19642,8 @@ async function sbLoadSocial(){
    old gathering to get its room, and nobody but the owner can conjure one. ═══ */
 /* ═══ #flyer(sep04) — THE GATHERING'S FLYER. See the sheet up in the styles. ═══ */
 window.GATH_FLYER={};   /* id → {url,pos} — pos is the 0..1 anchor of the 16:9 band */
+window.GATH_EXTRA={};   /* #gathpage — id → {cost,parking,notes}, the things a flyer says and a card can't */
+function gathExtra(id){ try{ return GATH_EXTRA[id]||null; }catch(e){ return null; } }
 function gathFlyer(id){ try{ return GATH_FLYER[id]||null; }catch(e){ return null; } }
 async function sbLoadGathFlyers(){
   if(!window.SB||window.__shkNoFlyer===true)return;
@@ -19648,6 +19652,28 @@ async function sbLoadGathFlyers(){
     if(r.error){ window.__shkNoFlyer=true; console.info('[gath] no flyers yet — run GATH-FLYER.sql'); return; }
     GATH_FLYER={}; (r.data||[]).forEach(x=>{ if(x&&x.id&&x.url)GATH_FLYER[x.id]={url:x.url,pos:(x.pos==null?.5:+x.pos)}; });
   }catch(e){ window.__shkNoFlyer=true; }
+  /* #gathpage — the extras, their own read so a missing table costs the flyers nothing */
+  if(window.__shkNoExtra!==true){
+    try{
+      const x=await window.SB.from('gath_extra').select('id,cost,parking,notes');
+      if(x.error){ window.__shkNoExtra=true; console.info('[gath] no extras yet — re-run GATH-FLYER.sql'); }
+      else{ GATH_EXTRA={}; (x.data||[]).forEach(r2=>{ if(r2&&r2.id)GATH_EXTRA[r2.id]={cost:r2.cost||'',parking:r2.parking||'',notes:r2.notes||''}; }); }
+    }catch(e){ window.__shkNoExtra=true; }
+  }
+}
+async function gathExtraSave(gid,d){
+  if(!(window.SB&&window.__shkUid))return false;
+  try{
+    const r=await window.SB.from('gath_extra').upsert({id:gid,cost:d.cost||null,parking:d.parking||null,notes:d.notes||null,set_by:window.__shkUid},{onConflict:'id'});
+    if(r.error)throw r.error;
+    GATH_EXTRA[gid]={cost:d.cost||'',parking:d.parking||'',notes:d.notes||''};
+    return true;
+  }catch(e){
+    const m=String((e&&(e.message||e.error))||e||'');
+    toast(/gath_extra|does not exist|42P01|schema cache|PGRST205/i.test(m)?'⚓ Details need GATH-FLYER.sql — re-run it in Supabase → SQL Editor'
+      :/row-level security|policy|42501|403/i.test(m)?'Only the caller can change the details':'Couldn’t save the details — '+(m?m.slice(0,70):'try again'));
+    return false;
+  }
 }
 /* the whole poster goes up — a band is what the CARD shows, never what is kept */
 function flyerFitCanvas(src,MAX){
@@ -19711,6 +19737,83 @@ async function gathFlyerClear(gid){
   }catch(e){ toast('Couldn’t take it down — try again'); }
 }
 window.gathFlyerPick=gathFlyerPick; window.gathFlyerClear=gathFlyerClear;
+/* ═══ #gathpage(sep04) — the gathering, full screen. See the sheet in the styles. ═══ */
+function _gathPageEl(){
+  let v=document.getElementById('gathPage');
+  if(v)return v;
+  v=document.createElement('div'); v.id='gathPage'; v.setAttribute('role','dialog');
+  v.innerHTML='<div class="gp-top"><button class="pdp-back" id="gpBack" type="button" style="padding:2px 8px;font-size:18px">‹</button>'
+    +'<b id="gpTop">—</b><button class="pdp-back" id="gpEdit" type="button" style="padding:2px 8px;font-size:15px;display:none" aria-label="Edit the details" title="Edit the details">✎</button></div>'
+    +'<div class="gp-scroll" id="gpScroll"></div>';
+  document.body.appendChild(v);
+  v.querySelector('#gpBack').addEventListener('click',closeGathPage);
+  return v;
+}
+function closeGathPage(){ const v=document.getElementById('gathPage'); if(v)v.classList.remove('on'); }
+window.closeGathPage=closeGathPage;
+function openGathPage(gid){
+  const g=gathById(gid); if(!g){ toast('That gathering is gone'); return; }
+  const v=_gathPageEl(), sc=v.querySelector('#gpScroll');
+  const mine=(typeof isMineRow==='function')?isMineRow(g):false;
+  const fly=gathFlyer(gid), ex=gathExtra(gid)||{};
+  const sv=!!g.id, going=!!MY_RSVPS[gid], nGo=RSVP_N[gid]||0;
+  const hs=(g.is_private?[]:(RSVP_NAMES[gid]||[]));
+  const row=(ic,k,val,btn)=>val?('<div class="gp-row"><span class="ic">'+ic+'</span><span class="tx"><span class="k">'+k+'</span><span class="v">'+esc(val)+'</span></span>'+(btn||'')+'</div>'):'';
+  v.querySelector('#gpTop').textContent=g.name||'Gathering';
+  const ed=v.querySelector('#gpEdit'); ed.style.display=mine?'':'none';
+  ed.onclick=()=>gathEditDetails(gid);
+  sc.innerHTML=
+    (fly?'<button class="gp-flyer" type="button" id="gpFly" style="background-image:url(&quot;'+esc(fly.url)+'&quot;)"><i>⤢ TAP TO ZOOM</i></button>':'')
+    +'<div class="gp-body">'
+      +'<div class="gp-name">'+esc(g.name||'')+(g.is_private?' <span class="epill">🗝 PRIVATE</span>':'')+'</div>'
+      +'<div class="gp-by">called by <b>'+esc(mine?'you':(g.by_handle||'the Order'))+'</b></div>'
+      +'<div class="gp-rows">'
+        +row('🕓','When',g.when_txt||'')
+        +row('📍','Where',g.where_txt||'',g.where_txt?'<button type="button" id="gpDir">🧭 DIRECTIONS</button>':'')
+        +row('💵','Cover',ex.cost||'')
+        +row('🅿️','Parking',ex.parking||'')
+        +row('📝','Details',ex.notes||'')
+      +'</div>'
+    +'</div>'
+    +'<div class="gp-going">'+(g.is_private
+        ? '🗝 <b>'+nGo+'</b> going · names ride masked'
+        : '⚓ <b>'+nGo+'</b> going'+(hs.length?' · '+esc(hs.slice(0,8).join(', '))+(hs.length>8?' +'+(hs.length-8)+' more':''):''))+'</div>'
+    +'<div class="gp-acts">'
+      +'<button class="btn" id="gpRsvp" type="button">'+(going?'✓ YOU’RE GOING · TAP TO DROP OFF':'＋ RSVP — COUNT ME IN')+'</button>'
+      +'<div class="gp-two">'
+        +((sv&&(going||mine))?'<button class="btn-line" id="gpRoom" type="button">🗣 THE ROOM</button>':'')
+        +'<button class="btn-line" id="gpInv" type="button">⤴ INVITE</button>'
+      +'</div>'
+      +(mine?'<button class="btn-line" id="gpPic" type="button">📣 '+(fly?'CHANGE THE FLYER':'ADD A FLYER')+'</button>':'')
+      +(mine&&sv?'<button class="btn-line red" id="gpDel" type="button">✕ STRIKE THIS GATHERING</button>':'')
+    +'</div>';
+  const on=(id,fn)=>{ const b=sc.querySelector('#'+id); if(b)b.addEventListener('click',fn); };
+  on('gpFly',()=>openFlyer(fly.url,'<b style="color:#fff">'+esc(g.name||'')+'</b>'+((g.when_txt||g.where_txt)?'<br>'+esc([g.when_txt,g.where_txt].filter(Boolean).join(' · ')):'')));
+  on('gpDir',()=>openDirections(g.where_txt));
+  on('gpRoom',()=>{ try{ openGathRoom(gid); }catch(e){} });
+  on('gpInv',()=>{ try{ inviteWord('gath',g.name,[g.when_txt,g.where_txt].filter(Boolean).join(' · '),gid); }catch(e){} });
+  on('gpPic',()=>gathFlyerPick(gid));
+  on('gpRsvp',async()=>{ const b=sc.querySelector('#gpRsvp'); b.disabled=true;
+    let now=null; try{ now=await rsvpToggle(gid); }catch(e){}
+    b.disabled=false;
+    if(now)try{ toast('🕯 You’re on the list'); }catch(e){}
+    openGathPage(gid); try{ renderSocialFeed(); }catch(e){} });
+  on('gpDel',()=>shConfirm('Strike '+g.name+'? It comes off the board for everyone.',
+    async()=>{ closeGathPage(); try{ await socialDelete('gath',gid); }catch(e){} },{title:'Strike it?',icon:'🕯',okText:'Strike it'}));
+  v.classList.add('on');
+}
+window.openGathPage=openGathPage;
+/* the caller filling in what a flyer would say */
+function gathEditDetails(gid){
+  const g=gathById(gid); if(!g)return;
+  const ex=gathExtra(gid)||{};
+  openPaySheet({title:"THE DETAILS",sub:"Whatever a casual needs to know before they drive out. All optional.",price:0,go:"SAVE THE DETAILS",
+    fields:[{k:"cost",label:"Cover / cost",ph:"e.g. $20 at the door · free",opt:true,max:60,v:ex.cost||''},
+            {k:"parking",label:"Parking",ph:"e.g. lot behind the venue, $10",opt:true,max:80,v:ex.parking||''},
+            {k:"notes",label:"Anything else",type:"textarea",ph:"21+ · bring a chair · doors at 7",opt:true,max:400,v:ex.notes||''}],
+    onPaid:async v2=>{ if(await gathExtraSave(gid,v2)){ toast('✓ Details saved'); openGathPage(gid); } }});
+}
+window.gathEditDetails=gathEditDetails;
 /* #directions(sep04) — "Cabrillo Beach pits" is a place, and a phone already knows
    what to do with one. Hand it over to whichever maps app the phone actually has:
    Apple Maps on an iPhone, Google Maps everywhere else. No key, no embed, no
@@ -22667,7 +22770,8 @@ function gathsSectionHTML(step,gaths){
         +(g.mine?'<b><span data-flyswap="'+esc(g.id)+'" role="button" aria-label="Change the flyer">📷</span><span data-flyx="'+esc(g.id)+'" role="button" aria-label="Take the flyer down">✕</span></b>':'')
         +'</button>'
       : ((g.mine&&sv)?'<button class="gath-add" type="button" data-flyswap="'+esc(g.id)+'">📣 ＋ ADD A FLYER</button>':'');
-    html+='<div class="evt feedIn'+(fly?' gath-card':'')+((g.mine&&sv&&!fly)?' gath-card':'')+(g.mine?' mine':'')+'"'+step()+'>'+flyHTML+badge
+    html+='<div class="evt feedIn'+(fly?' gath-card':'')+((g.mine&&sv&&!fly)?' gath-card':'')+(g.mine?' mine':'')+'"'+step()
+      +(sv?' data-gopen="'+esc(g.id)+'" style="cursor:pointer"':'')+'>'+flyHTML+badge
       +'<div class="evt-main">'
         +'<div class="evt-name">'+esc(g.n)+(g.pill?' <span class="epill">'+esc(g.pill)+'</span>':'')+(sv&&g.priv?' <span class="epill">🗝 PRIVATE</span>':'')+'</div>'
         +'<div class="evt-meta">'+(g.w?'<span>🕓 '+esc(g.w)+'</span>':'')+(g.p?'<span>📍 '+esc(g.p)+'</span>':'')+'</div>'
@@ -24295,11 +24399,15 @@ function bindFeed(host){
   /* #gathroom(sep01) — open a gathering's own room straight off its card */
   host.querySelectorAll('[data-dir]').forEach(b=>b.addEventListener('click',e=>{ e.stopPropagation(); openDirections(b.getAttribute('data-dir')); }));   /* #directions */
   /* #flyer — open it, change it, take it down */
+  /* #gathpage — the whole card is the door; the flyer on it opens the page too, and
+     the zoom lives INSIDE the page where there is room for it */
+  host.querySelectorAll('[data-gopen]').forEach(el=>el.addEventListener('click',e=>{
+    if(e.target.closest('button,[data-flyswap],[data-flyx]')&&!e.target.closest('[data-flyer]'))return;
+    openGathPage(el.getAttribute('data-gopen'));
+  }));
   host.querySelectorAll('[data-flyer]').forEach(b=>b.addEventListener('click',e=>{
     if(e.target.closest('[data-flyswap],[data-flyx]'))return;
-    e.stopPropagation();
-    const g=gathById(b.getAttribute('data-flyer')), f=gathFlyer(b.getAttribute('data-flyer'));
-    if(f)openFlyer(f.url, g?('<b style="color:#fff">'+esc(g.name||'')+'</b>'+((g.when_txt||g.where_txt)?'<br>'+esc([g.when_txt,g.where_txt].filter(Boolean).join(' · ')):'')):'');
+    e.stopPropagation(); openGathPage(b.getAttribute('data-flyer'));
   }));
   host.querySelectorAll('[data-flyswap]').forEach(b=>b.addEventListener('click',e=>{ e.stopPropagation(); gathFlyerPick(b.getAttribute('data-flyswap')); }));
   host.querySelectorAll('[data-flyx]').forEach(b=>b.addEventListener('click',e=>{ e.stopPropagation();
@@ -24408,6 +24516,8 @@ window.newGatheringFlow=function(){
       {k:"p",label:"Where",ph:"e.g. Cabrillo Beach pits"},
       {k:"v",label:"The RSVP list",type:"select",opts:[["","— pick one —"],["0","⚓ Public — list every casual going"],["1","🗝 Private — show the count, mask the names"]]},
       /* #makepic — put the poster up while you are calling it */
+      {k:"cost",label:"Cover / cost (optional)",ph:"e.g. $20 at the door · free",opt:true,max:60},
+      {k:"park",label:"Parking (optional)",ph:"e.g. lot behind the venue, $10",opt:true,max:80},
       {k:"img",type:"photo",label:"Flyer (optional)",ph:"📣 ＋ ADD A FLYER",ratio:"wide16",plain:true,head:"📣 PLACE THE FLYER",
        note:"The whole flyer is kept — this only picks the strip the card shows. Tapping it on the board opens the lot."}],
     onPaid:async v=>{
@@ -24424,6 +24534,8 @@ window.newGatheringFlow=function(){
           try{ if(r.data)await gathRoomEnsure(r.data); }catch(e){}
           /* #makepic — the flyer they placed on the way in */
           try{ if(v.img&&v.img.src&&r.data&&r.data.id)await gathFlyerSend(r.data.id,r.data,v.img.src,v.img.fy); }catch(e){}
+          /* #gathpage — and what it costs / where to park, if they said */
+          try{ if(r.data&&r.data.id&&((v.cost||'').trim()||(v.park||'').trim()))await gathExtraSave(r.data.id,{cost:(v.cost||'').trim(),parking:(v.park||'').trim(),notes:''}); }catch(e){}
           renderSocialFeed();
           unlockBadge(bixLate("Rally Caller"));                   // #8
           try{armoryBuyMark()}catch(e){}   // #fix2 — only once the gathering actually posted
@@ -32022,6 +32134,53 @@ html.fs-lg .msg .who time{font-size:calc(12px * var(--chatfs,1))}
 #flyerView .fv-hint{position:absolute;left:0;right:0;top:calc(16px + env(safe-area-inset-top));text-align:center;pointer-events:none;
   font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:9.5px;letter-spacing:.18em;color:rgba(255,255,255,.5);transition:opacity .3s}
 #flyerView.zoomed .fv-hint{opacity:0}
+/* ═══════════ #gathpage(sep04) — THE GATHERING GETS A PAGE ═══════════
+   By request. Everything about a gathering was living on one card in a list: a
+   band of the flyer, two lines of grey text, and five buttons at 30px. That is
+   fine for scanning and wrong for deciding — a casual reading "is this worth the
+   drive" needs the flyer big, the address big enough to read out loud, and what
+   it costs and where to park, none of which fit on a card.
+   So a tap on the card opens the gathering full-screen: the flyer across the
+   top (tap again to zoom it), the name, then the details as rows you can read at
+   arm's length, then the buttons at a size a thumb can hit — RSVP as the wide
+   one it should always have been. The card keeps its small buttons for the
+   casual who already knows what they're doing.
+   THE NEW DETAILS — cover cost, parking, and a free line — ride in gath_extra,
+   a narrow table beside the flyer for the same reason: the app selects
+   gatherings by an explicit column list. Re-run GATH-FLYER.sql; it carries both
+   tables now and is safe to run twice. Nothing here needs them: a gathering with
+   no extras just shows fewer rows. */
+#gathPage{position:fixed;inset:0;z-index:97;display:none;flex-direction:column;background:var(--void)}
+#gathPage.on{display:flex}
+#gathPage .gp-top{flex:none;display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line);background:var(--plate)}
+#gathPage .gp-top b{flex:1;min-width:0;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:13px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--bone)}
+#gathPage .gp-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding-bottom:calc(28px + env(safe-area-inset-bottom))}
+#gathPage .gp-flyer{position:relative;display:block;width:100%;border:0;padding:0;cursor:zoom-in;background:#0b0a12;
+  background-size:cover;background-position:center;aspect-ratio:4/3}
+#gathPage .gp-flyer i{position:absolute;right:10px;bottom:10px;font-style:normal;padding:6px 11px;border-radius:99px;
+  background:rgba(8,6,16,.68);border:1px solid rgba(255,255,255,.24);
+  font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:9.5px;letter-spacing:.14em;color:#fff}
+#gathPage .gp-body{padding:16px 16px 0}
+#gathPage .gp-name{font-family:'Anton',sans-serif;font-size:27px;line-height:1.06;letter-spacing:.02em;color:var(--bone)}
+#gathPage .gp-by{font-size:13px;color:var(--steel);margin-top:5px}
+#gathPage .gp-by b{color:var(--copper-hi)}
+#gathPage .gp-rows{margin:16px 0 4px;border-top:1px solid var(--line-soft)}
+#gathPage .gp-row{display:flex;gap:12px;align-items:flex-start;padding:12px 2px;border-bottom:1px solid var(--line-soft)}
+#gathPage .gp-row .ic{flex:none;width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+  font-size:16px;background:var(--well);border:1px solid var(--line-soft)}
+#gathPage .gp-row .tx{display:block;flex:1;min-width:0}
+#gathPage .gp-row .k{display:block;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:9.5px;letter-spacing:.18em;color:var(--steel);text-transform:uppercase}
+#gathPage .gp-row .v{display:block;font-size:16px;line-height:1.4;color:var(--bone);margin-top:3px;white-space:pre-wrap;word-break:break-word}
+#gathPage .gp-row button{flex:none;align-self:center;cursor:pointer;padding:9px 13px;border-radius:10px;border:1px solid rgba(238,180,107,.45);
+  background:rgba(238,180,107,.08);color:var(--copper-hi);
+  font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:10.5px;letter-spacing:.1em}
+#gathPage .gp-acts{padding:18px 16px 0;display:flex;flex-direction:column;gap:10px}
+#gathPage .gp-two{display:flex;gap:10px}
+#gathPage .gp-two>*{flex:1}
+#gathPage .btn,#gathPage .btn-line{width:100%}
+#gathPage .gp-going{padding:14px 16px 0;font-size:13.5px;color:var(--steel);line-height:1.55}
+#gathPage .gp-going b{color:var(--bone)}
 /* #makepic(sep04) — the picture tile inside a create sheet: empty it is a dashed
    invitation, filled it is the picture itself with a line over it */
 .pay-photo{position:relative;display:flex;align-items:center;justify-content:center;width:100%;min-height:74px;margin-bottom:12px;
