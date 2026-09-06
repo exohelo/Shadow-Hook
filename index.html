@@ -5408,7 +5408,7 @@ window.DEVLOG=(function(){
         <tr><td>Log a drop on the wire</td><td><b data-rate="DROP">+5</b> <span style="opacity:.7">· every catch</span></td></tr>
         <tr><td>Feed the live board during dispatch</td><td><b data-rate="CW">+5</b></td></tr>
         <tr><td>First to log today's board</td><td><b data-rate="SPIN">+10–50</b></td></tr>
-        <tr><td>Send word — number, map, correction, idea</td><td><b data-rate="WORD">+10</b> <span style="opacity:.7">· 3 a day</span></td></tr>
+        <tr><td>Send word — number, map, correction, idea <span style="opacity:.7">· with your docket attached</span></td><td><b data-rate="WORD">+10</b> <span style="opacity:.7">· 3 a day</span></td></tr>
         <tr><td>Share the Order with a casual</td><td><b data-rate="SHARE">+25</b> <span style="opacity:.7">· once</span></td></tr>
         <tr><td>Earn a new mark</td><td><b data-rate="MARK">+30</b> <span style="opacity:.7">· buck marks excepted</span></td></tr>
       </table>
@@ -6336,6 +6336,19 @@ window.DEVLOG=(function(){
       </select>
       <span class="lbl">The word</span>
       <textarea class="field" id="wordMsg" rows="4" placeholder="e.g. LBCT security line is (562) 435-XXXX — off the gate sign, verified today" style="resize:vertical;margin-bottom:14px"></textarea>
+      <!-- #proof(sep6) — A TERMINAL CORRECTION NEEDS THE DOCKET. The Keymaster was
+           getting terminals sent in that nobody had worked. The slip is the proof: it
+           names the terminal, and only the casual who worked it has one. Required for
+           "Missing terminal or gate" — the report can't send without it, and the photo
+           rides INSIDE the report to the mailbag (not by email). -->
+      <div id="wordProof" style="display:none;margin:-4px 0 14px;padding:10px 11px;border:1px solid rgba(238,180,107,.45);border-radius:12px;background:var(--well)">
+        <span class="lbl" style="color:var(--copper-hi)">📷 Your docket — the proof</span>
+        <div class="sub" id="wordProofWhy" style="margin:4px 0 8px;line-height:1.5">A terminal correction needs a photo of the docket you worked it on — the slip with the terminal printed on it. Pick the one you scanned, or shoot it now. The word won't send without it.</div>
+        <div id="wordProofHave" style="display:none;align-items:center;gap:10px"></div>
+        <div id="wordProofPick" style="display:none;gap:8px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch"></div>
+        <input type="file" id="wordProofFile" accept="image/*" capture="environment" hidden>
+        <button class="btn-ghost" id="wordProofShoot" type="button" style="width:100%;margin-top:8px">📷 Shoot the docket</button>
+      </div>
       <!-- #69 — real photo upload: yard maps, gate signs, paper evidence -->
       <span class="lbl">Photos — yard map, gate sign, proof</span>
       <input type="file" id="wordFiles" accept="image/*" multiple hidden>
@@ -18094,6 +18107,86 @@ renderPorts();
     document.getElementById('wordAttach').textContent=shots.length?('🗺 Attach more ('+shots.length+'/'+MAX_SHOTS+')'):'🗺 Attach photos';
   }
   function clearShots(){shots.forEach(s=>URL.revokeObjectURL(s.url));shots=[];renderThumbs();}
+  /* ═══ #proof(sep6) — THE DOCKET RIDES THE CORRECTION ═══
+     proof = {photo: data URL, meta: {from:'log'|'camera'|'scan', date, terminal, hours,
+     shift, src}}. Required whenever the kind is a terminal correction; the send button
+     refuses without it. Sources, in order of how much they prove:
+       · the docket just scanned (window.scanThumb — the unknown-terminal door opens
+         this sheet straight off the seal, so the slip that names the terminal is
+         already in hand and is attached by itself),
+       · a docket already sealed in the log with its photo (pick from a strip),
+       · the camera, right now.
+     The photo is shrunk to a phone-sized JPEG and travels INSIDE the member_wire row
+     (proof / proof_meta — MEMBER-WIRE-PROOF.sql), so the Keymaster sees it on the
+     mailbag under the words, not in an inbox somewhere else. */
+  let proof=null;
+  const PROOF_KINDS=/missing terminal|terminal or gate/i;
+  function proofRequired(){ return PROOF_KINDS.test(document.getElementById('wordType').value||''); }
+  function shrinkDataUrl(dataUrl,maxW,q){
+    return new Promise((res,rej)=>{ const img=new Image(); img.onerror=rej; img.onload=()=>{ try{
+      const sc=Math.min(1,maxW/Math.max(img.width,img.height));
+      const c=document.createElement('canvas'); c.width=Math.max(1,Math.round(img.width*sc)); c.height=Math.max(1,Math.round(img.height*sc));
+      c.getContext('2d').drawImage(img,0,0,c.width,c.height); res(c.toDataURL('image/jpeg',q)); }catch(e){ rej(e); } }; img.src=dataUrl; });
+  }
+  async function fitProof(dataUrl){   // phone-sized: ≤1100px, and under ~350 KB
+    let d=dataUrl; try{ if(d.length>360000) d=await shrinkDataUrl(d,1100,0.72); if(d.length>360000) d=await shrinkDataUrl(d,900,0.6); }catch(e){}
+    return d;
+  }
+  function proofLine(m){
+    if(!m)return '';
+    const parts=[]; if(m.date)parts.push(String(m.date).slice(5).split('-').map(x=>String(+x)).join('/')+(m.shift?' '+m.shift:''));
+    if(m.terminal)parts.push(m.terminal); if(m.hours>0)parts.push(m.hours+' hrs');
+    parts.push(m.from==='log'?(m.src==='photo'?'scanned into the log':'from the log'):m.from==='scan'?'the slip just scanned':'shot now');
+    return parts.join(' · ');
+  }
+  function renderProof(){
+    const box=document.getElementById('wordProof'), have=document.getElementById('wordProofHave'), pick=document.getElementById('wordProofPick'), shoot=document.getElementById('wordProofShoot');
+    if(!box)return;
+    /* #proofpay(sep6) — per the Keymaster: A REPORT WITHOUT AN OFFICIAL DOCKET DOES NOT
+       GET PAID. The block shows for every kind of word now — required for a terminal
+       correction (the word won't send), optional for the rest — and the ⬡ only ever
+       pays on a report that carries the slip. Marks still unlock either way. */
+    const need=proofRequired();
+    box.style.display='';
+    const why=document.getElementById('wordProofWhy');
+    if(why)why.innerHTML=need
+      ?'A terminal correction needs a photo of the docket you worked it on — the slip with the terminal printed on it. Pick the one you scanned, or shoot it now. <b style="color:var(--bone)">The word won’t send without it.</b>'
+      :'Optional here — but <b style="color:var(--bone)">a report without an official docket doesn’t get paid ⬡</b>. Attach the slip from the job you’re writing about and the word pays.';
+    if(proof&&proof.photo){
+      have.style.display='flex';
+      have.innerHTML='<img src="'+proof.photo+'" alt="" style="width:64px;height:64px;object-fit:cover;border-radius:9px;border:1px solid var(--copper-hi)">'
+        +'<div style="flex:1;min-width:0"><div style="color:var(--ok);font-weight:700;font-size:12px">✓ docket attached</div><div class="sub" style="font-size:11px;line-height:1.4">'+esc(proofLine(proof.meta))+'</div></div>'
+        +'<button type="button" id="wordProofDrop" class="btn-ghost" style="padding:4px 9px;font-size:11px;color:var(--steel)">✕</button>';
+      have.querySelector('#wordProofDrop').addEventListener('click',()=>{ proof=null; renderProof(); });
+      pick.style.display='none'; shoot.style.display='none';
+      return;
+    }
+    have.style.display='none'; shoot.style.display='';
+    /* the strip: sealed dockets that carry a photo, newest first */
+    let withPhoto=[]; try{ withPhoto=DOCKETS.filter(j=>j&&j.photo&&typeof j.date==='string').sort((a,b)=>a.date<b.date?1:-1).slice(0,8); }catch(e){}
+    if(withPhoto.length){
+      pick.style.display='flex';
+      pick.innerHTML=withPhoto.map(j=>'<button type="button" class="wp-pick" data-id="'+esc(String(j._id))+'" style="flex:none;width:76px;background:none;border:1px solid var(--line);border-radius:10px;padding:4px;cursor:pointer;text-align:center">'
+        +'<img src="'+j.photo+'" alt="" style="width:66px;height:66px;object-fit:cover;border-radius:7px;display:block;margin:0 auto">'
+        +'<span class="sub" style="display:block;font-size:9.5px;line-height:1.3;margin-top:3px;color:var(--bone)">'+esc(String(j.date).slice(5).split('-').map(x=>String(+x)).join('/'))+'<br>'+esc(String(j.terminal||'').slice(0,10))+'</span></button>').join('');
+      pick.querySelectorAll('.wp-pick').forEach(b=>b.addEventListener('click',async()=>{
+        const j=DOCKETS.find(x=>String(x._id)===b.dataset.id); if(!j||!j.photo)return;
+        proof={photo:await fitProof(j.photo),meta:{from:'log',date:j.date,terminal:j.terminal||null,hours:j.hours||null,shift:j.shift||null,src:j.src||null,id:String(j._id)}};
+        renderProof();
+      }));
+    } else { pick.style.display='none'; pick.innerHTML=''; }
+  }
+  document.getElementById('wordType').addEventListener('change',renderProof);
+  document.getElementById('wordProofShoot').addEventListener('click',()=>{const i=document.getElementById('wordProofFile');i.value="";i.click();});
+  document.getElementById('wordProofFile').addEventListener('change',async e=>{
+    const f=(e.target.files||[])[0]; if(!f)return;
+    try{ const d=await shrinkImage(f,1100,0.72); proof={photo:await fitProof(d),meta:{from:'camera',at:Date.now()}}; renderProof(); }
+    catch(err){ try{toast('✗ couldn’t read that photo — try again');}catch(e2){} }
+  });
+  /* the slip that just failed the seal on an unknown terminal is the proof itself */
+  async function proofFromScan(){
+    try{ if(window.scanThumb){ proof={photo:await fitProof(window.scanThumb),meta:{from:'scan',at:Date.now()}}; renderProof(); } }catch(e){}
+  }
   document.getElementById('wordAttach').addEventListener('click',()=>{const i=document.getElementById('wordFiles');i.value="";i.click();});
   document.getElementById('wordFiles').addEventListener('change',e=>{
     Array.from(e.target.files||[]).forEach(f=>{
@@ -18108,7 +18201,7 @@ renderPorts();
     const d=new Date(),ds=d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0');
     return 'shadowhook-map-'+op+'-'+ds+'-'+(i+1)+ext;
   }
-  document.querySelectorAll('.send-word').forEach(b=>b.addEventListener('click',()=>{sheet.classList.add('on');document.getElementById('wordMsg').focus()}));
+  document.querySelectorAll('.send-word').forEach(b=>b.addEventListener('click',()=>{sheet.classList.add('on');renderProof();document.getElementById('wordMsg').focus()}));
   /* #69 — yard-map entry point: preselect the map category & name the terminal */
   window.openWordSheetMap=function(){
     const sel=document.getElementById('wordType');
@@ -18126,11 +18219,12 @@ renderPorts();
     const m=document.getElementById('wordMsg');
     m.value='Missing terminal: "'+term+'" — I worked here but it isn’t listed. Operator / berths / gate location: ';
     sheet.classList.add('on');
+    proof=null; renderProof(); proofFromScan();   /* #proof — the slip that named the terminal comes along */
     m.focus();
     try{m.setSelectionRange(m.value.length,m.value.length)}catch(e){}
   };
-  document.getElementById('wordNo').addEventListener('click',()=>{sheet.classList.remove('on');clearShots();});
-  sheet.addEventListener('click',e=>{if(e.target===sheet){sheet.classList.remove('on');clearShots();}});
+  document.getElementById('wordNo').addEventListener('click',()=>{sheet.classList.remove('on');clearShots();proof=null;});
+  sheet.addEventListener('click',e=>{if(e.target===sheet){sheet.classList.remove('on');clearShots();proof=null;}});
   function build(){
     const t=document.getElementById('wordType').value, m=document.getElementById('wordMsg').value.trim();
     return {subject:"[Shadow Hook] "+t, body:m+"\n\n— sent from the app · "+new Date().toLocaleDateString()};
@@ -18143,8 +18237,10 @@ renderPorts();
   function wordPaidToday(){ try{ const s=JSON.parse(localStorage.getItem(K('wordpay'))||'{}');
     return (s.d===todayISO())?(+s.n||0):0; }catch(e){ return 0; } }
   function wordMarkPaid(){ try{ localStorage.setItem(K('wordpay'),JSON.stringify({d:todayISO(),n:wordPaidToday()+1})); }catch(e){} }
-  function reward(cat,hadShots){
-    if(wordPaidToday()<WORD_PAY_CAP){ wordMarkPaid(); addCredits(PAY.WORD,"word sent to the Keymaster"); }
+  function reward(cat,hadShots,hasProof){
+    /* #proofpay — no docket on the report, no ⬡. The marks below still count. */
+    if(!hasProof){ try{toast("✓ Word sent — no docket attached, so no ⬡ this time");}catch(e){} }
+    else if(wordPaidToday()<WORD_PAY_CAP){ wordMarkPaid(); addCredits(PAY.WORD,"word sent to the Keymaster · docket attached"); }
     else try{toast("✓ Word sent — ⬡ pay caps at "+WORD_PAY_CAP+" reports a day");}catch(e){}
     unlockBadge(bixLate("Messenger"));
     if(hadShots||/map/i.test(cat))unlockBadge(bixLate("Mapmaker"));
@@ -18161,13 +18257,48 @@ renderPorts();
     const typed=(document.getElementById('wordMsg').value||"").trim();
     if(!typed&&!shots.length)return document.getElementById('wordMsg').focus();
     const cat=document.getElementById('wordType').value;
+    /* #proof — no docket, no correction. The door says why and points at the strip. */
+    if(proofRequired()&&!(proof&&proof.photo)){
+      renderProof();
+      try{ const box=document.getElementById('wordProof'); box.scrollIntoView({block:'center',behavior:'smooth'}); box.style.boxShadow='0 0 0 2px var(--copper-hi)'; setTimeout(()=>{box.style.boxShadow='';},1400); }catch(e){}
+      try{ toast('📷 a terminal correction needs the docket — pick the one you scanned, or shoot it'); }catch(e){}
+      return;
+    }
+    /* #proof — the docket rides INSIDE the report. Only if the wire can carry it: a
+       column error (MEMBER-WIRE-PROOF.sql not run yet) drops to the old photo path
+       below, which carries the same slip by share/email. */
+    const hasProof=!!(proof&&proof.photo);   /* #proofpay — the ⬡ hangs on this */
+    if(hasProof){
+      let carried=false;
+      try{
+        if(window.SB&&window.__shkUid){
+          const acct3=(typeof loadAcct==='function'?(loadAcct()||{}):{});
+          const body3=typed+"\n\n📷 docket: "+proofLine(proof.meta);
+          const r3=await window.SB.from('member_wire').insert({user_id:window.__shkUid,handle:((acct3.handle||'').toUpperCase())||null,kind:cat,body:body3,proof:proof.photo,proof_meta:proof.meta});
+          if(!r3.error)carried=true;
+          else if(!/proof|column|schema cache/i.test(String(r3.error.message||'')))throw r3.error;   /* a real refusal (RLS, offline) — say so below */
+          else try{DEVLOG.data('member_wire proof',{ok:false,err:r3.error.message+' — run MEMBER-WIRE-PROOF.sql; the docket went by share/email instead'});}catch(e){}
+        }
+      }catch(e){ try{toast('✗ the wire refused it: '+(e&&e.message||e));}catch(e2){} return; }
+      if(carried){
+        try{toast('✉ Word received — docket attached, it’s in the mailbag');}catch(e){}
+        sheet.classList.remove('on');document.getElementById('wordMsg').value="";clearShots();proof=null;
+        setTimeout(()=>reward(cat,false,true),600);   /* a docket is proof, not a map — no Mapmaker off it; and it pays */
+        return;
+      }
+      /* the wire can't carry the photo yet: send the slip the old way, with the words */
+      try{
+        const bin=atob(proof.photo.split(',')[1]); const u8=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);
+        shots.unshift({file:new File([u8],'docket.jpg',{type:'image/jpeg'}),url:proof.photo});
+      }catch(e){}
+    }
     if(shots.length){
       const files=shots.map((s,i)=>new File([s.file],shotName(i,s.file),{type:s.file.type||'image/jpeg'}));
       const payload={title:w.subject,text:w.body+"\n\nTo: "+KEYMASTER_MAIL,files:files};
       if(navigator.canShare&&navigator.canShare({files:files})){
         try{await navigator.share(payload);}catch(e){if(e&&e.name==='AbortError')return; /* backed out — keep the sheet */}
-        sheet.classList.remove('on');document.getElementById('wordMsg').value="";clearShots();
-        setTimeout(()=>reward(cat,true),400);
+        sheet.classList.remove('on');document.getElementById('wordMsg').value="";clearShots();proof=null;
+        setTimeout(()=>reward(cat,true,hasProof),400);
         return;
       }
       /* desktop / no share-with-files: save renamed copies, then open the email */
@@ -18175,8 +18306,8 @@ renderPorts();
         document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},4000);});
       if(typeof toast==='function')toast('Photos saved — attach them to the email');
       location.href="mailto:"+KEYMASTER_MAIL+"?subject="+encodeURIComponent(w.subject)+"&body="+encodeURIComponent(w.body+"\n\n["+files.length+" photo"+(files.length>1?"s":"")+" saved to your device — attach before sending]");
-      sheet.classList.remove('on');document.getElementById('wordMsg').value="";clearShots();
-      setTimeout(()=>reward(cat,true),600);
+      sheet.classList.remove('on');document.getElementById('wordMsg').value="";clearShots();proof=null;
+      setTimeout(()=>reward(cat,true,hasProof),600);
       return;
     }
     /* #wire-in — text reports now land INSIDE the app (member_wire, run
@@ -18193,8 +18324,8 @@ renderPorts();
     }catch(e){}
     if(!landed){ location.href="mailto:"+KEYMASTER_MAIL+"?subject="+encodeURIComponent(w.subject)+"&body="+encodeURIComponent(w.body); }
     else { try{toast('✉ Word received — it’s in the log');}catch(e){} }
-    sheet.classList.remove('on');document.getElementById('wordMsg').value="";
-    setTimeout(()=>reward(cat,false),600);
+    sheet.classList.remove('on');document.getElementById('wordMsg').value="";proof=null;
+    setTimeout(()=>reward(cat,false,false),600);   /* #proofpay — words alone: marks, no ⬡ */
   });
   document.getElementById('wordCopy').addEventListener('click',async()=>{
     const w=build();
@@ -35791,7 +35922,9 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
         window.SB.from('profiles').select('*').eq('handle',row.handle).maybeSingle(),
         uid?window.SB.from('amb_applications').select('*').eq('user_id',uid).maybeSingle():Promise.resolve({data:null}),
         uid?window.SB.from('trade_posts').select('*').eq('user_id',uid).maybeSingle():Promise.resolve({data:null}),
-        uid?window.SB.from('member_wire').select('*').eq('user_id',uid).order('created_at',{ascending:false}).limit(50):Promise.resolve({data:[]})
+        /* #proof — never pull the docket photos into the member sheet: the list is the words; a
+           record without the proof column answers the explicit list the same way */
+        uid?window.SB.from('member_wire').select('id,user_id,handle,kind,body,handled,created_at').eq('user_id',uid).order('created_at',{ascending:false}).limit(50):Promise.resolve({data:[]})
       ]);
       prof=(p&&p.data)||null; app=(a2&&a2.data)||null; trade=(t2&&t2.data)||null; wire=(w2&&w2.data)||[];
     }catch(e){}
@@ -36693,21 +36826,54 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
     const out=$('kmMail');if(!out)return;
     if(!window.SB){out.textContent='backend off';return;}
     try{
-      const r=await window.SB.from('member_wire').select('*').eq('handled',false).order('created_at',{ascending:false}).limit(50);
+      /* #proof(sep6) — the list rides light: proof_meta says a docket is attached, the
+         photo itself is fetched only when the Keymaster taps to see it. A record that
+         predates MEMBER-WIRE-PROOF.sql has no such column — fall back to the old read. */
+      let r=await window.SB.from('member_wire').select('id,user_id,handle,kind,body,handled,created_at,proof_meta').eq('handled',false).order('created_at',{ascending:false}).limit(50);
+      let proofCol=true;
+      if(r.error&&/proof_meta|column|schema cache/i.test(String(r.error.message||''))){ proofCol=false; r=await window.SB.from('member_wire').select('*').eq('handled',false).order('created_at',{ascending:false}).limit(50); }
       if(r.error)throw r.error;
       const rows=r.data||[];
       const n=$('kmMailN');if(n){n.textContent=rows.length;n.style.display=rows.length?'':'none';}
       if(!rows.length){out.innerHTML='<span style="color:var(--steel)">quiet — numbers, terminals, maps and ideas the casuals send in land here. (Map & gate PHOTOS ride the email path — check the Keymaster inbox.)</span>';return;}
-      out.innerHTML=rows.map(w=>{const c=_mailChip(w.kind);
+      const isTerm=w=>/terminal|gate/i.test(String(w.kind||''));
+      out.innerHTML=rows.map(w=>{const c=_mailChip(w.kind); const pm=w.proof_meta||null; const hasProof=!!(pm||w.proof);
+        /* the docket chip: a terminal correction either carries its slip, or it doesn't — and the board says which */
+        /* #proofpay — every word says whether it carried the slip: a docket to view, a loud
+           warning on a terminal correction without one, a quiet "unpaid" on the rest */
+        const dock=hasProof
+            ?'<button type="button" class="pill km-proof" data-wid="'+esc(w.id)+'" style="color:var(--ok);border-color:currentColor;cursor:pointer;background:none;font:inherit">📷 DOCKET · view</button>'
+            :(isTerm(w)?'<span class="pill" style="color:var(--ember);border-color:currentColor" title="sent before the docket rule, or by a build without it">⚠ NO DOCKET</span>'
+                       :'<span class="pill" style="color:var(--steel);border-color:currentColor" title="no docket on it — the word earned no ⬡">no docket · unpaid</span>');
+        const pline=(pm&&(pm.date||pm.terminal||pm.from))?'<div class="sub" style="margin-top:3px;font-size:10.5px;color:var(--steel)">📷 docket '+esc([pm.date?String(pm.date).slice(5).split('-').map(x=>String(+x)).join('/'):'',pm.shift||'',pm.terminal||'',pm.hours>0?pm.hours+' hrs':'',pm.from==='log'?(pm.src==='photo'?'scanned into their log':'from their log'):pm.from==='scan'?'the slip they just scanned':pm.from==='camera'?'shot on the spot':''].filter(Boolean).join(' · '))+'</div>':'';
         return '<div style="border:1px solid var(--line-soft);border-radius:10px;padding:8px 10px;margin-bottom:6px">'
         +'<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="pill" style="color:'+c.col+';border-color:currentColor">'+c.label+'</span>'
         +(w.handle?'<span class="mono" style="color:var(--copper-hi)">'+esc(w.handle)+'</span>':'<span style="color:var(--steel)">a casual</span>')
+        +dock
         +'<span style="margin-left:auto;color:var(--steel);font-size:10.5px">'+_dt(w.created_at)+'</span></div>'
         +'<div class="sub" style="margin-top:4px;line-height:1.55;color:var(--bone);white-space:pre-wrap">'+esc(w.body||'')+'</div>'
+        +pline
+        +'<div class="km-proof-img" data-wid="'+esc(w.id)+'" style="display:none;margin-top:8px"></div>'
         +'<button class="btn-ghost km-mail" data-wid="'+esc(w.id)+'" style="margin-top:6px;padding:3px 10px;font-size:10.5px;color:var(--ok)">✓ handled</button>'
         +'</div>';}).join('')
         +(rows.length>2?'<button class="btn-ghost" id="kmMailAll" style="width:100%;padding:5px 0;font-size:11px;color:var(--steel)">✓ mark all handled</button>':'')
-        +'<div style="margin-top:4px;color:var(--steel);font-size:10.5px">photos (maps · gate signs) arrive by email — this board carries the typed word</div>';
+        +'<div style="margin-top:4px;color:var(--steel);font-size:10.5px">'+(proofCol?'terminal corrections carry the casual’s docket photo — tap 📷 DOCKET to see it · maps & gate-sign photos still arrive by email':'photos (maps · gate signs) arrive by email — this board carries the typed word · run MEMBER-WIRE-PROOF.sql and terminal corrections bring their docket here')+'</div>';
+      /* tap the chip: fetch the photo for that one row and show it under the words (tap the image for full size) */
+      out.querySelectorAll('.km-proof').forEach(b=>b.addEventListener('click',async()=>{
+        const host=out.querySelector('.km-proof-img[data-wid="'+b.dataset.wid+'"]'); if(!host)return;
+        if(host.style.display!=='none'){ host.style.display='none'; b.textContent='📷 DOCKET · view'; return; }
+        b.disabled=true; b.textContent='📷 loading…';
+        try{
+          const p=await window.SB.from('member_wire').select('proof').eq('id',b.dataset.wid).maybeSingle();
+          const src=p&&p.data&&p.data.proof;
+          if(!src){ host.innerHTML='<span class="sub" style="color:var(--ember)">no photo on this row</span>'; }
+          else { host.innerHTML='<img src="'+src+'" alt="docket" style="max-width:100%;max-height:260px;border-radius:10px;border:1px solid var(--line);cursor:zoom-in;display:block">';
+            host.querySelector('img').addEventListener('click',()=>{ try{ document.getElementById('photoLBImg').src=src; document.getElementById('photoLB').classList.add('on'); }catch(e){} }); }
+          host.style.display='';
+          b.textContent='📷 DOCKET · hide';
+        }catch(err){ host.innerHTML='<span class="sub" style="color:var(--ember)">couldn’t load it: '+esc(err.message||err)+'</span>'; host.style.display=''; }
+        b.disabled=false;
+      }));
       const all=$('kmMailAll');
       if(all)all.addEventListener('click',async()=>{
         all.disabled=true;
