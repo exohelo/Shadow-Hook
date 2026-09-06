@@ -11206,10 +11206,22 @@ const V4 = (function(){
     return pmf;
   }
   /* recent come-down / attendance (came ÷ called). Low turnout ⇒ more numbers called per
-     job ⇒ the board runs further. Read live from the catch model; null if we have none. */
+     job ⇒ the board runs further. Read live from the catch model; null if we have none.
+     #attwindow(sep6) — returns {recent, base, n}: the last four days against the record's
+     own normal (laps out of both). The hard-coded ATT_BASE only stands in while the
+     record is too short (under CATCH_BASE_MIN boards) to be its own yardstick. */
   function recentAtt(){
-    try{ if(typeof catchModel==="function"){ const g=catchModel().global; if(g>0) return g; } }catch(e){}
-    try{ if(typeof COMEDOWN_CAL!=="undefined") return COMEDOWN_CAL.ratio(); }catch(e){}
+    try{
+      if(typeof catchModel==="function"){
+        const cm=catchModel();
+        const recent=(cm.recent>0)?cm.recent:(cm.global>0?cm.global:null);
+        if(recent){
+          const base=(cm.boards>=(typeof CATCH_BASE_MIN!=="undefined"?CATCH_BASE_MIN:16)&&cm.global>0)?cm.global:ATT_BASE;
+          return {recent:recent, base:base, n:cm.recentN||0};
+        }
+      }
+    }catch(e){}
+    try{ if(typeof COMEDOWN_CAL!=="undefined") return {recent:COMEDOWN_CAL.ratio(), base:ATT_BASE, n:0}; }catch(e){}
     return null;
   }
   /* stretch the movement axis by m (letters ∝ 1/attendance): low attendance pushes mass out */
@@ -11247,8 +11259,22 @@ const V4 = (function(){
       // live heavy-rain nudge: thin turnout tends to push the board a touch further
       if(cats.heavy){ const lift=new Array(27).fill(0); for(let i=1;i<27;i++) lift[i]=pmf[i-1]; pmf=pmf.map((x,i)=>0.8*x+0.2*lift[i]); }
       // attendance regime: low casual turnout ⇒ the board reaches deeper (letters ∝ 1/att)
+      /* #attwindow · #callbias (sep6) — the stretch is the record's own normal over the
+         last four days (not 28% over everything ever sealed), and it answers to the
+         scorecard: when the last few published calls ran long by more than a letter,
+         the boost stands down in proportion (gone at four letters over), because a
+         correction that can only push calls further out must be the first thing to
+         yield when the calls are already too far out. It never pulls a call below
+         what the neighbours voted; all of this is visible on the dev log's engine line. */
       const ra=recentAtt();
-      if(ra&&ra>0){ let m=ATT_BASE/ra; m=Math.max(1.0,Math.min(1.5,m)); pmf=warpPMF(pmf,m); try{window._v4att={recent:+ra.toFixed(3),mult:+m.toFixed(2)};}catch(e){} }
+      if(ra&&ra.recent>0){
+        let m=ra.base/ra.recent; m=Math.max(1.0,Math.min(1.5,m));
+        let bias=null, keep=1;
+        try{ bias=(typeof callBias==="function")?callBias(4):null; }catch(e){ bias=null; }
+        if(bias!=null&&bias>1){ keep=Math.max(0,Math.min(1,1-(bias-1)/3)); m=1+(m-1)*keep; }
+        pmf=warpPMF(pmf,m);
+        try{window._v4att={recent:+ra.recent.toFixed(3),base:+ra.base.toFixed(3),n:ra.n,mult:+m.toFixed(2),bias:(bias!=null?+bias.toFixed(1):null),keep:+keep.toFixed(2)};}catch(e){}
+      }
       else { try{window._v4att=null;}catch(e){} }
       const s=pmf.reduce((a,x)=>a+x,0)||1; return pmf.map(x=>x/s);
     }catch(err){ if(window.console)console.warn('V4.predict',err); return null; }
@@ -11685,12 +11711,13 @@ setTimeout(function(){try{updateBabyNote()}catch(e){}},1500);   // first paint o
    enough of its own calls on the record uses its OWN catch rate; everyone else falls
    back to the recent hall-wide rate — that's the hybrid. Deeper cards flop more, and
    that falls straight out of the walk. Rebuilds only when a new board lands. */
+const CATCH_WINDOW=8, CATCH_BASE_MIN=16;   /* #attwindow — four days of boards; the record must hold twice that to be its own normal */
 let _catchCache=null,_catchCacheN=-1;
 function catchModel(){
   try{
     const done=RECENT.filter(r=>r&&r.start&&r.end&&boardDown(r)!=null);
     if(_catchCache&&_catchCacheN===done.length)return _catchCache;
-    const letter={}; let gDown=0,gCalled=0;
+    const letter={}; let gDown=0,gCalled=0; const perBoard=[];   /* #attwindow — [called, down] per board, oldest first */
     done.forEach(r=>{
       /* #lapcatch(sep6) — A LAP TEACHES THE TURNOUT MODEL NOTHING. On a lap the board
          called every card in the book, including the twenty letters nobody expected to
@@ -11705,7 +11732,7 @@ function catchModel(){
       if(boardCycled(r)||boardLap(r))return;
       const called=eligibleSpan(r), down=boardDown(r);   /* #noflop0 — a held board teaches the model nothing · #offboard — the crew the rule kept off never had a card to answer with */
       if(called==null||down==null||called<=0)return;
-      gCalled+=called; gDown+=Math.min(down,called);
+      gCalled+=called; gDown+=Math.min(down,called); perBoard.push([called,Math.min(down,called)]);
       const sl=LSEQ.indexOf(r.start[0].toUpperCase()),sn=parseInt(r.start.slice(1),10);
       const el=LSEQ.indexOf(r.end[0].toUpperCase()),en=parseInt(r.end.slice(1),10);
       if(sl<0||el<0||isNaN(sn)||isNaN(en))return;
@@ -11723,10 +11750,44 @@ function catchModel(){
       }
     });
     const g=gCalled>0?Math.min(0.9,Math.max(0.05,gDown/gCalled)):((typeof COMEDOWN_CAL!=="undefined")?COMEDOWN_CAL.ratio():0.28);
-    _catchCache={global:g,letter:letter}; _catchCacheN=done.length;
+    /* #attwindow(sep6) — THE RECENT RATE, AND THE RECORD'S OWN NORMAL. `global` is the
+       whole record (laps out) — the hall's own baseline for what a called card catches.
+       `recent` is the last CATCH_WINDOW boards (four days): the regime the next call
+       actually runs in. V4.predict stretches the call by base ÷ recent, so a hall that
+       simply COUNTS low (a come-down logged off the speaker never catches every job)
+       reads as its own normal instead of as a permanent "low turnout" against a
+       hard-coded 28%. With fewer than CATCH_BASE_MIN boards the record is too short to
+       be its own yardstick, and the old 28% stands in — the caller handles that. */
+    const w=perBoard.slice(-CATCH_WINDOW); let wC=0,wD=0; w.forEach(x=>{wC+=x[0];wD+=x[1];});
+    const rg=(wC>0)?Math.min(0.9,Math.max(0.05,wD/wC)):null;
+    _catchCache={global:g,recent:rg,recentN:w.length,boards:perBoard.length,letter:letter}; _catchCacheN=done.length;
     return _catchCache;
-  }catch(e){ return {global:(typeof COMEDOWN_CAL!=="undefined")?COMEDOWN_CAL.ratio():0.28,letter:{}}; }
+  }catch(e){ return {global:(typeof COMEDOWN_CAL!=="undefined")?COMEDOWN_CAL.ratio():0.28,recent:null,recentN:0,boards:0,letter:{}}; }
 }
+/* ═══ #callbias(sep6) — THE CALL'S SCORECARD, WITH A SIGN ═══
+   predScore files letters-off without a direction, which is right for the banner
+   ("within ±1") and useless for a correction that only ever pushes calls one way.
+   This reads the last K scored calls against the record: the letters the call ran
+   PAST the seal (+) or short of it (−), off the row's own start card and its `act`
+   (a lap is 26, a hold 0 — the letters alone can't tell those apart). Positive =
+   the wire has been running long. V4.predict stands the turnout stretch down on
+   it; nothing here can pull a call BELOW what the neighbours voted. */
+function callBias(K){
+  try{
+    const log=_predLog();
+    const ks=Object.keys(log).filter(k=>log[k]&&log[k].p&&log[k].off!=null&&/^\d{4}-\d{2}-\d{2}_/.test(k)).sort().slice(-(K||4));
+    let s=0,n=0;
+    ks.forEach(k=>{
+      const r=RECENT.find(x=>x&&x.date+'_'+x.slot===k); if(!r||!r.start||!r.end||typeof r.act!=="number")return;
+      const P=AZ.indexOf(String(log[k].p).charAt(0).toUpperCase()), S=AZ.indexOf(String(r.start).charAt(0).toUpperCase());
+      if(P<0||S<0)return;
+      const pred=((P-S)%26+26)%26;            // letters the call said it would run
+      s+=pred-r.act; n++;
+    });
+    return n>=2?s/n:null;
+  }catch(e){return null;}
+}
+window.callBias=callBias;
 /* a letter's own catch rate — trusted only once it has enough of its own calls on the record */
 const _LETTER_MIN=60;
 function letterCatch(L){
@@ -29177,7 +29238,7 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
                         :('<span style="color:#f2a184">FAIL</span> · '+esc(i.err)+' <span style="color:#586067">('+i.at+')</span>'));});
       html+=h('THE PENDING BOARD & THE ENGINE');
       try{html+=row('pending board',esc((typeof callSlot!=='undefined')?callSlot:'?')+' · starts '+esc((typeof pendingStartCard==='function'&&pendingStartCard())||'—'));}catch(e){}
-      try{const v=window._v4dbg;if(v)html+=row('engine inputs','source '+esc(v.source)+' · axis '+esc(v.axis||'casual')+(v.cas!=null?' · casual '+v.cas:'')+' · ch '+v.ch+' · tot(ewma, not off the sheet) '+(v.totEwma!=null?v.totEwma:v.tot)+(v.att?' · att '+Math.round(v.att.recent*100)+'% ×'+v.att.mult:'')+' · mom '+v.mom+(v.shutdown?' · SHUTDOWN':''));else html+=row('engine inputs','no run yet');}catch(e){}
+      try{const v=window._v4dbg;if(v)html+=row('engine inputs','source '+esc(v.source)+' · axis '+esc(v.axis||'casual')+(v.cas!=null?' · casual '+v.cas:'')+' · ch '+v.ch+' · tot(ewma, not off the sheet) '+(v.totEwma!=null?v.totEwma:v.tot)+(v.att?' · att '+Math.round(v.att.recent*100)+'% (normal '+Math.round((v.att.base||0)*100)+'%, last '+(v.att.n||0)+') ×'+v.att.mult+(v.att.bias!=null?' · calls running '+(v.att.bias>0?'+':'')+v.att.bias+' letters, stretch kept '+Math.round((v.att.keep!=null?v.att.keep:1)*100)+'%':''):'')+' · mom '+v.mom+(v.ladder?' · ladder thin '+Math.round(v.ladder.thinW*100)+'% resting '+v.ladder.resting:'')+(v.shutdown?' · SHUTDOWN':''));else html+=row('engine inputs','no run yet');}catch(e){}
       try{html+=row('sheets on device',(typeof DISPATCH_DATA!=='undefined')?(Object.keys(DISPATCH_DATA).length+' · newest '+esc(Object.keys(DISPATCH_DATA).sort().pop()||'—')):'—');}catch(e){}
       try{html+=row('record rows',(typeof RECENT!=='undefined')?RECENT.length+' boards on the record':'—');}catch(e){}
       /* #jul23b — DISPATCH HOTLINE lives here now (moved off the Wire tab) */
