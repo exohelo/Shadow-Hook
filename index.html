@@ -20342,6 +20342,30 @@ window._gifFall=function(img){
     if(wrap.firstChild)img.replaceWith(wrap.firstChild);
   }catch(e){}
 };
+/* ═══ #pasteimg(sep6) — A PICTURE OFF THE CLIPBOARD, WHEREVER IT LANDS ═══
+   Every road a picture arrives on ends in one file: a paste (a screenshot, a copied
+   image, the phone keyboard's GIF), a drag-and-drop, or an IME commit. Browsers do
+   NOT agree on where that file sits — Chromium fills clipboardData.files, while
+   Safari (and some Firefox builds) leave that empty and put it in .items with
+   kind 'file' — so a handler reading only .files quietly does nothing on half the
+   phones in the hall. This reads both doors and hands back the image files it found.
+   One reader, used by the room's send box and the DM wire alike. */
+function clipImages(e,max){
+  const out=[], cap=max||4;
+  try{
+    const dt=(e&&(e.clipboardData||e.dataTransfer))||null; if(!dt)return out;
+    const fl=dt.files;
+    if(fl&&fl.length)for(let i=0;i<fl.length&&out.length<cap;i++){
+      const f=fl[i]; if(f&&/^image\//i.test(f.type||''))out.push(f);
+    }
+    if(!out.length&&dt.items)for(let i=0;i<dt.items.length&&out.length<cap;i++){
+      const it=dt.items[i];
+      if(it&&it.kind==='file'&&/^image\//i.test(it.type||'')){ const f=it.getAsFile&&it.getAsFile(); if(f)out.push(f); }
+    }
+  }catch(err){}
+  return out;
+}
+window.clipImages=clipImages;
 /* #kbgif — some keyboards (iOS Gboard, long-press → copy) put the GIF on the clipboard
    as an actual FILE instead of a link. Catch it on paste: a gif/webp file rides the
    1 ⬡ GIF fare, anything else pays the normal photo fare, and both upload through the
@@ -20363,23 +20387,16 @@ window._gifFall=function(img){
     chatSendMedia(f,isGif?'gif':'image',mc);
     return true;
   }
+  /* #pasteimg — all three doors read through clipImages now, so a Safari paste (which
+     leaves clipboardData.files empty and puts the file in .items) lands like any other. */
   ci.addEventListener('paste',e=>{
-    try{
-      const f=e.clipboardData&&e.clipboardData.files&&e.clipboardData.files[0];
-      if(f&&/^image\//i.test(f.type||'')){ e.preventDefault(); takeImg(f); }
-    }catch(err){}
+    try{ const f=clipImages(e,1)[0]; if(f){ e.preventDefault(); takeImg(f); } }catch(err){}
   });
   ci.addEventListener('beforeinput',e=>{
-    try{
-      const dt=e.dataTransfer, f=dt&&dt.files&&dt.files[0];
-      if(f&&/^image\//i.test(f.type||'')){ e.preventDefault(); takeImg(f); }
-    }catch(err){}
+    try{ const f=clipImages(e,1)[0]; if(f){ e.preventDefault(); takeImg(f); } }catch(err){}
   });
   ci.addEventListener('drop',e=>{
-    try{
-      const f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0];
-      if(f&&/^image\//i.test(f.type||'')){ e.preventDefault(); takeImg(f); }
-    }catch(err){}
+    try{ const f=clipImages(e,1)[0]; if(f){ e.preventDefault(); takeImg(f); } }catch(err){}
   });
 })();
 /* #kbgif2(aug13) — THE SEND BOX IS A RICH EDITOR NOW (see the sendbar markup for why:
@@ -22774,6 +22791,18 @@ async function svcSend(media){
     let u=''; try{u=URL.createObjectURL(f);}catch(_){}
     svcSend({kind:(f.type&&f.type.startsWith('video'))?'video':'image',url:u,file:f}); });   /* #video2 */
   on('svcGif','click',()=>{ if(typeof guestWall==='function'&&guestWall())return; try{openGifPicker(u=>{ const gm=(typeof gifMediaUrl==='function'&&gifMediaUrl(u))||u; svcSend({kind:'gif',url:gm}); });}catch(e){} });
+  /* #pasteimg(sep6) — the talk line takes a pasted picture too: same road as its ＋,
+     so the gesture means the same thing in all three places a casual can type. */
+  if(ci)ci.addEventListener('paste',e=>{
+    try{
+      const f=(typeof clipImages==='function'?clipImages(e,1):[])[0]; if(!f)return;
+      e.preventDefault();
+      if(typeof guestWall==='function'&&guestWall())return;
+      if(!_svcId)return;
+      let u=''; try{u=URL.createObjectURL(f);}catch(_){}
+      svcSend({kind:'image',url:u,file:f});
+    }catch(err){}
+  });
   const sl=document.getElementById('stcList');
   if(sl)sl.addEventListener('click',async e=>{
     const re=e.target.closest('[data-cre]');   /* #reply — arm the strip, focus the line */
@@ -23378,7 +23407,7 @@ function _dmView(){
     +'<button class="attach" id="dmAtt" type="button" aria-label="Add photo or video">＋</button>'
     +'<button class="attach gifbtn" id="dmGif" type="button" aria-label="Send a GIF">GIF</button>'
     +'<input type="file" id="dmFile" accept="image/*,video/*" hidden>'
-    +'<input id="dmIn" placeholder="Say your piece…" autocomplete="off" style="flex:1;min-width:0;background:var(--void);border:1px solid var(--line);border-radius:99px;padding:11px 15px;color:var(--bone);font-family:inherit;font-size:16px;outline:none">'
+    +'<input id="dmIn" placeholder="Say your piece…" title="Say your piece — or paste a picture straight in (⌘/Ctrl-V), or drag one onto the wire" autocomplete="off" style="flex:1;min-width:0;background:var(--void);border:1px solid var(--line);border-radius:99px;padding:11px 15px;color:var(--bone);font-family:inherit;font-size:16px;outline:none">'
     +'<button id="dmSendBtn" type="button" style="flex:none;width:42px;height:42px;border-radius:50%;border:1px solid rgba(238,180,107,.5);background:linear-gradient(184deg,var(--btn-hi),var(--btn-lo));color:var(--copper-hi);font-size:16px;cursor:pointer">➤</button></div>';
   document.body.appendChild(v);
   try{ if(window.pinchTextArm)pinchTextArm(v.querySelector('#dmFeed')); }catch(e){}   /* #pinchtext — two fingers size the wire too */
@@ -23394,6 +23423,45 @@ function _dmView(){
   v.querySelector('#dmGif').addEventListener('click',()=>{ if(typeof guestWall==='function'&&guestWall())return;
     if(DM.mediaOff){ toast(DM.mediaOff); dmMediaNote(DM.mediaOff); return; }   /* #dmmedia2 */
     try{ openGifPicker(u=>{ const gm=(typeof gifMediaUrl==='function'&&gifMediaUrl(u))||u; dmSendGif(gm); }); }catch(e){} });
+  /* ═══ #pasteimg(sep6) — PASTE A PICTURE STRAIGHT ONTO THE WIRE ═══
+     The room's send box has taken a pasted image since #kbgif, but the DM's send box
+     is a plain <input> and never did: a casual holding a screenshot of the sheet —
+     exactly what settles "TI 140, did you mean LB 140?" — had to save it to the
+     camera roll, open the ＋, and go find it again. Now ⌘/Ctrl-V on the thread sends
+     it, and a desktop can drag one onto the wire. It rides the SAME road as the ＋:
+     dmSendMedia paints it in the thread at once and uploads behind it, so a refusal
+     takes the picture back out and says which leg failed. The gates the ＋ answers to
+     are answered here too — the guest wall first, then DM-MEDIA.sql. */
+  const dmTakeImgs=fs=>{
+    if(!fs||!fs.length)return false;
+    if(typeof guestWall==='function'&&guestWall())return true;
+    if(DM.mediaOff){ try{toast(DM.mediaOff);}catch(e){} dmMediaNote(DM.mediaOff); return true; }
+    if(!DM.openPeer)return true;
+    /* one at a time — each picture is its own upload and its own bubble */
+    fs.forEach((f,i)=>setTimeout(()=>{ try{ dmSendMedia(f); }catch(e){} },i*250));
+    return true;
+  };
+  /* the send box is the usual target, but a casual who just tapped the thread has
+     nothing focused and the paste lands on <body> — so listen at the document and
+     take only the pastes that belong to this wire while it's the thing on screen. */
+  document.addEventListener('paste',e=>{
+    try{
+      if(!v||v.style.display==='none')return;
+      const t=e.target;
+      if(t&&t!==document.body&&t!==document.documentElement&&!v.contains(t))return;   // a paste meant for something else
+      const fs=clipImages(e,4);
+      if(fs.length&&dmTakeImgs(fs))e.preventDefault();
+    }catch(err){}
+  });
+  v.addEventListener('dragover',e=>{
+    try{ const ty=e.dataTransfer&&e.dataTransfer.types;
+      if(ty&&Array.prototype.indexOf.call(ty,'Files')>=0){ e.preventDefault(); v.style.outline='2px dashed var(--copper-hi)'; v.style.outlineOffset='-6px'; }
+    }catch(err){}
+  });
+  ['dragleave','dragend','drop'].forEach(ev=>v.addEventListener(ev,()=>{ try{ v.style.outline=''; v.style.outlineOffset=''; }catch(err){} }));
+  v.addEventListener('drop',e=>{
+    try{ const fs=clipImages(e,4); if(fs.length){ e.preventDefault(); dmTakeImgs(fs); } }catch(err){}
+  });
   return v;
 }
 /* #dmmedia2 — ONE QUESTION, ONCE: can dm_messages carry kind + url? A select on the two
