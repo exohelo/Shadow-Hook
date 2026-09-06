@@ -10022,9 +10022,20 @@ try{(function(){
     if(ns.start!==nextCard(cs.end))continue;                             // not the stale value — leave it be
     if(ns.end&&sameCard(ns.start,ns.end))continue;                       // the follower was HELD too — moving its start would invent movement it never made
     nxt.start=cs.start;                                                  // back to the card the board is still sitting on
-    if(nxt.end)nxt.act=(AZ.indexOf(String(nxt.end)[0])-AZ.indexOf(String(nxt.start)[0])+26)%26;
+    if(nxt.end)nxt.act=boardActOf(nxt.start,nxt.end,nxt);
     if(fixed.indexOf(nxt)<0)fixed.push(nxt);
   }
+  /* PASS 3 — #lapact(sep6): a LAP on the record carrying act 0 (sealed by the letter
+     arithmetic before laps were written as 26). Idempotent: once it reads 26 nothing
+     matches. The momentum EWMA, the sheet-fed training rows and the record's letter
+     ladder all read this figure, and all three read the 9/4 lap as a board that held. */
+  sorted.forEach(r=>{
+    try{
+      if(!r||!r.start||!r.end)return;
+      const a=boardActOf(r.start,r.end,r);
+      if(a===26&&r.act!==26){ r.act=26; if(fixed.indexOf(r)<0)fixed.push(r); }
+    }catch(e){}
+  });
   if(fixed.length){
     try{const st=JSON.parse(localStorage.getItem(K('boardresults'))||'{}');
       fixed.forEach(x=>{const kk=x.date+"_"+x.slot;
@@ -10032,7 +10043,7 @@ try{(function(){
       /* the repaired rows are the record now — the wire's stale copies get normalized
          again on arrival (bwApplyRow), so the two can't fight across a reload */
       localStorage.setItem(K('boardresults'),JSON.stringify(st));}catch(e){}
-    try{console.log('[#noflop0] re-anchored '+fixed.length+' board'+(fixed.length>1?'s':'')+' behind a board that did not move');}catch(e){}
+    try{console.log('[#noflop0] repaired '+fixed.length+' board'+(fixed.length>1?'s':'')+' on the record (re-anchored behind a held board, or a lap read as 26 letters)');}catch(e){}
   }
 })();}catch(e){}
 // which board is next — #110: a board stays "next/live" until its dispatch ENDS.
@@ -10190,6 +10201,22 @@ function boardCycled(r){
   const sp=countActiveSpan(r.start,r.end,boardLap(r)), tot=activeTotal();
   return !!(sp!=null&&tot&&sp>=Math.floor(tot*0.95));
 }
+/* #lapact(sep6) — LETTERS THE BOARD WALKED, the number every engine reads as `act`.
+   Start letter to end letter, mod 26 — which reads a lap as ZERO: E5069 → E5068 sealed
+   as act 0, the same figure as a board that never moved. Every reader took it at its
+   word: the momentum EWMA folded the 9/4 lap in as a hold (0.3 × 0), the community
+   sheet rows the kNN trains on got "805 came down, moved 0 letters", and the record
+   ladder in myBoardStatus read nobody as called. The training logs carry a lap as 26
+   (four of them in HALL_LOG), so 26 is what the live record says too — a lap that
+   ran on past its own start is still 26: the axis has no 27th letter. */
+function boardActOf(start,end,r){
+  const s=String(start||"").toUpperCase(), e=String(end||"").toUpperCase();
+  if(!s||!e)return undefined;
+  const d=(AZ.indexOf(e[0])-AZ.indexOf(s[0])+26)%26;
+  let lap=false;
+  try{ lap=(r===true)||(!!r&&typeof r==="object"&&(boardLap(Object.assign({},r,{start:s,end:e}))||boardCycled(Object.assign({},r,{start:s,end:e})))); }catch(_){ lap=false; }
+  return lap?26:d;
+}
 /* CARDS THIS BOARD ACTUALLY CALLED. Same as the raw span, except a held board
    calls nobody. A cycle still counts every card — that's the point of a cycle.
    ctx carries what the cards can't say (down / swipes / cyc / date+slot). */
@@ -10259,13 +10286,23 @@ function eligibleSpan(r){
    opening card vs. E below it) comes out right.
    HOW THIN: the last board caught `down` jobs across its fresh cards. The hall's
    base rate is what a fresh card catches on an ordinary board (chain average,
-   ~26%). The share of a thin letter's regulars still available ≈ 1 − att ÷ base,
-   floored at 10% — "the few that flopped in the morning". 0.25 when the last
-   board's come-down was never logged.
-   Returns null with no sealed last board. w[27]: the weight of each ladder letter
-   from the opening card (1 = fresh; k=0 is the opening letter from the card up,
-   k=26 the same letter below the card — a lap). thin[27]: the resting share. */
-const LADDER_FLOOR=0.10, LADDER_DEFAULT=0.25, LADDER_MEMORY=6;
+   ~26%). The share of a thin letter's crowd still available ≈ 1 − OVERLAP × att ÷ base,
+   floored at 10%.
+   #lapfix(sep6) — OVERLAP is the day/night crowd overlap, and it is the whole
+   story of what went wrong after 9/4. The first cut assumed OVERLAP = 1: the
+   casuals who answer a letter are one fixed crew, so once they worked the morning
+   the letter is dead at night bar "the few that flopped". After the 9/4 lap that
+   put 18 letters (3,500 cards) on the ladder at a tenth of a letter each, and a
+   4-letter call was published as a 20-letter one — the board did not barrel
+   through anything like that, because the night crowd is not the morning crowd:
+   the 805 who worked the lap were 23% of the cards in those letters, and most of
+   the people who work nights were not among them. OVERLAP = 0.5 says half of a
+   letter's night crowd worked the morning when the morning took its usual share
+   (a fully-spent letter is then worth half an ordinary one, a lap's letters a bit
+   more). It is the one knob here, and the call's record is how to tune it: laps
+   and long wraps overshooting → lower it; the board barrelling through a rest
+   zone the call said it would stop in → raise it. 1.0 restores the first cut. */
+const LADDER_FLOOR=0.10, LADDER_OVERLAP=0.5, LADDER_MEMORY=6;
 function restLadder(openingCard){
   try{
     const lb=(typeof lastCompletedBoard==="function")?lastCompletedBoard():null;
@@ -10292,7 +10329,9 @@ function restLadder(openingCard){
     const base=(sumFresh>0)?Math.max(0.08,Math.min(0.9,sumDown/sumFresh)):0.27;
     const dnL=(boardMoved(lb)===false)?0:boardDown(lb);
     const att=(dnL!=null&&dnL>0&&freshOfLast.size>0)?Math.min(1,dnL/freshOfLast.size):null;
-    const thinW=(att!=null)?Math.max(LADDER_FLOOR,Math.min(1,1-att/base)):LADDER_DEFAULT;
+    /* #lapfix — a thin letter keeps 1 − OVERLAP × (how much of its usual share the last
+       board took); no come-down on the record reads as "its usual share". */
+    const thinW=Math.max(LADDER_FLOOR,Math.min(1,1-LADDER_OVERLAP*((att!=null)?att/base:1)));
     /* the ladder from the opening card: a thin share per letter, and its weight */
     const w=new Array(27).fill(1), thin=new Array(27).fill(0); let n0=0;
     for(let k=0;k<27;k++){
@@ -10625,7 +10664,12 @@ const COMEDOWN_CAL=(function(){
   return {ratio:ratio,add:add,obs:function(){return obs.slice();}};
 })();
 window.addComeDown=function(key,camedown,called){
-  try{COMEDOWN_CAL.add(key,camedown,called);}catch(e){}
+  /* #lapcatch(sep6) — same rule as catchModel: a lap's ratio (came-down over the whole
+     book) is not a turnout reading, so it never enters the calibration either. */
+  try{
+    const r=(typeof RECENT!=="undefined")?RECENT.find(x=>x&&x.date+"_"+x.slot===key):null;
+    if(!(r&&(boardCycled(r)||boardLap(r))))COMEDOWN_CAL.add(key,camedown,called);
+  }catch(e){}
   /* #204 — while the call is frozen (dispatch on the floor), record the come-down for
      later calibration but DON'T move the live prediction. It refreshes after dispatch. */
   try{if(window._lastStart)renderMyOdds(window._lastStart,window._lastMoved);}catch(e){}
@@ -11648,7 +11692,18 @@ function catchModel(){
     if(_catchCache&&_catchCacheN===done.length)return _catchCache;
     const letter={}; let gDown=0,gCalled=0;
     done.forEach(r=>{
-      const called=boardCalled(r), down=boardDown(r);   /* #noflop0 — a held board teaches the model nothing */
+      /* #lapcatch(sep6) — A LAP TEACHES THE TURNOUT MODEL NOTHING. On a lap the board
+         called every card in the book, including the twenty letters nobody expected to
+         come up that day; came-down ÷ called on that board (Sep 4 AM: 805 ÷ 5,510 = 15%)
+         says who happened to be standing there for the WHOLE book, not what a called
+         card near the window catches. Pooled in here it dragged the hall-wide rate from
+         ~26% to ~23%, and V4.predict's attendance regime (letters ∝ 1 ÷ turnout) then
+         stretched EVERY call after it by ×1.2 — for as long as the lap sat on the record.
+         That was the "over-correction" seen on the wire after 9/4. The per-letter table
+         was worse off: a lap's walk files ~4,700 flops across all 26 letters, so every
+         letter "earned" its own catch rate and it was ~15%. Laps stay out of both. */
+      if(boardCycled(r)||boardLap(r))return;
+      const called=eligibleSpan(r), down=boardDown(r);   /* #noflop0 — a held board teaches the model nothing · #offboard — the crew the rule kept off never had a card to answer with */
       if(called==null||down==null||called<=0)return;
       gCalled+=called; gDown+=Math.min(down,called);
       const sl=LSEQ.indexOf(r.start[0].toUpperCase()),sn=parseInt(r.start.slice(1),10);
@@ -27030,7 +27085,7 @@ function saveBoardResult(){
      #cycle — only when it IS held: heldCard reads the record, so a lap that landed a
      card short (or that a casual flagged) keeps its real start. */
   const _hc=heldCard(Object.assign({start:start,end:end},ctx)); if(_hc)start=_hc;
-  const act=(AZ.indexOf(end[0])-AZ.indexOf(start[0])+26)%26;
+  const act=boardActOf(start,end,Object.assign({start:start,end:end},ctx));   /* #lapact — a lap is 26, not 0 */
   const parts=k.split('_'), date=parts[0], slot=parts.slice(1).join('_');
   const r=RECENT.find(x=>x.date+'_'+x.slot===k);
   const patch={date:date,slot:slot,start:start,end:end,act:act,ch:came,down:came,
@@ -27087,7 +27142,7 @@ function chainBoards(fromKey){
     if(nxt.end&&boardMoved(nxt)===false)continue;   /* it anchors itself; keep walking so later boards still re-anchor (matches the boot pass) */
     if(nxt.start===ns)break;                             // already in sync — the ripple stops
     nxt.start=ns;
-    if(nxt.end)nxt.act=(AZ.indexOf(nxt.end[0])-AZ.indexOf(ns[0])+26)%26;
+    if(nxt.end)nxt.act=boardActOf(ns,nxt.end,nxt);   /* #lapact */
     touched.push(nxt);
   }
   if(touched.length){
@@ -27151,6 +27206,9 @@ function bwApplyRow(row){
   /* #cycle — the wire is the record: a log with no held/cycled word on it clears any
      word this phone had, so the inference (come-down, swipes) decides here like everywhere */
   if(!('cyc' in row.patch))delete r.cyc;
+  /* #lapact(sep6) — a lap sealed on an older build rides in as act 0 on every sync;
+     read it as the 26 letters it walked, the same as the boot pass does. */
+  try{ if(r.start&&r.end){ const _a=boardActOf(r.start,r.end,r); if(_a===26&&r.act!==26)r.act=26; } }catch(e){}
   /* #record(aug13) — a sealed end is the exam answer: score the bot's pre-run call */
   try{ if(r.end&&typeof predScore==='function')predScore(k,r.end); }catch(e){}
   /* #noflop0 — the wire carries rows logged BEFORE the held rule existed, so a
@@ -27297,7 +27355,7 @@ function hlApplyToRecord(){
       RECENT.sort((a,b)=>{const ka=a.date+(String(a.slot).endsWith('AM')?'_1':'_2'),kb=b.date+(String(b.slot).endsWith('AM')?'_1':'_2');return ka<kb?-1:ka>kb?1:0;});}
     if(row.end===imp.end){window._hlApplied={key:imp.key,end:imp.end,note:'already on the record'};return;}
     row.end=imp.end; row._hotline=true;
-    if(row.start){try{row.act=(AZ.indexOf(imp.end[0])-AZ.indexOf(row.start[0])+26)%26;}catch(e){}}
+    if(row.start){try{row.act=boardActOf(row.start,imp.end,row);}catch(e){}}   /* #lapact */
     try{chainBoards(imp.key);}catch(e){}
     try{renderRecentBoards();}catch(e){}
     try{repredict();}catch(e){}
@@ -27561,7 +27619,7 @@ function noFlopSeal(){
   const _hc0=start?heldCard(Object.assign({start:start,end:end},ctx)):null; if(_hc0)start=_hc0;
   const flex=u.list.filter(x=>x.cat==="FLEX").reduce((a,x)=>a+x.n,0);
   const patch={date:date,slot:slot,start:start,end:end,
-    act:start?(AZ.indexOf(end[0])-AZ.indexOf(start[0])+26)%26:undefined,
+    act:start?boardActOf(start,end,Object.assign({start:start,end:end},ctx)):undefined,   /* #lapact — a lap is 26, not 0 */
     ch:came,down:came,flex:flex,tot:r.tot,rain:r.rain||false,hol:r.hol||false};
   if(typeof r.cyc==="boolean")patch.cyc=r.cyc;
   if(typeof r.swipes==="number")patch.swipes=r.swipes;
