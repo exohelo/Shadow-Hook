@@ -20697,7 +20697,12 @@ async function runGifQuery(term){
       const prev=(im.fixed_width_downsampled&&im.fixed_width_downsampled.url)||(im.fixed_width&&im.fixed_width.url)||(im.downsized&&im.downsized.url);
       const full=(im.fixed_height&&im.fixed_height.url)||(im.downsized_medium&&im.downsized_medium.url)||(im.original&&im.original.url)||prev;
       if(!prev)return;
-      const img=document.createElement('img');img.loading='lazy';img.src=prev;img.alt=it.title||'GIF';
+      const img=document.createElement('img');img.loading='lazy';img.alt=it.title||'GIF';
+      /* #iosperf(sep7) — on a phone, 24 GIFs decoding at once is a freezer: tiles load as
+         stills and only the ones on screen animate (the watcher lives with the #iosperf block) */
+      const still=(im.fixed_width_still&&im.fixed_width_still.url)||null;
+      if(window.__gifStill&&still&&typeof window.__gifWatch==='function'){ img.src=still; img.dataset.still=still; img.dataset.anim=prev; window.__gifWatch(img); }
+      else img.src=prev;
       img.addEventListener('click',()=>sendGif(full));
       g.appendChild(img);
     });
@@ -39072,6 +39077,120 @@ function syncBell(){ try{ if(typeof renderBell==='function')renderBell(); }catch
 
 
 try{window.__bootProg&&__bootProg(97)}catch(e){}   /* #realboot — last rigging */
+</script>
+
+<!-- ═══════════════ #iosperf(sep7) — THE PHONE STOPS COOKING ═══════════════
+     A member's iPhone froze. The trace said why: sitting still on the home
+     screen, the page was redrawing the ENTIRE viewport 60 times a second, and
+     three-fifths of that work was one decoration — the arcade aurora: a
+     fixed, bigger-than-the-screen layer carrying filter:blur(60px) while three
+     blobs drift underneath it. A blur on the PARENT of moving children has to
+     be recomputed every frame; at 3× pixels on a phone that is a 180px Gaussian
+     blur over ~4 million pixels, 60 times a second, forever — and the two
+     glass bars (topbar, nav) re-blur their backdrop every frame on top of it,
+     because what's behind them never stops changing. WebKit runs most of that
+     on the CPU. The GPU pegs, the phone heats, iOS throttles, taps queue up
+     behind frames that never finish: "it froze".
+     Measured in a phone-sized Chromium with a software renderer (worst case,
+     same shape as WebKit): 3.8s of every 4s spent drawing as shipped; 1.6s with
+     the blur gone; 0.14s with the always-on animations stopped.
+
+     WHAT CHANGES (and what doesn't):
+       · everywhere: the aurora keeps its colours and drift but loses the blur —
+         the blobs are radial gradients already, a soft mask gives the same
+         edge for free. Every seasonal colour rule still applies: only the
+         filter and the blend mode are touched.
+       · phones (hover:none + pointer:coarse) — the desktop keeps every effect:
+           – the aurora holds still (a 44–66s drift nobody can see, at 60fps)
+           – hero numbers keep their glow but stop pulsing the FILTER (gradient
+             text + an animated drop-shadow is a full re-raster every frame)
+           – box-shadow pulses become opacity pulses (same beat, composited)
+           – the two sweeps that animated top/left now animate transform
+           – arcade cards lose backdrop-filter (every card re-blurred while you
+             scroll) and get a touch more opacity to keep their contrast
+           – topbar/nav glass blurs 10px instead of 18–20px
+       · GIF picker on phones: 24 animated GIFs decoding at once is the other
+         classic iOS freezer — tiles load as stills and only the ones on screen
+         animate (see #iosperf in runGifQuery).
+       · a freeze watchdog: if the main thread stalls 2.5s+ while the app is in
+         the foreground, it files itself under THE ALARMS (where_at 'freeze')
+         with the screen, the animation count and the phone — so the next
+         report comes with evidence instead of "it froze".
+     Nothing here touches data, auth or layout. Remove the block, nothing else
+     knows it was there. -->
+<style id="perfIos">
+/* (1) the aurora — no blur, no blend, a mask for the soft edge. Seasons untouched. */
+html.arcade .arc-aurora{filter:none;opacity:.5}
+html.arcade.daylight .arc-aurora{filter:none;opacity:.24}
+html.arcade .arc-aurora i{mix-blend-mode:normal;
+  -webkit-mask-image:radial-gradient(circle closest-side,#000 32%,transparent 100%);
+  mask-image:radial-gradient(circle closest-side,#000 32%,transparent 100%)}
+
+/* (2) phones only — the desktop keeps the full show */
+@media (hover:none) and (pointer:coarse){
+  /* the drift */
+  html.arcade .arc-aurora i:nth-child(n){animation:none}   /* :nth-child(n) — outranks the per-blob rules */
+  /* the glow holds still (the static drop-shadow on these rules stays) */
+  .wire-stop,.tk-hero,.hb-stop,#ffCard .ff-hero,#scr-ledger #rRank,.heat.hot,.dl-onair,#scr-dockets .empty-state .es-ico{animation:none}
+  /* box-shadow pulses → opacity/scale, same names so nothing else changes */
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.55;transform:scale(1.25)}}
+  @keyframes arcLive{0%,100%{opacity:1}50%{opacity:.82}}
+  @keyframes floorPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(1.35)}}
+  @keyframes racePulse{0%,100%{opacity:1}50%{opacity:.88}}
+  @keyframes youGlow{0%,100%{opacity:1}50%{opacity:.88}}
+  @keyframes legendPulse{0%,100%{opacity:1}50%{opacity:.85}}
+  @keyframes soPulse{0%,100%{opacity:1}50%{opacity:.85}}
+  /* the scanner sweep: same line, same path, moved by transform instead of top */
+  #scanBtn::before{top:8%;bottom:8%;height:auto;box-shadow:none;
+    background:linear-gradient(90deg,transparent,var(--copper-hi),transparent) top/100% 2px no-repeat;
+    animation:scanSweepT 2.9s ease-in-out infinite}
+  @keyframes scanSweepT{0%{transform:translateY(0);opacity:0}14%{opacity:1}86%{opacity:1}100%{transform:translateY(100%);opacity:0}}
+  /* the send-word sheen: same ride, by transform instead of left */
+  #scr-ports .send-word::before{left:-60%;animation:wlSheenT 4.5s ease-in-out infinite}
+  @keyframes wlSheenT{0%,60%{transform:skewX(-20deg) translateX(0)}80%,100%{transform:skewX(-20deg) translateX(475%)}}
+  /* glass: cards go solid-ish, the bars blur less */
+  html.arcade .card{backdrop-filter:none;-webkit-backdrop-filter:none;
+    background:linear-gradient(184deg,rgba(36,31,66,.88),rgba(18,16,31,.95) 64%)}
+  html.arcade .topbar{backdrop-filter:blur(10px) saturate(1.2);-webkit-backdrop-filter:blur(10px) saturate(1.2)}
+  html.arcade .nav{backdrop-filter:blur(10px) saturate(1.25);-webkit-backdrop-filter:blur(10px) saturate(1.25)}
+}
+</style>
+<script>
+/* #iosperf(sep7) — the GIF grid on phones, and the freeze watchdog. See the note above. */
+(function(){try{
+  var coarse=false; try{ coarse=matchMedia('(hover:none) and (pointer:coarse)').matches; }catch(e){}
+  /* ── GIF tiles: stills first; only what's on screen animates (runGifQuery asks) ── */
+  window.__gifStill=coarse&&('IntersectionObserver' in window);
+  var io=null;
+  window.__gifWatch=function(img){
+    try{
+      if(!io){ io=new IntersectionObserver(function(es){
+        es.forEach(function(en){ var el=en.target, a=el.dataset.anim, s=el.dataset.still;
+          if(!a||!s)return;
+          var want=en.isIntersecting&&en.intersectionRatio>=.5?a:s;
+          if(el.getAttribute('src')!==want)el.src=want; });
+      },{threshold:[0,.5,1]}); }
+      io.observe(img);
+    }catch(e){}
+  };
+  /* ── the watchdog: a stalled main thread files itself ── */
+  var T0=Date.now(), last=T0, vis=T0, filed=0;
+  var ua=navigator.userAgent||'';
+  var standalone=false; try{ standalone=matchMedia('(display-mode: standalone)').matches||navigator.standalone===true; }catch(e){}
+  document.addEventListener('visibilitychange',function(){ vis=Date.now(); last=Date.now(); });
+  setInterval(function(){
+    var now=Date.now(), gap=now-last; last=now;
+    if(gap<2500||document.hidden||now-vis<gap+1000)return;   /* backgrounded ≠ frozen */
+    if(++filed>3)return;
+    var scr=''; try{ var s=document.querySelector('section.screen.on'); scr=s?('#'+s.id):''; }catch(e){}
+    var open=''; try{ var o=document.querySelector('.sheet.on,.dlg.on,#roomView.on,#gearView.on,[id$="View"].on'); open=o?(' · '+(o.id||o.className.split(' ')[0])+' open'):''; }catch(e){}
+    var anims=0; try{ anims=document.getAnimations().length; }catch(e){}
+    var msg='main thread stalled '+(gap/1000).toFixed(1)+'s on '+(scr||'?')+open+' · '+anims+' animations running · '
+      +Math.round((now-T0)/1000)+'s after boot · '+(standalone?'home-screen':'browser tab')+' · '+ua.replace(/^Mozilla\/5\.0 /,'').slice(0,90);
+    try{ if(typeof window.shkAlert==='function')window.shkAlert('freeze',msg); }catch(e){}
+    try{ console.warn('[freeze]',msg); }catch(e){}
+  },500);
+}catch(e){}})();
 </script>
 
 </body>
