@@ -10727,6 +10727,7 @@ window.addComeDown=function(key,camedown,called){
   try{if(window._lastStart)renderMyOdds(window._lastStart,window._lastMoved);}catch(e){}
 };
 let SH_PMF=null;                                  // published distribution — renderMyOdds reads it
+let SH_PMF_RAW=null;                              /* #ffsync — the same call BEFORE the rest ladder: the forecast rolls its momentum on this, so a one-night stretch never reads as a change in the hall's pace */
 window.EARLY_COUNTS=null;                         // the #23 bot posts {ch,tot} here when it lands
 /* ═══════ #sheetfix — ONE definition of "members only", OCR-tolerant ═══════
    The dispatch PDFs on ilwu13.com are SCANS with no text layer, so the worker
@@ -11765,7 +11766,7 @@ function publishCall(){
     window._v4dbg.ladder=ladder?{thinW:+ladder.thinW.toFixed(2),att:(ladder.att!=null?+ladder.att.toFixed(3):null),base:+ladder.base.toFixed(3),firstThin:ladder.firstThin,firstFresh:ladder.firstFresh,resting:ladder.resting,keep:+ladKeep.toFixed(2),bias:(ladBias!=null?+ladBias.toFixed(1):null)}:null;
     window._v4dbg.reg=window._v4reg||null;
   } }catch(_de){}
-  SH_PMF=pmf;
+  SH_PMF=pmf; SH_PMF_RAW=pmfRaw;   /* #ffsync — the forecast's pending cell reads both */
   const cum=[]; let c=0; pmf.forEach(x=>{c+=x;cum.push(c);});
   const q=t=>cum.findIndex(x=>x>=t);
   const med=q(0.5), lo=q(0.25), hi=q(0.75), pmove=Math.round((1-pmf[0])*100);
@@ -12142,6 +12143,24 @@ window.renderMyOdds=renderMyOdds;
   var UP_BAND=4;
 
   function bandOf(p){ var b=BANDS[0]; for(var i=0;i<BANDS.length;i++) if(p>=BANDS[i].lo)b=BANDS[i]; return b; }
+  /* #ffsync(sep6) — REACH IS NOT A JOB, AND THE STRIP SAID IT WAS. The figure this
+     card quotes is P(the board sweeps past your card) — the right number for "should I
+     be at the hall", and what the bands are tuned on. But the line under it read "your
+     next JOB is predicted for Monday", and a job is that number discounted by what a
+     called card actually catches (~1 in 4). So the strip promised a job at 54% while
+     renderMyOdds, an inch above, put the same board at 2%. Same discount as the wire's
+     alert (letterCatch where the letter has earned its own rate, the hall's rate
+     otherwise), so the two features quote one board in one language. */
+  function jobPct(reach){
+    try{
+      var my=(typeof myBoardId==="function")?myBoardId():null; if(!my)return null;
+      var cm=(typeof catchModel==="function")?catchModel():null;
+      var lc=(typeof letterCatch==="function")?letterCatch(my.charAt(0)):null;
+      var cr=(lc!=null)?lc:((cm&&cm.global)||0.28);
+      if(!(cr>0))return null;
+      return Math.min(0.98,Math.max(0.005,reach*cr));
+    }catch(e){ return null; }
+  }
   function pctOf(v){ return (v>0&&v<0.005)?"<1%":Math.round(v*100)+"%"; }
   function posOf(id){ var n=parseInt(String(id).slice(1),10)||0;
                       return AZF.indexOf(String(id).charAt(0))+Math.min(0.999,n/10000); }
@@ -12237,13 +12256,31 @@ window.renderMyOdds=renderMyOdds;
         }catch(e){ pmf=null; }
         if(!pmf){ row.slots.push({ap:isAM?"AM":"PM",slot:slot,reach:0,sharp:0,band:BANDS[0],mean:0}); continue; }
 
-        /* #ladder — the PENDING board (and only it: after it the cursor is a spread,
-           not a card) runs on the same stretched distribution the call above
-           publishes, so tonight's cell and the wire can't disagree. The ordinary
-           mean rolls the momentum, as before — the stretch is tonight's letters,
-           not a change in the hall's pace. */
+        /* ═══ #ffsync(sep6) — THE PENDING CELL *IS* THE CALL ABOVE IT ═══
+           This row and the wire are the SAME BOARD, and they were figuring it off
+           different numbers. The wire rides the real sheet — "✓ FINAL COUNT" means
+           publishCall handed the engine the casual count printed on it. This loop never
+           saw that sheet: every cell, the pending one included, ran on V4.expect() — the
+           weekday EWMA, "what a Monday morning usually brings". On a quiet board those
+           are nowhere near each other (430 casual on the sheet against a ~1,180 Monday
+           average), so the wire said LIKELY HOLDS ON X while the strip an inch below it
+           said SUIT UP 54% — one board, two counts, and the casual left to work out
+           which half of his own app to believe.
+           The pending board now takes the PUBLISHED distribution outright: same count,
+           same regime factor, same categories, same rain, same rest ladder. Later cells
+           keep the weekday estimate, which is the honest answer once there is no sheet
+           to read. Momentum still rolls on the PRE-LADDER mean — the stretch is tonight's
+           letters, not a change in the hall's pace — but on the real call's, not a guess's. */
         var meanRaw=0; for(j=0;j<27;j++) meanRaw+=j*(pmf[j]||0);
-        if(i===0&&(isAM!==startPM)&&lad&&typeof restStretch==="function"){
+        /* `confirmed` matters: with no sealed opening card publishCall RETURNS before it
+           publishes, so SH_PMF would still be holding the last board's call — a stale
+           distribution is worse than an honest weekday estimate. The strip already says
+           "◆ provisional" in that state; this keeps the numbers under it provisional too. */
+        var pend=(i===0&&(isAM!==startPM)&&confirmed);
+        if(pend&&SH_PMF&&SH_PMF.length===27){
+          pmf=SH_PMF;
+          if(SH_PMF_RAW&&SH_PMF_RAW.length===27){ meanRaw=0; for(j=0;j<27;j++) meanRaw+=j*(SH_PMF_RAW[j]||0); }
+        } else if(pend&&lad&&typeof restStretch==="function"){
           try{ pmf=restStretch(pmf,lad); }catch(e){}
         }
 
@@ -12260,8 +12297,13 @@ window.renderMyOdds=renderMyOdds;
         for(j=0;j<27;j++) mean+=j*(pmf[j]||0);
         for(q=0;q<BINS;q++){
           if(!D[q])continue;
+          /* #ffsync(sep6) — P(the board walks at least as far as your card): survive from
+             lo, ramping to lo+1 across the fraction — the SAME read renderMyOdds makes on
+             the wire. This was S[lo+1]→S[lo+2], a whole letter pessimistic, and at distance
+             zero (the board OPENING on your own card) it answered "P(it moves at all)"
+             instead of 1. Two features quoting one board have to count letters the same. */
           var dist=((mine-q/10)%26+26)%26, lo=Math.floor(dist), fr=dist-lo;
-          reach+=D[q]*(S[Math.min(lo+1,28)]*(1-fr)+S[Math.min(lo+2,28)]*fr);
+          reach+=D[q]*(S[Math.min(lo,28)]*(1-fr)+S[Math.min(lo+1,28)]*fr);
         }
         /* advance the cursor distribution */
         var N=new Array(BINS); for(q=0;q<BINS;q++)N[q]=0;
@@ -12402,7 +12444,8 @@ window.renderMyOdds=renderMyOdds;
         you.className='ff-you'+((mine.band.k>=UP_BAND&&F.confirmed)?'':' cool');
         you.innerHTML=yBody('<div><div class="yl">'+(pmNow?"🌙":"☀")+' You on this board</div>'
           +'<div class="yw">'+r0.dow.toUpperCase()+" "+(r0.date.getMonth()+1)+"/"+r0.dom+' · '+mine.band.w+'</div>'
-          +'<div class="yp cool">your next job is predicted for '+(DOWFULL[r0.dow]||r0.dow)+' — '+relDay(r0.date)+'</div>'
+          +'<div class="yp cool">the board reaches your card '+relDay(r0.date)
+            +(jobPct(mine.reach)!=null?' · about '+pctOf(jobPct(mine.reach))+' for a job in hand':'')+'</div>'
           +prov+'</div>'
           +'<div class="yn">'+pctOf(mine.reach)+'</div>');
       }else if(hero){
@@ -12411,7 +12454,8 @@ window.renderMyOdds=renderMyOdds;
         you.innerHTML=yBody('<div><div class="yl">'+(ha===0?"☀":"🌙")+' Next one you\u2019re in</div>'
           +'<div class="yw">'+hero.dow.toUpperCase()+" "+(hero.date.getMonth()+1)+"/"+hero.dom
             +' · '+hb.band.w+'</div>'
-          +'<div class="yp cool">your next job is predicted for '+(DOWFULL[hero.dow]||hero.dow)+' — '+relDay(hero.date)
+          +'<div class="yp cool">the board reaches your card '+(DOWFULL[hero.dow]||hero.dow)+' — '+relDay(hero.date)
+            +(jobPct(hb.reach)!=null?' · about '+pctOf(jobPct(hb.reach))+' for a job':'')
             +' · '+(mine&&!mine.done ? 'not this one ('+pctOf(mine.reach)+')' : 'this board has run')+'</div>'+prov+'</div>'
           +'<div class="yn">'+pctOf(hb.reach)+'</div>');
       }else{
@@ -12429,7 +12473,8 @@ window.renderMyOdds=renderMyOdds;
           you.innerHTML=yBody('<div><div class="yl">'+(bj===0?"☀":"🌙")+' Your best shot this month</div>'
             +'<div class="yw">'+rows[bi].dow.toUpperCase()+" "+(rows[bi].date.getMonth()+1)+"/"+rows[bi].dom
               +' · '+bb.band.w+'</div>'
-            +'<div class="yp cool">nothing reaches GOOD SHOT — '+relDay(rows[bi].date)+'</div>'
+            +'<div class="yp cool">nothing reaches GOOD SHOT — '+relDay(rows[bi].date)
+              +(jobPct(bb.reach)!=null?' · about '+pctOf(jobPct(bb.reach))+' for a job':'')+'</div>'
             +prov+'</div><div class="yn">'+pctOf(bb.reach)+'</div>');
         }else{
           you.innerHTML=yBody('<div><div class="yl">The month is dark</div>'
