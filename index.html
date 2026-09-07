@@ -35411,7 +35411,7 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
      carried, failed — with a closing word; the mover may table their own. A vote
      for the whole Order can grow out of this shape later; the tables don't care
      how many ballots land. km_chamber + km_ballots, DEPUTY-DESK.sql Part 1b. */
-  let _motions=[], _ballots=[];
+  let _motions=[], _ballots=[]; const _struck={};   /* #strike — ids I struck myself (no second toast off the wire) */
   window.kmChamber=async function(){
     const out=$('kmChamber'); if(!out)return;
     if(!window.SB){out.textContent='backend off';return;}
@@ -35463,8 +35463,12 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
             +'<button class="btn-ghost km-vote" data-do="failed" style="flex:1;padding:6px 0;font-size:11px;color:var(--ember)">☠ FAILED</button></div>':'')
            +(mover&&!crown?'<div style="margin-top:6px"><button class="btn-ghost km-vote" data-do="tabled" style="width:100%;padding:6px 0;font-size:11px;color:var(--steel)">↩ table it</button></div>':'')
            :'')
+        /* #strike(sep7) — off the record for good: the crown strikes any motion; the mover strikes their own
+           while it's still theirs (open or tabled — a decided motion is the council's record). */
+        +(canStrike(x)?'<div style="margin-top:6px;text-align:right"><button class="btn-ghost km-vote" data-do="strike" title="delete this motion and every ballot on it" style="padding:4px 10px;font-size:10.5px;color:var(--steel);border-color:var(--line-soft)">🗑 strike it'+(isOpen?'':' from the record')+'</button></div>':'')
         +'</div>';
     };
+    function canStrike(x){ if(crown)return true; if(!me.uid||x.by!==me.uid)return false; return !(x.status==='carried'||x.status==='failed'); }
     if(!_motions.length){ out.innerHTML='<span style="color:var(--steel)">the chamber is quiet — put a motion below and the council votes on it.</span>'; return; }
     out.innerHTML=(open.length?open.map(row).join(''):'<div class="sub" style="color:var(--steel);margin-bottom:6px">no motion on the floor</div>')
       +(closed.length?'<div class="sub" style="margin:8px 0 4px;color:var(--steel);letter-spacing:.12em;font-size:10px">DECIDED</div>'+closed.map(row).join(''):'');
@@ -35506,6 +35510,21 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
     if(r.error)throw r.error;
     try{toast('↩ tabled — '+x.title);}catch(e){}
   }
+  /* #strike — km_strike_motion() (CHAMBER-STRIKE.sql) takes the motion and its ballots off in one stroke,
+     and the server re-checks who's asking: the crown, or the mover of a motion that isn't decided yet. */
+  async function kmStrike(x){
+    const crown=kmIsCrown(), me=kmMe(), mover=!!(me.uid&&x.by===me.uid);
+    if(!crown&&!mover)throw new Error('only the crown, or the mover, strikes a motion');
+    if(!crown&&(x.status==='carried'||x.status==='failed'))throw new Error('a decided motion is the council’s record — only the crown strikes it');
+    const n=_ballots.filter(v=>String(v.proposal_id)===String(x.id)).length;
+    let ok=true; try{ ok=confirm('Strike “'+x.title+'” from the record?'+(n?' The '+n+' ballot'+(n===1?' on it goes':'s on it go')+' with it.':'')+' There is no getting it back.'); }catch(e){}
+    if(!ok)return false;
+    const r=await window.SB.rpc('km_strike_motion',{p_id:String(x.id)});
+    if(r.error){ const m=String(r.error.message||r.error); throw new Error(/km_strike_motion|schema cache|PGRST202|42883/i.test(m)?'the strike isn’t built yet — run CHAMBER-STRIKE.sql once in Supabase → SQL Editor':m); }
+    _struck[String(x.id)]=1;
+    try{toast('🗑 struck from the record — '+x.title);}catch(e){}
+    return true;
+  }
   (function(){
     const host=$('kmChamber'); if(!host)return;
     host.addEventListener('click',async function(e){
@@ -35518,6 +35537,7 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
         else if(b.dataset.do==='nay')await kmVote(x,false);
         else if(b.dataset.do==='carried'||b.dataset.do==='failed'){ if(!kmIsCrown())throw new Error('only the crown closes a motion'); await kmClose(x,b.dataset.do); }
         else if(b.dataset.do==='tabled')await kmTable(x);
+        else if(b.dataset.do==='strike')await kmStrike(x);
         await kmChamber();
       }catch(err){ try{toast('✗ '+(err&&err.message||err));}catch(e2){} wrap.querySelectorAll('button').forEach(bb=>bb.disabled=false); }
     });
@@ -35530,6 +35550,9 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
       const row=(p&&p.new)||null; const me=kmMe();
       if(row&&p.table==='km_chamber'&&p.eventType==='INSERT'&&row.by!==me.uid){ try{toast('🗳 '+(row.by_handle||'the council')+' put a motion to the council — '+(row.title||''));}catch(e){} }
       if(row&&p.table==='km_chamber'&&p.eventType==='UPDATE'&&(row.status==='carried'||row.status==='failed')&&row.closed_by!==me.uid){ try{toast('☠ the Keymaster closed it — '+(row.title||'')+' · '+row.status.toUpperCase());}catch(e){} }
+      if(p.table==='km_chamber'&&p.eventType==='DELETE'){ /* #strike — the wire only carries the id; the title is still in hand */
+        const oid=p.old&&p.old.id; if(oid!=null&&!_struck[String(oid)]){ const gone=_motions.find(m=>String(m.id)===String(oid)); if(gone){ try{toast('🗑 struck from the record — '+(gone.title||'a motion'));}catch(e){} } }
+      }
       const sh=$('kmSheet'); if(sh&&sh.classList.contains('on'))_rtCoalesce('chamber',kmChamber,1200);
     }catch(e){}
   };
