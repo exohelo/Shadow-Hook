@@ -368,9 +368,11 @@ select.field{appearance:none;-webkit-appearance:none}
            people it said "sent" and nothing came. Recovery mail is the
            standard road, and the landing already knew how to set a password
            (#linkin) — it just says "new password" now (#recovery);
-         · CREATE A VENDOR ACCOUNT — self-serve: the login is made on the spot,
-           the shop lands on the Keymaster's list, the Keymaster puts it on the
-           rolls (#vendorapply). Needs VENDOR-SIGNUP.sql once.
+         · CREATE A VENDOR ACCOUNT — self-serve: the login AND the desk are made
+           on the spot (#vendorapply, #selfenroll — vendor_self_enroll in
+           VENDOR-SIGNUP.sql); the Keymaster sees the shop under VENDORS and
+           hears by SALES-MAIL. If the desk can't open, the shop waits on the
+           Keymaster's list instead.
        The footer stops talking about minted passes.
        A dispatch # still works in the email box (#casualid) — nothing says so
        any more, because this door is for vendors. -->
@@ -410,7 +412,7 @@ select.field{appearance:none;-webkit-appearance:none}
   <div id="pending" hidden style="text-align:center;padding-top:12vh">
     <div class="crest">⚓</div>
     <div class="gate-title" style="font-size:28px;margin-top:16px">YOU’RE ON THE LIST</div>
-    <p class="sub" id="pendMsg" style="margin-top:10px;max-width:480px;margin-left:auto;margin-right:auto;line-height:1.6">Your login works. The Keymaster puts your shop on the rolls next — you’ll get an email when your desk opens, and this page will open it.</p>
+    <p class="sub" id="pendMsg" style="margin-top:10px;max-width:480px;margin-left:auto;margin-right:auto;line-height:1.6">Your login works, but your desk couldn’t open by itself. The Keymaster has it on the list — you’ll get an email when it’s open.</p>
     <p class="sub" style="margin-top:14px">Questions or issues: <b style="color:var(--bone)">Support@theshadowhook.com</b></p>
     <button class="btn-line" id="pendOut" style="margin-top:22px">SIGN OUT</button>
   </div>
@@ -458,7 +460,7 @@ select.field{appearance:none;-webkit-appearance:none}
      files the shop for the login that's already here (the password rows hide). -->
 <div class="sheet" id="signupSheet" data-stay><div class="sheet-card">
   <div class="sheet-t">🤝 CREATE A VENDOR ACCOUNT</div>
-  <p class="sub" style="margin-top:6px;line-height:1.55">Your login is made on the spot. The Keymaster then puts your shop on the rolls — you’ll get an email when your desk opens.</p>
+  <p class="sub" style="margin-top:6px;line-height:1.55">Your login and your desk are made on the spot — you can start setting up your shop right away. The Keymaster sees every new shop.</p>
   <div class="lbl">SHOP / BUSINESS NAME</div><input class="field" id="suShop" placeholder="Harbor Print Co.">
   <div class="lbl">YOUR NAME</div><input class="field" id="suContact" autocomplete="name">
   <div class="lbl">EMAIL — THIS IS YOUR LOGIN</div><input class="field" id="suEmail" type="email" autocomplete="email" autocapitalize="off" spellcheck="false">
@@ -798,19 +800,29 @@ async function route(){
       }catch(e){}
     }
     if(!ME.vendor && !ME.amb){
-      /* #vendorapply — a login with no pass yet. A vendor who made their own account
-         (or applied from the NO DOCK PASS door) waits on the list; anyone else —
-         a casual's dispatch card, say — sees the old door. */
+      /* #vendorapply / #selfenroll — a login with no desk yet. A vendor who made
+         their own account (or applied from the NO DOCK PASS door) gets a desk
+         opened right here — vendor_self_enroll makes the card and the pass —
+         and walks in. Only if that can't happen (VENDOR-SIGNUP.sql not run, a
+         jam) do they wait on the Keymaster's list. Anyone else — a casual's
+         dispatch card, say — sees the old door. */
       const meta=(session.user&&session.user.user_metadata)||{};
       let app=null;
       try{ const a=await SB.from('vendor_applications').select('*').eq('user_id',ME.uid).maybeSingle(); app=a.data||null; }catch(e){}
-      if(!app && (APPLY_STASH || meta.kind==='vendor')){
-        const d=APPLY_STASH||{shop:meta.shop,contact_name:meta.contact_name,phone:meta.phone,note:meta.note};
-        APPLY_STASH=null;
-        app=(await fileApplication(d))||d;   /* filed, or at least remembered for this screen */
+      const d=APPLY_STASH||(meta.kind==='vendor'?{shop:meta.shop,contact_name:meta.contact_name,phone:meta.phone,note:meta.note}:null)||app;
+      APPLY_STASH=null;
+      if(d && (d.shop||'').trim()){
+        if(await selfEnroll(d)){
+          try{
+            const m2 = await SB.from('vendor_members').select('vendor_id').eq('user_id', ME.uid).maybeSingle();
+            if(m2.data && m2.data.vendor_id){ const v2 = await SB.from('vendors').select('*').eq('id', m2.data.vendor_id).maybeSingle(); ME.vendor = v2.data || null; }
+          }catch(e){}
+        }
+        if(!ME.vendor){ if(!app) app=(await fileApplication(d))||d; showPending(app); return; }
+      } else {
+        if(app){ showPending(app); return; }
+        show('nopass'); return;
       }
-      if(app){ showPending(app); return; }
-      show('nopass'); return;
     }
   }
   show('app');
@@ -912,6 +924,16 @@ function openSignup(mode){
 }
 $('gNew').addEventListener('click',()=>openSignup('new'));
 $('npApply').addEventListener('click',()=>openSignup('apply'));
+/* #selfenroll — open the desk: the vendor card + the pass, made by the database as
+   the owner (see VENDOR-SIGNUP.sql). Returns the vendor id, or null when it can't. */
+async function selfEnroll(d){
+  try{
+    const r=await SB.rpc('vendor_self_enroll',{ p_shop:(d.shop||'').trim(), p_contact:(d.contact_name||'').trim()||null,
+                                                p_phone:(d.phone||'').trim()||null, p_note:(d.note||'').trim()||null });
+    if(r.error){ console.warn('[selfenroll] desk not opened \u2014 run VENDOR-SIGNUP.sql?', r.error.message); return null; }
+    return (r.data&&r.data.vendor_id)||null;
+  }catch(e){ console.warn('[selfenroll]',e); return null; }
+}
 async function fileApplication(d){
   /* upsert on user_id — a second visit before the Keymaster gets to it doesn't
      make a second row. Fails quietly if VENDOR-SIGNUP.sql hasn't been run. */
@@ -929,7 +951,7 @@ function showPending(app){
     const dropped=app&&app.status==='dismissed';
     $('pendMsg').innerHTML = dropped
       ? 'The Keymaster hasn\u2019t opened a desk for <b style="color:var(--bone)">'+esc(shop)+'</b>. If that\u2019s a mistake, send word and we\u2019ll sort it.'
-      : 'Your login works. <b style="color:var(--bone)">'+esc(shop)+'</b> is on the Keymaster\u2019s list \u2014 once the shop is on the rolls you\u2019ll get an email at <b style="color:var(--bone)">'+esc(ME.email||'your address')+'</b>, and this page will open your desk.';
+      : 'Your login works, but the desk for <b style="color:var(--bone)">'+esc(shop)+'</b> couldn\u2019t open by itself. The Keymaster has it on the list \u2014 you\u2019ll get an email at <b style="color:var(--bone)">'+esc(ME.email||'your address')+'</b> when it\u2019s open, and this page will take you in.';
   }catch(e){}
   show('pending');
 }
@@ -944,8 +966,10 @@ $('suGo').addEventListener('click', async()=>{
   const b=$('suGo'); const keep=b.textContent;
   try{
     if(suMode==='apply'){
-      b.disabled=true; b.textContent='FILING\u2026';
-      const filed=await fileApplication({shop,contact_name:contact,phone,note});
+      b.disabled=true; b.textContent='OPENING YOUR DESK\u2026';
+      const d={shop,contact_name:contact,phone,note};
+      if(await selfEnroll(d)){ sheet('signupSheet',false); route(); return; }
+      const filed=await fileApplication(d);
       if(!filed){ m.textContent='> couldn\u2019t file it \u2014 email Support@theshadowhook.com and we\u2019ll set you up'; return; }
       sheet('signupSheet',false); showPending(filed); return;
     }
