@@ -387,6 +387,7 @@ select.field{appearance:none;-webkit-appearance:none}
     <div class="crest">⚓</div>
     <div class="wordmark">THE ORDER OF THE SHADOW HOOK</div>
     <div class="gate-title">VENDORS</div>
+    <div id="gateInvite" hidden style="margin-top:18px;text-align:left"></div>
     <div class="card" style="margin-top:26px;text-align:left"><div class="card-b">
       <div class="lbl" style="margin-top:2px">EMAIL</div>
       <input class="field" id="gEmail" type="text" autocomplete="username" spellcheck="false" autocapitalize="off" placeholder="you@yourshop.com">
@@ -512,6 +513,23 @@ select.field{appearance:none;-webkit-appearance:none}
   <div class="msgline" id="vsMsg"></div>
   <button class="btn" id="vsGo" style="margin-top:10px">SAVE THE VENDOR</button>
   <button class="btn-ghost" style="width:100%;margin-top:8px" data-close="vendorSheet">Never mind</button>
+</div></div>
+
+<!-- #ambinvite(sep8) — ONE EMAIL, ONE BUTTON. The ambassador doesn't fill in a shop
+     they haven't seen yet: they send the maker's address and the Order does the rest.
+     The invitation carries a code, so whoever sets the shop up with it lands on this
+     ambassador's list — commission, wire and support all follow the code. -->
+<div class="sheet" id="inviteVendorSheet"><div class="sheet-card">
+  <div class="sheet-t">✉ INVITE A VENDOR</div>
+  <p class="sub" style="text-align:center;margin:0 0 12px">We send them an invitation with your name on it. They set their shop up whenever they like — and it lands on your list.</p>
+  <div class="lbl">THEIR EMAIL</div>
+  <input class="field" id="ivEmail" type="email" autocapitalize="off" spellcheck="false" placeholder="maker@theirshop.com">
+  <div class="lbl">A LINE FROM YOU — OPTIONAL</div>
+  <input class="field" id="ivNote" maxlength="200" placeholder="Met you at the swap meet — your hats belong in the Armory.">
+  <div class="msgline" id="ivMsg"></div>
+  <button class="btn" id="ivGo" style="margin-top:12px;padding:18px">✉ INVITE</button>
+  <button class="btn-ghost" style="width:100%;margin-top:10px" id="ivByHand">…or add the shop by hand instead</button>
+  <button class="btn-ghost" style="width:100%;margin-top:2px" data-close="inviteVendorSheet">Never mind</button>
 </div></div>
 
 <!-- #ambtab2 — the crown sheet, built to read like ADD A VENDOR: anyone can be
@@ -780,6 +798,7 @@ let TAB='orders', FILTER='todo';
 let ORDERS=[], VENDORS=[], BALANCES=[], PAYOUTS=[], PRODUCTS=[], MEMBERS=[], MSGS=[], LASTMSG={}, DRAFTS=[];
 let THREADS=[], WIRE_THREAD=null;   /* #shopwire — client ↔ maker threads (shop_threads), and the one that's open */
 let CONTACT=null;   /* #contact(sep8) — the vendor's contact at the Order: their ambassador, or the Support desk (vendor_contact()) */
+let INVITES=[];     /* #ambinvite(sep8) — invitations this ambassador (or the desk) has out */
 let AMBS=[], AMB_MEMBERS=[], AMB_PAYOUTS=[], AMB_LINES=[];
 let APPS=[], APP_PENDING=null;   /* #vendorapply — vendor_applications waiting on the Keymaster · the one being added right now */
 let WIRE_KIND='v', inviteKind='vendor', payoutKind='v';
@@ -839,6 +858,9 @@ async function route(){
       let app=null;
       try{ const a=await SB.from('vendor_applications').select('*').eq('user_id',ME.uid).maybeSingle(); app=a.data||null; }catch(e){}
       const d=APPLY_STASH||(meta.kind==='vendor'?{shop:meta.shop,contact_name:meta.contact_name,phone:meta.phone,note:meta.note}:null)||app;
+      /* #ambinvite — with Confirm email on they come back on a plain link, so the code
+         rides in the sign-up metadata as well as in INVITE */
+      if(!INVITE && meta && meta.invite) INVITE={code:meta.invite,email:ME.email||'',from:'',amb:false,note:''};
       APPLY_STASH=null;
       if(d && (d.shop||'').trim()){
         if(await selfEnroll(d)){
@@ -943,22 +965,66 @@ function openSignup(mode){
   suMode=mode||'new';
   const applyOnly=(suMode==='apply');
   ['suShop','suContact','suPhone','suNote','suPass','suPass2'].forEach(id=>{ $(id).value=''; });
-  $('suEmail').value=applyOnly?(ME.email||''):(($('gEmail').value||'').trim());
+  $('suEmail').value=applyOnly?(ME.email||''):(($('gEmail').value||'').trim()||(INVITE?INVITE.email:''));
   $('suEmail').readOnly=applyOnly;
   $('suPwWrap').hidden=applyOnly;
   $('suGo').textContent=applyOnly?'PUT ME ON THE LIST':'CREATE MY ACCOUNT';
-  $('suMsg').textContent='';
+  $('suMsg').textContent=(!applyOnly&&INVITE)?('> invited by '+INVITE.from):'';
   sheet('signupSheet');
   setTimeout(()=>{ try{ $('suShop').focus(); }catch(e){} },50);
 }
 $('gNew').addEventListener('click',()=>openSignup('new'));
+
+/* ═══ #ambinvite(sep8) — ARRIVING ON AN INVITATION ═══
+   theshadowhook.com/vendor?i=<code>. The gate asks the database who sent it (a peek
+   that tells it nothing it doesn't already know), greets them by that name, fills in
+   the address it was sent to, and carries the code into the sign-up so the new shop
+   lands on that ambassador's rolls. A stale or spent code just says so and the gate
+   behaves normally. */
+let INVITE=null;
+(async function readInvite(){
+  let code=''; try{
+    code=(new URLSearchParams(location.search).get('i')||'').trim();
+    if(!code){ const m=/[#&]i=([^&]+)/.exec(location.hash||''); if(m)code=decodeURIComponent(m[1]); }
+  }catch(e){}
+  if(!code) return;
+  try{ history.replaceState(null,'',location.pathname); }catch(e){}
+  let d=null;
+  try{ const r=await SB.rpc('vendor_invite_peek',{p_code:code}); if(!r.error) d=r.data; }catch(e){}
+  const box=$('gateInvite'); if(!box) return;
+  if(!d||!d.ok){
+    const why=(d&&d.why)||'unknown';
+    box.hidden=false; box.className='card';
+    box.innerHTML='<div class="card-b"><b style="letter-spacing:.06em">'
+      +(why==='used'?'That invitation has already been used.':why==='expired'?'That invitation has expired.':why==='cancelled'?'That invitation was pulled back.':'That invitation link isn’t good.')
+      +'</b><div class="sub" style="margin-top:4px">'+(why==='used'
+        ? 'If the shop is yours, sign in above. Otherwise ask for a fresh one.'
+        : 'Ask whoever sent it for a fresh one, or create an account below — email <b style="color:var(--bone)">support@theshadowhook.com</b> if you’re stuck.')+'</div></div>';
+    return;
+  }
+  INVITE={code:code, email:d.email||'', from:d.from_name||'The Order of The Shadow Hook', amb:!!d.is_ambassador, note:d.note||''};
+  box.hidden=false; box.className='card'; box.style.borderColor='rgba(238,180,107,.55)';
+  box.innerHTML='<div class="card-b"><div style="letter-spacing:.1em;font-size:11px;color:var(--copper-hi)">YOU’RE INVITED</div>'
+    +'<b style="display:block;margin-top:4px;font-size:15px;color:var(--bone)">'+esc(INVITE.from)+' put your shop forward.</b>'
+    +(INVITE.note?'<div class="sub" style="margin-top:6px;font-style:italic">“'+esc(INVITE.note)+'”</div>':'')
+    +'<div class="sub" style="margin-top:6px">Set your bench up below — it takes about ten minutes, and '+esc(INVITE.amb?INVITE.from:'the Order')+' stays your contact afterwards.</div>'
+    +'<button class="btn" id="gInvGo" style="margin-top:10px">🤝 SET UP MY SHOP</button></div>';
+  if(INVITE.email) $('gEmail').value=INVITE.email;
+  $('gInvGo').addEventListener('click',()=>openSignup('new'));
+  /* the form does NOT open by itself — they read who invited them first, then tap */
+})();
 $('npApply').addEventListener('click',()=>openSignup('apply'));
 /* #selfenroll — open the desk: the vendor card + the pass, made by the database as
    the owner (see VENDOR-SIGNUP.sql). Returns the vendor id, or null when it can't. */
 async function selfEnroll(d){
   try{
-    const r=await SB.rpc('vendor_self_enroll',{ p_shop:(d.shop||'').trim(), p_contact:(d.contact_name||'').trim()||null,
-                                                p_phone:(d.phone||'').trim()||null, p_note:(d.note||'').trim()||null });
+    const args={ p_shop:(d.shop||'').trim(), p_contact:(d.contact_name||'').trim()||null,
+                 p_phone:(d.phone||'').trim()||null, p_note:(d.note||'').trim()||null };
+    if(INVITE&&INVITE.code) args.p_invite=INVITE.code;   /* #ambinvite — whose recruit this shop is */
+    let r=await SB.rpc('vendor_self_enroll',args);
+    if(r.error&&args.p_invite&&/p_invite|function|argument/i.test(String(r.error.message||''))){
+      delete args.p_invite; r=await SB.rpc('vendor_self_enroll',args);   /* VENDOR-INVITE.sql not run yet */
+    }
     if(r.error){ console.warn('[selfenroll] desk not opened \u2014 run VENDOR-SIGNUP.sql?', r.error.message); return null; }
     return (r.data&&r.data.vendor_id)||null;
   }catch(e){ console.warn('[selfenroll]',e); return null; }
@@ -1008,7 +1074,7 @@ $('suGo').addEventListener('click', async()=>{
     b.disabled=true; b.textContent='MAKING YOUR LOGIN\u2026';
     const r=await SB.auth.signUp({ email, password:p1,
       options:{ emailRedirectTo: location.origin+location.pathname,
-                data:{ kind:'vendor', shop, contact_name:contact, phone, note } } });
+                data:{ kind:'vendor', shop, contact_name:contact, phone, note, invite:(INVITE?INVITE.code:null) } } });
     if(r.error){
       const t=(r.error.message||'')+' '+(r.error.code||'');
       if(/already|registered|exists/i.test(t)) m.textContent='> that address already has an account \u2014 sign in, or use the reset link';
@@ -1076,8 +1142,70 @@ function openTab(k){
 
 /* ════════ DATA ════════ */
 async function refreshAll(){
-  await Promise.all([loadOrders(), loadLedger(), loadProducts(), loadStore(), loadReviews(), loadGate(), (ME.km||ME.amb)?loadVendors():Promise.resolve(), loadLastMsgs(), loadDrafts(), loadAmbStuff(), ME.km?loadService():Promise.resolve(), loadArt(), loadNotify(), loadThreads(), loadContact()]);
+  await Promise.all([loadOrders(), loadLedger(), loadProducts(), loadStore(), loadReviews(), loadGate(), (ME.km||ME.amb)?loadVendors():Promise.resolve(), loadLastMsgs(), loadDrafts(), loadAmbStuff(), ME.km?loadService():Promise.resolve(), loadArt(), loadNotify(), loadThreads(), loadContact(), loadInvites()]);
 }
+
+/* ═══ #ambinvite(sep8) — INVITATIONS. An ambassador types an address and taps INVITE;
+   VENDOR-INVITE.sql cuts a coded invitation and the Order emails it. Whoever sets a
+   shop up with that code lands on this ambassador's rolls — that's what pays their
+   commission and puts their name on the vendor's support line. No table yet → the
+   list is empty and the button says so when tapped. */
+async function loadInvites(){
+  INVITES=[];
+  if(!ME.km && !ME.amb) return;
+  try{
+    const r=await SB.from('vendor_invites').select('*').eq('status','sent').order('created_at',{ascending:false}).limit(60);
+    if(!r.error) INVITES=r.data||[];
+  }catch(e){}
+}
+function invitesCard(){
+  if(!INVITES.length) return '';
+  return '<div class="card" style="margin-bottom:14px"><div class="card-h">✉ INVITATIONS OUT<span class="tag">'+INVITES.length+' waiting to be opened</span></div><div class="card-b">'
+    +INVITES.map(i=>'<div class="vrow"><span class="n" style="min-width:0"><b>'+esc(i.email)+'</b>'
+      +'<i>sent '+esc(dt(i.created_at))+(ME.km&&i.from_name?' · by '+esc(i.from_name):'')+(i.note?' · “'+esc(String(i.note).slice(0,60))+'”':'')+'</i></span>'
+      +'<button class="btn-ghost" style="padding:4px 8px;font-size:11px" data-iresend="'+esc(i.email)+'">↻ RESEND</button>'
+      +'<button class="btn-ghost" style="padding:4px 8px;font-size:11px;color:#e8967a" data-icancel="'+esc(i.id)+'">✕</button></div>').join('')
+    +'<p class="sub" style="margin-top:8px;font-size:11.5px">They set the shop up in their own time; it lands here the moment they do.</p></div></div>';
+}
+function wireInviteButtons(host){
+  host.querySelectorAll('[data-iresend]').forEach(b=>b.addEventListener('click',async()=>{
+    b.disabled=true;
+    const r=await SB.rpc('amb_invite_vendor',{p_email:b.dataset.iresend});
+    b.disabled=false;
+    toast(r.error?('⚠ '+r.error.message):'✉ Sent again');
+    if(!r.error){ await loadInvites(); repaintRolls(); }
+  }));
+  host.querySelectorAll('[data-icancel]').forEach(b=>b.addEventListener('click',async()=>{
+    const r=await SB.rpc('vendor_invite_cancel',{p_id:b.dataset.icancel});
+    if(r.error){ toast('⚠ '+r.error.message); return; }
+    toast('Invitation pulled'); await loadInvites(); repaintRolls();
+  }));
+  const ia=$('ivAdd'); if(ia) ia.addEventListener('click',openInviteVendor);
+}
+function repaintRolls(){ if(TAB==='myvend')renderMyVend(); else if(TAB==='vendors')renderVendors(); }
+function openInviteVendor(){
+  $('ivEmail').value=''; $('ivNote').value=''; $('ivMsg').textContent='';
+  sheet('inviteVendorSheet');
+  setTimeout(()=>{ try{ $('ivEmail').focus(); }catch(e){} },50);
+}
+$('ivByHand').addEventListener('click',()=>{ sheet('inviteVendorSheet',false); openVendorSheet(null); });
+$('ivGo').addEventListener('click', async()=>{
+  const email=($('ivEmail').value||'').trim().toLowerCase(), note=($('ivNote').value||'').trim(), m=$('ivMsg'), b=$('ivGo');
+  if(!EMAIL_RE.test(email)){ m.textContent='> a real email address'; return; }
+  const keep=b.textContent; b.disabled=true; b.textContent='SENDING…'; m.textContent='';
+  try{
+    const r=await SB.rpc('amb_invite_vendor',{p_email:email, p_note:note||null});
+    if(r.error){
+      const why=String(r.error.message||'');
+      m.textContent='> '+(/does not exist|schema cache|find the function/i.test(why)
+        ? 'invitations aren’t switched on yet — send word to support@theshadowhook.com' : why);
+      return;
+    }
+    sheet('inviteVendorSheet',false);
+    toast((r.data&&r.data.resent)?'✉ Sent again to '+email:'✉ Invitation sent to '+email);
+    await loadInvites(); repaintRolls();
+  } finally { b.disabled=false; b.textContent=keep; }
+});
 
 /* ═══ #contact(sep8) — WHO THE VENDOR TALKS TO. Never "the Keymaster": the ambassador who
    signed them up, by name, or the Support desk. VENDOR-CONTACT.sql answers; without it,
@@ -1671,11 +1799,14 @@ function renderVendors(){ /* #ambtab — vendors only now; the crowns moved to t
   const host=$('panel');
   const live=VENDORS.filter(v=>v.active), filed=VENDORS.filter(v=>!v.active);
   host.innerHTML = applicantsCard()
-    +'<button class="btn" id="vAdd" style="margin:2px 0 14px">🤝 ADD A VENDOR</button>'
+    +'<button class="btn" id="ivAdd" style="margin:2px 0 8px;padding:16px">✉ INVITE A VENDOR</button>'
+    +'<button class="btn-line" id="vAdd" style="width:100%;margin:0 0 14px">🤝 ADD A VENDOR BY HAND</button>'
+    +invitesCard()
     +(live.length?'<div class="cardgrid">'+live.map(vendorCard).join('')+'</div>'
       :'<p class="sub" style="text-align:center;padding:14px">'+(VENDORS.length?'Nobody working the rolls right now — the retired are in the drawer below.':'No vendors on the rolls yet. Add the first, casual gear to their bench, mint their pass.')+'</p>')
     +filedCabinet(filed.map(vendorCard),'vendor');
   $('vAdd').addEventListener('click',()=>{ APP_PENDING=null; openVendorSheet(null); });
+  wireInviteButtons(host);   /* #ambinvite */
   /* #vendorapply — the two levers on an applicant */
   host.querySelectorAll('[data-appadd]').forEach(b=>b.addEventListener('click',()=>{
     const a=APPS.find(x=>x.id===b.dataset.appadd); if(!a)return;
@@ -1930,11 +2061,12 @@ function renderMyVend(){
       +'<button class="btn-line red" data-vkill="'+esc(v.id)+'">🗑 DELETE</button>'
       +'</div></div></div>';
   }).join('');
-  host.innerHTML='<button class="btn" id="vAdd" style="margin:2px 0 14px">🤝 RECRUIT A VENDOR</button>'
-    +'<p class="sub" style="margin:0 2px 12px">Bring a maker to the Armory, mint their pass, and every sale off their bench pays you <b style="color:var(--copper-hi)">'+(Number(ME.amb.rate)||0)+'%</b> of the house margin — booked automatically at the till. The Keymaster still approves all gear.</p>'
+  host.innerHTML='<button class="btn" id="ivAdd" style="margin:2px 0 10px;padding:18px">✉ INVITE A VENDOR</button>'
+    +'<p class="sub" style="margin:0 2px 14px">Their email is all you need — we send the invitation with your name on it and they set the shop up in their own time. Every sale off their bench then pays you <b style="color:var(--copper-hi)">'+(Number(ME.amb.rate)||0)+'%</b> of the house margin, booked automatically at the till. The Order still approves all gear.</p>'
+    +invitesCard()
     +(mine.length?'<div class="cardgrid">'+cards+'</div>'
-      :'<p class="sub" style="text-align:center;padding:14px">Nobody recruited yet. First one’s the hardest.</p>');
-  $('vAdd').addEventListener('click',()=>openVendorSheet(null));
+      :(INVITES.length?'':'<p class="sub" style="text-align:center;padding:14px">Nobody recruited yet. First one’s the hardest.</p>'));
+  wireInviteButtons(host);
   host.querySelectorAll('[data-vwire]').forEach(b=>b.addEventListener('click',()=>{WIRE_KIND='v';WIRE_VENDOR=b.dataset.vwire;WIRE_THREAD=null;openTab('wire');}));   /* #contact */
   host.querySelectorAll('[data-vedit]').forEach(b=>b.addEventListener('click',()=>openVendorSheet(b.dataset.vedit)));
   host.querySelectorAll('[data-vpass]').forEach(b=>b.addEventListener('click',()=>openInvite(b.dataset.vpass)));
@@ -1972,7 +2104,7 @@ function genPass(){ const a='23456789abcdefghjkmnpqrstvwxyzABCDEFGHJKMNPQRSTVWXY
    vendor's Dock Office are different pages sharing one auth drawer
    ('shadowhook_dock_auth'), so landing on the wrong one used to mean a bounce
    to a screen with no password control and a link already spent. */
-function passHome(kind){ return location.origin + (kind==='amb' ? '/ambassador' : '/dockoffice'); }
+function passHome(kind){ return location.origin + (kind==='amb' ? '/ambassador' : '/vendor'); }   /* #vendorgate — the vendors' door is /vendor */
 
 /* #linkin — which road this mint is taking. 'link' is the default and should
    stay the default: it is the only one that works for somebody you cannot put
@@ -1994,7 +2126,7 @@ function openInvite(vid, kind, seed){
   const who = (inviteKind==='amb' ? AMBS.find(x=>x.id===vid) : VENDORS.find(x=>x.id===vid)) || seed || null;
   $('invSub').textContent=inviteKind==='amb'
     ?('🎖 A crown login for '+(who?who.name:'?')+' \u2014 they sign in at theshadowhook.com/ambassador.')
-    :('A pass for '+(who?who.name:'?')+' \u2014 they sign in at theshadowhook.com/dockoffice.');
+    :('A pass for '+(who?who.name:'?')+' \u2014 they sign in at theshadowhook.com/vendor.');
   /* #linkin — auth stores addresses lowercase. A capitalised one on the card
      ("Ruth.d.gutierrez@\u2026") used to go up as typed and miss the account that
      already existed, so the mint tried to make a second one. */
