@@ -4643,7 +4643,7 @@ window.DEVLOG=(function(){
         <div><label class="lbl" for="dropN">How many</label><input class="field dl-num" id="dropN" type="text" inputmode="numeric" placeholder="0"></div>
         <div><label class="lbl" for="dropCat">What kind</label><select class="field" id="dropCat">
           <option value="" disabled selected>Select</option>
-          <option value="UTR">UTR</option><option value="FLEX">Flex</option><option value="HOOTS">Hoots</option><option value="HOLD">Hold</option>
+          <option value="UTR">UTR</option><option value="FLEX">Flex</option><option value="HOOTS">Hoots</option><option value="HOLD">Hold</option><option value="KH">Key Hold</option>
           <option value="LASH">Lash</option><option value="SWING">Swing</option><option value="DOCK">Dock</option><option value="CRANE">Crane</option><option value="TOP">Top Pick</option><option value="SIDE">Side Pick</option><option value="RAIL">Rail</option><option value="BULL">Bull</option><option value="SL">Swing Lash</option><option value="DSIG">Dock Signal</option><option value="HL">Heavy Lift</option><option value="AUTO">Autos</option><option value="JIT">Jitney</option><option value="CY">CY</option><option value="SWMP">Swamper</option><option value="GEAR">Gear</option><option value="KEYS">Keys</option><option value="BCLK">Basic Clerk</option><option value="CLK">Clerk</option>
           <option value="?">They didn't say</option><option value="EST">Ballpark — whole board</option>
         </select></div>
@@ -7848,7 +7848,15 @@ const JOB_CATALOG_DEFAULT = {
   "REACH": {name:"Reach Stacker",         diff:5.80, hrs:0, tier:"Skill III", casual:false},
   "TRANS": {name:"Transtainer",           diff:5.80, hrs:0, tier:"Skill III", casual:false},
   // Marine clerk — casuals can work clerk keys
-  "CLERK": {name:"Marine Clerk",          diff:6.50, hrs:0, tier:"Clerk",     casual:true}
+  "CLERK": {name:"Marine Clerk",          diff:6.50, hrs:0, tier:"Clerk",     casual:true},
+  /* #keyhold(sep8) — HOLD and KEY HOLD, off the Keymaster's own dockets. The plain hold
+     rides basic, like swing. KEY HOLD is the best-paying job a casual gets sent to — above
+     UTR, above the rest — because it's a key job that pays a 10-hour day. Priced here on
+     the clerk-key differential ($6.50 over base) × 10 hours (2026/27: $65.35 × 10 = $653.50
+     straight; ×1.333 nights; ×1.6 hoot). ESTIMATE — the log form can correct the rate or
+     the hours on any docket and the correction sticks on this phone (learnJob). */
+  "HOLD":  {name:"Hold Man",              diff:0.00, hrs:0,  tier:"Basic",     casual:true},
+  "KH":    {name:"Key Hold (10-hr key)",  diff:6.50, hrs:10, tier:"Key",       casual:true}
 };
 let JOB_CATALOG = (function(){
   try{const saved=JSON.parse(localStorage.getItem(K("jobcat")));
@@ -14996,7 +15004,7 @@ function finRecord(id,v){
    drop claws its pay back, and the crown can void a row off the wire. */
 function dropPhase(ts){var d=nowLA(ts||Date.now()),m=d.getHours()*60+d.getMinutes();if(m>=NIGHT_OPEN)return m<17*60?"FLEX":(m<18*60?"1ST":"2ND");return m<7*60?"FLEX":(m<8*60?"1ST":"2ND");}
 const DROP_WAVE={FLEX:"Flex","1ST":"1st","2ND":"2nd"};
-const DROP_CATS={UTR:"UTR",FLEX:"Flex",HOOTS:"Hoots",HOLD:"Hold",SWING:"Swing",SL:"Swing Lash",LASH:"Lash",DOCK:"Dock",CRANE:"Crane",TOP:"Top Pick",SIDE:"Side Pick",RAIL:"Rail",BULL:"Bull",DSIG:"Dock Signal",HL:"Heavy Lift",AUTO:"Autos",JIT:"Jitney",CY:"CY",SWMP:"Swamper",GEAR:"Gear",KEYS:"Keys",BCLK:"Basic Clerk",CLK:"Clerk","?":"they didn't say",EST:"ballpark"};
+const DROP_CATS={UTR:"UTR",FLEX:"Flex",HOOTS:"Hoots",HOLD:"Hold",KH:"Key Hold",SWING:"Swing",SL:"Swing Lash",LASH:"Lash",DOCK:"Dock",CRANE:"Crane",TOP:"Top Pick",SIDE:"Side Pick",RAIL:"Rail",BULL:"Bull",DSIG:"Dock Signal",HL:"Heavy Lift",AUTO:"Autos",JIT:"Jitney",CY:"CY",SWMP:"Swamper",GEAR:"Gear",KEYS:"Keys",BCLK:"Basic Clerk",CLK:"Clerk","?":"they didn't say",EST:"ballpark"};
 function dropWaves(list){var w={FLEX:0,"1ST":0,"2ND":0},est=0;list.forEach(function(x){if(x.cat==="EST"){est=Math.max(est,x.n);return;}var p=x.ph||dropPhase(x.ts);if(w[p]==null)p="2ND";w[p]+=x.n;});return {FLEX:w.FLEX,"1ST":w["1ST"],"2ND":w["2ND"],est:est};}
 function dropData(){try{const d=JSON.parse(localStorage.getItem(K("droplog"))||"{}");return d[dropKey()]||{drops:[],paid:0}}catch(e){return{drops:[],paid:0}}}
 function dropSave(o){try{const kk=K("droplog");const d=JSON.parse(localStorage.getItem(kk)||"{}");d[dropKey()]=o;localStorage.setItem(kk,JSON.stringify(d))}catch(e){}}
@@ -39294,7 +39302,7 @@ html.arcade .arc-aurora i{mix-blend-mode:normal;
       <textarea class="field" id="swIn" rows="2" maxlength="2000" placeholder="Say the word…"></textarea>
       <button class="btn" id="swSend" type="button" style="width:auto;padding:12px 18px">SEND</button>
     </div>
-    <p class="sub" id="swNote" style="margin:8px 0 0;font-size:11.5px;line-height:1.5">The maker answers from their bench; the Keymaster can step in. You&rsquo;ll see a badge here when they do.</p>
+    <p class="sub" id="swNote" style="margin:8px 0 0;font-size:11.5px;line-height:1.5">The maker answers from their bench; the Order&rsquo;s support desk can step in. You&rsquo;ll see a badge here when they do.</p>
   </div>
 </div>
 <script>
@@ -39373,7 +39381,7 @@ html.arcade .arc-aurora i{mix-blend-mode:normal;
     if(!SW.msgs.length){ feed.innerHTML='<p class="sub" style="padding:10px 4px">'+(SW.draft?'Ask away — the maker answers from their bench.':'Nothing here yet.')+'</p>'; return; }
     feed.innerHTML=SW.msgs.map(function(m){
       var me=m.from_side==='client';
-      var who=me?'':'<span class="who">'+esc(m.from_side==='km'?'☠ The Keymaster':(m.handle||shopOf(SW.open)))+'</span>';
+      var who=me?'':'<span class="who">'+esc(m.from_side==='km'?'Support desk':(m.handle||shopOf(SW.open)))+'</span>';
       return '<div class="dm-b '+(me?'me':'them')+'">'+who+esc(m.body)+'<span class="dm-t">'+esc(when(m.created_at))+'</span></div>';
     }).join('');
     feed.scrollTop=feed.scrollHeight;
