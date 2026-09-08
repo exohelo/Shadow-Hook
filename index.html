@@ -5296,7 +5296,12 @@ window.DEVLOG=(function(){
       </div>
       <div id="armProducts">
         <!-- #amb — the recruiting poster leads the products shelf -->
-        <div class="card amb-poster">
+        <!-- #mydeck(sep8) — WHOEVER ALREADY HOLDS ONE GOES STRAIGHT TO IT. A crowned
+             ambassador or a vendor with a pass shouldn't be reading a recruiting poster:
+             the module below asks the database once, hides the poster and puts their own
+             deck here instead. Signed out, or neither, nothing changes. -->
+        <div id="myDeck" hidden></div>
+        <div class="card amb-poster" id="ambPoster">
           <div class="card-b" onclick="location.href='/ambassador'">
             <div style="display:flex;align-items:center;gap:14px">
               <div class="seal" style="margin:0;width:58px;height:58px;font-size:24px">🎖</div>
@@ -39503,5 +39508,61 @@ html.arcade .arc-aurora i{mix-blend-mode:normal;
 })();
 </script>
 
+
+<!-- ═══════════════ #mydeck(sep8) — YOUR OWN DECK, ONE TAP ═══════════════
+     A member who has been crowned an ambassador, or who holds a vendor's pass,
+     gets a card at the top of the Armory shelf that opens their deck — and the
+     recruiting poster steps aside for them. Both decks have a ⚓ THE APP button
+     that comes back here. Reads two small tables the member can already see
+     (their own rows only); no table, no card, no error. -->
+<script>
+(function(){
+  'use strict';
+  var done=false;
+  function esc(s){ return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function card(kind, name){
+    var amb = kind==='amb';
+    return '<div class="card amb-poster" style="'+(amb?'':'border-color:rgba(238,180,107,.5)')+'">'
+      +'<div class="card-b" onclick="location.href=\''+(amb?'/ambassador':'/vendor')+'\'">'
+      +'<div style="display:flex;align-items:center;gap:14px">'
+      +'<div class="seal" style="margin:0;width:58px;height:58px;font-size:24px">'+(amb?'🎖':'🤝')+'</div>'
+      +'<div style="flex:1"><div class="big amb-t" style="font-size:19px;letter-spacing:.05em">'
+      +(amb?'YOUR AMBASSADOR DECK':'YOUR VENDOR DECK')+'</div>'
+      +'<div class="sub">'+(name?esc(name)+' — ':'')
+      +(amb?'your makers, your ledger, the wire':'your orders, your gear, the wire')+'</div></div>'
+      +'<div class="sub" style="flex:none">open ›</div>'
+      +'</div></div></div>';
+  }
+  async function look(){
+    if(done||!window.SB||!window.__shkUid)return;
+    var host=document.getElementById('myDeck'); if(!host)return;
+    var out='', name='';
+    try{
+      var a=await window.SB.from('ambassador_members').select('ambassador_id').eq('user_id',window.__shkUid).maybeSingle();
+      if(a&&!a.error&&a.data&&a.data.ambassador_id){
+        try{ var an=await window.SB.from('ambassadors').select('name').eq('id',a.data.ambassador_id).maybeSingle();
+             if(an&&an.data)name=an.data.name||''; }catch(e){}
+        out+=card('amb',name);
+      }
+    }catch(e){}
+    try{
+      var v=await window.SB.from('vendor_members').select('vendor_id').eq('user_id',window.__shkUid).maybeSingle();
+      if(v&&!v.error&&v.data&&v.data.vendor_id){
+        var vn='';
+        try{ var vv=await window.SB.from('vendors').select('name').eq('id',v.data.vendor_id).maybeSingle();
+             if(vv&&vv.data)vn=vv.data.name||''; }catch(e){}
+        out+=card('vendor',vn);
+      }
+    }catch(e){}
+    if(!out)return;
+    done=true;
+    host.innerHTML=out; host.hidden=false;
+    var p=document.getElementById('ambPoster');
+    if(p&&/YOUR AMBASSADOR DECK/.test(out)) p.style.display='none';   /* already crowned — the pitch is spent */
+  }
+  var tries=0, t=setInterval(function(){ tries++; look(); if(done||tries>60)clearInterval(t); },1500);
+  setTimeout(look,1200);
+})();
+</script>
 </body>
 </html>
