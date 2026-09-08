@@ -455,6 +455,25 @@ select.field{appearance:none;-webkit-appearance:none}
   <button class="btn-ghost" style="width:100%;margin-top:8px" data-close="pwSheet">Never mind</button>
 </div></div>
 
+<!-- #vendormail(sep8) — SALE ALERTS. The vendor's own switches for the three letters
+     VENDOR-MAIL.sql sends (sold · still on the bench · the month). One row in
+     vendor_notify per shop; no row means everything's on and goes to the shop's email. -->
+<div class="sheet" id="notifySheet"><div class="sheet-card">
+  <div class="sheet-t">🔔 SALE ALERTS</div>
+  <p class="sub" style="text-align:center;margin:0 0 4px">Emails from the Order about your bench. Each one has a button straight to this dashboard.</p>
+  <div class="vrow"><input type="checkbox" id="nfEmailOn" style="width:18px;height:18px;accent-color:#c9803f;flex:none"><span class="n"><b>Email me when something sells</b><i>photo, product number, your cut, the buyer&rsquo;s name and city &mdash; the ship-to address stays in here</i></span></div>
+  <div class="lbl">SEND THEM TO</div>
+  <input class="field" id="nfEmailTo" type="email" autocomplete="email" placeholder="you@shop.com">
+  <div class="sub" style="font-size:11.5px;margin-top:5px">Leave it blank to use the shop&rsquo;s email. Two addresses? Separate them with a comma.</div>
+  <div class="vrow" style="margin-top:6px"><input type="checkbox" id="nfDailyOn" style="width:18px;height:18px;accent-color:#c9803f;flex:none"><span class="n"><b>Morning reminder of open orders</b><i>once a day while something is waiting to ship &mdash; nothing waiting, no email</i></span></div>
+  <div class="lbl">AT WHAT HOUR (PACIFIC)</div>
+  <select class="field" id="nfHour"></select>
+  <div class="vrow" style="margin-top:6px"><input type="checkbox" id="nfMonthlyOn" style="width:18px;height:18px;accent-color:#c9803f;flex:none"><span class="n"><b>Monthly summary</b><i>on the 1st: sales, units, your cut, top gear &mdash; next to the month before</i></span></div>
+  <div class="msgline" id="nfMsg"></div>
+  <button class="btn" id="nfGo" style="margin-top:10px">SAVE</button>
+  <button class="btn-ghost" style="width:100%;margin-top:8px" data-close="notifySheet">Never mind</button>
+</div></div>
+
 <!-- #vendorapply(sep7) — CREATE A VENDOR ACCOUNT. Two moods, one sheet: from the
      gate it makes the login (signUp) and files the shop; from NO DOCK PASS it only
      files the shop for the login that's already here (the password rows hide). -->
@@ -1047,8 +1066,70 @@ function openTab(k){
 
 /* ════════ DATA ════════ */
 async function refreshAll(){
-  await Promise.all([loadOrders(), loadLedger(), loadProducts(), loadStore(), loadReviews(), loadGate(), (ME.km||ME.amb)?loadVendors():Promise.resolve(), loadLastMsgs(), loadDrafts(), loadAmbStuff(), ME.km?loadService():Promise.resolve(), loadArt()]);
+  await Promise.all([loadOrders(), loadLedger(), loadProducts(), loadStore(), loadReviews(), loadGate(), (ME.km||ME.amb)?loadVendors():Promise.resolve(), loadLastMsgs(), loadDrafts(), loadAmbStuff(), ME.km?loadService():Promise.resolve(), loadArt(), loadNotify()]);
 }
+
+/* ═══ #vendormail(sep8) — SALE ALERTS: the vendor's switches for the letters about their bench ═══
+   VENDOR-MAIL.sql sends three emails — sold · still on the bench · the month — and reads
+   vendor_notify for who wants what. No row = everything on, to the shop's email, 8 AM
+   Pacific. This is the only thing the browser touches: the vendor's own row, under RLS. */
+let NOTIFY = null;          /* the row, or null while they're on the defaults */
+async function loadNotify(){
+  NOTIFY = null;
+  if(ME.km || ME.amb || !ME.vendor) return;
+  try{
+    const r = await SB.from('vendor_notify').select('*').eq('vendor_id', ME.vendor.id).maybeSingle();
+    if(!r.error) NOTIFY = r.data || null;      /* an error = the file isn't run yet; the card shows the defaults */
+  }catch(e){}
+}
+function notifyPrefs(){
+  const n = NOTIFY || {};
+  return { email_on:n.email_on!==false, email_to:String(n.email_to||'').trim(), daily_on:n.daily_on!==false,
+           daily_hour:(n.daily_hour==null?8:Number(n.daily_hour)), monthly_on:n.monthly_on!==false };
+}
+function notifyDefaultTo(){ return (ME.vendor&&ME.vendor.email)||ME.email||''; }
+function hourLabel(h){ h=Number(h)||0; const x=h%12||12; return x+':00 '+(h<12?'AM':'PM'); }
+function alertsCard(){
+  const p=notifyPrefs(), to=p.email_to||notifyDefaultTo();
+  const bits=[ p.email_on?'sale emails → '+(to||'no address on file'):'sale emails off',
+               p.daily_on?'morning reminder '+hourLabel(p.daily_hour):'morning reminder off',
+               p.monthly_on?'monthly summary on':'monthly summary off' ];
+  return '<div class="card" style="margin-bottom:14px"><div class="card-h">🔔 SALE ALERTS'
+    +'<span class="tag">'+(NOTIFY?'your settings':'on from the start')+'</span></div>'
+    +'<div class="card-b"><div class="sub">'+bits.map(esc).join(' · ')+'</div>'
+    +'<div class="sub" style="margin-top:4px;color:#6e767d">Every letter has a button back to this desk — the address, the tracking box and the ledger live here, not in the email.</div>'
+    +'<div class="stat-row"><button class="btn-line gold" id="nfOpen">⚙ SETTINGS</button></div></div></div>';
+}
+function openNotify(){
+  const p=notifyPrefs(), sel=$('nfHour');
+  if(!sel.options.length){ for(let h=5; h<=21; h++){ const o=document.createElement('option'); o.value=String(h); o.textContent=hourLabel(h); sel.appendChild(o); } }
+  $('nfEmailOn').checked=p.email_on; $('nfEmailTo').value=p.email_to; $('nfEmailTo').placeholder=notifyDefaultTo()||'you@shop.com';
+  $('nfDailyOn').checked=p.daily_on; sel.value=String(p.daily_hour); if(!sel.value) sel.value='8';
+  $('nfMonthlyOn').checked=p.monthly_on; $('nfMsg').textContent='';
+  sheet('notifySheet');
+}
+$('nfGo').addEventListener('click', async()=>{
+  const m=$('nfMsg'), btn=$('nfGo');
+  if(!ME.vendor){ m.textContent='> no desk to save for'; return; }
+  const to=$('nfEmailTo').value.trim().toLowerCase();
+  const addrs=to?to.split(/[,;\s]+/).filter(Boolean):[];
+  if(addrs.some(a=>!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(a))){ m.textContent='> that email address doesn’t look right'; return; }
+  if($('nfEmailOn').checked && !to && !notifyDefaultTo()){ m.textContent='> add an address — there’s none on the shop’s card'; return; }
+  const row={ vendor_id:ME.vendor.id, email_on:$('nfEmailOn').checked, email_to:addrs.length?addrs.join(', '):null,
+              daily_on:$('nfDailyOn').checked, daily_hour:Number($('nfHour').value)||8, monthly_on:$('nfMonthlyOn').checked };
+  btn.disabled=true; m.textContent='';
+  const r=await SB.from('vendor_notify').upsert(row,{onConflict:'vendor_id'}).select().maybeSingle();
+  btn.disabled=false;
+  if(r.error){
+    const why=String(r.error.message||'');
+    m.textContent='> '+(/vendor_notify/.test(why)&&/exist|schema cache|find the table/i.test(why)
+      ?'alerts aren’t switched on for the Order yet — send word to support@theshadowhook.com':why);
+    return;
+  }
+  NOTIFY=r.data||row;
+  sheet('notifySheet',false); toast('🔔 Alerts saved');
+  if(TAB==='orders') renderOrders();
+});
 let STORE=[];
 async function loadStore(){
   try{
@@ -1249,12 +1330,14 @@ function renderOrders(){
       +'</div>';
   }
   host.innerHTML = tiles
+    +((ME.km||ME.amb)?'':alertsCard())   /* #vendormail — the vendor's switches for the letters about their bench */
     +'<div class="chips">'+chips.map(([k,l])=>{
         const n=ORDERS.filter(o=>orderMatches(o,k)).length;
         return '<button data-f="'+k+'"'+(k===FILTER?' class="on"':'')+'>'+l+' · '+n+'</button>';
       }).join('')+'</div>'
     +(list.length?'<div class="cardgrid">'+list.map(orderCard).join('')+'</div>':'<p class="sub" style="padding:20px 4px;text-align:center">Nothing on this hook.</p>');
   host.querySelectorAll('[data-f]').forEach(b=>b.addEventListener('click',()=>{FILTER=b.dataset.f;renderOrders();}));
+  const nfo=$('nfOpen'); if(nfo) nfo.addEventListener('click', openNotify);
   wireOrderActions(host);
 }
 function orderCard(o){
