@@ -3868,6 +3868,12 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
    +'#iosGate .ig-arrow i{font-style:normal;font-size:26px;line-height:1}'
    +'@keyframes igBob{50%{transform:translateY(-6px)}}#iosGate .ig-arrow.up{animation-name:igBobUp}@keyframes igBobUp{50%{transform:translateY(6px)}}'
    +'html.daylight #iosGate{background:#0b0d0f;color-scheme:dark}'
+   /* #iosperf(sep7) — DAYLIGHT MADE THE GATE UNREADABLE. The card keeps its night plate in
+      daylight (the line above) but every word on it reads the daylight palette: --bone
+      turns to dark ink, --copper-hi to dark copper — near-black type on a black page,
+      the first thing an iPhone opens to on a sunny afternoon. The gate now carries its
+      own tokens, so its colours never depend on the time of day. */
+   +'html.daylight #iosGate{--bone:#ece9f5;--steel:#9a93b8;--copper-hi:#4de2ff;--line:rgba(160,140,255,.2);--btn-hi:#2a1f4d;--btn-lo:#171029}'
    +'@media (prefers-reduced-motion:reduce){#iosGate .ig-arrow{animation:none}}';
 
   var steps, title, sub, arrow='';
@@ -37609,7 +37615,7 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
     };
     try{
       const r=await window.SB.from('orders')
-        .select('id,code,created_at,payment_status,total_usd,order_items(name,brand,qty,color,size,status,carrier,tracking)')
+        .select('id,code,created_at,payment_status,total_usd,order_items(name,brand,qty,color,size,status,carrier,tracking,vendor_id)')
         .eq('user_id',window.__shkUid).order('created_at',{ascending:false}).limit(40);
       if(r.error)throw r.error;
       const orders=(r.data||[]).filter(o=>o.payment_status==='paid'||o.payment_status==='refunded');
@@ -37636,14 +37642,20 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
         } else if(!refunded){
           ship='<div class="sub" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line-soft);line-height:1.6">Made to order on a maker’s bench — your tracking number posts here the moment it ships.</div>';
         }
+        /* #shopwire(sep8) — one door per maker on the order: MESSAGE THE MAKER */
+        var makers={}; items.forEach(function(i){ if(i.vendor_id&&i.status!=='cancelled'){ (makers[i.vendor_id]=makers[i.vendor_id]||[]).push(i.name); } });
+        var mk=Object.keys(makers), ask='';
+        if(mk.length&&!refunded) ask='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">'+mk.map(function(v){
+          return '<button type="button" class="btn-ghost" style="flex:1;min-width:150px;font-size:11px;padding:6px 8px" data-swv="'+esc(v)+'" data-swo="'+esc(o.id)+'" data-swc="'+esc(o.code||'')+'">💬 MESSAGE THE MAKER'+(mk.length>1?' · '+esc(makers[v].slice(0,2).join(', ')):'')+'</button>'; }).join('')+'</div>';
         return '<div class="card" style="margin-bottom:12px"><div class="card-b">'
           +'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">'
             +'<b class="mono" style="color:var(--copper-hi)">#'+esc(o.code||'')+'</b>'
             +'<span class="pill '+(refunded?'red':st.k)+'">'+esc(refunded?'Refunded':st.t)+'</span>'
             +'<span class="sub" style="margin-left:auto">'+_dt(o.created_at)+' · '+_money(o.total_usd)+'</span></div>'
-          +lines+ship
+          +lines+ship+ask
           +'</div></div>';
       }).join('');
+      try{ if(window.shopWireOrderButtons)window.shopWireOrderButtons(host); }catch(e2){}   /* #shopwire */
     }catch(e){
       const m=String((e&&e.message)||'');
       host.innerHTML=/does not exist|relation|permission|policy|rls|recursion/i.test(m)
@@ -39191,6 +39203,254 @@ html.arcade .arc-aurora i{mix-blend-mode:normal;
     try{ console.warn('[freeze]',msg); }catch(e){}
   },500);
 }catch(e){}})();
+</script>
+
+<!-- ═══════════════ #shopwire(sep8) — CLIENTS REACH THE SELLERS ═══════════════
+     A member can write to the maker of a piece: from the product page ("💬 ASK THE
+     MAKER") and from an order under MY ORDERS ("💬 MESSAGE THE MAKER"). The
+     conversations live under THE ARMORY → 💬 INBOX; the maker answers from THE WIRE
+     in the vendor dashboard, the Keymaster can step in. SHOP-WIRE.sql makes the
+     tables and the doors (shop_wire_open / shop_wire_send / shop_wire_read).
+     Everything here degrades soft: no table yet → no INBOX tab, no buttons, no errors. -->
+<style>
+  /* four shelves on a phone: let the tabs shrink and wrap instead of running off the edge */
+  #armMode{gap:6px}
+  #armMode button{min-width:0;padding-left:5px;padding-right:5px;letter-spacing:.06em;font-size:10.5px;line-height:1.25}
+  #armMode button::after{margin-left:4px}
+  #swInboxBtn{position:relative}
+  #swDot,#swNavDot{position:absolute;width:8px;height:8px;border-radius:50%;background:var(--ember,#ff6b3d);box-shadow:0 0 8px rgba(255,107,61,.6)}
+  #swDot{top:6px;right:8px}
+  #swNavDot{top:6px;right:calc(50% - 16px)}
+  .sw-row{display:flex;gap:10px;align-items:center;width:100%;text-align:left;color:inherit;font:inherit;background:none;border:0;padding:12px 4px;border-bottom:1px solid var(--line-soft);cursor:pointer}
+  .sw-row:last-child{border-bottom:0}
+  .sw-row .av{flex:none;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-weight:700;color:#0b0a12;background:linear-gradient(150deg,#c9803f,#eeb46b);font-size:15px}
+  .sw-row .n{flex:1;min-width:0}
+  .sw-row .n b{display:block;color:var(--bone);font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sw-row .n i{display:block;font-style:normal;color:var(--steel);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+  .sw-row .rt{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:5px}
+  .sw-row .rt em{font-style:normal;font-size:10.5px;color:var(--steel)}
+  .sw-row .rt .cnt{min-width:20px;height:20px;border-radius:10px;background:var(--ember,#ff6b3d);color:#fff;font-size:11px;font-weight:700;display:grid;place-items:center;padding:0 6px}
+  #swSheet .sheet-card{max-height:88vh;display:flex;flex-direction:column;text-align:left}
+  #swHead{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+  #swHead .t{flex:1;min-width:0}
+  #swHead .t b{display:block;font-size:16px;color:var(--bone);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #swHead .t i{display:block;font-style:normal;font-size:12px;color:var(--steel);margin-top:2px}
+  #swFeed{flex:1;min-height:120px;max-height:52vh;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding:8px 2px}
+  #swFeed .dm-b .who{display:block;font-size:10px;letter-spacing:.18em;color:var(--copper-hi,#eeb46b);margin-bottom:3px;text-transform:uppercase}
+  #swCompose{display:flex;gap:8px;align-items:flex-end;margin-top:8px}
+  #swCompose textarea{flex:1;resize:none;min-height:46px;max-height:120px}
+  .sw-ask{margin-top:10px;width:100%}
+</style>
+<div class="sheet" id="swSheet">
+  <div class="sheet-card">
+    <div id="swHead">
+      <button class="btn-ghost" id="swBack" type="button" style="padding:6px 10px">‹ Back</button>
+      <div class="t"><b id="swTitle">The maker</b><i id="swSub">on the wire</i></div>
+    </div>
+    <div id="swFeed"><p class="sub">Raising the mast…</p></div>
+    <div id="swCompose">
+      <textarea class="field" id="swIn" rows="2" maxlength="2000" placeholder="Say the word…"></textarea>
+      <button class="btn" id="swSend" type="button" style="width:auto;padding:12px 18px">SEND</button>
+    </div>
+    <p class="sub" id="swNote" style="margin:8px 0 0;font-size:11.5px;line-height:1.5">The maker answers from their bench; the Keymaster can step in. You&rsquo;ll see a badge here when they do.</p>
+  </div>
+</div>
+<script>
+(function(){
+  'use strict';
+  var SW = { threads:[], open:null, msgs:[], draft:null, ok:null, subscribed:false, loading:false };
+  var esc = function(s){ return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); };
+  var byId = function(id){ return document.getElementById(id); };
+  var say = function(m){ try{ toast(m); }catch(e){} };
+  var signedIn = function(){ return !!(window.SB && window.__shkUid); };
+  var when = function(ts){ try{ var d=new Date(ts), n=new Date(); return d.toDateString()===n.toDateString()?d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}):d.toLocaleDateString([],{month:'short',day:'numeric'}); }catch(e){ return ''; } };
+  var shopOf = function(t){ return (t&&t.vendor_name)||'the maker'; };
+  var about  = function(t){ return (t&&t.subject)||(t&&t.order_code?'Order '+t.order_code:(t&&t.product_name)||'a question'); };
+  var unread = function(){ return SW.threads.reduce(function(n,t){ return n+(Number(t.client_unread)||0); },0); };
+
+  /* ── the INBOX shelf under THE ARMORY ── */
+  function ensureShelf(){
+    var am=byId('armMode'), od=byId('armOrders');
+    if(!am||!od||byId('swInboxBtn'))return;
+    var b=document.createElement('button'); b.setAttribute('data-v','inbox'); b.id='swInboxBtn'; b.innerHTML='💬 INBOX<span id="swDot" style="display:none"></span>';
+    am.appendChild(b);
+    var box=document.createElement('div'); box.id='armInbox'; box.style.display='none';
+    box.innerHTML='<div class="card-h" style="margin:2px 2px 14px">💬 YOUR INBOX <span class="sl">//</span> the makers, on the wire</div><div id="swList"></div>';
+    od.parentNode.insertBefore(box, od.nextSibling);
+    am.addEventListener('click',function(e){
+      var btn=e.target.closest('button'); if(!btn)return;
+      box.style.display = btn.dataset.v==='inbox' ? '' : 'none';
+      if(btn.dataset.v==='inbox'){ paintList(); loadThreads(); }
+    });
+  }
+  function paintBadges(){
+    var n=unread();
+    var d=byId('swDot'); if(d)d.style.display=n?'':'none';
+    var nb=document.querySelector('.nav button[data-scr="armory"]');
+    if(nb){ var nd=byId('swNavDot'); if(n&&!nd){ nd=document.createElement('i'); nd.id='swNavDot'; nb.style.position='relative'; nb.appendChild(nd); } else if(!n&&nd){ nd.remove(); } }
+    var ib=byId('swInboxBtn'); if(ib){ var lbl=ib.firstChild; if(lbl&&lbl.nodeType===3) lbl.textContent='💬 INBOX'+(n?' · '+n:''); }
+  }
+  function paintList(){
+    var host=byId('swList'); if(!host)return;
+    if(!signedIn()){ host.innerHTML='<p class="sub" style="text-align:center;padding:26px 10px;line-height:1.7">Claim your card and sign in to write to the makers.</p>'; return; }
+    if(SW.ok===false){ host.innerHTML='<p class="sub" style="text-align:center;padding:26px 10px;line-height:1.7">The wire to the makers isn’t open yet.</p>'; return; }
+    if(!SW.threads.length){ host.innerHTML='<p class="sub" style="text-align:center;padding:26px 10px;line-height:1.7">Nothing on the wire yet. Open a piece on the shelf and tap <b>ASK THE MAKER</b>, or find <b>MESSAGE THE MAKER</b> under one of your orders.</p>'; return; }
+    host.innerHTML='<div class="card"><div class="card-b" style="padding-top:2px;padding-bottom:2px">'+SW.threads.map(function(t){
+      var n=Number(t.client_unread)||0, prev=t.last_body?((t.last_from==='client'?'You: ':'')+String(t.last_body).replace(/\s+/g,' ').slice(0,70)):'no word yet';
+      return '<button class="sw-row" type="button" data-swt="'+esc(t.id)+'"><span class="av">'+esc(String(shopOf(t)).trim().charAt(0).toUpperCase()||'?')+'</span>'
+        +'<span class="n"><b>'+esc(shopOf(t))+' · '+esc(about(t))+(t.closed?' ✓':'')+'</b><i>'+esc(prev)+'</i></span>'
+        +'<span class="rt">'+(t.last_at?'<em>'+esc(when(t.last_at))+'</em>':'')+(n?'<span class="cnt">'+n+'</span>':'')+'</span></button>';
+    }).join('')+'</div></div>';
+    host.querySelectorAll('[data-swt]').forEach(function(b){ b.addEventListener('click',function(){ openThread(b.getAttribute('data-swt')); }); });
+  }
+
+  /* ── data ── */
+  async function loadThreads(){
+    if(!signedIn()||SW.loading)return;
+    SW.loading=true;
+    try{
+      var r=await window.SB.from('shop_threads').select('*').eq('user_id',window.__shkUid).order('last_at',{ascending:false}).limit(100);
+      if(r.error){ SW.ok = !/does not exist|relation|schema cache|find the table/i.test(String(r.error.message||'')) ? SW.ok : false; }
+      else { SW.ok=true; SW.threads=r.data||[]; }
+    }catch(e){}
+    SW.loading=false;
+    paintBadges(); paintList();
+    subscribe();
+  }
+  async function loadMsgs(tid){
+    var feed=byId('swFeed'); if(!feed)return;
+    try{
+      var r=await window.SB.from('shop_msgs').select('*').eq('thread_id',tid).order('created_at',{ascending:true}).limit(400);
+      if(!r.error){ SW.msgs=r.data||[]; paintFeed(); }
+    }catch(e){}
+    var t=SW.threads.find(function(x){ return x.id===tid; });
+    if(t&&Number(t.client_unread)>0){ t.client_unread=0; paintBadges(); paintList(); try{ window.SB.rpc('shop_wire_read',{p_thread:tid}); }catch(e){} }
+  }
+  function paintFeed(){
+    var feed=byId('swFeed'); if(!feed)return;
+    if(!SW.msgs.length){ feed.innerHTML='<p class="sub" style="padding:10px 4px">'+(SW.draft?'Ask away — the maker answers from their bench.':'Nothing here yet.')+'</p>'; return; }
+    feed.innerHTML=SW.msgs.map(function(m){
+      var me=m.from_side==='client';
+      var who=me?'':'<span class="who">'+esc(m.from_side==='km'?'☠ The Keymaster':(m.handle||shopOf(SW.open)))+'</span>';
+      return '<div class="dm-b '+(me?'me':'them')+'">'+who+esc(m.body)+'<span class="dm-t">'+esc(when(m.created_at))+'</span></div>';
+    }).join('');
+    feed.scrollTop=feed.scrollHeight;
+  }
+
+  /* ── the sheet ── */
+  function showSheet(on){ var s=byId('swSheet'); if(s)s.classList.toggle('on',on!==false); }
+  function openThread(tid){
+    var t=SW.threads.find(function(x){ return x.id===tid; }); if(!t)return;
+    SW.open=t; SW.draft=null; SW.msgs=[];
+    byId('swTitle').textContent=shopOf(t); byId('swSub').textContent=about(t)+(t.closed?' · closed by the maker':'');
+    byId('swFeed').innerHTML='<p class="sub">Raising the mast…</p>';
+    byId('swCompose').style.display=t.closed?'none':'';
+    byId('swIn').value='';
+    showSheet(true); loadMsgs(tid);
+  }
+  /* start a conversation (from a piece or an order) — the thread is made on the first word */
+  function start(d){
+    if(!signedIn()){ say('🗝 Claim your card and sign in to write to the maker'); return; }
+    if(SW.ok===false){ say('The wire to the makers isn’t open yet'); return; }
+    SW.open=null; SW.msgs=[]; SW.draft=d;
+    byId('swTitle').textContent=d.vendor_name||'The maker'; byId('swSub').textContent=d.order_code?'about order '+d.order_code:(d.product_name?'about '+d.product_name:'a question');
+    byId('swCompose').style.display='';
+    byId('swIn').value=''; paintFeed();
+    showSheet(true);
+    setTimeout(function(){ try{ byId('swIn').focus(); }catch(e){} },300);
+  }
+  window.shopWireStart=start;
+  async function send(){
+    var inp=byId('swIn'), btn=byId('swSend'), body=(inp.value||'').trim();
+    if(!body)return;
+    btn.disabled=true;
+    try{
+      if(SW.open){
+        var r=await window.SB.rpc('shop_wire_send',{p_thread:SW.open.id,p_body:body});
+        if(r.error)throw r.error;
+        SW.msgs.push({id:r.data||('local-'+Date.now()),from_side:'client',body:body,created_at:new Date().toISOString()});
+        SW.open.last_body=body; SW.open.last_from='client'; SW.open.last_at=new Date().toISOString();
+        inp.value=''; paintFeed(); paintList();
+      } else if(SW.draft){
+        var d=SW.draft;
+        var o=await window.SB.rpc('shop_wire_open',{p_vendor:d.vendor_id,p_body:body,p_order:d.order_id||null,p_product:d.product_id||null});
+        if(o.error)throw o.error;
+        inp.value='';
+        await loadThreads();
+        var tid=o.data&&o.data.thread_id;
+        var t=SW.threads.find(function(x){ return x.id===tid; });
+        if(t){ openThread(tid); } else { showSheet(false); }
+        say('💬 Sent to '+((o.data&&o.data.vendor_name)||'the maker'));
+      }
+    }catch(e){
+      var m=String((e&&e.message)||e||'');
+      say('⚠ '+(/does not exist|schema cache|find the function|relation/i.test(m)?'the wire to the makers isn’t open yet':m));
+      try{ if(window.shkAlert)shkAlert('shop wire',e); }catch(_){}
+    }
+    btn.disabled=false;
+  }
+
+  /* ── live: the maker answered ── */
+  function subscribe(){
+    if(SW.subscribed||!signedIn()||SW.ok===false)return;
+    SW.subscribed=true;
+    try{
+      window.SB.channel('shop-wire-'+window.__shkUid)
+        .on('postgres_changes',{event:'*',schema:'public',table:'shop_threads',filter:'user_id=eq.'+window.__shkUid},function(){ SW.loading=false; loadThreads(); })
+        .on('postgres_changes',{event:'INSERT',schema:'public',table:'shop_msgs'},function(p){
+          var m=p&&p.new; if(!m||!m.thread_id)return;
+          if(SW.open&&SW.open.id===m.thread_id&&byId('swSheet').classList.contains('on')){
+            if(!SW.msgs.some(function(x){ return x.id===m.id; })){ SW.msgs.push(m); paintFeed(); }
+            if(m.from_side!=='client'){ try{ window.SB.rpc('shop_wire_read',{p_thread:m.thread_id}); }catch(e){} }
+          } else if(m.from_side!=='client'){ say('💬 '+(m.handle||'The maker')+' answered on the wire'); }
+        })
+        .subscribe();
+    }catch(e){ SW.subscribed=false; }
+  }
+
+  /* ── the doors on the product page and under MY ORDERS ── */
+  function askButton(){
+    var host=byId('gearBody'), p=(typeof gearProd!=='undefined')?gearProd:null; if(!host||!p||byId('swAsk'))return;
+    if(!p.vendor_id||SW.ok===false)return;
+    var anchor=host.querySelector('#gearAdd,#gearNotify'); if(!anchor)return;
+    var after=anchor.nextElementSibling&&anchor.nextElementSibling.classList.contains('sub')?anchor.nextElementSibling:anchor;
+    var b=document.createElement('button'); b.type='button'; b.id='swAsk'; b.className='btn-ghost sw-ask'; b.textContent='💬 ASK THE MAKER';
+    b.addEventListener('click',function(){ start({vendor_id:p.vendor_id,product_id:String(p.id||''),product_name:p.name||'',vendor_name:p.brand&&p.brand!=='The Shadow Hook'?p.brand:''}); });
+    after.parentNode.insertBefore(b, after.nextSibling);
+  }
+  try{
+    var _pg=window.paintGear;
+    if(typeof _pg==='function') window.paintGear=function(){ var r=_pg.apply(this,arguments); try{ askButton(); }catch(e){} return r; };
+  }catch(e){}
+  window.shopWireOrderButtons=function(host){   /* loadMyOrders calls this after it paints */
+    if(!host||SW.ok===false)return;
+    host.querySelectorAll('[data-swv]').forEach(function(b){
+      b.addEventListener('click',function(){ start({vendor_id:b.getAttribute('data-swv'),order_id:b.getAttribute('data-swo'),order_code:b.getAttribute('data-swc'),vendor_name:''}); });
+    });
+  };
+
+  /* ── the deep link from the email: theshadowhook.com/#go=inbox ── */
+  try{
+    var _go=window.alertGo;
+    window.alertGo=function(o){
+      if(o&&o.go==='inbox'){
+        try{ if(typeof gotoTab==='function')gotoTab('armory'); }catch(e){}
+        setTimeout(function(){ try{ ensureShelf(); var b=byId('swInboxBtn'); if(b)b.click(); }catch(e){} },380);
+        return;
+      }
+      return _go?_go.apply(this,arguments):undefined;
+    };
+  }catch(e){}
+
+  /* ── wiring ── */
+  byId('swBack').addEventListener('click',function(){ showSheet(false); });
+  byId('swSend').addEventListener('click',send);
+  byId('swIn').addEventListener('keydown',function(e){ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); send(); } });
+  byId('swSheet').addEventListener('click',function(e){ if(e.target===byId('swSheet'))showSheet(false); });
+  ensureShelf();
+  /* sign-in lands after boot; look again for a while, then rest */
+  var tries=0, tick=setInterval(function(){ tries++; ensureShelf(); if(signedIn()){ loadThreads(); if(SW.ok!==null||tries>40)clearInterval(tick); } else if(tries>120)clearInterval(tick); },1500);
+})();
 </script>
 
 </body>

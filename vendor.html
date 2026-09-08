@@ -121,6 +121,12 @@ select.field{appearance:none;-webkit-appearance:none}
 .wrow .dot{width:8px;height:8px;border-radius:50%;background:var(--ember)}
 .wire2 .msgs{max-height:54vh}
 @media(max-width:880px){.wire2{grid-template-columns:1fr}.wrail{max-height:36vh}}
+/* #shopwire(sep8) — client threads on the rail: a cool avatar, a pinned Keymaster row, a name line in the bubble */
+.wrow.cl .av{background:linear-gradient(150deg,#4de2ff,#7b5cff);color:#0b0a12}
+.wrow.pin .av{background:linear-gradient(150deg,#b3552a,#eeb46b)}
+.wrow.closed{opacity:.55}
+.mb .who{display:block;letter-spacing:.2em;font-size:9.5px;color:var(--steel);margin-bottom:4px}
+.mb.cl{border-color:rgba(77,226,255,.35)}
 
 .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
 .tile{background:linear-gradient(184deg,var(--plate-2),var(--plate));border:1px solid var(--line);border-radius:14px;padding:12px 12px 10px;text-align:center}
@@ -465,6 +471,7 @@ select.field{appearance:none;-webkit-appearance:none}
   <div class="lbl">SEND THEM TO</div>
   <input class="field" id="nfEmailTo" type="email" autocomplete="email" placeholder="you@shop.com">
   <div class="sub" style="font-size:11.5px;margin-top:5px">Leave it blank to use the shop&rsquo;s email. Two addresses? Separate them with a comma.</div>
+  <div class="vrow" style="margin-top:6px"><input type="checkbox" id="nfWireOn" style="width:18px;height:18px;accent-color:#c9803f;flex:none"><span class="n"><b>Email me when a client writes</b><i>a member asks about your gear or their order on the wire &mdash; one email per thread, then it&rsquo;s in your dashboard</i></span></div>
   <div class="vrow" style="margin-top:6px"><input type="checkbox" id="nfDailyOn" style="width:18px;height:18px;accent-color:#c9803f;flex:none"><span class="n"><b>Morning reminder of open orders</b><i>once a day while something is waiting to ship &mdash; nothing waiting, no email</i></span></div>
   <div class="lbl">AT WHAT HOUR (PACIFIC)</div>
   <select class="field" id="nfHour"></select>
@@ -770,6 +777,7 @@ const PAY_PILL = { paid:'<span class="pill grn">PAID</span>', pending:'<span cla
 const ME = { uid:null, email:'', km:false, vendor:null, amb:null };
 let TAB='orders', FILTER='todo';
 let ORDERS=[], VENDORS=[], BALANCES=[], PAYOUTS=[], PRODUCTS=[], MEMBERS=[], MSGS=[], LASTMSG={}, DRAFTS=[];
+let THREADS=[], WIRE_THREAD=null;   /* #shopwire — client ↔ maker threads (shop_threads), and the one that's open */
 let AMBS=[], AMB_MEMBERS=[], AMB_PAYOUTS=[], AMB_LINES=[];
 let APPS=[], APP_PENDING=null;   /* #vendorapply — vendor_applications waiting on the Keymaster · the one being added right now */
 let WIRE_KIND='v', inviteKind='vendor', payoutKind='v';
@@ -1066,7 +1074,7 @@ function openTab(k){
 
 /* ════════ DATA ════════ */
 async function refreshAll(){
-  await Promise.all([loadOrders(), loadLedger(), loadProducts(), loadStore(), loadReviews(), loadGate(), (ME.km||ME.amb)?loadVendors():Promise.resolve(), loadLastMsgs(), loadDrafts(), loadAmbStuff(), ME.km?loadService():Promise.resolve(), loadArt(), loadNotify()]);
+  await Promise.all([loadOrders(), loadLedger(), loadProducts(), loadStore(), loadReviews(), loadGate(), (ME.km||ME.amb)?loadVendors():Promise.resolve(), loadLastMsgs(), loadDrafts(), loadAmbStuff(), ME.km?loadService():Promise.resolve(), loadArt(), loadNotify(), loadThreads()]);
 }
 
 /* ═══ #vendormail(sep8) — SALE ALERTS: the vendor's switches for the letters about their bench ═══
@@ -1085,7 +1093,7 @@ async function loadNotify(){
 function notifyPrefs(){
   const n = NOTIFY || {};
   return { email_on:n.email_on!==false, email_to:String(n.email_to||'').trim(), daily_on:n.daily_on!==false,
-           daily_hour:(n.daily_hour==null?8:Number(n.daily_hour)), monthly_on:n.monthly_on!==false };
+           daily_hour:(n.daily_hour==null?8:Number(n.daily_hour)), monthly_on:n.monthly_on!==false, wire_on:n.wire_on!==false };
 }
 function notifyDefaultTo(){ return (ME.vendor&&ME.vendor.email)||ME.email||''; }
 function hourLabel(h){ h=Number(h)||0; const x=h%12||12; return x+':00 '+(h<12?'AM':'PM'); }
@@ -1093,7 +1101,8 @@ function alertsCard(){
   const p=notifyPrefs(), to=p.email_to||notifyDefaultTo();
   const bits=[ p.email_on?'sale emails → '+(to||'no address on file'):'sale emails off',
                p.daily_on?'morning reminder '+hourLabel(p.daily_hour):'morning reminder off',
-               p.monthly_on?'monthly summary on':'monthly summary off' ];
+               p.monthly_on?'monthly summary on':'monthly summary off',
+               p.wire_on?'client messages on':'client messages off' ];
   return '<div class="card" style="margin-bottom:14px"><div class="card-h">🔔 SALE ALERTS'
     +'<span class="tag">'+(NOTIFY?'your settings':'on from the start')+'</span></div>'
     +'<div class="card-b"><div class="sub">'+bits.map(esc).join(' · ')+'</div>'
@@ -1105,7 +1114,7 @@ function openNotify(){
   if(!sel.options.length){ for(let h=5; h<=21; h++){ const o=document.createElement('option'); o.value=String(h); o.textContent=hourLabel(h); sel.appendChild(o); } }
   $('nfEmailOn').checked=p.email_on; $('nfEmailTo').value=p.email_to; $('nfEmailTo').placeholder=notifyDefaultTo()||'you@shop.com';
   $('nfDailyOn').checked=p.daily_on; sel.value=String(p.daily_hour); if(!sel.value) sel.value='8';
-  $('nfMonthlyOn').checked=p.monthly_on; $('nfMsg').textContent='';
+  $('nfMonthlyOn').checked=p.monthly_on; $('nfWireOn').checked=p.wire_on; $('nfMsg').textContent='';
   sheet('notifySheet');
 }
 $('nfGo').addEventListener('click', async()=>{
@@ -1116,9 +1125,13 @@ $('nfGo').addEventListener('click', async()=>{
   if(addrs.some(a=>!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(a))){ m.textContent='> that email address doesn’t look right'; return; }
   if($('nfEmailOn').checked && !to && !notifyDefaultTo()){ m.textContent='> add an address — there’s none on the shop’s card'; return; }
   const row={ vendor_id:ME.vendor.id, email_on:$('nfEmailOn').checked, email_to:addrs.length?addrs.join(', '):null,
-              daily_on:$('nfDailyOn').checked, daily_hour:Number($('nfHour').value)||8, monthly_on:$('nfMonthlyOn').checked };
+              daily_on:$('nfDailyOn').checked, daily_hour:Number($('nfHour').value)||8, monthly_on:$('nfMonthlyOn').checked,
+              wire_on:$('nfWireOn').checked };
   btn.disabled=true; m.textContent='';
-  const r=await SB.from('vendor_notify').upsert(row,{onConflict:'vendor_id'}).select().maybeSingle();
+  let r=await SB.from('vendor_notify').upsert(row,{onConflict:'vendor_id'}).select().maybeSingle();
+  if(r.error && /wire_on/i.test(String(r.error.message||''))){   /* SHOP-WIRE.sql not run yet — save the rest */
+    delete row.wire_on; r=await SB.from('vendor_notify').upsert(row,{onConflict:'vendor_id'}).select().maybeSingle();
+  }
   btn.disabled=false;
   if(r.error){
     const why=String(r.error.message||'');
@@ -1285,7 +1298,8 @@ function paintUnreadDot(){
   const keys = ME.km ? Object.keys(LASTMSG)
     : ME.amb ? ['a:'+ME.amb.id]
     : (ME.vendor?['v:'+ME.vendor.id]:[]);
-  const un = keys.some(k=>{ const i=k.indexOf(':'); return hasUnread(k.slice(0,i),k.slice(i+1)); });
+  const un = keys.some(k=>{ const i=k.indexOf(':'); return hasUnread(k.slice(0,i),k.slice(i+1)); })
+          || (!ME.km && THREADS.some(t=>Number(t.vendor_unread)>0));   /* #shopwire */
   let d=t.querySelector('.dot');
   if(un&&!d){ d=document.createElement('span'); d.className='dot'; t.appendChild(d); }
   if(!un&&d) d.remove();
@@ -2116,7 +2130,60 @@ function currentWireVendor(){
   if(ME.amb) return ME.amb.id;
   return ME.vendor?ME.vendor.id:null;
 }
-function currentWireKind(){ return ME.km ? WIRE_KIND : (ME.amb ? 'a' : 'v'); }
+function currentWireKind(){ return ME.km ? WIRE_KIND : (ME.amb ? 'a' : (WIRE_KIND==='c' ? 'c' : 'v')); }
+
+/* ═══ #shopwire(sep8) — CLIENTS REACH THE SELLERS ═══
+   SHOP-WIRE.sql: a member opens a thread with a maker from a piece or from an order;
+   it lands here on THE WIRE, under the Keymaster's pinned line. The vendor answers
+   through shop_wire_send (never a direct insert), reads through shop_wire_read.
+   The Keymaster sees every thread and can step in. No table yet → THREADS stays
+   empty and the tab looks exactly as before. */
+async function loadThreads(){
+  THREADS=[];
+  if(ME.amb && !ME.km) return;
+  try{
+    const r=await SB.from('shop_threads').select('*').order('last_at',{ascending:false}).limit(200);
+    if(!r.error) THREADS=r.data||[];
+  }catch(e){}
+  paintUnreadDot();
+}
+function threadById(id){ return THREADS.find(t=>t.id===id)||null; }
+function threadName(t){ return (t.handle||'a member'); }
+function threadAbout(t){ return t.subject||(t.order_code?'Order '+t.order_code:(t.product_name||'a question')); }
+function threadUnread(t){ return ME.km ? 0 : (Number(t.vendor_unread)||0); }
+function threadRows(){
+  const rows=THREADS.slice();
+  if(!rows.length) return '';
+  return '<div class="hd" style="padding-top:12px">💬 CLIENTS · '+rows.length+'</div>'
+    +rows.map(t=>{
+      const on = WIRE_KIND==='c' && WIRE_THREAD===t.id;
+      const prev = t.last_body ? ((t.last_from==='client'?'':(t.last_from==='km'?'Keymaster: ':'You: '))+String(t.last_body).replace(/\s+/g,' ').slice(0,64)) : 'no word yet';
+      const initial=String(t.handle||'?').trim().charAt(0).toUpperCase()||'?';
+      const who = ME.km ? threadName(t)+' → '+(vName(t.vendor_id)||'?') : threadName(t);
+      return '<button class="wrow cl'+(on?' on':'')+(t.closed?' closed':'')+'" data-wt="'+esc(t.id)+'">'
+        +'<span class="av">'+esc(initial)+'</span>'
+        +'<span class="n"><b>'+esc(who)+' · '+esc(threadAbout(t))+(t.closed?' ✓':'')+'</b><i>'+esc(prev)+'</i></span>'
+        +'<span class="rt">'+(t.last_at?'<em>'+esc(wireShortTime(t.last_at))+'</em>':'')
+        +(threadUnread(t)?'<span class="dot"></span>':'')+'</span></button>';
+    }).join('');
+}
+/* the vendor's rail: the Keymaster pinned, then the clients */
+function vendorRail(){
+  const lm=LASTMSG['v:'+(ME.vendor?ME.vendor.id:'')]||{};
+  const prev = lm.top ? ((lm.top.km?'':'You: ')+String(lm.top.body||'').replace(/\s+/g,' ').slice(0,64)) : 'straight line to the Keymaster';
+  const kmOn = WIRE_KIND!=='c';
+  return '<div class="wrail"><div class="hd">ON THE WIRE</div>'
+    +'<button class="wrow pin'+(kmOn?' on':'')+'" data-wkm="1"><span class="av">☠</span>'
+    +'<span class="n"><b>THE KEYMASTER</b><i>'+esc(prev)+'</i></span>'
+    +'<span class="rt">'+(lm.top&&lm.top.at?'<em>'+esc(wireShortTime(lm.top.at))+'</em>':'')
+    +(hasUnread('v',ME.vendor?ME.vendor.id:'')?'<span class="dot"></span>':'')+'</span></button>'
+    +(THREADS.length?threadRows():'<p class="sub" style="padding:12px 10px 8px;font-size:12px;line-height:1.5">No client has written yet. When a member asks about your gear or an order, their thread lands here.</p>')
+    +'</div>';
+}
+function wireThreadRailBind(host){
+  host.querySelectorAll('[data-wt]').forEach(b=>b.addEventListener('click',()=>{WIRE_KIND='c';WIRE_THREAD=b.dataset.wt;renderWire();}));
+  host.querySelectorAll('[data-wkm]').forEach(b=>b.addEventListener('click',()=>{WIRE_KIND='v';WIRE_THREAD=null;renderWire();}));
+}
 function wireTable(){ return currentWireKind()==='a' ? 'amb_msgs' : 'vendor_msgs'; }
 function wireCol(){ return currentWireKind()==='a' ? 'ambassador_id' : 'vendor_id'; }
 /* #wire2 — one list of everybody on the wire, newest word first. */
@@ -2146,6 +2213,7 @@ function wireRail(){
   const rows=wirePeople();
   if(!rows.length)return '';
   return '<div class="wrail"><div class="hd">ON THE WIRE · '+rows.length+'</div>'
+    +(ME.km?threadRows():'')   /* #shopwire — the Keymaster sees every client thread too */
     +rows.map(function(r){
       const on = (WIRE_KIND===r.kind && r.id===WIRE_VENDOR);
       const prev = r.top
@@ -2168,37 +2236,85 @@ function renderWire(){
   let redphone='';
   if(ME.km){
     redphone='<div class="card" style="border-color:rgba(255,61,139,.35)"><div class="card-h">🚨 THE EMERGENCY LINE'
-      +'<span class="tag">shown to vendors · calls only when it burns</span></div><div class="card-b">'
+      +'<span class="tag">CALL THE KEYMASTER under the vendors’ CONTACT YOUR SUPPORT · for what can’t wait</span></div><div class="card-b">'
       +'<div style="display:flex;gap:8px"><input class="field" id="kmPhone" inputmode="tel" placeholder="(310) 555-0199" value="'+esc(GATE.kmPhone||'')+'" style="flex:1">'
       +'<button class="btn-line red" id="kmPhoneSave" style="flex:none">SAVE</button></div>'
-      +'<p class="sub" style="margin-top:8px">Your number, on every vendor’s wire tab as a break-glass button. Leave it empty to hang the phone up.</p>'
+      +'<p class="sub" style="margin-top:8px">Your number, on every vendor’s wire tab next to EMAIL SUPPORT. Leave it empty and they get the email button only.</p>'
       +'<div class="msgline" id="kmPhoneMsg"></div></div></div>';
-  } else if(GATE.kmPhone&&telHref(GATE.kmPhone)){
-    redphone='<div class="card" style="border-color:rgba(255,61,139,.35)"><div class="card-b" style="display:flex;gap:12px;align-items:center">'
-      +'<div style="flex:1"><b style="letter-spacing:.08em;font-size:13px">🚨 A TRUE EMERGENCY?</b>'
-      +'<div class="sub" style="margin-top:3px">Order’s wrong and it ships in an hour, address is burning — call. Everything else rides the wire below.</div></div>'
-      +'<a class="btn-line red" style="flex:none;text-decoration:none" href="'+esc(telHref(GATE.kmPhone))+'">☎ CALL THE KEYMASTER</a>'
-      +'</div></div>';
+  } else {
+    /* #support(sep8) — CONTACT YOUR SUPPORT. Account, app and order trouble goes to
+       support@ (email, always there); the Keymaster's phone rides along only when
+       one is set. Sales talk stays on the wire below. */
+    const tel = telHref(GATE.kmPhone);
+    redphone='<div class="card"><div class="card-b" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">'
+      +'<div style="flex:1;min-width:220px"><b style="letter-spacing:.08em;font-size:13px">🛟 CONTACT YOUR SUPPORT</b>'
+      +'<div class="sub" style="margin-top:3px">Account, app or order trouble? Email support@theshadowhook.com'+(tel?' — or call if it can’t wait':'')+'. Everything else rides the wire below.</div></div>'
+      +'<div style="display:flex;gap:8px;flex:none;flex-wrap:wrap">'
+      +'<a class="btn-line gold" style="text-decoration:none" href="mailto:support@theshadowhook.com">✉ EMAIL SUPPORT</a>'
+      +(tel?'<a class="btn-line red" style="text-decoration:none" href="'+esc(tel)+'">☎ CALL THE KEYMASTER</a>':'')
+      +'</div></div></div>';
   }
-  const who = ME.km ? esc((WIRE_KIND==='a'?'🎖 '+ambName(WIRE_VENDOR):vName(WIRE_VENDOR))||'—')
+  /* #shopwire — a client thread that vanished (closed by someone else, reload) falls back to the Keymaster line */
+  if(WIRE_KIND==='c' && !threadById(WIRE_THREAD)){ WIRE_KIND=ME.km?'v':'v'; WIRE_THREAD=null; if(ME.km&&!WIRE_VENDOR&&VENDORS.length)WIRE_VENDOR=VENDORS[0].id; }
+  const th = WIRE_KIND==='c' ? threadById(WIRE_THREAD) : null;
+  const who = th ? esc(threadAbout(th)+(ME.km?' · '+(vName(th.vendor_id)||'?'):''))
+            : ME.km ? esc((WIRE_KIND==='a'?'🎖 '+ambName(WIRE_VENDOR):vName(WIRE_VENDOR))||'—')
                     : 'straight line to the Keymaster';
-  const card='<div class="card" style="margin:0"><div class="card-h">📻 THE WIRE<span class="tag">'+who+'</span></div>'
-    +'<div class="card-b"><div class="msgs" id="wireMsgs"><p class="sub">Raising the mast…</p></div>'
-    +'<div class="sendrow"><input class="field" id="wireIn" placeholder="Say the word…" maxlength="2000">'
-    +'<button class="btn-line gold" id="wireGo">SEND</button></div></div></div>';
+  const title = th ? '💬 '+esc(threadName(th)) : '📻 THE WIRE';
+  const card='<div class="card" style="margin:0"><div class="card-h">'+title+'<span class="tag">'+who
+    +(th&&!th.closed?' <button class="btn-ghost" id="wireClose" style="padding:2px 6px;font-size:11px" title="close this thread">✓ CLOSE</button>':'')
+    +'</span></div>'
+    +'<div class="card-b">'
+    +(th&&th.order_code?'<div class="sub" style="margin-bottom:6px">About order <b class="mono">'+esc(th.order_code)+'</b> — it’s on your ORDERS tab.</div>'
+      :th&&th.product_name?'<div class="sub" style="margin-bottom:6px">About <b>'+esc(th.product_name)+'</b> on the shelf.</div>':'')
+    +'<div class="msgs" id="wireMsgs"><p class="sub">Raising the mast…</p></div>'
+    +(th&&th.closed
+      ?'<p class="sub" style="margin-top:6px">This thread is closed. <button class="btn-ghost" id="wireReopen" style="padding:2px 6px;font-size:11px">REOPEN</button></p>'
+      :'<div class="sendrow"><input class="field" id="wireIn" placeholder="'+(th?'Answer '+esc(threadName(th))+'…':'Say the word…')+'" maxlength="2000">'
+       +'<button class="btn-line gold" id="wireGo">SEND</button></div>')
+    +'</div></div>';
 
-  if(ME.km && !VENDORS.length && !AMBS.length){
+  if(ME.km && !VENDORS.length && !AMBS.length && !THREADS.length){
     host.innerHTML=redphone+'<p class="sub" style="padding:12px 2px">No vendors yet — the wire hums once one’s on the rolls.</p>'+card;
   } else if(ME.km){
     host.innerHTML=redphone+'<div class="wire2">'+wireRail()+card+'</div>';
-  } else {
+  } else if(ME.amb){
     host.innerHTML=redphone+card;
+  } else {
+    host.innerHTML=redphone+'<div class="wire2">'+vendorRail()+card+'</div>';   /* #shopwire — the Keymaster pinned, clients under */
   }
 
-  host.querySelectorAll('[data-wv]').forEach(b=>b.addEventListener('click',()=>{WIRE_KIND='v';WIRE_VENDOR=b.dataset.wv;renderWire();}));
-  host.querySelectorAll('[data-wa]').forEach(b=>b.addEventListener('click',()=>{WIRE_KIND='a';WIRE_VENDOR=b.dataset.wa;renderWire();}));
+  host.querySelectorAll('[data-wv]').forEach(b=>b.addEventListener('click',()=>{WIRE_KIND='v';WIRE_THREAD=null;WIRE_VENDOR=b.dataset.wv;renderWire();}));
+  host.querySelectorAll('[data-wa]').forEach(b=>b.addEventListener('click',()=>{WIRE_KIND='a';WIRE_THREAD=null;WIRE_VENDOR=b.dataset.wa;renderWire();}));
+  wireThreadRailBind(host);
+  const wc=$('wireClose'); if(wc)wc.addEventListener('click',async()=>{
+    const r=await SB.rpc('shop_wire_close',{p_thread:WIRE_THREAD,p_closed:true});
+    if(r.error){toast('⚠ '+r.error.message);return;}
+    const t=threadById(WIRE_THREAD); if(t)t.closed=true; toast('✓ Thread closed'); renderWire(); });
+  const wr=$('wireReopen'); if(wr)wr.addEventListener('click',async()=>{
+    const r=await SB.rpc('shop_wire_close',{p_thread:WIRE_THREAD,p_closed:false});
+    if(r.error){toast('⚠ '+r.error.message);return;}
+    const t=threadById(WIRE_THREAD); if(t)t.closed=false; renderWire(); });
   const send=async()=>{
-    const inp=$('wireIn'), body=(inp.value||'').trim(), vid=currentWireVendor();
+    const inp=$('wireIn'); if(!inp)return;
+    const body=(inp.value||'').trim();
+    if(WIRE_KIND==='c'){   /* #shopwire — answer a client through the door, never a direct insert */
+      if(!body||!WIRE_THREAD)return;
+      inp.value='';
+      const r=await SB.rpc('shop_wire_send',{p_thread:WIRE_THREAD,p_body:body});
+      if(r.error){ toast('⚠ '+r.error.message); inp.value=body; return; }
+      const t=threadById(WIRE_THREAD), now=new Date().toISOString();
+      MSGS.push({id:r.data||('local-'+Date.now()),thread_id:WIRE_THREAD,from_side:ME.km?'km':'vendor',handle:ME.km?'THE KEYMASTER':(ME.vendor&&ME.vendor.name)||'',body:body,created_at:now});
+      paintMsgs();
+      if(t){ t.last_body=body; t.last_at=now; t.last_from=ME.km?'km':'vendor'; }
+      const rail=document.querySelector('.wrail');
+      if(rail){ const fresh=document.createElement('div'); fresh.innerHTML=ME.km?wireRail():vendorRail(); rail.replaceWith(fresh.firstChild);
+        document.querySelectorAll('.wrail [data-wv]').forEach(b=>b.addEventListener('click',()=>{WIRE_KIND='v';WIRE_THREAD=null;WIRE_VENDOR=b.dataset.wv;renderWire();}));
+        document.querySelectorAll('.wrail [data-wa]').forEach(b=>b.addEventListener('click',()=>{WIRE_KIND='a';WIRE_THREAD=null;WIRE_VENDOR=b.dataset.wa;renderWire();}));
+        wireThreadRailBind(document.querySelector('.wrail')); }
+      return;
+    }
+    const vid=currentWireVendor();
     if(!body||!vid)return;
     inp.value='';
     const row={user_id:ME.uid,from_km:ME.km,body:body}; row[wireCol()]=vid;
@@ -2212,10 +2328,11 @@ function renderWire(){
       LASTMSG[k]=LASTMSG[k]||{}; LASTMSG[k].top={at:r.data.created_at,body:body,km:!!ME.km};
       if(ME.km) LASTMSG[k].km=r.data.created_at; else LASTMSG[k].them=r.data.created_at;
       const rail=document.querySelector('.wrail');
-      if(rail){ const fresh=document.createElement('div'); fresh.innerHTML=wireRail();
+      if(rail){ const fresh=document.createElement('div'); fresh.innerHTML=ME.km?wireRail():vendorRail();
         rail.replaceWith(fresh.firstChild);
-        document.querySelectorAll('.wrail [data-wv]').forEach(b=>b.addEventListener('click',()=>{WIRE_KIND='v';WIRE_VENDOR=b.dataset.wv;renderWire();}));
-        document.querySelectorAll('.wrail [data-wa]').forEach(b=>b.addEventListener('click',()=>{WIRE_KIND='a';WIRE_VENDOR=b.dataset.wa;renderWire();}));
+        document.querySelectorAll('.wrail [data-wv]').forEach(b=>b.addEventListener('click',()=>{WIRE_KIND='v';WIRE_THREAD=null;WIRE_VENDOR=b.dataset.wv;renderWire();}));
+        document.querySelectorAll('.wrail [data-wa]').forEach(b=>b.addEventListener('click',()=>{WIRE_KIND='a';WIRE_THREAD=null;WIRE_VENDOR=b.dataset.wa;renderWire();}));
+        wireThreadRailBind(document.querySelector('.wrail'));
       }
     }
   };
@@ -2227,11 +2344,23 @@ function renderWire(){
     if(r.error){ if(m)m.textContent='> '+r.error.message+(/column|km_phone/i.test(r.error.message)?' — run the updated OPENING-DAY.sql':''); return; }
     GATE.kmPhone=v||null; toast(v?'🚨 Emergency line posted to every vendor':'☎ Line unlisted');
   });
-  $('wireGo').addEventListener('click',send);
-  $('wireIn').addEventListener('keydown',e=>{ if(e.key==='Enter')send(); });
+  const wg=$('wireGo'); if(wg)wg.addEventListener('click',send);
+  const wi=$('wireIn'); if(wi)wi.addEventListener('keydown',e=>{ if(e.key==='Enter')send(); });
   loadMsgs();
 }
 async function loadMsgs(){
+  if(WIRE_KIND==='c'){   /* #shopwire — a client thread: its words, then "I've seen it" */
+    const tid=WIRE_THREAD; if(!tid){ MSGS=[]; paintMsgs(); return; }
+    try{
+      const r=await SB.from('shop_msgs').select('*').eq('thread_id',tid).order('created_at',{ascending:true}).limit(400);
+      if(!r.error){ MSGS=r.data||[]; paintMsgs(); }
+      const t=threadById(tid);
+      if(t && !ME.km && Number(t.vendor_unread)>0){ t.vendor_unread=0; paintUnreadDot();
+        const row=document.querySelector('.wrail [data-wt="'+tid+'"] .dot'); if(row)row.remove();
+        SB.rpc('shop_wire_read',{p_thread:tid}).then(()=>{},()=>{}); }
+    }catch(e){}
+    return;
+  }
   const vid=currentWireVendor(); if(!vid){ MSGS=[]; paintMsgs(); return; }
   try{
     const r=await SB.from(wireTable()).select('*').eq(wireCol(),vid).order('created_at',{ascending:true}).limit(300);
@@ -2241,6 +2370,16 @@ async function loadMsgs(){
 function paintMsgs(){
   const box=$('wireMsgs'); if(!box)return;
   if(!MSGS.length){ box.innerHTML='<p class="sub">Nothing on the wire yet. First word starts it.</p>'; return; }
+  if(WIRE_KIND==='c'){   /* #shopwire — client · vendor · Keymaster, each with a name line */
+    box.innerHTML=MSGS.map(m=>{
+      const mine = ME.km ? m.from_side==='km' : m.from_side==='vendor';
+      const cls = mine?'self':(m.from_side==='km'?'them km':'them cl');
+      const who = mine||m.from_side==='km' ? '' : '<i class="who">'+esc(m.from_side==='client'?(m.handle||'CLIENT'):(m.handle||'THE MAKER'))+'</i>';
+      return '<div class="mb '+cls+'">'+who+esc(m.body)+'<span class="ts">'+dt(m.created_at)+'</span></div>';
+    }).join('');
+    box.scrollTop=box.scrollHeight;
+    return;
+  }
   box.innerHTML=MSGS.map(m=>{
     const mine = ME.km ? m.from_km : !m.from_km;
     const cls = mine?'self':(m.from_km?'them km':'them');
@@ -3513,6 +3652,19 @@ function subscribe(){
       .on('postgres_changes',{event:'*',schema:'public',table:'order_items'},poke)
       .on('postgres_changes',{event:'INSERT',schema:'public',table:'vendor_msgs'},onMsg('v'))
       .on('postgres_changes',{event:'INSERT',schema:'public',table:'amb_msgs'},onMsg('a'))
+      /* #shopwire — a client wrote, or a thread moved: refresh the rail; append if it's the open one */
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'shop_msgs'},p=>{
+        const m=p.new||{}; if(!m.thread_id)return;
+        if(WIRE_KIND==='c'&&WIRE_THREAD===m.thread_id&&TAB==='wire'){
+          if(!MSGS.some(x=>x.id===m.id)){ MSGS.push(m); paintMsgs(); }
+          if(m.from_side==='client'&&!ME.km) SB.rpc('shop_wire_read',{p_thread:m.thread_id}).then(()=>{},()=>{});
+        } else if(m.from_side==='client'){ toast('💬 A client wrote on the wire'); }
+        loadThreads().then(()=>{ if(TAB==='wire'){ const rail=document.querySelector('.wrail'); if(rail){ const fresh=document.createElement('div'); fresh.innerHTML=ME.km?wireRail():vendorRail(); rail.replaceWith(fresh.firstChild);
+          document.querySelectorAll('.wrail [data-wv]').forEach(b=>b.addEventListener('click',()=>{WIRE_KIND='v';WIRE_THREAD=null;WIRE_VENDOR=b.dataset.wv;renderWire();}));
+          document.querySelectorAll('.wrail [data-wa]').forEach(b=>b.addEventListener('click',()=>{WIRE_KIND='a';WIRE_THREAD=null;WIRE_VENDOR=b.dataset.wa;renderWire();}));
+          wireThreadRailBind(document.querySelector('.wrail')); } } });
+      })
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'shop_threads'},()=>{ loadThreads().then(()=>{ if(TAB==='wire')renderWire(); }); })
       .on('postgres_changes',{event:'*',schema:'public',table:'product_drafts'},()=>{
         loadDrafts().then(()=>{ if(TAB==='work')renderWork(); if(TAB==='gear')renderGear(); }); })
       /* #svctab — a casual sends a post up and the ruling desk lights up at once */
