@@ -39185,22 +39185,64 @@ html.arcade .arc-aurora i{mix-blend-mode:normal;
       io.observe(img);
     }catch(e){}
   };
-  /* ── the watchdog: a stalled main thread files itself ── */
-  var T0=Date.now(), last=T0, vis=T0, filed=0;
+  /* ── the watchdog, second cut (#freezev2 sep8): a stalled main thread files itself — a NAP doesn't ──
+     The first cut read "no timer tick for N seconds" as a freeze. But a phone that
+     locks, or a tab that goes to the background, stops the timers too — and when it
+     wakes, the overdue tick runs BEFORE the page's own visibilitychange event, so
+     the 40-minute "stall" it measured was the member's lunch break. Four checks now:
+       · the page must be visible, and the gap under 30 s (nothing survives a longer freeze)
+       · Date.now() and performance.now() must agree — on iOS the monotonic clock
+         stops while the device sleeps, the wall clock doesn't
+       · a visibility/pageshow/resume/focus event around the gap means a nap:
+         the verdict waits 1.5 s so that event has time to land
+       · where the browser can report Long Tasks (Chrome), those are the truth and
+         the timer guess is switched off
+     A real report now also names the animations that were running and the GIFs in
+     view, so the next one can be traced without a phone in hand. One per screen per
+     session, three per session at most. */
+  var T0=Date.now(), last=T0, lastMono=(window.performance&&performance.now)?performance.now():0, filed=0, lastEvt=0, seen={};
   var ua=navigator.userAgent||'';
   var standalone=false; try{ standalone=matchMedia('(display-mode: standalone)').matches||navigator.standalone===true; }catch(e){}
-  document.addEventListener('visibilitychange',function(){ vis=Date.now(); last=Date.now(); });
+  var mono=function(){ try{ return performance.now(); }catch(e){ return Date.now(); } };
+  ['visibilitychange','pageshow','pagehide','freeze','resume'].forEach(function(n){ document.addEventListener(n,function(){ lastEvt=Date.now(); last=Date.now(); lastMono=mono(); },true); });
+  ['focus','blur','pageshow','pagehide'].forEach(function(n){ window.addEventListener(n,function(){ lastEvt=Date.now(); last=Date.now(); lastMono=mono(); },true); });
+  var hasLT=false;
+  try{
+    if(!window.__fzTimerOnly && window.PerformanceObserver && PerformanceObserver.supportedEntryTypes && PerformanceObserver.supportedEntryTypes.indexOf('longtask')>=0){
+      hasLT=true;
+      new PerformanceObserver(function(list){ list.getEntries().forEach(function(en){
+        if(en.duration>=2000){ var at=''; try{ var a=en.attribution&&en.attribution[0]; at=a?[a.containerType,a.containerName||a.containerSrc].filter(Boolean).join(' '):''; }catch(x){}
+          file(en.duration,'long task',at); }
+      }); }).observe({type:'longtask',buffered:false});
+    }
+  }catch(e){}
+  function file(ms,what,extra){
+    try{
+      var scr=''; try{ var s=document.querySelector('section.screen.on'); scr=s?('#'+s.id):''; }catch(e){}
+      var key=what+'|'+scr; if(seen[key]||++filed>3)return; seen[key]=1;
+      var open=''; try{ var o=document.querySelector('.sheet.on,.dlg.on,#roomView.on,#gearView.on,[id$="View"].on'); open=o?(' · '+(o.id||o.className.split(' ')[0])+' open'):''; }catch(e){}
+      var anims=0, names=''; try{ var by={}; document.getAnimations().forEach(function(a){ var n=a.animationName||'?'; by[n]=(by[n]||0)+1; anims++; });
+        names=Object.keys(by).sort(function(a,b){ return by[b]-by[a]; }).slice(0,6).map(function(n){ return by[n]+'×'+n; }).join(' '); }catch(e){}
+      var gifs=0; try{ gifs=[].filter.call(document.images,function(i){ var r=i.getBoundingClientRect(); return /\.gif(\?|$)/i.test(i.currentSrc||i.src||'')&&r.bottom>0&&r.top<innerHeight; }).length; }catch(e){}
+      var dom=0; try{ dom=document.getElementsByTagName('*').length; }catch(e){}
+      var msg=what+' '+(ms/1000).toFixed(1)+'s on '+(scr||'?')+open+(extra?' · '+extra:'')
+        +' · '+anims+' animations'+(names?' ('+names+')':'')+(gifs?' · '+gifs+' gifs in view':'')+' · '+dom+' nodes'
+        +' · '+Math.round((Date.now()-T0)/1000)+'s after boot · '+(standalone?'home-screen':'browser tab')+' · '+ua.replace(/^Mozilla\/5\.0 /,'').slice(0,90);
+      try{ if(typeof window.shkAlert==='function')window.shkAlert('freeze',msg); }catch(e){}
+      try{ console.warn('[freeze]',msg); }catch(e){}
+    }catch(e){}
+  }
+  window.__fzFile=file;   /* the harness pokes it */
   setInterval(function(){
-    var now=Date.now(), gap=now-last; last=now;
-    if(gap<2500||document.hidden||now-vis<gap+1000)return;   /* backgrounded ≠ frozen */
-    if(++filed>3)return;
-    var scr=''; try{ var s=document.querySelector('section.screen.on'); scr=s?('#'+s.id):''; }catch(e){}
-    var open=''; try{ var o=document.querySelector('.sheet.on,.dlg.on,#roomView.on,#gearView.on,[id$="View"].on'); open=o?(' · '+(o.id||o.className.split(' ')[0])+' open'):''; }catch(e){}
-    var anims=0; try{ anims=document.getAnimations().length; }catch(e){}
-    var msg='main thread stalled '+(gap/1000).toFixed(1)+'s on '+(scr||'?')+open+' · '+anims+' animations running · '
-      +Math.round((now-T0)/1000)+'s after boot · '+(standalone?'home-screen':'browser tab')+' · '+ua.replace(/^Mozilla\/5\.0 /,'').slice(0,90);
-    try{ if(typeof window.shkAlert==='function')window.shkAlert('freeze',msg); }catch(e){}
-    try{ console.warn('[freeze]',msg); }catch(e){}
+    var now=Date.now(), m=mono(), gap=now-last, mgap=m-lastMono, startAt=last; last=now; lastMono=m;
+    if(gap<2500||document.hidden)return;              /* asleep, not frozen */
+    if(gap>30000)return;                              /* no phone survives a 30 s freeze — that was a nap */
+    if(Math.abs(gap-mgap)>1500)return;                /* the clocks disagree → the device slept */
+    if(hasLT)return;                                  /* Chrome: Long Tasks report the real thing */
+    setTimeout(function(){
+      if(document.hidden||lastEvt>=startAt-1000)return;   /* an event landed around the gap → a nap */
+      file(gap,'main thread stalled','');
+    },1500);
   },500);
 }catch(e){}})();
 </script>
@@ -39271,7 +39313,7 @@ html.arcade .arc-aurora i{mix-blend-mode:normal;
   /* ── the INBOX shelf under THE ARMORY ── */
   function ensureShelf(){
     var am=byId('armMode'), od=byId('armOrders');
-    if(!am||!od||byId('swInboxBtn'))return;
+    if(!am||!od||byId('swInboxBtn')||SW.ok!==true)return;   /* the shelf appears once the wire has answered */
     var b=document.createElement('button'); b.setAttribute('data-v','inbox'); b.id='swInboxBtn'; b.innerHTML='💬 INBOX<span id="swDot" style="display:none"></span>';
     am.appendChild(b);
     var box=document.createElement('div'); box.id='armInbox'; box.style.display='none';
@@ -39314,7 +39356,7 @@ html.arcade .arc-aurora i{mix-blend-mode:normal;
       else { SW.ok=true; SW.threads=r.data||[]; }
     }catch(e){}
     SW.loading=false;
-    paintBadges(); paintList();
+    ensureShelf(); paintBadges(); paintList();
     subscribe();
   }
   async function loadMsgs(tid){
@@ -39435,7 +39477,8 @@ html.arcade .arc-aurora i{mix-blend-mode:normal;
     window.alertGo=function(o){
       if(o&&o.go==='inbox'){
         try{ if(typeof gotoTab==='function')gotoTab('armory'); }catch(e){}
-        setTimeout(function(){ try{ ensureShelf(); var b=byId('swInboxBtn'); if(b)b.click(); }catch(e){} },380);
+        var go=function(){ try{ ensureShelf(); var b=byId('swInboxBtn'); if(b)b.click(); }catch(e){} };
+        setTimeout(function(){ if(SW.ok===true)go(); else Promise.resolve(loadThreads()).then(go); },380);
         return;
       }
       return _go?_go.apply(this,arguments):undefined;
@@ -39447,9 +39490,8 @@ html.arcade .arc-aurora i{mix-blend-mode:normal;
   byId('swSend').addEventListener('click',send);
   byId('swIn').addEventListener('keydown',function(e){ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); send(); } });
   byId('swSheet').addEventListener('click',function(e){ if(e.target===byId('swSheet'))showSheet(false); });
-  ensureShelf();
   /* sign-in lands after boot; look again for a while, then rest */
-  var tries=0, tick=setInterval(function(){ tries++; ensureShelf(); if(signedIn()){ loadThreads(); if(SW.ok!==null||tries>40)clearInterval(tick); } else if(tries>120)clearInterval(tick); },1500);
+  var tries=0, tick=setInterval(function(){ tries++; if(signedIn()){ loadThreads(); if(SW.ok!==null||tries>40)clearInterval(tick); } else if(tries>120)clearInterval(tick); },1500);
 })();
 </script>
 
