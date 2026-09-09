@@ -14150,6 +14150,15 @@ try{let _fxTot=0;Object.keys(DISPATCH_DATA).forEach(k=>{_fxTot+=repairSheet(DISP
 try{Object.keys(DISPATCH_DATA).forEach(k=>ensureRecentRow(k,DISPATCH_DATA[k]));}catch(e){}
 try{publishCall();}catch(e){console.warn('publishCall',e);}
 try{renderCallStart();}catch(e){}
+/* #freezefix(sep9) — see the note above ingestForecastBatch, below sbLoadDispatch */
+let _dispQuiet=false;                        // true while a batch lands: hold the per-sheet paint + persist
+function _dispPersist(keys){                 // one read-merge-write, for one sheet or a whole batch
+  try{
+    const ex=JSON.parse(localStorage.getItem(K('dispatch'))||'{}');
+    (keys||Object.keys(DISPATCH_DATA)).forEach(k=>{ if(DISPATCH_DATA[k])ex[k]=DISPATCH_DATA[k]; });
+    localStorage.setItem(K('dispatch'),JSON.stringify(ex));
+  }catch(e){}
+}
 window.addDispatchData=function(key,data){   // ← the dispatch bot calls this with each new sheet
   /* #sheetguard(aug20) — every sheet reconciles its own math at the door; a
      repair that actually changed something gets one dev-log line (re-ingesting
@@ -14168,8 +14177,7 @@ window.addDispatchData=function(key,data){   // ← the dispatch bot calls this 
     _merged.manual_edit=_prev.manual_edit;
   }
   DISPATCH_DATA[key]=_merged;
-  try{const ex=JSON.parse(localStorage.getItem(K('dispatch'))||'{}');ex[key]=DISPATCH_DATA[key];
-      localStorage.setItem(K('dispatch'),JSON.stringify(ex))}catch(e){}
+  if(!_dispQuiet)_dispPersist([key]);   /* #freezefix — a batch persists once, at the end */
   /* #Efound — THE EARLY SHEET ENDS THE MORNING. The E pdf physically cannot post until
      day dispatch has wrapped, so the moment tonight's early count lands (hunted from
      9:00 AM), today's AM board is OVER: mark the record, roll the hall clock, and go ask
@@ -14190,11 +14198,11 @@ window.addDispatchData=function(key,data){   // ← the dispatch bot calls this 
         try{toast('📄 Early sheet is up — day dispatch is over. Asking the hotline where it ended…');}catch(e){}
         try{if(typeof sbLoadHallLine==="function")sbLoadHallLine();}catch(e){}   /* the hotline number carries the end card */
         try{if(typeof tickDisp==="function")tickDisp();}catch(e){}               /* the clock rolls to the night board now */
-        try{renderRecentBoards();}catch(e){}
-        try{repredict();}catch(e){}
+        if(!_dispQuiet){ try{renderRecentBoards();}catch(e){} try{repredict();}catch(e){} }   /* #freezefix — the batch paints once */
       }
     }
   }catch(e){}
+  if(_dispQuiet)return;   /* #freezefix — the batch paints, syncs and closes the search once, at the end */
   try{if(typeof syncTonightBoard==="function")syncTonightBoard();}catch(e){}   // #rebuild — a landed sheet now drives the ships/board card, not the sample
   renderRecentBoards();
   try{if(typeof renderHarborBoard==="function")renderHarborBoard();}catch(e){}  // #rebuild — refresh the ship meters off the new sheet
@@ -14247,8 +14255,47 @@ function ingestForecast(key,data){
   if(!key||!data)return;
   try{addDispatchData(key,data);}catch(e){}
   ensureRecentRow(key,data);
+  if(_dispQuiet)return;                       // #freezefix — the batch paints and re-figures once, below
   try{renderRecentBoards();}catch(e){}
   try{repredict();}catch(e){}                 // #114 — new sheet in → predictions re-figure
+}
+/* ═══ #freezefix(sep9) — THE 14-DAY PULL LANDED ONE SHEET AT A TIME ═══
+   What THE ALARMS caught (GRIM_BONES_95 9/9, BAR 9/8): "long task 2.9s on #scr-ledger
+   · 0 animations · 4s after boot", Android Chrome, both. #scr-ledger is the markup's
+   default screen — the freeze hit while the app was still behind the boot loader,
+   before enterApp() had switched the tab. Profiled at 4× CPU throttle with a device
+   that has held every sheet since July (140 sheets, ~600 KB in K('dispatch')): the
+   boot pull is ONE synchronous task of ~1.7 s, and nothing else after boot comes close.
+   Where it went. sbLoadDispatch handed all ~29 rows of the window (14 days × AM/PM)
+   to ingestForecast one at a time, and each row paid the full single-sheet price:
+     · addDispatchData re-read and re-serialised the ENTIRE dispatch store to
+       localStorage — 600 KB parsed + 600 KB stringified + 600 KB written, ×29
+       (≈17 MB of localStorage traffic for a pull that changed nothing);
+     · renderRecentBoards ran TWICE per row (once inside addDispatchData, once here)
+       — 58 full rebuilds of the record for one paint;
+     · repredict re-figured the call 29 times (cheap, but pointless ×28).
+   Now: the batch lands QUIET — every sheet is merged into DISPATCH_DATA and given
+   its row, then the store is persisted ONCE, the board synced once, the record
+   painted once, the call figured once, the bot told once. A single sheet arriving
+   on its own (the realtime event, the Sheet Editor) still calls ingestForecast
+   directly and keeps the immediate paint it always had. _dispPersist keeps the
+   read-merge-write shape of the old per-sheet save on purpose: a store another
+   device pushed through the cloud mirror is merged into, never overwritten.
+   (_dispQuiet and _dispPersist are declared just above addDispatchData, which
+   reads them — declared here they would sit in the TDZ for a bot sheet landing early.) */
+function ingestForecastBatch(rows){
+  const keys=[];
+  _dispQuiet=true;
+  try{ (rows||[]).forEach(row=>{ try{ if(row&&row.key&&row.data){ ingestForecast(row.key,row.data); keys.push(row.key); } }catch(e){} }); }
+  finally{ _dispQuiet=false; }
+  if(!keys.length)return 0;
+  try{_dispPersist(keys);}catch(e){}
+  try{if(typeof syncTonightBoard==="function")syncTonightBoard();}catch(e){}
+  try{renderRecentBoards();}catch(e){}
+  try{if(typeof renderHarborBoard==="function")renderHarborBoard();}catch(e){}
+  try{repredict();}catch(e){}
+  try{if(window.DispatchBot)window.DispatchBot.onData();}catch(e){}
+  return keys.length;
 }
 /* #egress2(sep03) — THE BIGGEST LEAK. This pulled EVERY row of dispatch_boards
    (two full board JSONs per day since July, growing forever) on every load, every
@@ -14265,7 +14312,7 @@ async function sbLoadDispatch(force){
   try{
     const r=await window.SB.from('dispatch_boards').select('key,data,updated_at').gte('key',_dispCutoffKey()).order('key',{ascending:true});
     if(r&&!r.error&&Array.isArray(r.data)){
-      r.data.forEach(row=>{try{ingestForecast(row.key,row.data);}catch(e){}});
+      try{ingestForecastBatch(r.data);}catch(e){}   /* #freezefix — one quiet landing, one paint */
       try{const latest=r.data.slice().sort((a,b)=>String(a.updated_at||'').localeCompare(String(b.updated_at||''))).pop();
         DEVLOG.data('dispatch_boards',{ok:true,rows:r.data.length,latest:(latest?latest.key+' @ '+String(latest.updated_at||'').slice(0,19).replace('T',' ')+'Z':'—')});}catch(e){}
     }else{
