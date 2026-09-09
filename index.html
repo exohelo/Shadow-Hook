@@ -4,7 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#0b0d0f">
-<script>/* #70 — apply day/night before first paint so there's no flash.
+<script>/* #freezev3(sep9) — THE BUILD STAMP. Every freeze report under THE ALARMS carries it
+   (with the page's own byte size beside it), so a phone still serving an older index.html
+   from the service-worker cache can be told from one on the current build. BUMP IT WITH
+   EVERY DEPLOY — it is the one line in this file that should change every time. */
+window.SHK_BUILD='sep9c';
+/* #freezev3 — keep enough resource timings for the report to name what landed before a
+   freeze: the boot alone fires ~100 requests, and the default buffer (250) then stops
+   recording for the rest of the session. */
+try{ performance.setResourceTimingBufferSize(1000);
+     performance.addEventListener('resourcetimingbufferfull',function(){ try{ performance.clearResourceTimings(); }catch(e){} }); }catch(e){}
+/* #70 — apply day/night before first paint so there's no flash.
    #shift — AUTO now runs on the SHIFT CLOCK, not the sun: day 05:00–16:00,
    night 16:00–05:00, on the phone's own clock. AUTO is also the default now,
    so a casual who has never touched the toggle still gets day at 5 AM.
@@ -8442,7 +8452,7 @@ function gotoTab(name){
   if(name==='mayday'&&!alertsLoaded){alertsLoaded=true;loadAlerts()}
   if(name==='order'){try{renderHallStats();}catch(e){} try{socPullSoon();}catch(e){} try{updateRace();}catch(e){}
     try{renderSocialFeed();}catch(e){} try{sbLoadStories();}catch(e){}}   // #hall — the Hall IS the tab now: fresh feed + stories + standings
-  if(name==='ports'){try{renderHarborBoard();}catch(e){}}
+  if(name==='ports'){try{if(window.shkChunk)shkChunk.now('maps');}catch(e){} try{renderHarborBoard();}catch(e){}}   /* #lazy — the vault comes up with the tab */
   if(name==='board'){try{openPendingSheet();}catch(e){}}   // #93 — the Wire opens with the pending dispatch sheet showing
 }
 /* #gateonly(aug31) — the gate and the tab bar are opposites: while the gate is up the
@@ -15979,6 +15989,91 @@ function openYardMap(op,label){
 }
 function closeYardMap(){document.getElementById('yardMapView').classList.remove('on')}
 document.getElementById('ymBack').addEventListener('click',closeYardMap);
+/* ═══ #lazy(sep9) — THE VAULT LOADS WHEN IT'S NEEDED, NOT AT THE DOOR ═══
+   The page is 2.7 MB of script and a phone parses, compiles and runs every byte of it
+   before the app can answer a tap — measured at ~2.3 s of main thread on a 4×-throttled
+   phone, and the freeze watchdog can't even see it (it only starts once the parse is
+   over). The eight vector yard maps (#48b–#48i, ~366 KB) are the first cut: they only
+   matter on the Ports tab and behind a 🗺 button, yet every open compiled all eight
+   and redrew the Ports list eight times as they registered. Deferring them measured
+   2,308 → 1,890 ms to interactive (−18%); activating them later costs ~140 ms.
+   HOW: the eight blocks stay in this file, byte for byte, as inert script blocks
+   (type="text/x-lazy" data-chunk="maps") — the browser tokenizes them and
+   nothing else. shkChunk.now('maps') turns them live by re-inserting each as a real
+   script (synchronous, in document order — the wrappers stack on openYardMap exactly
+   as they did at boot). It runs from three doors:
+     · the Ports tab (gotoTab) — before the list paints;
+     · the 🗺 gate below — any tap on a yard map, from a docket card or a port card;
+     · idle time, a few seconds after load — so by the time anyone taps, it's free.
+   THE LABELS: renderDockets/renderPorts read YARD_MAPS[op] to say "open vault" or
+   "pending", and they paint at boot, before the vault is up. The manifest below
+   pre-registers the same eight entries the blocks register (mirror it when a map
+   is added), so first paint is right and nothing has to be redrawn on activation.
+   The eight renderPorts() calls the blocks make as they register are coalesced into
+   one, with the search box's current text, so a filtered Ports list isn't wiped.
+   SINGLE FILE ON PURPOSE: same deploy, same service-worker cache, no version skew
+   between chunks — a chunk can never be newer or older than the core it serves.
+   NEXT CUTS use the same three lines: mark the blocks x-lazy with a data-chunk name,
+   add a manifest for anything the core paints before the chunk is up, and open a
+   door (shkChunk.now / .idle) where the feature is reached. The Armory and the Hall
+   are the next candidates (~0.2 MB and ~0.6 MB). */
+window.shkChunk=(function(){
+  var done={}, hooks={};
+  function blocks(name){ return document.querySelectorAll('script[type="text/x-lazy"][data-chunk="'+name+'"]'); }
+  function now(name){
+    if(done[name])return true;
+    var list=blocks(name); if(!list.length)return false;     /* asked before the parser reached them — the idle door tries again */
+    done[name]=1;
+    var t0=performance.now(), n=0, h=hooks[name]||{};
+    try{ if(h.before)h.before(); }catch(e){}
+    for(var i=0;i<list.length;i++){ var s=list[i];
+      try{ var el=document.createElement('script'); el.textContent=s.textContent; s.parentNode.insertBefore(el,s); s.parentNode.removeChild(s); n++; }
+      catch(e){ try{ console.warn('[chunk] '+name,e); }catch(_){} }
+    }
+    try{ if(h.after)h.after(); }catch(e){}
+    try{ if(window.DEVLOG&&DEVLOG.note)DEVLOG.note('⚡ chunk "'+name+'" up: '+n+' blocks in '+Math.round(performance.now()-t0)+' ms'); }catch(e){}
+    return true;
+  }
+  function ready(name){ return !!done[name]; }
+  function idle(name,delayMs){
+    var go=function(){ try{ if(!now(name))setTimeout(go,2000); }catch(e){} };   /* blocks not parsed yet → look again */
+    var arm=function(){ setTimeout(function(){
+      if(window.requestIdleCallback)requestIdleCallback(go,{timeout:10000}); else setTimeout(go,1500); }, delayMs||0); };
+    if(document.readyState==='complete')arm(); else window.addEventListener('load',arm,{once:true});
+  }
+  function on(name,h){ hooks[name]=h; }
+  return {now:now, ready:ready, idle:idle, on:on};
+})();
+/* the vault manifest — a mirror of the YARD_MAPS[...] line at the tail of each map block */
+try{
+  YARD_MAPS["YTI"]  ={interactive:true,note:"interactive — tap any spot; 📖 for the terminal guide"};
+  YARD_MAPS["PA"]   ={interactive:true,wbct:true,note:"interactive — China 100 & Yang Ming 126 on one map"};
+  YARD_MAPS["ITS"]  ={interactive:true,its:true,note:"interactive — 10 phases, berths & rail; tap any spot, 📖 for the guide"};
+  YARD_MAPS["TTI"]  ={interactive:true,tti:true,note:"interactive — the Pier T wall map, row by row; 📖 for the trucker rules"};
+  YARD_MAPS["SSA-A"]={interactive:true,piera:true,note:"interactive — the Pier A wall map, row by row; 📖 for emergency procedures"};
+  YARD_MAPS["FMS"]  ={interactive:true,fenix:true,note:"interactive — the Fenix wall map, row by row; 📖 for emergency info"};
+  YARD_MAPS["ETS"]  ={interactive:true,ets:true,note:"interactive — the Everport wall map, row by row; 📖 for terminal info"};
+  YARD_MAPS["APM"]  ={interactive:true,apm:true,note:"interactive — the Pier 400 emergency map, row by row; 📖 for the emergency info"};
+}catch(e){}
+/* eight redraws of the Ports list become one, with the search box honoured */
+shkChunk.on('maps',(function(){ var rp=null, asked=false; return {
+  before:function(){ rp=window.renderPorts; if(typeof rp==='function')window.renderPorts=function(){ asked=true; }; },
+  after:function(){ if(typeof rp==='function'){ window.renderPorts=rp; if(asked){ try{ var s=document.getElementById('portSearch'); rp(s?s.value:""); }catch(e){} } } }
+}; })());
+/* the 🗺 gate: the first tap on any yard map raises the vault, then hands the tap to it */
+(function(){
+  var core=openYardMap;                                        /* the photo / "pending" viewer above */
+  var gate=function(op,label){
+    if(gate._in)return core(op,label);                         /* reached as `orig` from a vault wrapper → the core viewer */
+    try{ if(window.shkChunk)shkChunk.now('maps'); }catch(e){}
+    if(window.openYardMap!==gate){                             /* the vault is up: its wrappers now sit on top of this gate */
+      gate._in=true; try{ return window.openYardMap(op,label); } finally{ gate._in=false; }
+    }
+    return core(op,label);
+  };
+  window.openYardMap=gate;
+})();
+shkChunk.idle('maps',6000);                                    /* a few seconds after load, when the phone has a moment */
 // pan + pinch + double-tap + mouse wheel — all pointer-event driven
 (function(){
   const vp=document.getElementById('ymViewport');
@@ -28449,7 +28544,7 @@ cl.insertAdjacentHTML('beforeend','<div class="contact"><div class="t"><b>Dockwo
 
 try{window.__bootProg&&__bootProg(84)}catch(e){}   /* #realboot — engine loaded */
 </script>
-<script>
+<script type="text/x-lazy" data-chunk="maps">
 /* ================= #48b — YUSEN / YTI interactive vector yard map =================
    Vector redraw of the posted wall map, in the OFFICIAL orientation
    (San Pedro top · Long Beach bottom · vessels right · ILWU lot / rail yard left).
@@ -28806,7 +28901,7 @@ window.addEventListener('resize',()=>{if($y('yiw').classList.contains('on'))yzFi
 })();
 </script>
 
-<script>
+<script type="text/x-lazy" data-chunk="maps">
 /* ================= #48c — WBCT / WEST BASIN interactive vector yard map =================
    Vector redraw of the posted STORM WATER INFORMATION wall map (Berth 100 & Berth 126,
    Port of Los Angeles · San Pedro · rev 2-18-25). Really TWO yards on one map, split by
@@ -29937,7 +30032,7 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
 })();
 </script>
 
-<script>
+<script type="text/x-lazy" data-chunk="maps">
 /* #48d — ITS interactive vector yard map (International Transportation Service, Pier G) */
 /* ================= ITS · International Transportation Service — interactive vector yard map =================
    Vector redraw of the posted ITS wall map (1281 Pier G Way, Long Beach), in the sign's own orientation and
@@ -30474,7 +30569,7 @@ window.addEventListener('resize',()=>{if($i('itw').classList.contains('on'))izFi
 try{window.__bootProg&&__bootProg(94)}catch(e){}   /* #realboot — floor stocked */
 </script>
 
-<script>
+<script type="text/x-lazy" data-chunk="maps">
 /* #48e — TTI interactive vector yard map (Total Terminals International, Pier T) */
 /* ================= TTI · TOTAL TERMINALS INTERNATIONAL — interactive vector yard map =================
    Vector redraw of the posted TTI wall map (Pier T · 301 Hanjin Road, Long Beach, CA 90802), in the sign's
@@ -31054,7 +31149,7 @@ window.addEventListener('resize',()=>{if($t('ttw').classList.contains('on'))tzFi
 })();
 
 </script>
-<script>
+<script type="text/x-lazy" data-chunk="maps">
 /* #48f — SSA PIER A · interactive vector yard map (SSA Terminals, Pier A · Long Beach) */
 /* ================= SSA PIER A — interactive vector redraw of the posted wall map =================
    Vector redraw of the posted "PIER A · EMERGENCY PROCEDURES & ASSEMBLY AREAS" sign
@@ -31734,7 +31829,7 @@ window.addEventListener('resize',()=>{if($a('paw').classList.contains('on'))pzFi
 
 try{window.__bootProg&&__bootProg(95)}catch(e){}   /* #realboot — Pier A sign hung in the vault */
 </script>
-<script>
+<script type="text/x-lazy" data-chunk="maps">
 /* #48g — FENIX MARINE (FMS) · interactive vector yard map (Fenix Marine Services, Pier 300) */
 /* ================= FENIX MARINE SERVICES — interactive vector redraw of the posted wall map =================
    Vector redraw of the posted "IN CASE OF EMERGENCY · EVACUATION AND EQUIPMENT SITE PLAN" sign
@@ -32515,7 +32610,7 @@ window.addEventListener('resize',()=>{if($f('fxw').classList.contains('on'))fxFi
 try{window.__bootProg&&__bootProg(96)}catch(e){}   /* #realboot — Fenix sign hung in the vault */
 </script>
 
-<script>
+<script type="text/x-lazy" data-chunk="maps">
 /* #48h — EVERPORT (ETS) · interactive vector yard map (Everport Terminal Services, Terminal Island) */
 /* ============ EVERPORT TERMINAL SERVICES — interactive vector redraw of the posted wall map ============
    Vector redraw of the posted EVERPORT TERMINAL MAP sign (Everport Terminal Services, Inc. ·
@@ -33140,7 +33235,7 @@ window.addEventListener('resize',()=>{if($e('evw').classList.contains('on'))evFi
 })();
 </script>
 
-<script>
+<script type="text/x-lazy" data-chunk="maps">
 /* #48i — APM TERMINALS · PIER 400 · interactive vector yard map (2500 Navy Way, Terminal Island) */
 /* ============ APM TERMINALS — interactive redraw of the posted EMERGENCY MAP ============
    Vector redraw of the wall banner "APM TERMINALS · 2500 NAVY WAY · EMERGENCY MAP", in the
@@ -39260,8 +39355,56 @@ html.arcade .arc-aurora i{mix-blend-mode:normal;
      A real report now also names the animations that were running and the GIFs in
      view, so the next one can be traced without a phone in hand. One per screen per
      session, three per session at most. */
+  /* ── third cut (#freezev3 sep9): THE REPORT NAMES ITS SUSPECTS ──
+     Three alarms in two days read the same — "long task 2–3s on #scr-ledger · 4–5s after
+     boot" — and none could say WHICH work it was, or which build it came from. The first
+     two traced (in the lab) to the boot's dispatch pull (#freezefix); the third landed
+     after that fix shipped, with no way to tell a phone still serving last week's
+     index.html from the service worker from one on the new build. Every report now carries:
+       · after: — the fetches whose response landed in the seconds before the task began,
+         nearest first. A long task at boot is almost always the handler of the response
+         that just arrived, so this names the table (dispatch_boards, board_wire,
+         product_reviews…) the freeze belongs to;
+       · build — the stamp at the top of the page (SHK_BUILD) + the page's own byte size,
+         so an old cached build says so;
+       · parse — how long the phone took to parse the page (domInteractive), the cost this
+         watchdog cannot see because it only starts once the parse is over;
+       · loader up — the boot screen was still showing (the app hadn't entered its first tab).
+     The phone line is cut to OS + browser — "Android Chrome/152" says what 90 chars of
+     user-agent said — to leave room for the suspects inside error_log's 300. */
   var T0=Date.now(), last=T0, lastMono=(window.performance&&performance.now)?performance.now():0, filed=0, lastEvt=0, seen={};
   var ua=navigator.userAgent||'';
+  function uaShort(){
+    try{
+      var os=/iPhone|iPod/.test(ua)?'iPhone':(/iPad/.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1))?'iPad':/Android/.test(ua)?'Android':/Windows/.test(ua)?'Windows':/Mac OS/.test(ua)?'Mac':/CrOS/.test(ua)?'ChromeOS':/Linux/.test(ua)?'Linux':'?';
+      var b='', toks=['EdgiOS','EdgA','Edg','CriOS','FxiOS','SamsungBrowser','OPR','Firefox','Chrome','Version'];
+      for(var i=0;i<toks.length;i++){ var m=ua.match(new RegExp(toks[i]+'\\/(\\d+)')); if(m){ b=(toks[i]==='Version'?'Safari':toks[i])+'/'+m[1]; break; } }
+      if(!b&&/Safari/.test(ua))b='Safari';
+      var wv=(/; wv\)/.test(ua)||/FBAN|FBAV|Instagram|TikTok|Snapchat|Line\//i.test(ua))?' in-app':'';
+      return os+' '+b+wv;
+    }catch(e){ return ua.slice(0,40); }
+  }
+  function suspects(startAt){   /* the fetches whose response landed just before the task began, nearest first */
+    try{
+      if(!(startAt>0)||!performance.getEntriesByType)return '';
+      var rs=performance.getEntriesByType('resource'), c=[];
+      for(var i=0;i<rs.length;i++){ var r=rs[i], age=startAt-r.responseEnd; if(age<0||age>3000)continue;
+        var n=r.name, m=/\/rest\/v1\/rpc\/(\w+)/.exec(n)||/\/rest\/v1\/(\w+)/.exec(n)||/\/auth\/v1\/(\w+)/.exec(n)||/\/storage\/v1\/[^/]+\/([\w-]+)/.exec(n);
+        var label=m?((/\/rpc\//.test(n)?'rpc ':/\/auth\//.test(n)?'auth ':/\/storage\//.test(n)?'storage ':'')+m[1]):n.replace(/^https?:\/\//,'').split('/')[0];
+        c.push([age,label]); }
+      c.sort(function(a,b){ return a[0]-b[0]; });
+      var out=[], had={};                                   /* one line per table, its nearest landing */
+      for(var j=0;j<c.length&&out.length<4;j++){ if(had[c[j][1]])continue; had[c[j][1]]=1; out.push(c[j][1]+' -'+Math.round(c[j][0])+'ms'); }
+      return out.length?out.join(', '):'nothing in the 3s before';
+    }catch(e){ return ''; }
+  }
+  function buildTag(){
+    var b=String(window.SHK_BUILD||'?'), p='';
+    try{ var nv=performance.getEntriesByType('navigation')[0];
+      if(nv&&nv.encodedBodySize)b+='/'+Math.round(nv.encodedBodySize/1024)+'k';
+      if(nv&&nv.domInteractive)p=' · parse '+(nv.domInteractive/1000).toFixed(1)+'s'; }catch(e){}
+    return 'build '+b+p;
+  }
   var standalone=false; try{ standalone=matchMedia('(display-mode: standalone)').matches||navigator.standalone===true; }catch(e){}
   var mono=function(){ try{ return performance.now(); }catch(e){ return Date.now(); } };
   ['visibilitychange','pageshow','pagehide','freeze','resume'].forEach(function(n){ document.addEventListener(n,function(){ lastEvt=Date.now(); last=Date.now(); lastMono=mono(); },true); });
@@ -39272,36 +39415,41 @@ html.arcade .arc-aurora i{mix-blend-mode:normal;
       hasLT=true;
       new PerformanceObserver(function(list){ list.getEntries().forEach(function(en){
         if(en.duration>=2000){ var at=''; try{ var a=en.attribution&&en.attribution[0]; at=a?[a.containerType,a.containerName||a.containerSrc].filter(Boolean).join(' '):''; }catch(x){}
-          file(en.duration,'long task',at); }
+          file(en.duration,'long task',at,en.startTime); }
       }); }).observe({type:'longtask',buffered:false});
     }
   }catch(e){}
-  function file(ms,what,extra){
+  function file(ms,what,extra,startAt){
     try{
       var scr=''; try{ var s=document.querySelector('section.screen.on'); scr=s?('#'+s.id):''; }catch(e){}
       var key=what+'|'+scr; if(seen[key]||++filed>3)return; seen[key]=1;
       var open=''; try{ var o=document.querySelector('.sheet.on,.dlg.on,#roomView.on,#gearView.on,[id$="View"].on'); open=o?(' · '+(o.id||o.className.split(' ')[0])+' open'):''; }catch(e){}
+      var loader=''; try{ loader=document.getElementById('boot')?' · loader up':''; }catch(e){}
       var anims=0, names=''; try{ var by={}; document.getAnimations().forEach(function(a){ var n=a.animationName||'?'; by[n]=(by[n]||0)+1; anims++; });
         names=Object.keys(by).sort(function(a,b){ return by[b]-by[a]; }).slice(0,6).map(function(n){ return by[n]+'×'+n; }).join(' '); }catch(e){}
       var gifs=0; try{ gifs=[].filter.call(document.images,function(i){ var r=i.getBoundingClientRect(); return /\.gif(\?|$)/i.test(i.currentSrc||i.src||'')&&r.bottom>0&&r.top<innerHeight; }).length; }catch(e){}
       var dom=0; try{ dom=document.getElementsByTagName('*').length; }catch(e){}
-      var msg=what+' '+(ms/1000).toFixed(1)+'s on '+(scr||'?')+open+(extra?' · '+extra:'')
-        +' · '+anims+' animations'+(names?' ('+names+')':'')+(gifs?' · '+gifs+' gifs in view':'')+' · '+dom+' nodes'
-        +' · '+Math.round((Date.now()-T0)/1000)+'s after boot · '+(standalone?'home-screen':'browser tab')+' · '+ua.replace(/^Mozilla\/5\.0 /,'').slice(0,90);
+      /* the suspects, the build and the phone come first; the animation roll-call last,
+         so error_log's 300-char cut can only ever trim the names */
+      var msg=what+' '+(ms/1000).toFixed(1)+'s on '+(scr||'?')+open+loader
+        +' · after: '+(suspects(startAt)||'?')
+        +' · '+buildTag()
+        +' · '+Math.round((Date.now()-T0)/1000)+'s after boot · '+(standalone?'home-screen':'browser tab')+' · '+uaShort()
+        +' · '+dom+' nodes · '+anims+' animations'+(names?' ('+names+')':'')+(gifs?' · '+gifs+' gifs in view':'')+(extra?' · '+extra:'');
       try{ if(typeof window.shkAlert==='function')window.shkAlert('freeze',msg); }catch(e){}
       try{ console.warn('[freeze]',msg); }catch(e){}
     }catch(e){}
   }
   window.__fzFile=file;   /* the harness pokes it */
   setInterval(function(){
-    var now=Date.now(), m=mono(), gap=now-last, mgap=m-lastMono, startAt=last; last=now; lastMono=m;
+    var now=Date.now(), m=mono(), gap=now-last, mgap=m-lastMono, startAt=last, startMono=lastMono; last=now; lastMono=m;
     if(gap<2500||document.hidden)return;              /* asleep, not frozen */
     if(gap>30000)return;                              /* no phone survives a 30 s freeze — that was a nap */
     if(Math.abs(gap-mgap)>1500)return;                /* the clocks disagree → the device slept */
     if(hasLT)return;                                  /* Chrome: Long Tasks report the real thing */
     setTimeout(function(){
       if(document.hidden||lastEvt>=startAt-1000)return;   /* an event landed around the gap → a nap */
-      file(gap,'main thread stalled','');
+      file(gap,'main thread stalled','',startMono);
     },1500);
   },500);
 }catch(e){}})();
