@@ -8,7 +8,7 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='sep11a';
+window.SHK_BUILD='sep11';
 /* #freezev3 — keep enough resource timings for the report to name what landed before a
    freeze: the boot alone fires ~100 requests, and the default buffer (250) then stops
    recording for the rest of the session. */
@@ -15921,18 +15921,22 @@ function findTerminal(code){
 function dkTerminal(j){
   if(!j)return null;
   if(j.dock){   /* the Tower and the Steel Dock BOTH print LB 205-207 — only the name splits them */
-    /* #cosco2(sep11) — the reverse case: BOTH Pier J docks print the name "Cosco" and
-       only the BERTH splits them. Matching the name alone returned the first Cosco row
-       (LB 243-245) for every Cosco job, so a slip sealed at LB 270 lit "To the Gate"
-       at the other end of Pier J. When the name covers more than one row, the berth
-       the docket was sealed with decides; the name alone only decides when it is unique. */
-    const named=TERMINALS.filter(t=>(t.aka||"").toUpperCase()===String(j.dock).toUpperCase());
+    /* #coscosplit(sep11) — and the two Pier J yards BOTH answer to "Cosco". A name-only
+       lookup handed every LB 266-270 docket the FIRST Cosco row (LB 243-245), so the log
+       row read "LB 243-245" and To the Gate pointed 640 m up Pier J from the gate the
+       slip named — even on a perfect read. Where a name covers more than one dock, the
+       berth the docket was sealed with is what splits them. */
+    const dk=String(j.dock).toUpperCase();
+    const named=TERMINALS.filter(t=>(t.aka||"").toUpperCase()===dk);
     if(named.length===1)return named[0];
     if(named.length>1){
-      const B=String(j.berth||"").toUpperCase();
-      let hit=B?named.find(t=>t.berths.toUpperCase()===B):null;
-      if(!hit&&B){ try{ hit=named.find(t=>berthMatch(j.berth,t.berths)); }catch(e){ hit=null; } }
-      if(hit)return hit;
+      if(j.berth){
+        const b=String(j.berth).toUpperCase();
+        let hit=named.find(t=>t.berths.toUpperCase()===b);
+        if(!hit){ try{ hit=named.find(t=>berthMatch(j.berth,t.berths)); }catch(e){ hit=null; } }
+        if(hit)return hit;
+      }
+      return named[0];   /* no berth to split them — the old answer, same pier at least */
     }
   }
   if(j.berth){
@@ -16235,10 +16239,7 @@ document.getElementById('strikeEdit').addEventListener('click',e=>{
   document.getElementById('strikeSheet').classList.remove('on');
   if(!j)return;
   document.getElementById('njShip').value=(j.ship&&j.ship!=="—")?j.ship:"";
-  /* #cosco2 — reopen on the BERTH when the dock name is shared by two rows ("Cosco"),
-     otherwise the edit form would re-resolve the name to the first Cosco dock. */
-  const _dockShared=j.dock&&TERMINALS.filter(t=>(t.aka||"").toUpperCase()===String(j.dock).toUpperCase()).length>1;
-  document.getElementById('njTerm').value=j.terminal==="\u2014"?"":((_dockShared?null:j.dock)||j.berth||j.dock||j.terminal);   // #berthlog — reopen on the dock, not the company
+  document.getElementById('njTerm').value=j.terminal==="\u2014"?"":(j.dock||j.berth||j.terminal);   // #berthlog — reopen on the dock, not the company
   document.getElementById('njCat').value=j.category||"";
   njSetShift(j.shift||njDefaultShift()); // #49 — injects HootOwl only for legacy hoot entries
   document.getElementById('njDate').value=j.date;
@@ -27094,22 +27095,52 @@ function parseDocket(t, knownId){
   {
     const tl=norm.split("\n").map(s=>s.replace(/[^A-Z0-9 ]/g," ").replace(/\s+/g," ").trim());
     outerT: for(const L of tl){ for(const T of SCAN_TERMS){ if(L===T){p.terminal=T;break outerT;} } }
+    /* #fuzzyterm(sep11) — a name that is the whole line, or the line less one word
+       ("SSA TERMINALS"), is a READ. A name buried in a longer line (COSCO inside a vessel
+       name), a two-letter code glimpsed anywhere, or an edit-distance-1 hit on a scrap of
+       OCR junk is a GUESS — and a guess gets marked (p.termFuzzy) so the berth sweep
+       below can overrule it. */
+    if(!p.terminal){
+      outerW: for(const L of tl){
+        if(!L||L.split(" ").length>2)continue;
+        for(const T of SCAN_TERMS){ if(T.length>=3&&new RegExp("\\b"+T.replace(" ","\\s+")+"\\b").test(L)){p.terminal=T;break outerW;} }
+      }
+    }
   }
-  if(!p.terminal){ for(const T of SCAN_TERMS){ if(new RegExp("\\b"+T.replace(" ","\\s+")+"\\b").test(norm)){p.terminal=T;break;} } }
+  if(!p.terminal){ for(const T of SCAN_TERMS){ if(new RegExp("\\b"+T.replace(" ","\\s+")+"\\b").test(norm)){p.terminal=T;p.termFuzzy=true;break;} } }
   if(!p.terminal){
     outer: for(let i=0;i<lines.length;i++){
       const L=norm.split("\n")[i].replace(/[^A-Z0-9 ]/g,"").trim();
       if(L.length<2||L.length>8)continue;
-      for(const T of SCAN_TERMS){ if(T.length>=3&&dktEd1(L,T)){p.terminal=T;break outer;} }
+      for(const T of SCAN_TERMS){ if(T.length>=3&&dktEd1(L,T)){p.terminal=T;p.termFuzzy=true;break outer;} }
     }
   }
 
   /* ---- berth: swept off the WHOLE slip, not just the ship window (#berthscan) ---- */
   try{
-    const opHint=p.terminal?(function(){const h=(typeof termResolveTerm==='function')?termResolveTerm(p.terminal):null;return h?h.operator:null;})():null;
+    /* #fuzzyterm — only a READ operator gets to tip the berth scoring; a guess would
+       hand its +25 to any stray number that happens to sit in the wrong dock's span. */
+    const opHint=(p.terminal&&!p.termFuzzy)?(function(){const h=(typeof termResolveTerm==='function')?termResolveTerm(p.terminal):null;return h?h.operator:null;})():null;
     const b=dktBerth(lines,opHint);
     if(b)p.berth=b;
   }catch(e){}
+  /* #fuzzyterm(sep11) — THE ONE THAT SENT AN SSA UTR TO PIER G. On a Pier J slip the
+     smeared "SSA" line came back as "IDS", the edit-distance pass turned that into ITS,
+     and because the operator outranks the berth on disagreement, a perfectly legible
+     "LB 270" was thrown away and the job sealed at ITS with a shipside gate on Pier G.
+     A guessed operator that contradicts a berth The Order actually lists is not a read —
+     the berth is. Keep the guess only where it agrees with the berth; otherwise take the
+     operator that owns that berth, or nothing at all and let the berth path ask. */
+  if(p.termFuzzy&&p.berth){
+    try{
+      const c=(typeof berthCandidates==='function')?berthCandidates(p.berth):[];
+      const g=(typeof termResolveTerm==='function')?termResolveTerm(p.terminal):null;
+      if(c.length&&g&&!c.some(t=>t.operator===g.operator)){
+        const ops=[]; c.forEach(t=>{ if(ops.indexOf(t.operator)<0)ops.push(t.operator); });
+        p.terminal=(ops.length===1)?ops[0]:null;
+      }
+    }catch(e){}
+  }
 
   /* ---- worker number: prefer the verified gate ID ---- */
   const tokens=up.match(/[A-Z][0-9A-Z¢]{3,6}/g)||[];
@@ -27718,7 +27749,10 @@ window.renderHarborBoard=function(){
     if(!_status){ _status=document.createElement('div'); _status.className='hb-status'; const _m=board.querySelector('.hb-meters'); if(_m&&_m.parentNode) _m.parentNode.insertBefore(_status,_m.nextSibling); else board.appendChild(_status); }
     if(_stage){
       if(_live && _term){
-        board.classList.add('checked-in'); board.setAttribute('data-goto',_term.operator);
+        /* #coscosplit(sep11) — was the operator code alone, and gotoTerminal opened the
+           FIRST card with that code: every SSA docket that wasn't Matson opened Matson.
+           Point at the row itself. */
+        board.classList.add('checked-in'); board.setAttribute('data-goto',String(TERMINALS.indexOf(_term)>-1?TERMINALS.indexOf(_term):_term.operator));
         const _ship=(_live.ship&&_live.ship!=='—')?(' · '+esc(_live.ship)):'';
         _stage.innerHTML='<div class="hb-stoplbl live">✓ CHECKED IN · TODAY</div>'
           +'<div class="hb-stop live">'+esc(_term.aka||_term.operator)+'</div>'
@@ -27751,8 +27785,10 @@ try{renderHarborBoard();}catch(e){}
 /* tapping a LIT (checked-in) harbor board jumps to that terminal's card + gates */
 window.gotoTerminal=function(op){
   try{
-    var idx=TERMINALS.findIndex(function(t){return t.operator===op;});
-    if(idx<0)return;
+    /* #coscosplit — a row index lands on the exact dock; a bare operator code still works
+       for any caller that only has one (and lands on that operator's first card). */
+    var idx=/^\d+$/.test(String(op))?parseInt(op,10):TERMINALS.findIndex(function(t){return t.operator===op;});
+    if(idx<0||!TERMINALS[idx])return;
     var s=document.getElementById('portSearch'); if(s)s.value='';
     if(typeof renderPorts==='function')renderPorts('');
     var h=document.querySelector('#portList .port-h[data-i="'+idx+'"]');
