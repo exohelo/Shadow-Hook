@@ -8,7 +8,7 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='sep9d';
+window.SHK_BUILD='sep11a';
 /* #freezev3 — keep enough resource timings for the report to name what landed before a
    freeze: the boot alone fires ~100 requests, and the default buffer (250) then stops
    recording for the rest of the session. */
@@ -15921,8 +15921,19 @@ function findTerminal(code){
 function dkTerminal(j){
   if(!j)return null;
   if(j.dock){   /* the Tower and the Steel Dock BOTH print LB 205-207 — only the name splits them */
-    const hit=TERMINALS.find(t=>(t.aka||"").toUpperCase()===String(j.dock).toUpperCase());
-    if(hit)return hit;
+    /* #cosco2(sep11) — the reverse case: BOTH Pier J docks print the name "Cosco" and
+       only the BERTH splits them. Matching the name alone returned the first Cosco row
+       (LB 243-245) for every Cosco job, so a slip sealed at LB 270 lit "To the Gate"
+       at the other end of Pier J. When the name covers more than one row, the berth
+       the docket was sealed with decides; the name alone only decides when it is unique. */
+    const named=TERMINALS.filter(t=>(t.aka||"").toUpperCase()===String(j.dock).toUpperCase());
+    if(named.length===1)return named[0];
+    if(named.length>1){
+      const B=String(j.berth||"").toUpperCase();
+      let hit=B?named.find(t=>t.berths.toUpperCase()===B):null;
+      if(!hit&&B){ try{ hit=named.find(t=>berthMatch(j.berth,t.berths)); }catch(e){ hit=null; } }
+      if(hit)return hit;
+    }
   }
   if(j.berth){
     const op=String(j.terminal||"").toUpperCase();
@@ -16224,7 +16235,10 @@ document.getElementById('strikeEdit').addEventListener('click',e=>{
   document.getElementById('strikeSheet').classList.remove('on');
   if(!j)return;
   document.getElementById('njShip').value=(j.ship&&j.ship!=="—")?j.ship:"";
-  document.getElementById('njTerm').value=j.terminal==="\u2014"?"":(j.dock||j.berth||j.terminal);   // #berthlog — reopen on the dock, not the company
+  /* #cosco2 — reopen on the BERTH when the dock name is shared by two rows ("Cosco"),
+     otherwise the edit form would re-resolve the name to the first Cosco dock. */
+  const _dockShared=j.dock&&TERMINALS.filter(t=>(t.aka||"").toUpperCase()===String(j.dock).toUpperCase()).length>1;
+  document.getElementById('njTerm').value=j.terminal==="\u2014"?"":((_dockShared?null:j.dock)||j.berth||j.dock||j.terminal);   // #berthlog — reopen on the dock, not the company
   document.getElementById('njCat').value=j.category||"";
   njSetShift(j.shift||njDefaultShift()); // #49 — injects HootOwl only for legacy hoot entries
   document.getElementById('njDate').value=j.date;
