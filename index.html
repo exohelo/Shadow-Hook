@@ -8,7 +8,7 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='sep12v5';
+window.SHK_BUILD='sep12v5b';
 /* #freezev3 — keep enough resource timings for the report to name what landed before a
    freeze: the boot alone fires ~100 requests, and the default buffer (250) then stops
    recording for the rest of the session. */
@@ -10584,6 +10584,7 @@ function recalcPredictions(){
   const before=(window._lastCall&&window._lastCall.stop!=null)?{stop:window._lastCall.stop,pmove:window._lastCall.pmove}:null;
   if(b){ b.disabled=true; b.textContent="↻ RUNNING THE NUMBERS…"; }
   try{ if(typeof V4!=="undefined"&&V4.loadWeather) V4.loadWeather(); }catch(e){}
+  try{ if(window.PORTSIG) PORTSIG.load(true); }catch(e){}   /* #portsig — fresh vessel schedule on a manual re-run */
   try{ if(typeof liveRefreshAll==="function") liveRefreshAll(); }catch(e){}   /* fresh sheets · wire · hotline · drops */
   try{ if(typeof V4!=="undefined"&&V4.learnFromRecent) V4.learnFromRecent(); }catch(e){}
   try{ repredict(); }catch(e){}
@@ -10859,7 +10860,9 @@ function renderWireStage(o){
       EST:'~ ESTIMATE · til the final count lands',
       AM:'~ ESTIMATE · til the day count lands'
     }[L]||'—';
-    srcEl.className='wire-src '+cls; srcEl.textContent=txt;
+    /* #portsig — an estimate that heard the vessel schedule says so (only when it moved the number) */
+    let txt2=txt; try{ const pv=window._portVol; if(pv&&(L==='EST'||L==='AM')&&Math.abs(pv.mult-1)>=0.03) txt2+=' · ships '+(pv.pct>0?'+':'')+pv.pct+'% vs normal'; }catch(e){}
+    srcEl.className='wire-src '+cls; srcEl.textContent=txt2;
   }
   /* hero */
   set('predStop', stopL);
@@ -11673,6 +11676,7 @@ const V4 = (function(){
 })();
 window.V4=V4; window.setRain=V4.setRain; window.setStopWork=V4.setStopWork;
 try{ V4.loadWeather(); }catch(e){}
+try{ setTimeout(function(){ try{ PORTSIG.load(); }catch(e){} },1500); }catch(e){}   /* #portsig — one POST a day, cached; off the boot path */
 
 /* ═══ KEYMASTER v5 — THE SELF-LEARNING CALL (sep12) ═══
    WHY: the v4 call is a kNN vote over 3½ years of a quieter port. It learns nothing
@@ -11928,6 +11932,92 @@ window.V5=V5;
     return base;
   };
 })();
+/* ═══ #portsig(sep12) — THE PORT'S OWN SIGNAL, READ INTO THE COUNT ═══
+   The Port of LA publishes its vessel schedule on the Control Tower (signal.portoptimizer.com):
+   inbound full containers per ARRIVAL DAY, realised for the past and scheduled ~3 weeks out,
+   through an open search endpoint (no key; it answers cross-origin). Ships are worked in the
+   days after they arrive, so the containers that landed over the last week are a read on how
+   much work the hall is about to see. Checked against the community log (3½ years, weekday
+   effects removed): the trailing 7-day arrivals correlate ~0.4–0.58 with the day's total
+   jobs and ~0.35–0.45 with the casual count.
+   WHAT IT DOES: nothing to a call that already rides a sheet — once the casual count is
+   printed, the volume adds nothing (tested: every letters metric within noise). It moves the
+   ESTIMATE: the weekday EWMA the engine runs on before the sheet lands, and every cell of
+   the 7-day forecast, is scaled by exp(β · lv7), where lv7 is the log of this week's arrivals
+   over the trailing 8-week norm for the same window, and β is fitted on the phone from the
+   log (decayed least squares of log(count ÷ weekday EWMA) on lv7; seeds AM 0.34 / PM 0.60
+   from the walk-forward fit until 60 pairs are in). Walk-forward, no sheet in:
+     casual-count error (median |log|)  AM 2025 17.2% → 14.5% · PM 2025 18.4% → 15.4%
+     letters (MAE)                       AM 2025 1.86 → 1.78 · PM 2025 1.40 → 1.32
+   FAIL-SAFE: one POST a day, cached on the device (~420 days back + 21 ahead, ~30 KB);
+   offline/WAF/CORS trouble → the last cache; no cache → no adjustment, the wire is as it
+   was. The multiplier is clamped to 0.7–1.4 so a data glitch cannot move a call much. */
+const PORTSIG=(function(){
+  const URL='https://signal.portoptimizer.com/api/v1/signal/_search?_c=WeeklyVolumesComparison';
+  const KEY=(typeof K==="function")?K('portsig'):'shadowhook_portsig';
+  const SEED={AM:0.34,PM:0.60}, BACK=420, AHEAD=21, TTL=6*3600e3, PAD=2000;
+  let S={days:{},at:0,src:''}, beta={AM:null,PM:null}, betaSig='';
+  function ymd(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+  function shift(s,n){ const d=new Date(s+"T12:00:00"); d.setDate(d.getDate()+n); return ymd(d); }
+  try{ const c=JSON.parse(localStorage.getItem(KEY)||'null'); if(c&&c.days&&c.at) S=c; }catch(e){}
+  function win(s,a,b){ let t=0, n=0; for(let k=a;k<=b;k++){ const v=S.days[shift(s,k)]; if(typeof v==="number"){ t+=v; n++; } } return n?t:null; }
+  /* log ratio of the 7 days ending on `s` (arrivals scheduled for `s` itself included) to the 8 prior weeks' same window */
+  function lv7(s){
+    const v7=win(s,-6,0); if(v7==null) return null;
+    let bs=0, bn=0; for(let k=1;k<=8;k++){ const b=win(shift(s,-7*k),-6,0); if(b!=null&&b>0){ bs+=b; bn++; } }
+    if(bn<4) return null;
+    return Math.log((v7+PAD)/(bs/bn+PAD));
+  }
+  /* β per slot, fitted on the training log: log(count ÷ weekday-EWMA-before) on lv7, decayed */
+  function fit(){
+    try{
+      if(typeof V4==="undefined"||!V4._log) return;
+      const sig=Object.keys(S.days).length+'|'+S.at+'|'+V4._log(true).length+'|'+V4._log(false).length;
+      if(sig===betaSig) return; betaSig=sig;
+      for(const isAM of [true,false]){
+        const kk=isAM?'AM':'PM', rows=V4._log(isAM), ew={}, pairs=[];
+        for(const r of rows){ const ch=r[0], dow=r[2], date=r[8]; if(!(ch>=150)) continue;
+          if(ew[dow]!=null){ const v=lv7(date); if(v!=null) pairs.push([v,Math.log(ch/ew[dow])]); }
+          ew[dow]=(ew[dow]==null)?ch:0.3*ch+0.7*ew[dow]; }
+        if(pairs.length<60){ beta[kk]=null; continue; }
+        const H=pairs.slice(-400); let sxy=0, sxx=0;
+        for(let i=0;i<H.length;i++){ const w=Math.pow(0.5,(H.length-1-i)/120); sxy+=w*H[i][0]*H[i][1]; sxx+=w*H[i][0]*H[i][0]; }
+        beta[kk]=sxx>0?Math.max(0,Math.min(1.2,sxy/sxx)):null;
+      }
+    }catch(e){}
+  }
+  /* the multiplier for a board's weekday estimate: {mult, lv7, beta, pct} or null when there's no data */
+  function adjust(dateLike,isAM){
+    try{
+      const s=(typeof dateLike==="string")?dateLike:ymd(dateLike); const v=lv7(s); if(v==null) return null;
+      fit(); const kk=isAM?'AM':'PM', b=(beta[kk]!=null)?beta[kk]:SEED[kk];
+      const mult=Math.max(0.7,Math.min(1.4,Math.exp(b*v)));
+      return {mult:mult, lv7:+v.toFixed(3), beta:+b.toFixed(2), seeded:beta[kk]==null, pct:Math.round((Math.exp(v)-1)*100), v7:win(s,-6,0)};
+    }catch(e){ return null; }
+  }
+  function load(force){
+    try{
+      if(!force&&S.at&&Date.now()-S.at<TTL){ return Promise.resolve(false); }
+      if(!(navigator.onLine!==false)) return Promise.resolve(false);
+      const today=ymd(new Date());
+      const body={fromDate:shift(today,-BACK),toDate:shift(today,AHEAD),searchParameters:[{key:"byDateHistogram",children:[{key:"bySumInboundFullContainers",children:[]}],histogramInterval:"1d",timeZone:"America/Los_Angeles",offset:"0d",filterByMinCount:0}]};
+      return fetch(URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+        .then(r=>r.json()).then(j=>{
+          const b=j&&j.response&&j.response.aggregations&&j.response.aggregations.byDateHistogram&&j.response.aggregations.byDateHistogram.buckets;
+          if(!Array.isArray(b)||b.length<30) throw new Error('portsig: no buckets');
+          const days={}; b.forEach(x=>{ const d=String(x.key_as_string||'').slice(0,10); const v=x.bySumInboundFullContainers&&x.bySumInboundFullContainers.value; if(/^\d{4}-\d{2}-\d{2}$/.test(d)&&typeof v==="number") days[d]=Math.round(v); });
+          S={days:days,at:Date.now(),src:'live'}; betaSig='';
+          try{ localStorage.setItem(KEY,JSON.stringify(S)); }catch(e){}
+          try{ if(window.DEVLOG&&DEVLOG.data)DEVLOG.data('port_signal',{ok:true,rows:Object.keys(days).length,latest:Object.keys(days).sort().pop()}); }catch(e){}
+          try{ if(typeof repredict==="function") repredict(); }catch(e){}
+          return true;
+        }).catch(e=>{ try{ if(window.DEVLOG&&DEVLOG.data)DEVLOG.data('port_signal',{ok:false,err:(e&&e.message)||String(e)}); }catch(_){} return false; });
+    }catch(e){ return Promise.resolve(false); }
+  }
+  function status(){ const ds=Object.keys(S.days).sort(); return {days:ds.length,from:ds[0]||null,through:ds[ds.length-1]||null,at:S.at?new Date(S.at).toISOString().slice(0,16):null,beta:beta}; }
+  return {load:load, adjust:adjust, lv7:lv7, fit:fit, status:status, _win:win, _set:function(days,at){ S={days:days,at:at||Date.now(),src:'test'}; betaSig=''; }};
+})();
+window.PORTSIG=PORTSIG;
 /* ====== end v4 engine ====== */
 /* ═══ #earlyfeed(aug20) — THE EARLY SHEET FEEDS THE CALL AT LAST ═══
    The pre-final call was always MEANT to ride the early count — the EARLY chip,
@@ -12010,6 +12100,7 @@ function publishCall(){
     const ex=V4.expect(dowIdx,isAM);
     var _totU=ex.tot;   /* #totshadow — the union-scale EWMA, stashed for the shadow call below (var: function-scoped on purpose) */
     const _fc=DISPATCH_DATA[key]; let _cas=casualJobsOf(_fc);
+    window._portVol=null;                                        /* #portsig — set below only when the estimate is what runs */
     if(_fc&&_fc.total&&_fc.total.cas>0) _cas=_fc.total.cas;   /* #totcas — an explicit casual count from the sheet wins over the board sum */
     /* #casaxis — the sheet's grand total is a CASUAL figure. The D/E/N PDFs publish casual
        work; the union+casual number is not on the sheet and has no live feed. It used to be
@@ -12032,7 +12123,13 @@ function publishCall(){
       source=_shTot?'FINAL':'EARLY';
     } else if(window.EARLY_COUNTS){
       ex.ch=(window.EARLY_COUNTS.ch||ex.ch); source='EARLY';   /* #casaxis — EARLY_COUNTS.tot is the same casual scale; it no longer touches ex.tot */
-    } else { source=isAM?'AM':'EST'; }
+    } else { source=isAM?'AM':'EST';
+      /* #portsig(sep12) — NO SHEET YET: the weekday estimate hears the port's vessel schedule.
+         ex.ch is "what a Thursday night usually brings"; the Control Tower says how much
+         cargo landed this week against the norm. Scaled by exp(β·lv7) — see PORTSIG. A call
+         that rides a sheet (the branches above) never takes this: the count is already known. */
+      try{ const pv=(window.PORTSIG&&PORTSIG.adjust)?PORTSIG.adjust(nd2,isAM):null; if(pv&&pv.mult>0){ ex.ch=ex.ch*pv.mult; window._portVol=pv; } }catch(e){ window._portVol=null; }
+    }
     if(_dropTot>0){ ex.ch=Math.max(ex.ch||0,_dropTot*V4.boardsToCh); if(source!=='FINAL')source='EARLY'; }   /* #liverecalc */
     /* #casaxis — cross-slot momentum for a DAY board: how far last night's board ran.
        Prefer the record (a sealed board, or one the hotline/wire already ended), and fall
@@ -12059,7 +12156,7 @@ function publishCall(){
        casual figure, `ch` that figure on the hall scale (×boardsToCh) = the kNN's match key.
        totEwma is the weekday union-scale guess, carried for the fallback engines only —
        it is NOT off the sheet, so it never again gets to masquerade as a real total. */
-    window._v4dbg={source:source,axis:'casual',cas:(_cas!=null?Math.round(_cas):null),ch:Math.round(ex.ch),totEwma:Math.round(ex.tot),cap:_cap,spill:(_cap!=null?Math.round(Math.max(0,ex.tot-_cap)):null),att:(window._v4att||null),cats:cats.list,shutdown:!!cats.shutdown,mom:+(mom||0).toFixed(2),lastNight:(isAM&&_xm!=null?_xm:null),thisMorning:(!isAM&&_xm!=null?_xm:null),earlyFed:_fromEarly,earlyDrift:(_fromEarly?+(_earlyDrift(!isAM)).toFixed(3):null)};   /* #earlyfeed(aug20) — the dev log shows when the call rides the 11 AM paper */
+    window._v4dbg={source:source,axis:'casual',cas:(_cas!=null?Math.round(_cas):null),ch:Math.round(ex.ch),totEwma:Math.round(ex.tot),cap:_cap,spill:(_cap!=null?Math.round(Math.max(0,ex.tot-_cap)):null),att:(window._v4att||null),cats:cats.list,shutdown:!!cats.shutdown,mom:+(mom||0).toFixed(2),lastNight:(isAM&&_xm!=null?_xm:null),thisMorning:(!isAM&&_xm!=null?_xm:null),portVol:(window._portVol||null),earlyFed:_fromEarly,earlyDrift:(_fromEarly?+(_earlyDrift(!isAM)).toFixed(3):null)};   /* #earlyfeed(aug20) — the dev log shows when the call rides the 11 AM paper */
   }catch(_v4e){ if(window.console)console.warn('V4 fallback',_v4e); pmf=null; }
   if(!pmf){
     if(!isAM){
@@ -12600,6 +12697,9 @@ window.renderMyOdds=renderMyOdds;
         try{ cats=V4.categories(day,slot); }catch(e){}
         try{ ex=V4.expect(dow,isAM); }catch(e){}
         if(!ex) ex={ch:isAM?860:650, tot:isAM?2200:1600};
+        /* #portsig — the forecast hears the vessel schedule: the Control Tower lists arrivals ~3 weeks
+           out, so a heavy week ahead lifts every cell of it before a single sheet exists. */
+        try{ const pv=(window.PORTSIG&&PORTSIG.adjust)?PORTSIG.adjust(day,isAM):null; if(pv&&pv.mult>0) ex={ch:ex.ch*pv.mult,tot:ex.tot}; }catch(e){}
         try{
           pmf=V4.predict({isAM:isAM,dow:dow,chHat:ex.ch,totHat:ex.tot,
                           mom:(isAM?momAM:momPM),date:day,cats:cats,
@@ -30629,6 +30729,7 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
       out+='\n[ERRORS]\n'+S.errs.map(e=>e.t+' '+e.msg+(e.at?(' @ '+e.at):'')).join('\n');
       out+='\n\n[NOTES]\n'+S.notes.map(n=>n.t+' '+n.msg).join('\n');
       try{out+='\n\n[ENGINE] '+JSON.stringify(window._v4dbg||null);}catch(e){}
+      try{out+='\n[PORT SIGNAL] '+JSON.stringify((window.PORTSIG&&PORTSIG.status)?PORTSIG.status():null)+' vol='+JSON.stringify(window._portVol||null);}catch(e){}
       try{out+='\n[V5] '+JSON.stringify(window._v5dbg||null)+'\n[V5 BUILD] '+JSON.stringify((window.V5&&V5.status)?V5.status():null);}catch(e){}
       return out;
     }
@@ -30667,6 +30768,8 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
           html+=row('v5 engine','<b style="color:#eeb46b">call '+v5.med+'</b> = W '+(hw.raw!=null?hw.raw:'—')+'→'+(hw.med!=null?hw.med:'—')+' · H '+(hh.raw!=null?hh.raw:'—')+'→'+(hh.med!=null?hh.med:'—')+(v5.knn!=null?' · kNN '+v5.knn:'')+(v5.xm!=null?' · other board '+v5.xm:'')+(v5.build?' · trained on '+v5.build.boards+' '+v5.slot+' boards through '+esc(v5.build.through||'—')+', calibrated on '+v5.build.calW+' · '+v5.build.ms+'ms':''));
         } else if(st&&(st.AM||st.PM)){ html+=row('v5 engine','built · '+JSON.stringify(st)); }
         else html+=row('v5 engine','not run yet (v4 call showing)'); }catch(e){}
+      try{const ps=(window.PORTSIG&&PORTSIG.status)?PORTSIG.status():null, pv=window._portVol;
+        html+=row('port signal',ps&&ps.days?(ps.days+' days of POLA arrivals, '+esc(ps.from||'')+' → '+esc(ps.through||'')+' (pulled '+esc(ps.at||'?')+')'+(pv?' · this board: 7-day arrivals '+(pv.v7||0).toLocaleString()+', '+(pv.pct>0?'+':'')+pv.pct+'% vs 8-wk norm → estimate ×'+pv.mult.toFixed(2)+' (β '+pv.beta+(pv.seeded?' seed':' fitted')+')':' · not applied (call rides a sheet)')):'no data yet — signal.portoptimizer.com unreachable or first run');}catch(e){}
       try{html+=row('training log',(function(){const A=V4._log(true),B=V4._log(false);return 'day '+A.length+' boards through '+esc((A[A.length-1]||[])[8]||'—')+' · night '+B.length+' through '+esc((B[B.length-1]||[])[8]||'—');})());}catch(e){}
       try{html+=row('sheets on device',(typeof DISPATCH_DATA!=='undefined')?(Object.keys(DISPATCH_DATA).length+' · newest '+esc(Object.keys(DISPATCH_DATA).sort().pop()||'—')):'—');}catch(e){}
       try{html+=row('record rows',(typeof RECENT!=='undefined')?RECENT.length+' boards on the record':'—');}catch(e){}
