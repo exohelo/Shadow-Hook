@@ -16765,6 +16765,48 @@ function attachAutocomplete(input, getItems){
   attachAutocomplete(document.getElementById('njTerm'), termItems);
 })();
 
+/* #slipsays(sep12) — THE ONE THAT REPORTED A LISTED DOCK AS MISSING. A casual scanned a
+   PA · 126 slip, the reader couldn't place it (see #bareberth), and what he then typed
+   into the box — "NW 126" — was judged on its own words: not listed → Send word → a
+   "Missing terminal" report for Yang Ming, LA 121-131, which has been on the Ports tab
+   all along. The door had two better witnesses and asked neither: the berth INSIDE the
+   typed words, and the slip just scanned (window.scanLast — the very slip the report
+   would carry as its proof). Both are heard now, before the door says "not listed".
+   Still #failclosed — this never seals on its own: one dock → offered by name and the
+   member confirms; several → listed and the member picks off the list; none → Send
+   word, as before. A "no" is remembered for those exact words, so the next tap on Seal
+   goes straight to the Keymaster instead of asking twice. */
+function termSecondOpinion(typed, ship){
+  const q=String(typed||"").toUpperCase();
+  /* 1 — the berth inside the words: "NW 126", "berth 96", "yang ming 126" */
+  try{
+    const re=/\b(TI|LB|LA)?\s*(\d{1,4})\b/g; let m;
+    while((m=re.exec(q))){
+      const b=((m[1]||"")+" "+m[2]).trim(); let c=berthCandidates(b);
+      if(!c.length)continue;
+      if(c.length>1){ const by=shipDock(ship,c); if(by)c=[by]; }
+      return {docks:c,why:"it names berth "+b,narrow:b};
+    }
+  }catch(e){}
+  /* 2 — the slip just scanned, only while its photo still rides the form (a hand-off).
+     A slip that names an employer the Order doesn't list is the reader's own "missing
+     dock" verdict, and that report is right — nothing to offer over it. */
+  try{
+    const p=(window.scanThumb&&window.scanLast&&window.scanLast.p)||null;
+    if(p&&!p.opUnknown&&(p.berth||p.terminal)&&typeof scanTermSure==='function'){
+      const s=scanTermSure(p);
+      if(s.t){
+        let docks=s.sure?[s.t]:((s.docks&&s.docks.length)?s.docks.slice():opDocks(s.t.operator));
+        if(docks.length>1){ const by=shipDock(p.ship,docks)||shipDock(ship,docks); if(by)docks=[by]; }
+        const read=[p.terminal||"",p.berth?("berth "+p.berth):""].filter(Boolean).join(" · ");
+        return {docks:docks,why:"the slip you scanned reads "+read,narrow:(p.berth||p.terminal)};
+      }
+    }
+  }catch(e){}
+  return {docks:[],why:"",narrow:""};
+}
+let _termSaidNo="";   /* the typed words the member already answered "not that dock" to */
+
 document.getElementById('njAdd').onclick=()=>{
   const date=document.getElementById('njDate').value||todayISO();
   const ship=document.getElementById('njShip').value.trim();          // optional
@@ -16823,8 +16865,37 @@ document.getElementById('njAdd').onclick=()=>{
   const termBerth=termHit?termHit.berths:undefined;
   const termDock=termHit?(termHit.aka||undefined):undefined;
   if(!termOk){
+    /* #slipsays — hear the berth in the words and the slip in hand before "not listed" */
+    if(_termSaidNo!==terminal){
+      const said=termSecondOpinion(terminal,ship);
+      if(said.docks.length){
+        const dupB={}; TERMINALS.forEach(t=>{dupB[t.berths]=(dupB[t.berths]||0)+1;});
+        const fillOf=t=>(dupB[t.berths]>1?(t.aka||t.operator):t.berths);   // what the picker itself would put in the box
+        const box=document.getElementById('njTerm');
+        const tail='\n\nIf that isn’t the dock, seal again with the name as typed and it goes to the Keymaster as a missing terminal.';
+        if(said.docks.length===1){
+          const d=said.docks[0];
+          shConfirm('"'+terminal+'" isn’t a name The Order lists — but '+said.why+', and that’s '+(d.aka||d.operator)+' ('+d.berths+').\n\nSeal it there?'+tail,
+            ()=>{ box.value=fillOf(d); document.getElementById('njAdd').click(); },
+            {title:"The slip says…",icon:"⚓",okText:"Seal it there",noText:"Not that dock",onNo:()=>{ _termSaidNo=terminal; }});
+        } else {
+          shConfirm('"'+terminal+'" isn’t a name The Order lists — but '+said.why+', and that is more than one listed dock:\n\n'
+            +said.docks.map(t=>'  · '+(t.aka||t.operator)+' — '+t.berths).join('\n')
+            +'\n\nPick the one you worked from the list so the gate is right.'+tail,
+            ()=>{ box.value=said.narrow; box.focus(); try{ box.dispatchEvent(new Event('input',{bubbles:true})); }catch(e){} },
+            {title:"The slip says…",icon:"⚓",okText:"Pick the dock",noText:"None of those",onNo:()=>{ _termSaidNo=terminal; }});
+        }
+        return;
+      }
+    }
+    /* #slipsays — the report carries what the door already knows: the form's date, shift,
+       ship and job, and the operator + berth the reader saw on the slip in hand */
+    const facts=(function(){ try{
+      const p=(window.scanThumb&&window.scanLast&&window.scanLast.p)||{};
+      return {date:date,shift:shift,ship:ship||"",cat:category||"",op:(p&&p.terminal)||"",berth:(p&&p.berth)||""};
+    }catch(e){ return {date:date,shift:shift,ship:ship||"",cat:category||""}; } })();
     shConfirm('"'+terminal+'" isn\'t a terminal The Order has listed, so it can\'t go in the log yet.\n\nSend word to the Keymaster so it gets added?',
-      ()=>{gotoTab('ports');if(typeof openWordSheetTerm==='function')openWordSheetTerm(terminal);},
+      ()=>{gotoTab('ports');if(typeof openWordSheetTerm==='function')openWordSheetTerm(terminal,facts);},
       {title:"Unknown terminal",icon:"⚑",okText:"Send word"});
     return;
   }
@@ -18392,6 +18463,26 @@ renderPorts();
      (proof / proof_meta — MEMBER-WIRE-PROOF.sql), so the Keymaster sees it on the
      mailbag under the words, not in an inbox somewhere else. */
   let proof=null;
+  /* #slipsays(sep12) — WHAT THE SLIP SAYS RIDES THE REPORT. A "Missing terminal" word used
+     to reach the mailbag as the typed name and a prompt the casual rarely filled in
+     ("Operator / berths / gate location:" — blank), with a docket caption that said only
+     "the slip just scanned". The Keymaster had to open the photo and squint. The seal
+     door now hands over what it already knows — the date and shift, the ship and job off
+     the form, and the operator and berth the reader saw on the slip — and it travels
+     three ways: written into the word itself, carried in proof_meta so the mailbag's
+     docket line reads like a docket, and shown under "✓ docket attached" on the sheet.
+     Cleared whenever the sheet opens by any other door, so no stale slip rides an idea. */
+  let wordFacts=null;
+  function factsLine(f){
+    if(!f)return '';
+    return [f.date?String(f.date).slice(5).split('-').map(x=>String(+x)).join('/')+(f.shift?' '+f.shift:''):'',
+            f.op||'', f.berth?('berth '+f.berth):'', f.ship||'', f.cat||''].filter(Boolean).join(' · ');
+  }
+  function factsMeta(){   /* the same facts, as proof_meta fields — only what is actually known */
+    const f=wordFacts||{}, o={};
+    [['date','date'],['shift','shift'],['typed','terminal'],['op','op'],['berth','berth'],['ship','ship'],['cat','cat']].forEach(([k,mk])=>{ if(f[k])o[mk]=f[k]; });
+    return o;
+  }
   const PROOF_KINDS=/missing terminal|terminal or gate/i;
   function proofRequired(){ return PROOF_KINDS.test(document.getElementById('wordType').value||''); }
   function shrinkDataUrl(dataUrl,maxW,q){
@@ -18408,6 +18499,9 @@ renderPorts();
     if(!m)return '';
     const parts=[]; if(m.date)parts.push(String(m.date).slice(5).split('-').map(x=>String(+x)).join('/')+(m.shift?' '+m.shift:''));
     if(m.terminal)parts.push(m.terminal); if(m.hours>0)parts.push(m.hours+' hrs');
+    /* #slipsays — what the slip itself prints, when the reader or the log knows it */
+    if(m.op&&m.op!==m.terminal)parts.push('slip prints '+m.op+(m.berth?' · berth '+m.berth:'')); else if(m.berth)parts.push('berth '+m.berth);
+    if(m.dock&&m.dock!==m.terminal)parts.push(m.dock); if(m.ship)parts.push(m.ship); if(m.cat)parts.push(m.cat);
     parts.push(m.from==='log'?(m.src==='photo'?'scanned into the log':'from the log'):m.from==='scan'?'the slip just scanned':'shot now');
     return parts.join(' · ');
   }
@@ -18443,7 +18537,8 @@ renderPorts();
         +'<span class="sub" style="display:block;font-size:9.5px;line-height:1.3;margin-top:3px;color:var(--bone)">'+esc(String(j.date).slice(5).split('-').map(x=>String(+x)).join('/'))+'<br>'+esc(String(j.terminal||'').slice(0,10))+'</span></button>').join('');
       pick.querySelectorAll('.wp-pick').forEach(b=>b.addEventListener('click',async()=>{
         const j=DOCKETS.find(x=>String(x._id)===b.dataset.id); if(!j||!j.photo)return;
-        proof={photo:await fitProof(j.photo),meta:{from:'log',date:j.date,terminal:j.terminal||null,hours:j.hours||null,shift:j.shift||null,src:j.src||null,id:String(j._id)}};
+        proof={photo:await fitProof(j.photo),meta:{from:'log',date:j.date,terminal:j.terminal||null,hours:j.hours||null,shift:j.shift||null,src:j.src||null,id:String(j._id),
+          berth:j.berth||null,dock:j.dock||null,ship:(j.ship&&j.ship!=='—')?j.ship:null,cat:j.category||null}};   /* #slipsays — the log knows the dock; say so */
         renderProof();
       }));
     } else { pick.style.display='none'; pick.innerHTML=''; }
@@ -18452,12 +18547,12 @@ renderPorts();
   document.getElementById('wordProofShoot').addEventListener('click',()=>{const i=document.getElementById('wordProofFile');i.value="";i.click();});
   document.getElementById('wordProofFile').addEventListener('change',async e=>{
     const f=(e.target.files||[])[0]; if(!f)return;
-    try{ const d=await shrinkImage(f,1100,0.72); proof={photo:await fitProof(d),meta:{from:'camera',at:Date.now()}}; renderProof(); }
+    try{ const d=await shrinkImage(f,1100,0.72); proof={photo:await fitProof(d),meta:Object.assign({from:'camera',at:Date.now()},factsMeta())}; renderProof(); }
     catch(err){ try{toast('✗ couldn’t read that photo — try again');}catch(e2){} }
   });
   /* the slip that just failed the seal on an unknown terminal is the proof itself */
   async function proofFromScan(){
-    try{ if(window.scanThumb){ proof={photo:await fitProof(window.scanThumb),meta:{from:'scan',at:Date.now()}}; renderProof(); } }catch(e){}
+    try{ if(window.scanThumb){ proof={photo:await fitProof(window.scanThumb),meta:Object.assign({from:'scan',at:Date.now()},factsMeta())}; renderProof(); } }catch(e){}   /* #slipsays — with what the slip says */
   }
   document.getElementById('wordAttach').addEventListener('click',()=>{const i=document.getElementById('wordFiles');i.value="";i.click();});
   document.getElementById('wordFiles').addEventListener('change',e=>{
@@ -18473,9 +18568,10 @@ renderPorts();
     const d=new Date(),ds=d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0');
     return 'shadowhook-map-'+op+'-'+ds+'-'+(i+1)+ext;
   }
-  document.querySelectorAll('.send-word').forEach(b=>b.addEventListener('click',()=>{sheet.classList.add('on');renderProof();document.getElementById('wordMsg').focus()}));
+  document.querySelectorAll('.send-word').forEach(b=>b.addEventListener('click',()=>{wordFacts=null;sheet.classList.add('on');renderProof();document.getElementById('wordMsg').focus()}));
   /* #69 — yard-map entry point: preselect the map category & name the terminal */
   window.openWordSheetMap=function(){
+    wordFacts=null;   /* #slipsays — a map is not a slip */
     const sel=document.getElementById('wordType');
     [...sel.options].forEach(o=>{if(/map/i.test(o.text))sel.value=o.value;});
     const m=document.getElementById('wordMsg');
@@ -18485,11 +18581,16 @@ renderPorts();
   /* #29 — unlisted-terminal entry point: preselect the category & prefill the report
      so the member only has to hit Send. Reaches the Keymaster's inbox (and the
      control-panel message board once the server lands). */
-  window.openWordSheetTerm=function(term){
+  /* #slipsays — `facts` comes from the seal door: {date, shift, ship, cat, op, berth, typed}.
+     The date, shift, ship and job are what the member confirmed on the form; op and berth
+     are what the reader saw on the slip. They go into the word and ride proof_meta. */
+  window.openWordSheetTerm=function(term,facts){
+    wordFacts=(facts&&typeof facts==='object')?Object.assign({},facts,{typed:term}):null;
     const sel=document.getElementById('wordType');
     [...sel.options].forEach(o=>{if(/missing terminal/i.test(o.text))sel.value=o.value;});
     const m=document.getElementById('wordMsg');
-    m.value='Missing terminal: "'+term+'" — I worked here but it isn’t listed. Operator / berths / gate location: ';
+    const fl=factsLine(wordFacts);
+    m.value='Missing terminal: "'+term+'" — I worked here but it isn’t listed.'+(fl?' The docket says: '+fl+'.':'')+' Operator / berths / gate location: ';
     sheet.classList.add('on');
     proof=null; renderProof(); proofFromScan();   /* #proof — the slip that named the terminal comes along */
     m.focus();
@@ -27042,9 +27143,28 @@ function dktEd1(a,b){ /* edit distance <= 1 */
    scored: a labeled berth beats a bare "LB 96" line, which beats a lone number. A
    lone number is only believed if it actually lands in a listed span, so worker and
    gang numbers can't pose as berths. */
+/* #bareberth(sep12) — THE ONE THAT SENT A PA · 126 SLIP TO "SEND WORD". LA berths print
+   BARE on the slip ("126" — the hall leaves the LA prefix off, see #baredock), and the
+   bare line was the one berth pattern that took clean digits only. The labeled and the
+   prefixed patterns above forgive the printer's stand-ins ("LB 9G"); the bare line did
+   not, so "l26", "12G", "|26" read as NO berth, the slip lost the one thing that named
+   its dock, and the casual ended up typing a name the Order doesn't list — and a
+   listed dock went out as a "Missing terminal" report. This reads the bare line through
+   dktDigit under two guards: at least two REAL digits (a tag like "GE" or a job code
+   like "DS" can never turn into a berth) and no leading zero (a stand-in read as 0 must
+   not shrink "D26" into LB 26). The span test in dktBerth still stands over it. */
+function dktBare(raw){
+  const s=String(raw||"").toUpperCase().replace(/^[^A-Z0-9(\[{|]+|[^A-Z0-9(\[{|]+$/g,"");   /* "#126", "126." — grit at the ends is not the number */
+  const m=s.match(/^([0-9OQILZSBGDE(\[{|]{2,4})$/);
+  if(!m)return null;
+  if((m[1].match(/[0-9]/g)||[]).length<2)return null;
+  const n=[...m[1]].map(dktDigit).join("");
+  return /^[1-9][0-9]{1,3}$/.test(n)?n:null;
+}
 function dktBerth(lines, opHint){
   if(!lines||!lines.length)return null;
   const fixn=s=>[...String(s)].map(dktDigit).join("").replace(/[^0-9]/g,"");
+  const listed=b=>{ try{ return berthCandidates(b); }catch(e){ return []; } };
   const out=[];
   for(let i=0;i<lines.length;i++){
     const L=String(lines[i]).toUpperCase().replace(/[^A-Z0-9 :#.\-]/g," ").replace(/\s+/g," ").trim();
@@ -27053,10 +27173,16 @@ function dktBerth(lines, opHint){
     m=L.match(/^(TI|LB|LA)\s*([0-9OQILZSBGDE(\[{|]{1,4})$/);                                     // a line that is just "LB 96" / "LB 9G"
     if(m){ const n=fixn(m[2]); if(n)out.push({b:m[1]+" "+n,w:2}); continue; }
     m=L.match(/^([0-9]{2,4})$/);                                                                  // a line that is just "96"
-    if(m)out.push({b:m[1],w:1});
+    /* #bareberth — the same line read through the stand-ins goes in first when it lands in
+       a listed span (a bare number is an LA berth first, see #baredock: "|26" is LA 126
+       before it is LB 26); the clean read still goes in behind it, so the operator printed
+       on the slip settles the two by score, and nothing is lost when the stand-in read
+       lands nowhere. */
+    const bare=dktBare(lines[i]);
+    if(bare&&listed(bare).length)out.push({b:bare,w:1});
+    if(m&&m[1]!==bare)out.push({b:m[1],w:1});
   }
   if(!out.length)return null;
-  const listed=b=>{ try{ return berthCandidates(b); }catch(e){ return []; } };
   /* every candidate must land in a span The Order actually lists — that's what keeps
      a worker number, a gang number or an OCR-mangled word from posing as a berth. */
   const scored=out.map(o=>{
@@ -37410,13 +37536,20 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
             ?'<button type="button" class="pill km-proof" data-wid="'+esc(w.id)+'" style="color:var(--ok);border-color:currentColor;cursor:pointer;background:none;font:inherit">📷 DOCKET · view</button>'
             :(isTerm(w)?'<span class="pill" style="color:var(--ember);border-color:currentColor" title="sent before the docket rule, or by a build without it">⚠ NO DOCKET</span>'
                        :'<span class="pill" style="color:var(--steel);border-color:currentColor" title="no docket on it — the word earned no ⬡">no docket · unpaid</span>');
-        const pline=(pm&&(pm.date||pm.terminal||pm.from))?'<div class="sub" style="margin-top:3px;font-size:10.5px;color:var(--steel)">📷 docket '+esc([pm.date?String(pm.date).slice(5).split('-').map(x=>String(+x)).join('/'):'',pm.shift||'',pm.terminal||'',pm.hours>0?pm.hours+' hrs':'',pm.from==='log'?(pm.src==='photo'?'scanned into their log':'from their log'):pm.from==='scan'?'the slip they just scanned':pm.from==='camera'?'shot on the spot':''].filter(Boolean).join(' · '))+'</div>':'';
+        /* #slipsays — the docket line reads like a docket: what the slip prints (operator ·
+           berth, per the reader), the ship and the job ride proof_meta now. And the same
+           caption the sender writes into the body ("📷 docket: …", kept for the member
+           sheet, which never pulls proof_meta) is dropped here so it isn't printed twice. */
+        const pline=(pm&&(pm.date||pm.terminal||pm.from))?'<div class="sub" style="margin-top:3px;font-size:10.5px;color:var(--steel)">📷 docket '+esc([pm.date?String(pm.date).slice(5).split('-').map(x=>String(+x)).join('/'):'',pm.shift||'',pm.terminal||'',pm.hours>0?pm.hours+' hrs':'',
+              (pm.op&&pm.op!==pm.terminal)?('slip prints '+pm.op+(pm.berth?' · berth '+pm.berth:'')):(pm.berth?'berth '+pm.berth:''),(pm.dock&&pm.dock!==pm.terminal)?pm.dock:'',pm.ship||'',pm.cat||'',
+              pm.from==='log'?(pm.src==='photo'?'scanned into their log':'from their log'):pm.from==='scan'?'the slip they just scanned':pm.from==='camera'?'shot on the spot':''].filter(Boolean).join(' · '))+'</div>':'';
+        const bodyTxt=pline?String(w.body||'').replace(/\n+📷 docket:[^\n]*$/,''):(w.body||'');
         return '<div style="border:1px solid var(--line-soft);border-radius:10px;padding:8px 10px;margin-bottom:6px">'
         +'<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span class="pill" style="color:'+c.col+';border-color:currentColor">'+c.label+'</span>'
         +(w.handle?'<span class="mono" style="color:var(--copper-hi)">'+esc(w.handle)+'</span>':'<span style="color:var(--steel)">a casual</span>')
         +dock
         +'<span style="margin-left:auto;color:var(--steel);font-size:10.5px">'+_dt(w.created_at)+'</span></div>'
-        +'<div class="sub" style="margin-top:4px;line-height:1.55;color:var(--bone);white-space:pre-wrap">'+esc(w.body||'')+'</div>'
+        +'<div class="sub" style="margin-top:4px;line-height:1.55;color:var(--bone);white-space:pre-wrap">'+esc(bodyTxt)+'</div>'
         +pline
         +'<div class="km-proof-img" data-wid="'+esc(w.id)+'" style="display:none;margin-top:8px"></div>'
         +'<button class="btn-ghost km-mail" data-wid="'+esc(w.id)+'" style="margin-top:6px;padding:3px 10px;font-size:10.5px;color:var(--ok)">✓ handled</button>'
