@@ -8,7 +8,7 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='sep11c';
+window.SHK_BUILD='sep11d';
 /* #freezev3 — keep enough resource timings for the report to name what landed before a
    freeze: the boot alone fires ~100 requests, and the default buffer (250) then stops
    recording for the rest of the session. */
@@ -26791,8 +26791,39 @@ const SCANRAW_KEY="shadowhook_scanraw";
 const LESSONS_MAX=1500;                        /* rows kept locally — oldest fall off */
 let LESSONS={rows:[],outbox:[],pulledAt:0};
 let _lessonsTally=null;                        /* cache; null = dirty */
+/* ═══ #lessonguard(sep11) — THE LESSON THAT SENT SSA TO TOYOTA ═══
+   Two members fixed a Toyota slip (the RORO dock prints SSA, its stevedore, over LB 83)
+   and the reader stored "SSA → TOYOTA" as a lesson. At two votes a lesson OVERRODE a
+   clean read, so from Sep 7 every slip whose operator line read plainly "SSA" — Matson,
+   Zim, both Cosco yards, the Tower, the Steel Dock — sealed at Toyota RORO with a gate
+   route to Pier B. Three rules now stand between a lesson and the record:
+     · a line that IS an operator's name says what it says. A lesson keyed on "SSA",
+       "TTI", "PA"… never applies and is never taught — the slip already named the dock.
+     · a lesson FILLS a blank or corrects a GUESS (p.termFuzzy / p.catFuzzy). A clean
+       read is never overridden, at any vote count, self included.
+     · a berth lesson whose "truth" is a dock's SPAN ("LB 88 96") is an artifact of the
+       seal writing the span back, not a berth anyone read; it broke berthCandidates on
+       every slip it touched. Ignored on apply, no longer taught.
+   REVOKED: rows named here are dropped from every phone's cache and skipped on pull,
+   whatever the server still holds (phones only ever ADD lessons, so deleting the
+   server rows alone would not have reached them). Keep the SQL in step (LESSONS-REVOKE.sql). */
+const LESSONS_REVOKED=[{field:"terminal",token:"SSA",val:"TOYOTA"}];
+const LESSON_BERTH_RE=/^(TI|LB|LA)?\s*\d{1,4}$/;
+function lessonRevoked(r){
+  if(!r||!r.field||!r.token||!r.val)return true;
+  if(LESSONS_REVOKED.some(x=>x.field===r.field&&x.token===r.token&&x.val===r.val))return true;
+  if(r.field==="berth"&&!LESSON_BERTH_RE.test(String(r.val)))return true;
+  /* SCAN_TERMS is declared further down this block; lessonsLoad runs before it exists (TDZ),
+     so the operator-name test is fenced and simply doesn't fire that early. */
+  try{ if(r.field==="terminal"&&SCAN_TERMS.indexOf(r.token)>-1)return true; }catch(e){}
+  return false;
+}
 function lessonsLoad(){ try{ const j=JSON.parse(localStorage.getItem(LESSONS_KEY)||"null");
-  if(j&&Array.isArray(j.rows))LESSONS=Object.assign({rows:[],outbox:[],pulledAt:0},j); }catch(e){} }
+  if(j&&Array.isArray(j.rows))LESSONS=Object.assign({rows:[],outbox:[],pulledAt:0},j);
+  /* #lessonguard — purge revoked rows from the cache on the way in */
+  const n0=LESSONS.rows.length; LESSONS.rows=LESSONS.rows.filter(r=>!lessonRevoked(r));
+  if(LESSONS.rows.length!==n0){ _lessonsTally=null; try{ localStorage.setItem(LESSONS_KEY,JSON.stringify(LESSONS)); }catch(e){} }
+  }catch(e){} }
 function lessonsSave(){ try{
   if(LESSONS.rows.length>LESSONS_MAX)LESSONS.rows=LESSONS.rows.slice(-LESSONS_MAX);
   localStorage.setItem(LESSONS_KEY,JSON.stringify(LESSONS)); }catch(e){} }
@@ -26815,6 +26846,7 @@ function lessonsTally(){
   if(_lessonsTally)return _lessonsTally;
   const me=window.__shkUid||null, t={};
   for(const r of LESSONS.rows){ if(!r||!r.field||!r.token||!r.val)continue;
+    if(lessonRevoked(r))continue;   /* #lessonguard — revoked, operator-name keyed, or span-valued: never counted */
     const f=t[r.field]||(t[r.field]={}); const tk=f[r.token]||(f[r.token]={});
     const v=tk[r.val]||(tk[r.val]={by:{},self:false}); v.by[r.by||"local"]=1;
     if(r.self||(me&&r.by===me))v.self=true; }
@@ -26840,17 +26872,24 @@ function lessonsApply(p, lines, norm){
   const ok=(L,override)=>!!L&&(L.self||L.n>=(override?2:1));
   const mark=f=>{ p._learned=(p._learned||[]); if(p._learned.indexOf(f)<0)p._learned.push(f); };
   const clean=(lines||[]).map(lessonClean);
-  /* terminal: a whole line the Order has learned to read as an operator */
-  if(T.terminal){ for(const L of clean){ if(!L)continue; const les=T.terminal[L];
+  /* terminal: a whole line the Order has learned to read as an operator.
+     #lessonguard — only when the reader has NO operator or a GUESSED one (p.termFuzzy):
+     a name read plainly off its own line is the read, and no vote count overrides it.
+     A lesson keyed on an operator's own name never reaches here (lessonsTally drops it). */
+  if(T.terminal&&!(p.terminal&&!p.termFuzzy)){ for(const L of clean){ if(!L)continue; const les=T.terminal[L];
     if(les&&SCAN_TERMS.indexOf(les.val)>-1&&ok(les,!!p.terminal&&p.terminal!==les.val)){ if(p.terminal!==les.val){p.terminal=les.val;p.termFuzzy=!(les.self||les.n>=2);mark("terminal");} break; } } }   /* #failclosed — one other member's word is a guess, not a read */
-  /* job code: the token under the header, or the token the reader took for the code */
-  if(T.cat){ let tok=null;
+  /* job code: the token under the header, or the token the reader took for the code.
+     #lessonguard — same rule: a code read off the column under the header stands; a lesson
+     fills a blank or corrects the whole-slip sweep's guess (p.catFuzzy). */
+  if(T.cat&&!(p.cat&&!p.catFuzzy)){ let tok=null;
     for(let i=0;i<clean.length;i++){ if(/JOB CATEG|CATEG|EGOR/.test(clean[i])&&clean[i+1]){ tok=clean[i+1].split(" ")[0]; break; } }
     const tries=[tok,p.cat].filter(Boolean);
     for(const tk of tries){ const les=T.cat[tk]; if(les&&ok(les,!!p.cat&&p.cat!==les.val)){ if(p.cat!==les.val){p.cat=les.val;mark("cat");} break; } } }
-  /* berth: a berth string the reader gets wrong the same way every time */
+  /* berth: a berth string the reader gets wrong the same way every time.
+     #lessonguard — the truth has to BE a berth ("LB 83"); a span ("LB 88 96") is a dock's
+     address written back by the seal, and berthCandidates can't read it. */
   if(T.berth&&p.berth){ const les=T.berth[lessonClean(p.berth)];
-    if(les&&ok(les,true)&&lessonClean(p.berth)!==les.val){ p.berth=les.val; if(Array.isArray(p.berths))p.berths.unshift(les.val); mark("berth"); } }
+    if(les&&LESSON_BERTH_RE.test(String(les.val))&&ok(les,true)&&lessonClean(p.berth)!==les.val){ p.berth=les.val; if(Array.isArray(p.berths))p.berths.unshift(les.val); mark("berth"); } }
   /* ship: exact alias first, then snap to the nearest vessel a human has named */
   if(T.ship&&p.ship){ const les=T.ship[lessonClean(p.ship)]; if(les&&les.val&&ok(les,true)&&lessonClean(p.ship)!==les.val){p.ship=les.val;mark("ship");} }
   {
@@ -26883,6 +26922,12 @@ function scanLearn(text, parsed, sealed){
      The wildcard now passes through untouched. */
   const add=(field,token,val)=>{ token=(token==="*")?"*":lessonClean(token); val=lessonClean(val);
     if(!token||!val||token===val)return; if(field==="terminal"&&SCAN_TERMS.indexOf(val)<0)return;
+    /* #lessonguard — never teach that an operator's own name means some other dock (a Toyota
+       slip prints SSA: the BERTH tells them apart, not a rewrite of the word), and never store
+       a dock's span as a berth "truth" */
+    if(field==="terminal"&&SCAN_TERMS.indexOf(token)>-1)return;
+    if(field==="berth"&&!LESSON_BERTH_RE.test(val))return;
+    if(lessonRevoked({field,token,val}))return;
     if(!lessons.some(l=>l.field===field&&l.token===token))lessons.push({field,token,val}); };
   /* terminal — the operator the human chose */
   const tT=lessonClean(sealed.terminal);
@@ -26945,6 +26990,7 @@ async function lessonsPull(force){
     let added=0;
     r.data.forEach(x=>{ if(!x||!x.field||!x.token||!x.val)return;
       const row={field:x.field,token:x.token,val:x.val,by:x.by||"?",at:Date.parse(x.at)||0,self:!!(me&&x.by===me)};
+      if(lessonRevoked(row))return;   /* #lessonguard — a revoked row never lands, however long the server keeps it */
       if(seen[lessonKey(row)])return; seen[lessonKey(row)]=1; LESSONS.rows.push(row); added++; });
     LESSONS.pulledAt=Date.now(); if(added)_lessonsTally=null; lessonsSave();
   }catch(e){}
@@ -27270,6 +27316,7 @@ function parseDocket(t, knownId){
     else if(/\bD\s*A\b(?=\s+LA\b)/.test(up))p.cat="DA";
     else if(/\b[S5$]\b(?=\s+(?:LA|GE)\b)/.test(up))p.cat="S";
     else if(/\bD\b(?=\s+(?:LA|GE)\b)/.test(up))p.cat="D";
+    if(p.cat)p.catFuzzy=true;   /* #lessonguard — a code found by sweeping the whole slip is a guess a lesson may correct; one read under the header is not */
   }
   try{ lessonsApply(p,lines,norm); }catch(e){}   /* #learn — what the Order has taught the reader */
   /* #failclosed(sep11) — the two checks below run LAST, after the lessons, so that a
@@ -27495,7 +27542,13 @@ function sealScan(p){
     const _byShip=shipDock(p.ship,_docks);
     if(_byShip){ _hit=_byShip; }
     else if(dockSpread(_docks)>SAME_YARD_M){
-      const _list=_docks.map(t=>'  · '+(t.aka||t.operator)+' — '+t.berths).join('\n');
+      let _list=_docks.map(t=>'  · '+(t.aka||t.operator)+' — '+t.berths).join('\n');
+      /* #lessonguard — the berth can point OUTSIDE the operator's own docks: a Toyota slip
+         prints SSA (the stevedore) over LB 83, and LB 83 is listed under Toyota RORO, not
+         under any SSA yard. The old list named six SSA docks and never the right one, which
+         is what drove two members to "teach" the reader that SSA means Toyota. Name it. */
+      try{ const _bc=p.berth?berthCandidates(p.berth).filter(t=>_docks.indexOf(t)<0):[];
+        if(_bc.length)_list+='\n'+_bc.map(t=>'  · '+(t.aka||t.operator)+' — '+t.berths+'  (berth '+p.berth+' is listed here)').join('\n'); }catch(e){}
       /* #unknownop — say what was actually read: "the slip says YTI" was a lie whenever the
          operator line was unreadable and only the berth number put those docks in play. */
       const _why=p.terminal
