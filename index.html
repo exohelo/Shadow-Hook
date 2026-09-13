@@ -8,7 +8,7 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='sep13fin';
+window.SHK_BUILD='sep13scan';
 /* #freezev3 — keep enough resource timings for the report to name what landed before a
    freeze: the boot alone fires ~100 requests, and the default buffer (250) then stops
    recording for the rest of the session. */
@@ -27624,28 +27624,85 @@ document.getElementById('galleryBtn').addEventListener('click',()=>{  // #68 —
 });
 document.getElementById('scanNo').addEventListener('click',()=>{scanAborted=true;closeScanSheet();});
 document.getElementById('scanSheet').addEventListener('click',e=>{if(e.target.id==='scanSheet'){scanAborted=true;closeScanSheet();}});
-function loadShot(f){return new Promise((res,rej)=>{
-  const r=new FileReader();
-  r.onload=()=>{const img=new Image();
-    img.onload=()=>{const mk=max=>{const c=document.createElement('canvas');
-        const s=Math.min(1,max/Math.max(img.width,img.height));
-        c.width=Math.max(1,Math.round(img.width*s));c.height=Math.max(1,Math.round(img.height*s));
-        c.getContext('2d').drawImage(img,0,0,c.width,c.height);return c;};
-      res({ocrUrl:mk(1600).toDataURL('image/jpeg',0.85),thumb:mk(640).toDataURL('image/jpeg',0.6)});};
-    img.onerror=rej; img.src=r.result;};
-  r.onerror=rej; r.readAsDataURL(f);
-});}
-function rotateShot(dataUrl,deg){return new Promise((res,rej)=>{
-  const img=new Image();
-  img.onload=()=>{const c=document.createElement('canvas');
-    if(deg===180){c.width=img.width;c.height=img.height;}
-    else{c.width=img.height;c.height=img.width;}
-    const x=c.getContext('2d');
-    x.translate(c.width/2,c.height/2);x.rotate(deg*Math.PI/180);
-    x.drawImage(img,-img.width/2,-img.height/2);
-    res(c.toDataURL('image/jpeg',0.85));};
-  img.onerror=rej; img.src=dataUrl;
-});}
+/* ═══ #scanfix(sep13) — THE 2.6-SECOND "DEVELOPING THE SHOT…" ═══
+   THE ALARMS, Sep 13 07:50 — an iPhone on #scr-dockets with the scan sheet up: "main
+   thread stalled 2.6s". The report blamed vendor_members / ambassador_members; that was
+   the #mydeck poller talking (its own note, at the foot of the page). Nothing else had
+   landed in the 3 s before, so the stall was local CPU, and with the sheet up there is
+   exactly one thing that can be: loadShot. It read the whole 12-megapixel photo into a
+   base64 string (readAsDataURL, ~5 MB), decoded that through an <img>, drew it down to
+   1600 and JPEG-encoded it with toDataURL — synchronous, cannot yield — then drew the
+   640 thumb FROM THE 12-MEGAPIXEL ORIGINAL AGAIN and encoded that too. Four heavy steps
+   in one turn of the event loop; "Developing the shot…" was set but never painted,
+   because the thread was gone before the frame. A sideways slip then ran rotateShot up
+   to three more times, each another data-URL decode + toDataURL.
+   The avatar picker fixed the data-URL half of this three weeks ago (#avfit, aug31). The
+   reader, older code, never got it. Now:
+     · shotDecode — the shot's oriented size comes off the header alone (an <img> on an
+       object URL fires load on the header; the pixels stay undecoded), then ONE decode,
+       createImageBitmap straight off the File, ALREADY RESIZED to the 1600 long side and
+       EXIF-upright — which is most of what the rotate loop was ever for. Chrome does that
+       decode and resample off the main thread; Safari does it inline, but in one native
+       pass with no base64 and no 12-megapixel drawImage. One side pinned, never both, so
+       whatever an engine does with EXIF it can only ever come out bigger, not warped.
+     · the 640 thumb is drawn off the 1600, not the photo — a sixteenth of the pixels;
+     · the reader's copy goes out as a Blob (canvasBlob → toBlob, async). Tesseract takes
+       a Blob straight through FileReader; a data URL it atob().split('').map()s — four
+       hundred thousand characters on the main thread, once per pass;
+     · rotateShot turns the 1600 canvas it is handed — no decode, no data URL;
+     · shotYield between the steps, so the sheet paints and a tap on Cancel lands.
+   Fallbacks, in order: bitmap without the options (an engine that knows no resize —
+   mk() downsamples, as before, minus the data URL); no bitmaps at all → the <img> is drawn.
+   The thumb is still a data URL: it rides the docket record as photo: (sealScan and the
+   New-Job form) and fitProof reads its .length. At 640/q.6 that encode is a few ms.
+   In the lab (Chromium, CPU pinned 6× slow, a 4.9 MB 4032×3024 shot): the old loadShot's
+   longest single task 306–348 ms, this one's 51–59 ms; the <img> fallback ~470–570 ms,
+   one task, where the old path was two of that size back to back. */
+function shotYield(){ return new Promise(r=>{ let done=false; const go=()=>{ if(!done){done=true;r();} };
+  try{ requestAnimationFrame(()=>setTimeout(go,0)); }catch(e){} setTimeout(go,120); }); }   /* a frame if one is coming, 120 ms if not (hidden tab) */
+async function shotDecode(f,max){
+  let url=''; try{ url=URL.createObjectURL(f); }catch(e){}
+  const img=await new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=()=>rej(new Error('unreadable shot')); i.src=url; });
+  const w=img.naturalWidth||img.width, h=img.naturalHeight||img.height, revoke=()=>{ try{ if(url)URL.revokeObjectURL(url); }catch(e){} };
+  if(!(w>0&&h>0)){ revoke(); throw new Error('empty shot'); }
+  const s=Math.min(1,max/Math.max(w,h));
+  if(window.createImageBitmap){
+    const o={imageOrientation:'from-image',resizeQuality:'medium'};
+    if(s<1){ if(w>=h)o.resizeWidth=Math.round(w*s); else o.resizeHeight=Math.round(h*s); }   /* one side pinned — never a distortion */
+    try{ const b=await createImageBitmap(f,o); revoke(); return b; }catch(e){}
+    try{ const b=await createImageBitmap(f); revoke(); return b; }catch(e){}                /* an older engine: full size, mk() shrinks it */
+  }
+  return img;                                                                                 /* no bitmaps: draw the <img>; loadShot revokes */
+}
+async function loadShot(f){
+  const src=await shotDecode(f,1600);                        /* ImageBitmap at 1600, upright — or an <img> off an object URL */
+  const w=src.width||src.naturalWidth, h=src.height||src.naturalHeight;
+  const drop=()=>{ try{ if(src.close)src.close(); else if(src.src&&/^blob:/.test(src.src))URL.revokeObjectURL(src.src); }catch(e){} };
+  if(!(w>0&&h>0)){ drop(); throw new Error('empty shot'); }
+  const mk=(from,fw,fh,max)=>{ const c=document.createElement('canvas');
+    const s=Math.min(1,max/Math.max(fw,fh));
+    c.width=Math.max(1,Math.round(fw*s)); c.height=Math.max(1,Math.round(fh*s));
+    const g=c.getContext('2d'); g.imageSmoothingEnabled=true; g.imageSmoothingQuality='medium';
+    g.drawImage(from,0,0,c.width,c.height); return c; };
+  await shotYield();
+  const big=mk(src,w,h,1600); drop();                        /* a 1:1 copy when the decode already resized; the one big draw when it didn't */
+  await shotYield();
+  const thumb=mk(big,big.width,big.height,640).toDataURL('image/jpeg',0.6);   /* off the 1600, not the photo */
+  await shotYield();
+  const ocr=await canvasBlob(big,0.85);                      /* the reader's copy */
+  return {ocr,thumb,src:big};
+}
+/* turn the reader's 1600 canvas (no decode) → a Blob for Tesseract */
+async function rotateShot(src,deg){
+  const w=src.width||src.naturalWidth, h=src.height||src.naturalHeight;
+  const c=document.createElement('canvas');
+  if(deg===180){c.width=w;c.height=h;} else {c.width=h;c.height=w;}
+  const x=c.getContext('2d');
+  x.translate(c.width/2,c.height/2);x.rotate(deg*Math.PI/180);
+  x.drawImage(src,-w/2,-h/2);
+  await shotYield();
+  return canvasBlob(c,0.85);
+}
 /* Reader files: self-hosted on theshadowhook.com first, public CDN as backup */
 const TESS_HOME=new URL("vendor/tesseract/",location.href).href;
 let TESS_OPTS=null; /* set when the local copy loads; null = CDN defaults */
@@ -27667,13 +27724,15 @@ async function ensureTess(){
     TESS_OPTS=null;
   }
 }
-async function ocrDocket(dataUrl){
+/* #scanfix — takes whatever Tesseract takes: the reader's Blob (loadShot / rotateShot),
+   a canvas, or still a data URL (the retired stub reader, #noscan, hands one). */
+async function ocrDocket(img){
   await ensureTess();
   const opts={logger:m=>{
     if(m&&m.status==='recognizing text')scanSt("Reading the docket\u2026 "+Math.round((m.progress||0)*100)+"%");
   }};
   if(TESS_OPTS)Object.assign(opts,TESS_OPTS);
-  const r=await Tesseract.recognize(dataUrl,'eng',opts);
+  const r=await Tesseract.recognize(img,'eng',opts);
   return (r&&r.data&&r.data.text)||"";
 }
 /* ═══════ #learn(sep2) — THE READER LEARNS FROM EVERY HUMAN FIX ═══════
@@ -28550,13 +28609,14 @@ function scanHandOff(p){
 /* read one image \u2192 {readOk, p, thumb}; null if aborted. Shared by single + batch. */
 async function readDocketShot(f,label){
   label=label||"";
+  await shotYield();   /* #scanfix — the sheet and its status line paint before the decode starts */
   let shot=null;
   try{shot=await loadShot(f);}catch(err){shot=null;}
   if(scanAborted)return null;
   const thumb=shot?shot.thumb:null;
   let text="", readOk=false;
   if(shot){
-    try{scanSt(label+"waking the reader\u2026");text=await ocrDocket(shot.ocrUrl);readOk=true;}
+    try{scanSt(label+"waking the reader\u2026");text=await ocrDocket(shot.ocr);readOk=true;}
     catch(err){readOk=false;}
   }
   if(scanAborted)return null;
@@ -28568,7 +28628,7 @@ async function readDocketShot(f,label){
       if(scanAborted)return null;
       scanSt(label+"trying another angle\u2026");
       try{
-        const turned=await rotateShot(shot.ocrUrl,deg);
+        const turned=await rotateShot(shot.src,deg);   /* #scanfix — turn the canvas, not a data URL */
         const t2=await ocrDocket(turned);
         const p2=parseDocket(t2,myId);
         if(p2.pos){p=p2;break;}
@@ -40901,11 +40961,24 @@ html.arcade .arc-aurora i{mix-blend-mode:normal;
      gets a card at the top of the Armory shelf that opens their deck — and the
      recruiting poster steps aside for them. Both decks have a ⚓ THE APP button
      that comes back here. Reads two small tables the member can already see
-     (their own rows only); no table, no card, no error. -->
+     (their own rows only); no table, no card, no error.
+     #scanfix(sep13) — THE POLLER THAT NAMED ITSELF IN EVERY FREEZE REPORT. done only
+     flipped when a card was BUILT, so for a casual with no deck — nearly everyone — look()
+     ran all 60 rounds: ambassador_members + vendor_members every 1.5 s for 90 s, 120
+     round-trips a session, and setInterval never waited for the last one to answer. The
+     watchdog's "after:" line (#freezev3) names the fetches that landed in the 3 s before a
+     stall — a 1.5 s poller fills that window by construction, so every alarm filed in the
+     first 90 s of a session read "after: vendor_members, ambassador_members" whatever had
+     actually frozen (Sep 13 07:50 was loadShot; see #scanfix at the reader). Now: both
+     tables are maybeSingle() — a null row IS the answer, and so is the server refusing the
+     table (no table / no grant). One clean round and the poller rests; only silence — a
+     dead network, which supabase-js hands back as status 0 — earns a retry, one in flight
+     at a time. The cost is small and
+     named: a member crowned mid-session sees the card on the next open, not within 90 s. -->
 <script>
 (function(){
   'use strict';
-  var done=false;
+  var done=false, busy=false;
   function esc(s){ return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   function card(kind, name){
     var amb = kind==='amb';
@@ -40921,26 +40994,31 @@ html.arcade .arc-aurora i{mix-blend-mode:normal;
       +'</div></div></div>';
   }
   async function look(){
-    if(done||!window.SB||!window.__shkUid)return;
+    if(done||busy||!window.SB||!window.__shkUid)return;
     var host=document.getElementById('myDeck'); if(!host)return;
-    var out='', name='';
+    busy=true;
+    var out='', name='', answered=true;   /* answered: both tables spoke — a row, no row, or the server refusing the table; only silence (offline) is "ask again" */
     try{
       var a=await window.SB.from('ambassador_members').select('ambassador_id').eq('user_id',window.__shkUid).maybeSingle();
-      if(a&&!a.error&&a.data&&a.data.ambassador_id){
+      if(!a||(a.error&&!a.status))answered=false;   /* supabase-js hands a dead network back as {error, status:0}, it doesn't throw — that one IS "ask again" */
+      else if(!a.error&&a.data&&a.data.ambassador_id){
         try{ var an=await window.SB.from('ambassadors').select('name').eq('id',a.data.ambassador_id).maybeSingle();
              if(an&&an.data)name=an.data.name||''; }catch(e){}
         out+=card('amb',name);
       }
-    }catch(e){}
+    }catch(e){ answered=false; }
     try{
       var v=await window.SB.from('vendor_members').select('vendor_id').eq('user_id',window.__shkUid).maybeSingle();
-      if(v&&!v.error&&v.data&&v.data.vendor_id){
+      if(!v||(v.error&&!v.status))answered=false;
+      else if(!v.error&&v.data&&v.data.vendor_id){
         var vn='';
         try{ var vv=await window.SB.from('vendors').select('name').eq('id',v.data.vendor_id).maybeSingle();
              if(vv&&vv.data)vn=vv.data.name||''; }catch(e){}
         out+=card('vendor',vn);
       }
-    }catch(e){}
+    }catch(e){ answered=false; }
+    busy=false;
+    if(answered)done=true;   /* #scanfix — no deck is an answer too; the poller rests */
     if(!out)return;
     done=true;
     host.innerHTML=out; host.hidden=false;
