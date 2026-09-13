@@ -8,7 +8,7 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='sep13scan';
+window.SHK_BUILD='sep13fix';
 /* #freezev3 — keep enough resource timings for the report to name what landed before a
    freeze: the boot alone fires ~100 requests, and the default buffer (250) then stops
    recording for the rest of the session. */
@@ -21234,8 +21234,53 @@ function typedUploadBody(file, ext, kind){
   }catch(e){}
   return file;
 }
+/* ═══ #chatpic(sep13) — THE PICTURE THE ROOM WOULDN'T TAKE ═══
+   Reported: "I tried adding an image to the chatroom, it didn't let me." The room was
+   the ONE media door that uploaded the casual's file exactly as the phone handed it
+   over. clipGate only gates VIDEO — an image falls straight through it — and the clan
+   path (clanClipCompose) shrinks an oversize shot with clipShrinkImage while the room
+   path had no equivalent at all. So off an iPhone the room was posting a 4–12 MB
+   image/heic to the chat-media bucket, and there are three ways that ends badly, none
+   of them the casual's fault:
+     · the bucket's Allowed MIME types almost certainly lists jpeg/png/gif/webp/mp4 and
+       not image/heic → 415, the row vanishes out of the feed, and the toast talks about
+       bucket settings to somebody who just wanted to send a picture of a slip;
+     · past the bucket's size limit → 413, same disappearing act;
+     · and even when it DOES land, nothing but Safari renders a HEIC — the picture
+       posts as a broken frame for the whole hall, and for the sender too, because the
+       optimistic row previews the same unreadable file through createObjectURL.
+   chatFitImage now stands in front of every image the room sends, BEFORE the optimistic
+   row so the preview is the thing that will actually post. A GIF passes untouched (a
+   re-encode is a still). A JPEG/PNG/WebP already under the cap passes untouched — no
+   re-encode, no quality lost on a screenshot. Everything else — every HEIC, every
+   full-res shot — goes through clipShrinkImage: the #avfit decoder (EXIF-upright,
+   Safari reads HEIC fine), 1600 px, JPEG. What reaches the bucket is what every bucket
+   and every browser takes.
+   And when an upload still fails, it files itself: the catch below only ever reached
+   console.warn, so every one of these was invisible in the Command Center. THE ALARMS
+   gets the type, the size and the server's own words now. */
+const CHAT_PIC_PASS=/^image\/(jpeg|png|webp)$/i;   /* renders everywhere, and what the bucket expects */
+const CHAT_PIC_MAX=1.5*1048576;                    /* over this, shrink even a well-formed JPEG */
+async function chatFitImage(file,kind){
+  if(kind!=='image'||!file)return file;
+  const t=String(file.type||'').toLowerCase(), nm=String(file.name||'');
+  if(/gif/.test(t)||/\.gif$/i.test(nm))return file;                 /* a GIF re-encoded is a still */
+  if(CHAT_PIC_PASS.test(t)&&file.size<=CHAT_PIC_MAX)return file;    /* small and readable — leave it alone */
+  try{ toast(/hei[cf]/i.test(t+nm)?'Converting the shot\u2026':'Shrinking the shot\u2026'); }catch(e){}
+  return await clipShrinkImage(file);   /* #avfit decode → 1600 px → JPEG; throws only if the browser can't read it */
+}
 async function chatSendMedia(file,kind,cost){
   if(typeof guestWall==='function'&&guestWall())return;   /* #guest */
+  /* #chatpic — normalise first: the optimistic row previews this same file */
+  try{ file=await chatFitImage(file,kind); }
+  catch(e){
+    const heic=/hei[cf]/i.test(String((file&&file.type)||'')+String((file&&file.name)||''));
+    try{ if(typeof shkAlert==='function')shkAlert('chat-media:decode',String((e&&(e.message||e.code))||e||'')+' \u00b7 '+((file&&file.type)||'?')+' '+Math.round(((file&&file.size)||0)/1024)+'k',''); }catch(_){}
+    toast(heic?'This browser can\u2019t read HEIC photos \u2014 on iPhone set Camera \u2192 Formats \u2192 Most Compatible'
+              :'Couldn\u2019t read that picture \u2014 try a JPG or PNG');
+    if(cost)try{addCredits(cost,'refund',true);}catch(_){}
+    return;
+  }
   const room=CURRENT_ROOM;
   const cid=chatUUID(); chatRememberSent(cid);
   const by=(typeof ACCT_ID==='string'?ACCT_ID:''), handle=chatMyHandle();
@@ -21258,6 +21303,8 @@ async function chatSendMedia(file,kind,cost){
     try{addCredits(cost,'refund',true);}catch(_){}
     const _m=String((e&&(e.message||e.error))||e||'');
     try{console.warn('[chat] upload failed:',_m);}catch(_){}
+    /* #chatpic — and into THE ALARMS, with what it was: type, size, the server's words */
+    try{ if(typeof shkAlert==='function')shkAlert('chat-media',kind+' '+((file&&file.type)||'?')+' '+Math.round(((file&&file.size)||0)/1024)+'k \u2192 '+_m.slice(0,150),''); }catch(_){}
     toast(/mime|not supported|415/i.test(_m)?'⚓ chat-media doesn’t take this file type — add it under the bucket’s Allowed MIME types'
       :/too large|413|exceed|maximum|size/i.test(_m)?'⚓ Over chat-media’s file size limit — raise it on the bucket'
       :/policy|violates|denied|row-level|403/i.test(_m)?'⚓ The bucket refused this path — check chat-media’s policies'
