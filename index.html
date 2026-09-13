@@ -8,7 +8,7 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='sep13bucket';
+window.SHK_BUILD='sep13lbox';
 /* #freezev3 — keep enough resource timings for the report to name what landed before a
    freeze: the boot alone fires ~100 requests, and the default buffer (250) then stops
    recording for the rest of the session. */
@@ -20791,6 +20791,9 @@ document.getElementById('roomBack').addEventListener('click',closeRoom);
   function seat(){ try{ history.pushState({shkGuard:1},''); }catch(e){} }
   function closeTop(){
     try{
+      /* #lightbox(sep13) — a picture full screen is topmost of all: it opens FROM a room,
+         a wire or a comment, so Back must give that surface back before anything else. */
+      if(typeof window.lbIsOpen==='function'&&window.lbIsOpen()){ window.lbClose(); return true; }
       /* #dm(aug13) — an open wire is the topmost thing there is */
       const ls=document.getElementById('lbStory');   /* #lbstory — the reader is topmost when it is up */
       if(ls&&ls.classList.contains('on')){ closeSeasonStory(); return true; }
@@ -41097,5 +41100,210 @@ html.arcade .arc-aurora i{mix-blend-mode:normal;
   setTimeout(look,1200);
 })();
 </script>
+<!-- ═══════════════ #lightbox(sep13) — TAP THE PICTURE, SEE THE PICTURE ═══════════════
+     A photo in a room is 210 px wide (.msg .media) — fine for a face, useless for the
+     thing casuals actually post: a sign, a slip, a gate, a plate, a truck blocking a
+     lane. Tapping one did nothing at all. Now every picture on the wire opens full
+     screen and takes a pinch.
+     WHERE IT BITES: room bubbles (.msg .media), wires (.dm-b img), and the pictures on
+     talk comments (.svc-media) — that last one already excluded itself from the comment
+     row's own click handler (see inBar), so the tap was going nowhere and is free to take.
+     Videos are never caught: they carry their own controls and a tap belongs to them.
+     THE GESTURES have to be hand-rolled. The page is user-scalable=no (line 5) — it has
+     to be, or the chat layer jumps under the phone keyboard — so the browser will not
+     pinch anything for us. Pointer events, one stage, touch-action:none:
+       · pinch, or the wheel on a desk, zooms about the point between the fingers
+       · double-tap toggles 1× / 2.6× at the spot tapped — the fast way into a slip
+       · a drag pans while zoomed, and pans nowhere past the edge of the picture
+       · at 1× a drag DOWN throws it away, the way a phone gallery does
+       · a clean tap closes. So does ✕, Esc, and the phone's own Back (the guard has it
+         first in closeTop — it is the topmost thing on screen when it is up)
+     Z 105: over every sheet (≤98) and overlay (chat 80 · story 85 · cam 90 · profile 92),
+     under the toast (110) so a refund still shows, and under the alert card (120). -->
+<style>
+  #lbox{position:fixed;inset:0;z-index:105;display:none;background:rgba(4,5,7,.96);
+        -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);touch-action:none;overscroll-behavior:contain;user-select:none;-webkit-user-select:none}
+  #lbox.on{display:block}
+  #lbStage{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  #lbImg{max-width:100%;max-height:100%;display:block;transform-origin:50% 50%;
+         will-change:transform;-webkit-user-drag:none;user-drag:none;pointer-events:none;opacity:0;transition:opacity .18s}
+  #lbImg.ready{opacity:1}
+  #lbox.glide #lbImg{transition:transform .22s cubic-bezier(.22,.61,.36,1),opacity .18s}
+  #lbSpin{position:absolute;width:34px;height:34px;border-radius:50%;border:3px solid rgba(238,180,107,.25);
+          border-top-color:var(--copper-hi,#eeb46b);animation:lbSpin .8s linear infinite}
+  @keyframes lbSpin{to{transform:rotate(360deg)}}
+  #lbBar{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:8px;
+         padding:calc(10px + env(safe-area-inset-top)) 14px 26px;
+         background:linear-gradient(180deg,rgba(0,0,0,.6),transparent);pointer-events:none}
+  #lbBar button{pointer-events:auto;background:rgba(0,0,0,.42);border:1px solid rgba(255,255,255,.16);color:#e8e3d8;
+                font:inherit;font-size:19px;line-height:1;width:40px;height:40px;border-radius:50%;cursor:pointer;
+                display:grid;place-items:center;padding:0;-webkit-tap-highlight-color:transparent}
+  #lbBar button:active{background:rgba(0,0,0,.7)}
+  #lbOpen{font-size:16px !important}
+  #lbHint{margin-left:auto;min-width:0;overflow:hidden;text-overflow:ellipsis;
+          font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+          font-size:10.5px;letter-spacing:.14em;color:rgba(232,227,216,.62);text-transform:uppercase;
+          white-space:nowrap;transition:opacity .3s}
+  #lbox.zoomed #lbHint{opacity:0}   /* said its piece once they have zoomed */
+  @media (max-width:330px){ #lbHint{display:none} }
+  /* the pictures that answer a tap say so */
+  .msg .media:not(video),.svc-media:not(video),.dm-b.media img{cursor:zoom-in}
+</style>
+<div id="lbox" role="dialog" aria-modal="true" aria-label="Picture">
+  <div id="lbStage"><div id="lbSpin"></div><img id="lbImg" alt=""></div>
+  <div id="lbBar">
+    <button type="button" id="lbX" aria-label="Close">✕</button>
+    <button type="button" id="lbOpen" aria-label="Open the full picture">↗</button>
+    <span id="lbHint">Pinch to zoom</span>
+  </div>
+</div>
+<script>
+(function(){
+  'use strict';
+  var box=document.getElementById('lbox'), stage=document.getElementById('lbStage'),
+      img=document.getElementById('lbImg'), spin=document.getElementById('lbSpin');
+  if(!box||!img)return;
+  var MAXS=6, DBL=2.6;
+  var s=1, tx=0, ty=0, url='', open=false, bodyOv='';
+  var pts=new Map(), start=null, moved=0, lastTap=0, tapX=0, tapY=0, dismiss=false;
+
+  function vw(){ return window.innerWidth; }
+  function vh(){ return window.innerHeight; }
+  function bounds(){                       /* how far the picture may travel at this scale */
+    var w=img.clientWidth*s, h=img.clientHeight*s;
+    return {x:Math.max(0,(w-vw())/2), y:Math.max(0,(h-vh())/2)};
+  }
+  function clampT(){ var b=bounds(); tx=Math.max(-b.x,Math.min(b.x,tx)); ty=Math.max(-b.y,Math.min(b.y,ty)); }
+  function draw(o){ img.style.transform='translate('+tx.toFixed(2)+'px,'+ty.toFixed(2)+'px) scale('+s.toFixed(4)+')';
+    if(o!==undefined)box.style.background='rgba(4,5,7,'+o.toFixed(3)+')';
+    box.classList.toggle('zoomed',s>1.02); }
+  function glide(fn){ box.classList.add('glide'); fn(); draw();
+    setTimeout(function(){ box.classList.remove('glide'); },240); }
+  /* zoom about a point, so the thing under the fingers stays under the fingers */
+  function zoomAt(ns,cx,cy){
+    ns=Math.max(1,Math.min(MAXS,ns));
+    var px=cx-vw()/2, py=cy-vh()/2;
+    tx=px-(px-tx)*(ns/s); ty=py-(py-ty)*(ns/s); s=ns;
+    if(s<=1.001){ s=1; tx=0; ty=0; }
+    clampT();
+  }
+
+  window.lbOpen=function(src,alt){
+    if(!src)return;
+    url=src; open=true; s=1; tx=0; ty=0; dismiss=false; pts.clear();
+    img.classList.remove('ready'); spin.style.display='';
+    img.alt=alt||''; img.src=src;
+    draw(.96); box.classList.add('on');
+    try{ bodyOv=document.body.style.overflow; document.body.style.overflow='hidden'; }catch(e){}
+  };
+  window.lbClose=function(){
+    if(!open)return; open=false;
+    box.classList.remove('on','zoomed','glide');
+    img.removeAttribute('src'); img.classList.remove('ready');
+    try{ document.body.style.overflow=bodyOv; }catch(e){}
+  };
+  window.lbIsOpen=function(){ return open; };
+
+  img.addEventListener('load',function(){ spin.style.display='none'; img.classList.add('ready'); });
+  img.addEventListener('error',function(){ spin.style.display='none';
+    try{ if(typeof toast==='function')toast('That picture wouldn’t load'); }catch(e){} window.lbClose(); });
+
+  /* ── the door: any picture on the wire, never a video ── */
+  document.addEventListener('click',function(e){
+    var t=e.target;
+    if(!t||t.tagName!=='IMG')return;
+    if(t.closest('#lbox'))return;
+    var ok=t.closest('#chatFeed')&&t.classList.contains('media');        /* a room bubble */
+    if(!ok) ok=t.classList.contains('svc-media');                        /* a talk comment */
+    if(!ok) ok=!!t.closest('.dm-b.media');                               /* a wire */
+    if(!ok)return;
+    e.preventDefault(); e.stopPropagation();
+    window.lbOpen(t.getAttribute('data-orig')||t.currentSrc||t.src, t.alt);
+  },true);   /* capture: get there before a row handler eats it */
+
+  document.getElementById('lbX').addEventListener('click',function(e){ e.stopPropagation(); window.lbClose(); });
+  document.getElementById('lbOpen').addEventListener('click',function(e){ e.stopPropagation();
+    try{ window.open(url,'_blank','noopener'); }catch(x){} });
+
+  /* ── gestures ── */
+  stage.addEventListener('pointerdown',function(e){
+    if(!open)return;
+    /* capture keeps a finger that slides off the picture talking to us — but it THROWS
+       if the pointer is already gone, and this is the first line of the gesture: an
+       unguarded throw here would kill the pinch before it starts. */
+    try{ stage.setPointerCapture&&stage.setPointerCapture(e.pointerId); }catch(x){}
+    box.classList.remove('glide');   /* grabbing it mid-glide must track the finger 1:1, not chase it */
+    pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    moved=0;
+    if(pts.size===1){ start={x:e.clientX,y:e.clientY,tx:tx,ty:ty,t:Date.now()}; tapX=e.clientX; tapY=e.clientY; }
+    else if(pts.size===2){
+      var a=Array.from(pts.values());
+      start={pinch:true, d:Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y)||1, s:s,
+             cx:(a[0].x+a[1].x)/2, cy:(a[0].y+a[1].y)/2};
+    }
+  });
+  stage.addEventListener('pointermove',function(e){
+    if(!open||!pts.has(e.pointerId)||!start)return;
+    pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(start.pinch&&pts.size>=2){
+      var a=Array.from(pts.values());
+      var d=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y)||1;
+      var cx=(a[0].x+a[1].x)/2, cy=(a[0].y+a[1].y)/2;
+      var ns=start.s*(d/start.d);
+      var was=s; s=Math.max(1,Math.min(MAXS,ns));
+      var px=cx-vw()/2, py=cy-vh()/2;
+      tx=px-(px-tx)*(s/was); ty=py-(py-ty)*(s/was);
+      clampT(); draw(); moved=99; return;
+    }
+    var dx=e.clientX-start.x, dy=e.clientY-start.y;
+    moved=Math.max(moved,Math.hypot(dx,dy));
+    if(s>1.02){ tx=start.tx+dx; ty=start.ty+dy; clampT(); draw(); }
+    else if(dy>0){                                   /* at 1×, a pull down throws it away */
+      dismiss=true; ty=dy; tx=dx*.35; s=Math.max(.82,1-dy/(vh()*1.6));
+      draw(Math.max(.35,.96-dy/(vh()*.9)));
+    }
+  });
+  function up(e){
+    if(!open)return;
+    pts.delete(e.pointerId);
+    if(pts.size===1){                                 /* one finger lifted mid-pinch: carry on panning */
+      var r=Array.from(pts.values())[0]; start={x:r.x,y:r.y,tx:tx,ty:ty,t:Date.now()}; return;
+    }
+    if(pts.size>0)return;
+    if(dismiss){
+      dismiss=false;
+      if(ty>vh()*.16){ window.lbClose(); return; }
+      glide(function(){ s=1; tx=0; ty=0; }); box.style.background='rgba(4,5,7,.96)'; return;
+    }
+    if(moved<12){
+      var now=Date.now();
+      if(now-lastTap<300&&Math.hypot(e.clientX-tapX,e.clientY-tapY)<40){    /* double-tap */
+        lastTap=0;
+        glide(function(){ if(s>1.02){ s=1; tx=0; ty=0; } else zoomAt(DBL,e.clientX,e.clientY); });
+        return;
+      }
+      lastTap=now;
+      setTimeout(function(){ if(lastTap===now&&open&&s<=1.02)window.lbClose(); },300);   /* a clean tap, once we know it is not a double */
+      return;
+    }
+    if(s<=1.02)glide(function(){ s=1; tx=0; ty=0; });
+  }
+  stage.addEventListener('pointerup',up);
+  stage.addEventListener('pointercancel',function(e){ pts.delete(e.pointerId); if(!pts.size){ dismiss=false; glide(function(){ if(s<=1.02){s=1;tx=0;ty=0;} }); box.style.background='rgba(4,5,7,.96)'; } });
+  stage.addEventListener('wheel',function(e){
+    if(!open)return; e.preventDefault();
+    zoomAt(s*(e.deltaY<0?1.14:1/1.14),e.clientX,e.clientY); draw();
+  },{passive:false});
+  document.addEventListener('keydown',function(e){
+    if(!open)return;
+    if(e.key==='Escape'){ e.preventDefault(); window.lbClose(); }
+    else if(e.key==='+'||e.key==='='){ zoomAt(s*1.25,vw()/2,vh()/2); draw(); }
+    else if(e.key==='-'){ zoomAt(s/1.25,vw()/2,vh()/2); draw(); }
+    else if(e.key==='0'){ glide(function(){ s=1;tx=0;ty=0; }); }
+  });
+  window.addEventListener('resize',function(){ if(open){ clampT(); draw(); } });
+})();
+</script>
+
 </body>
 </html>
