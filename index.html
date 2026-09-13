@@ -8,7 +8,7 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='sep13fix';
+window.SHK_BUILD='sep13bucket';
 /* #freezev3 — keep enough resource timings for the report to name what landed before a
    freeze: the boot alone fires ~100 requests, and the default buffer (250) then stops
    recording for the rest of the session. */
@@ -21290,8 +21290,29 @@ async function chatSendMedia(file,kind,cost){
   if(!window.SB||!room){if(el)el.style.opacity='';if(cost)try{addCredits(cost,'refund',true);}catch(_){}return;}   // #fix2 — nothing uploaded, nothing charged
   try{
     const ext=((file.name||'').split('.').pop()||(kind==='video'?'mp4':'jpg')).toLowerCase().replace(/[^a-z0-9]/g,'')||'bin';
-    const path=String(room).replace(/[^a-zA-Z0-9_-]/g,'_')+'/'+cid+'.'+ext;
-    const up=await window.SB.storage.from('chat-media').upload(path,typedUploadBody(file,ext,kind),{contentType:mediaMime(file,ext,kind),upsert:true,cacheControl:'31536000'});   // #vidmime2 — Blob carries the real type
+    /* ═══ #bucketpath(sep13) — "THE BUCKET REFUSED THIS PATH" ═══
+       The toast was right and it was not about the picture at all. Two things about
+       this one call asked the bucket for permissions no other uploader in the app needs:
+         · UPSERT. supabase-js turns upsert:true into the x-upsert header, and Storage
+           then wants UPDATE on storage.objects as well as INSERT. cid is a fresh UUID —
+           it CANNOT collide — so the flag only ever bought a second policy requirement.
+           The DM path learned this already and says so in its own line further down
+           ("no upsert: a fresh uuid never collides, so the bucket needs an INSERT policy
+           only"); the room was never brought along.
+         · THE PATH. Every other uploader writes under a fixed, named first folder —
+           dm/ · stories/ · talk/ · avatars/ · clans/ · gath/ — and the room alone wrote
+           to the bare room NAME at the bucket root ("The_Hall_Floor/…"). Any policy that
+           names the folders it trusts refuses that, and it refuses a different folder for
+           every room anyone ever opens, so it can never be allow-listed properly either.
+       Rooms now live under rooms/<room>/ like everything else: ONE folder to trust,
+       whatever the hall names its rooms. Pictures already posted keep working — the
+       public URL is stored per message, and _burnPaths reads the key back out of that
+       URL, so old bare-room objects still resolve and still delete.
+       IF IT STILL REFUSES: the policy has no rooms/ in it yet. In Supabase → Storage →
+       chat-media → Policies, the INSERT policy needs to accept this prefix (or accept
+       any path from an authenticated member). That part is on the wire, not in here. */
+    const path='rooms/'+String(room).replace(/[^a-zA-Z0-9_-]/g,'_')+'/'+cid+'.'+ext;
+    const up=await window.SB.storage.from('chat-media').upload(path,typedUploadBody(file,ext,kind),{contentType:mediaMime(file,ext,kind),cacheControl:'31536000'});   // #vidmime2 — Blob carries the real type · #bucketpath — no upsert: INSERT is enough
     if(up.error)throw up.error;
     const pub=window.SB.storage.from('chat-media').getPublicUrl(path);
     const url=pub&&pub.data&&pub.data.publicUrl; if(!url)throw new Error('no public url');
@@ -22945,7 +22966,7 @@ async function sbMigrateStories(){
         if(/^data:/.test(url)){   // offline camera shot — land the image in storage first
           const blob=await (await fetch(url)).blob();
           const path='stories/'+chatUUID()+'.jpg';
-          const r1=await window.SB.storage.from('chat-media').upload(path,blob,{contentType:blob.type||'image/jpeg',upsert:true,cacheControl:'31536000'});
+          const r1=await window.SB.storage.from('chat-media').upload(path,blob,{contentType:blob.type||'image/jpeg',cacheControl:'31536000'});   /* #bucketpath — fresh uuid, no upsert: INSERT is enough */
           if(r1.error)throw r1.error;
           const pub=window.SB.storage.from('chat-media').getPublicUrl(path);
           url=pub&&pub.data&&pub.data.publicUrl;if(!url)throw new Error('no public url');
@@ -23116,7 +23137,7 @@ async function postMediaStory(){
     try{
       const ext=((file.name||'').split('.').pop()||(_styKind==='vid'?'mp4':'jpg')).toLowerCase().replace(/[^a-z0-9]/g,'')||'bin';
       const path='stories/'+chatUUID()+'.'+ext;
-      const up=await window.SB.storage.from('chat-media').upload(path,typedUploadBody(file,ext,_styKind),{contentType:mediaMime(file,ext,_styKind),upsert:true,cacheControl:'31536000'});   // #vidmime2 — Blob carries the real type
+      const up=await window.SB.storage.from('chat-media').upload(path,typedUploadBody(file,ext,_styKind),{contentType:mediaMime(file,ext,_styKind),cacheControl:'31536000'});   // #vidmime2 — Blob carries the real type · #bucketpath — fresh uuid, no upsert
       if(up.error)throw up.error;
       const pub=window.SB.storage.from('chat-media').getPublicUrl(path);
       const url=pub&&pub.data&&pub.data.publicUrl; if(!url)throw new Error('no public url');
@@ -23954,7 +23975,7 @@ async function svcSend(media){
       if(media&&media.file){   /* a photo or clip: land it in storage first, under talk/ */
         const file=media.file, ext=((file.name||'').split('.').pop()||(mk==='video'?'mp4':'jpg')).toLowerCase().replace(/[^a-z0-9]/g,'')||'bin';
         const path='talk/'+chatUUID()+'.'+ext;
-        const up=await window.SB.storage.from('chat-media').upload(path,typedUploadBody(file,ext,mk),{contentType:mediaMime(file,ext,mk),upsert:true,cacheControl:'31536000'});
+        const up=await window.SB.storage.from('chat-media').upload(path,typedUploadBody(file,ext,mk),{contentType:mediaMime(file,ext,mk),cacheControl:'31536000'});   /* #bucketpath — fresh uuid, no upsert */
         if(up.error)throw up.error;
         const pub=window.SB.storage.from('chat-media').getPublicUrl(path);
         url=pub&&pub.data&&pub.data.publicUrl; if(!url)throw new Error('no public url');
@@ -26769,7 +26790,7 @@ async function clanClipUpload(clanId,file,kind,caption,blobUrl){
   try{
     const ext=((file.name||'').split('.').pop()||(kind==='video'?'mp4':'jpg')).toLowerCase().replace(/[^a-z0-9]/g,'')||'bin';
     const path='clans/'+String(clanId).replace(/[^a-zA-Z0-9_-]/g,'_')+'/'+chatUUID()+'.'+ext;
-    const up=await window.SB.storage.from('chat-media').upload(path,typedUploadBody(file,ext,kind),{contentType:mediaMime(file,ext,kind),upsert:true,cacheControl:'31536000'});
+    const up=await window.SB.storage.from('chat-media').upload(path,typedUploadBody(file,ext,kind),{contentType:mediaMime(file,ext,kind),cacheControl:'31536000'});   /* #bucketpath — fresh uuid, no upsert */
     if(up.error)throw up.error;
     const pub=window.SB.storage.from('chat-media').getPublicUrl(path);
     const url=pub&&pub.data&&pub.data.publicUrl; if(!url)throw new Error('no public url');
