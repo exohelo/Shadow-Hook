@@ -8,7 +8,7 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='sep14shush';
+window.SHK_BUILD='sep14quiet';
 /* #freezev3 — keep enough resource timings for the report to name what landed before a
    freeze: the boot alone fires ~100 requests, and the default buffer (250) then stops
    recording for the rest of the session. */
@@ -4387,13 +4387,6 @@ window.DEVLOG=(function(){
   .hs-say.talking{border-color:var(--ember,#ff6b3d);color:var(--ember,#ff6b3d);background:rgba(255,107,61,.14)}
   html.daylight .hs-say.talking{background:rgba(163,52,20,.12);border-color:rgba(163,52,20,.5)}
   @media (max-width:412px){ .hs-say.hs-mini b{display:none} }
-  /* keep-reading is its own considered choice, down in the fold where there is room */
-  .hs-auto{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;color:var(--steel);cursor:pointer;
-    -webkit-tap-highlight-color:transparent;user-select:none}
-  .hs-auto .hs-box{width:14px;height:14px;border-radius:4px;border:1px solid var(--line);display:grid;place-items:center;
-    font-size:10px;line-height:1;color:transparent}
-  .hs-auto.on .hs-box{border-color:var(--copper-hi,#eeb46b);color:var(--copper-hi,#eeb46b);background:rgba(238,180,107,.14)}
-  .hs-auto.on{color:var(--copper-hi,#eeb46b)}
   /* the native player follows the app's theme instead of glaring white on the dark card */
   .hall-say audio{width:100%;margin-top:8px;height:34px;display:block;color-scheme:dark;border-radius:18px}
   html.daylight .hall-say audio{color-scheme:light}
@@ -10650,9 +10643,7 @@ function renderCallStart(){
 }
 /* #114 — the predictions re-figure the moment data lands, wherever it lands from:
    a logged board, a wire correction, a bot sheet, or the boot seed. */
-function repredict(){try{renderCallStart();}catch(e){} try{publishCall();}catch(e){} try{if(window.ffRender)ffRender();}catch(e){}
-  try{if(window.__hsUnlocked&&typeof hsSpeak==='function')hsSpeak(false);}catch(e){}   /* #hallsay — a changed call speaks itself, once */
-}
+function repredict(){try{renderCallStart();}catch(e){} try{publishCall();}catch(e){} try{if(window.ffRender)ffRender();}catch(e){}}
 /* #recalc/#recalc2 — manual "run the numbers again" button on the wire. The old
    version only re-ran the math on the SAME inputs — same numbers in, same call out,
    so the press read as doing nothing. Now it actually goes and gets fresh inputs:
@@ -29570,9 +29561,15 @@ function hlApplyToRecord(){
    THE ▶ READS IT ALOUD. speechSynthesis, on the phone, free, no network: the slot, the
    hall's card if there is one, the run, and the countdown — for a casual driving in who
    should not be reading a card at all. It speaks the CARD AS IT IS SAID: "B 4 7 0 4",
-   not "B four thousand seven hundred and four". Off by default; the choice is remembered.
-   iOS will not speak until a real tap has unlocked it, so AUTO only ever starts after
-   the casual has pressed ▶ once in that session — never a phone that talks unasked. */
+   not "B four thousand seven hundred and four".
+   #quiet(sep14) — IT ONLY SPEAKS WHEN ASKED. There was a "read it again when the call
+   changes" option, and it was a bad idea however carefully it was fenced: a phone in a
+   pocket on a dispatch floor does not get to decide when to start talking, and a feature
+   that MIGHT speak is one a casual has to think about every time they open the app. The
+   checkbox, the stored preference and the repredict hook are gone — there is one road to
+   the voice and it runs through the ▶. The recording is the same: preload="none", no
+   autoplay, and the signature check below means a refresh will not restart it mid-play.
+   Nothing on this card makes a sound on its own. */
 function hsConf(c){ c=(c==null?null:+c);
   if(c==null||isNaN(c))return {cls:'lo',txt:'unsure'};
   return c>=0.85?{cls:'hi',txt:Math.round(c*100)+'% sure'}
@@ -29653,7 +29650,6 @@ function hsSpeak(force){
     return true;
   }catch(e){ hsPaintSay(); return false; }
 }
-function hsAutoOn(){ try{ return localStorage.getItem(K('hallsay'))==='1'; }catch(e){ return false; } }
 window.hsSpeak=hsSpeak;
 /* #hallsay2(sep14) — ONE LINE. The first cut printed the whole reading: the card, the
    hall's entire transcript, a confidence pill and a status sentence — four or five lines
@@ -29697,7 +29693,16 @@ function renderHallLine(){
     var host=document.getElementById('hallSay'); if(!host)return;
     var r=(window.HALL_LINE_ROWS||[])[0];
     var canSay=('speechSynthesis' in window);
-    var sayBtn=canSay?'<button type="button" class="hs-say'+(hsAutoOn()?' on':'')+'" id="hsSay">\u25b6 Read the call</button>':'';
+    /* #quiet — DON'T REDRAW WHAT HAS NOT CHANGED. sbLoadHallLine runs on every refresh
+       and this used to rewrite the band's innerHTML each time — which destroys the
+       <audio> element and stops the recording dead halfway through. Same inputs, same
+       markup: leave the DOM alone and whatever is playing keeps playing. */
+    var headEl0=document.querySelector('#callStart .cs-id');
+    var sig=[r&&r.id,r&&r.card,r&&r.conf,r&&r.ran_at,r&&(r.audio||(r.extras&&r.extras.audio))||'',
+             JSON.stringify(window._hlApplied||null),headEl0?headEl0.textContent:'',hsOpenPref()?1:0].join('|');
+    if(sig===window.__hsSig&&host.innerHTML)return;
+    window.__hsSig=sig;
+    var sayBtn=canSay?'<button type="button" class="hs-say" id="hsSay">\u25b6 Read the call</button>':'';
     if(!r||!r.card){
       if(!canSay){ host.style.display='none'; return; }
       host.className='hall-say cold'; host.style.display='';
@@ -29731,15 +29736,12 @@ function renderHallLine(){
       host.innerHTML='<div class="hs-top" id="hsTop" role="button" tabindex="0" aria-expanded="'+(open?'true':'false')+'">'
         +lead
         +'<span class="hs-when">'+esc((hlWhen(r.ran_at)||'').split(' \u00b7 ')[0])+'</span>'
-        +(canSay?'<button type="button" class="hs-say hs-mini'+(hsAutoOn()?' on':'')+'" id="hsSay" aria-label="Read the call aloud">\u25b6<b>Read</b></button>':'')
+        +(canSay?'<button type="button" class="hs-say hs-mini" id="hsSay" aria-label="Read the call aloud">\u25b6<b>Read</b></button>':'')
         +'<span class="hs-caret">\u25be</span></div>'
         +'<div class="hs-more">'
         +(quote?'<p class="hs-quote">\u201c'+esc(quote)+'\u201d</p>':'')
         +'<div class="hs-foot"><span class="hs-conf '+cf.cls+'">'+cf.txt+'</span>'
-        +'<span>'+esc(st.txt)+'</span>'
-        +(canSay?'<span class="hs-auto'+(hsAutoOn()?' on':'')+'" id="hsAuto" role="checkbox" tabindex="0" aria-checked="'+(hsAutoOn()?'true':'false')+'">'
-          +'<span class="hs-box">\u2713</span>read it again when the call changes</span>':'')
-        +'</div>'
+        +'<span>'+esc(st.txt)+'</span></div>'
         /* #hallsay — THE RECORDING, when the bot starts keeping one. hall_line_log has no
            audio column today; give a row `audio` (or extras.audio) and this appears. */
         +((r.audio||(r.extras&&r.extras.audio))?'<audio controls preload="none" src="'+esc(r.audio||r.extras.audio)+'"></audio>':'')
@@ -29763,25 +29765,12 @@ function renderHallLine(){
       b.addEventListener('click',function(e){
         e.stopPropagation();
         if(hsTalking()){ hsStop(); return; }          /* #shush — talking? then this is the shut-up button */
-        window.__hsUnlocked=true;    /* a real tap: iOS will let the phone speak from here on */
         hsSpeak(true);
       });
     }
     /* the recording and the voice never run together */
     try{ var au2=document.querySelector('#hallSay audio');
       if(au2)au2.addEventListener('play',function(){ try{ speechSynthesis.cancel(); }catch(e){} hsPaintSay(); }); }catch(e){}
-    var au=document.getElementById('hsAuto');
-    if(au){
-      var flipAuto=function(e){ if(e)e.stopPropagation();
-        var on=!hsAutoOn();
-        try{ localStorage.setItem(K('hallsay'),on?'1':'0'); }catch(e2){}
-        au.classList.toggle('on',on); au.setAttribute('aria-checked',on?'true':'false');
-        if(on)window.__hsUnlocked=true; else { try{ speechSynthesis.cancel(); }catch(e2){} }
-      };
-      au.addEventListener('click',flipAuto);
-      au.addEventListener('keydown',function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); flipAuto(); } });
-    }
-    if(hsAutoOn()&&window.__hsUnlocked)hsSpeak(false);
   }catch(e){ try{DEVLOG.err('renderHallLine: '+e.message);}catch(_){} }
 }
 
