@@ -8,7 +8,7 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='sep14hall3';
+window.SHK_BUILD='sep14hall4';
 /* #freezev3 — keep enough resource timings for the report to name what landed before a
    freeze: the boot alone fires ~100 requests, and the default buffer (250) then stops
    recording for the rest of the session. */
@@ -4347,9 +4347,14 @@ window.DEVLOG=(function(){
   /* the tail sits inside the wire card — no card chrome of its own */
   .ff-tail{position:relative;z-index:1}
   /* ═══ #hallsay(sep14) — THE HALL LINE, ON THE CALL ═══ */
-  .hall-say{margin:9px 0 2px;border:1px solid rgba(238,180,107,.34);border-radius:12px;
+  /* #hallsay4 — AGREEING IS NOT NEWS. When the hall's card is the card the header already
+     prints, this is a CREDIT LINE, not a card: no box, no second A4996, just where the
+     number came from and the count that came with it. The bordered treatment is kept for
+     the one case that earns it — the hall saying something the header does not. */
+  .hall-say{margin:7px 0 2px;padding:0;border:0;background:none}
+  .hall-say.differ{margin:9px 0 2px;border:1px solid rgba(238,180,107,.34);border-radius:12px;
     background:linear-gradient(184deg,rgba(238,180,107,.10),rgba(238,180,107,.03));padding:9px 11px}
-  .hall-say.cold{border-color:var(--line-soft);background:rgba(255,255,255,.03)}
+  .hall-say.cold{border:0;background:none;padding:0}
   .hall-say .hs-top{display:flex;align-items:center;gap:7px;cursor:pointer;-webkit-tap-highlight-color:transparent}
   .hall-say .hs-ttl{flex:none;font-size:14px;line-height:1;color:var(--copper-hi,#eeb46b)}
   .hall-say .hs-ttl i{font-style:normal;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
@@ -4357,6 +4362,8 @@ window.DEVLOG=(function(){
   @media (max-width:412px){ .hall-say .hs-ttl i{display:none} }   /* the ☎ is label enough when the row is tight */
   .hall-say.cold .hs-ttl{color:var(--steel)}
   .hall-say .hs-card{font-family:'Anton',sans-serif;font-size:19px;letter-spacing:.04em;color:var(--bone);line-height:1;flex:none}
+  .hall-say .hs-flag{flex:none;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--ember,#ff6b3d)}
   .hall-say .hs-gist{min-width:0;flex:1;font-size:11.5px;color:var(--steel);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   /* on the smallest phones the card and the clock are the line; the count is one tap down */
   @media (max-width:340px){ .hall-say .hs-gist{display:none} }
@@ -29659,11 +29666,15 @@ function renderHallLine(){
     if(!r||!r.card){
       if(!canSay){ host.style.display='none'; return; }
       host.className='hall-say cold'; host.style.display='';
-      host.innerHTML='<div class="hs-top" style="cursor:default"><span class="hs-ttl">\u260e<i>Hall line</i></span>'
+      host.innerHTML='<div class="hs-top" style="cursor:default"><span class="hs-ttl">\u260e</span>'
         +'<span class="hs-gist">nothing heard off the phone yet</span>'+sayBtn+'</div>';
     }else{
       var open=hsOpenPref(), cf=hsConf(r.conf), st=hsStatus(window._hlApplied);
       var gist=hsGist(r);
+      /* what is the header already telling them? */
+      var headEl=document.querySelector('#callStart .cs-id');
+      var head=headEl?String(headEl.textContent||'').trim():'';
+      var agrees=!!head&&!/pending|^—$/i.test(head)&&head.toUpperCase()===String(r.card).toUpperCase();
       /* the hall says it all twice — keep the first telling */
       /* #hallsay3 — the hall stutters, and the reader writes down every stutter:
          "We have 1160, 1160 as a count" · "A like Apple, A like Apple". Said once is
@@ -29674,11 +29685,16 @@ function renderHallLine(){
                   .replace(/\b([\w'\u2019]+(?: [\w'\u2019]+){1,3})((?:,|\s)+)\1\b/gi,'$1')  /* A like Apple, A like Apple */
                   .replace(/\s+([,.])/g,'$1').replace(/[\s.,\u2026]+$/,'');
       if(quote.length>200)quote=quote.slice(0,198).replace(/\s\S*$/,'')+'\u2026';
-      host.className='hall-say'+(open?' open':''); host.style.display='';
+      host.className='hall-say'+(agrees?'':' differ')+(open?' open':''); host.style.display='';
+      /* agreeing: no card, no box — "off the hall line" is the whole point of the line.
+         disagreeing: the card, flagged, because that IS the news. */
+      var lead=agrees
+        ? '<span class="hs-ttl">\u260e</span><span class="hs-gist">off the hall line'+(gist?' \u00b7 '+esc(gist):'')+'</span>'
+        : '<span class="hs-ttl">\u260e</span><span class="hs-flag">hall says</span>'
+          +'<span class="hs-card">'+esc(r.card)+'</span>'
+          +'<span class="hs-gist">'+esc(gist||st.txt)+'</span>';
       host.innerHTML='<div class="hs-top" id="hsTop" role="button" tabindex="0" aria-expanded="'+(open?'true':'false')+'">'
-        +'<span class="hs-ttl">\u260e<i>Hall line</i></span>'
-        +'<span class="hs-card">'+esc(r.card)+'</span>'
-        +'<span class="hs-gist">'+esc(gist||st.txt)+'</span>'
+        +lead
         +'<span class="hs-when">'+esc((hlWhen(r.ran_at)||'').split(' \u00b7 ')[0])+'</span>'
         +(canSay?'<button type="button" class="hs-say hs-mini'+(hsAutoOn()?' on':'')+'" id="hsSay" aria-label="Read the call aloud">\u25b6<b>Read</b></button>':'')
         +'<span class="hs-caret">\u25be</span></div>'
