@@ -8,7 +8,7 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='sep13lbox';
+window.SHK_BUILD='sep14hall';
 /* #freezev3 — keep enough resource timings for the report to name what landed before a
    freeze: the boot alone fires ~100 requests, and the default buffer (250) then stops
    recording for the rest of the session. */
@@ -4301,6 +4301,8 @@ window.DEVLOG=(function(){
           <span class="wire-slot" id="callSlot">—</span>
         </div>
         <div class="wire-srcline"><span class="wire-src est" id="wSrc">—</span></div>
+        <!-- #hallsay(sep14) — the phone line's own words, and the ▶ that reads the call aloud -->
+        <div class="hall-say" id="hallSay" style="display:none"></div>
         <div class="wire-stage">
           <div class="wire-stoplbl">PREDICTED STOP</div>
           <div class="wire-stop" id="predStop">—</div>
@@ -4344,6 +4346,37 @@ window.DEVLOG=(function(){
   <style>
   /* the tail sits inside the wire card — no card chrome of its own */
   .ff-tail{position:relative;z-index:1}
+  /* ═══ #hallsay(sep14) — THE HALL LINE, ON THE CALL ═══ */
+  .hall-say{margin:9px 0 2px;border:1px solid rgba(238,180,107,.34);border-radius:12px;
+    background:linear-gradient(184deg,rgba(238,180,107,.10),rgba(238,180,107,.03));padding:9px 11px}
+  .hall-say.cold{border-color:var(--line-soft);background:rgba(255,255,255,.03)}
+  .hall-say .hs-top{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+  .hall-say .hs-ttl{font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--copper-hi,#eeb46b)}
+  .hall-say.cold .hs-ttl{color:var(--steel)}
+  .hall-say .hs-card{font-family:'Anton',sans-serif;font-size:21px;letter-spacing:.05em;color:var(--bone);line-height:1}
+  .hall-say .hs-when{margin-left:auto;font-size:10.5px;color:var(--steel);white-space:nowrap}
+  .hall-say .hs-quote{margin:6px 0 0;font-size:12.5px;line-height:1.55;color:var(--bone);opacity:.92;
+    font-style:italic;overflow-wrap:anywhere}
+  .hall-say .hs-foot{margin-top:5px;font-size:10.5px;color:var(--steel);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .hall-say .hs-conf{border:1px solid currentColor;border-radius:20px;padding:1px 7px;font-size:9.5px;letter-spacing:.1em}
+  .hall-say .hs-conf.hi{color:var(--ok,#6fcf7f)} .hall-say .hs-conf.mid{color:var(--copper-hi,#eeb46b)} .hall-say .hs-conf.lo{color:var(--ember,#ff6b3d)}
+  /* the native player follows the app's theme instead of glaring white on the dark card */
+  .hall-say audio{width:100%;margin-top:8px;height:34px;display:block;color-scheme:dark;border-radius:18px}
+  html.daylight .hall-say audio{color-scheme:light}
+  .hs-say{margin-left:auto;background:rgba(0,0,0,.28);border:1px solid rgba(238,180,107,.45);color:var(--copper-hi,#eeb46b);
+    font:inherit;font-size:11px;letter-spacing:.1em;border-radius:20px;padding:5px 11px;cursor:pointer;
+    -webkit-tap-highlight-color:transparent;white-space:nowrap}
+  .hs-say:active{background:rgba(0,0,0,.5)}
+  .hs-say.on{background:rgba(238,180,107,.18)}
+  html.daylight .hall-say .hs-quote,html.daylight .hall-say .hs-card{color:#241c14}
+  /* daylight redefines --copper-hi to #7a4517, so the text is already dark — but a 28%
+     BLACK wash behind it is a smudge on a cream card. Lift the button instead. */
+  html.daylight .hs-say{background:rgba(255,255,255,.66);border-color:rgba(122,69,23,.45)}
+  html.daylight .hs-say.on{background:rgba(122,69,23,.15)}
+  html.daylight .hall-say{border-color:rgba(122,69,23,.34);
+    background:linear-gradient(184deg,rgba(140,84,32,.09),rgba(140,84,32,.03))}
+  html.daylight .hall-say.cold{border-color:var(--line-soft);background:rgba(33,28,20,.04)}
   /* the divider IS the fold control, so the call above can never be folded away */
   #ffCard .ff-hr{display:flex;align-items:center;gap:9px;margin:16px 0 4px;cursor:pointer;
     font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:9.5px;letter-spacing:.18em;color:var(--steel);
@@ -10584,7 +10617,9 @@ function renderCallStart(){
 }
 /* #114 — the predictions re-figure the moment data lands, wherever it lands from:
    a logged board, a wire correction, a bot sheet, or the boot seed. */
-function repredict(){try{renderCallStart();}catch(e){} try{publishCall();}catch(e){} try{if(window.ffRender)ffRender();}catch(e){}}
+function repredict(){try{renderCallStart();}catch(e){} try{publishCall();}catch(e){} try{if(window.ffRender)ffRender();}catch(e){}
+  try{if(window.__hsUnlocked&&typeof hsSpeak==='function')hsSpeak(false);}catch(e){}   /* #hallsay — a changed call speaks itself, once */
+}
 /* #recalc/#recalc2 — manual "run the numbers again" button on the wire. The old
    version only re-ran the math on the SAME inputs — same numbers in, same call out,
    so the press read as doing nothing. Now it actually goes and gets fresh inputs:
@@ -29479,10 +29514,120 @@ function hlApplyToRecord(){
 }
 /* #jul23b — the hotline card LEFT the Wire tab: the full reading (with transcript)
    lives in the ⚙ Dev Log panel now. This keeps the wire clean and puts the raw
-   phone data next to the rest of the diagnostics. */
+   phone data next to the rest of the diagnostics.
+   ═══ #hallsay(sep14) — AND CAME BACK, ON THE CALL ITSELF ═══
+   That left sbLoadHallLine pulling the hall's own words into HALL_LINE_ROWS on every
+   boot and showing them to NOBODY — the transcript only ever fed the chain math behind
+   "Starting on", and a casual reading the wire had no way to know the phone line had
+   already answered the question the card above was estimating. The Dev Log is the
+   Keymaster's, not theirs.
+   The band goes UNDER the count-source line and OVER the predicted-stop hero, because
+   where the two disagree the hall wins the reading: the machine's letter is a figure,
+   the hall's card is the hall. What it shows: the card the bot heard, the hall's own
+   sentence, when it called, how sure it was, and whether that reading is riding the
+   record or was held back (low confidence, or a casual already sealed that board —
+   hlApplyToRecord's own rules, said out loud instead of only in the log).
+   THE ▶ READS IT ALOUD. speechSynthesis, on the phone, free, no network: the slot, the
+   hall's card if there is one, the run, and the countdown — for a casual driving in who
+   should not be reading a card at all. It speaks the CARD AS IT IS SAID: "B 4 7 0 4",
+   not "B four thousand seven hundred and four". Off by default; the choice is remembered.
+   iOS will not speak until a real tap has unlocked it, so AUTO only ever starts after
+   the casual has pressed ▶ once in that session — never a phone that talks unasked. */
+function hsConf(c){ c=(c==null?null:+c);
+  if(c==null||isNaN(c))return {cls:'lo',txt:'unsure'};
+  return c>=0.85?{cls:'hi',txt:Math.round(c*100)+'% sure'}
+       : c>=0.5 ?{cls:'mid',txt:Math.round(c*100)+'% sure'}
+                :{cls:'lo',txt:Math.round(c*100)+'% — under the bar'};
+}
+/* "B4704" → "B. 4 7 0 4" so a phone reads a card the way the hall says it */
+function hsSpellCard(card){
+  return String(card||'').replace(/([A-Za-z])(\d+)/g,function(_,L,n){ return L+'. '+n.split('').join(' '); });
+}
+/* the sentence the phone speaks — built off what is ON SCREEN, so it can never
+   describe a call the casual is not looking at */
+function hsSpeech(){
+  var txt=function(id){ var e=document.getElementById(id); return e?String(e.textContent||'').trim():''; };
+  var out=[];
+  /* "Thu PM · today" is a LABEL, not a sentence — a phone reading it says "Thu, P M,
+     dot, today". Say it the way a casual would: "Thursday night dispatch, today." */
+  var DAYW={Sun:'Sunday',Mon:'Monday',Tue:'Tuesday',Wed:'Wednesday',Thu:'Thursday',Fri:'Friday',Sat:'Saturday'};
+  var sm=/^([A-Za-z]{3})[\s_]+(AM|PM)(?:\s*·\s*(today|tomorrow))?/i.exec(txt('callSlot'));
+  if(sm)out.push((DAYW[sm[1].replace(/^./,c=>c.toUpperCase())]||sm[1])+' '
+      +(/AM/i.test(sm[2])?'morning':'night')+' dispatch'+(sm[3]?', '+sm[3].toLowerCase():'')+'.');
+  var r=(window.HALL_LINE_ROWS||[])[0];
+  if(r&&r.card)out.push('The hall line said '+hsSpellCard(r.card)+'.');
+  var start=txt('callStart').replace(/^Starting on\s*/i,'').trim();
+  if(start&&start!=='—'&&!/pending/i.test(start))out.push('Starting on '+hsSpellCard(start)+'.');
+  var moves=txt('wMoves');
+  if(moves&&!/reading the wire/i.test(moves))out.push(moves.replace(/&rarr;|→/g,' to ')+'.');
+  var clk=txt('dispClock');
+  if(/^\d{1,2}:\d{2}(:\d{2})?$/.test(clk)){
+    var pc=clk.split(':').map(Number), h=pc.length===3?pc[0]:0, m=pc.length===3?pc[1]:pc[0];
+    var bits=[]; if(h)bits.push(h+' hour'+(h===1?'':'s')); if(m)bits.push(m+' minute'+(m===1?'':'s'));
+    if(bits.length)out.push('Next dispatch in '+bits.join(' ')+'.');
+  }
+  return out.join(' ').replace(/\s*·\s*/g,', ').replace(/\s{2,}/g,' ').trim();   /* one clean sentence, no doubled spaces off the arrow */
+}
+function hsSpeak(force){
+  try{
+    if(!('speechSynthesis' in window))return false;
+    var line=hsSpeech(); if(!line)return false;
+    if(!force&&line===window.__hsLast)return false;   /* the tick re-renders constantly — say it once */
+    window.__hsLast=line;
+    speechSynthesis.cancel();                          /* never talk over itself */
+    var u=new SpeechSynthesisUtterance(line);
+    u.rate=0.95; u.pitch=1; u.volume=1; u.lang='en-US';
+    speechSynthesis.speak(u);
+    return true;
+  }catch(e){ return false; }
+}
+function hsAutoOn(){ try{ return localStorage.getItem(K('hallsay'))==='1'; }catch(e){ return false; } }
+window.hsSpeak=hsSpeak;
 function renderHallLine(){
   try{const old=document.getElementById('hallLineCard'); if(old) old.remove();}catch(e){}
   try{hlApplyToRecord();}catch(e){}
+  try{
+    var host=document.getElementById('hallSay'); if(!host)return;
+    var r=(window.HALL_LINE_ROWS||[])[0];
+    var canSay=('speechSynthesis' in window);
+    if(!r||!r.card){                                   /* nothing heard yet — the ▶ still works off the figure */
+      if(!canSay){ host.style.display='none'; return; }
+      host.className='hall-say cold'; host.style.display='';
+      host.innerHTML='<div class="hs-top"><span class="hs-ttl">☎ The hall line</span>'
+        +'<span class="hs-when">nothing heard yet</span></div>'
+        +'<div class="hs-foot"><span>The bot has not caught a card off the phone line this board.</span>'
+        +'<button type="button" class="hs-say'+(hsAutoOn()?' on':'')+'" id="hsSay">▶ Read the call</button></div>';
+    }else{
+      var cf=hsConf(r.conf), ap=window._hlApplied||{};
+      var ride=ap.skipped?('held back — '+ap.skipped):(ap.end?('riding the record · board ends '+ap.end):'heard, not yet on the record');
+      var quote=String(r.transcript||r.heard||'').replace(/\s+/g,' ').trim();
+      if(quote.length>240)quote=quote.slice(0,238).replace(/\s\S*$/,'')+'…';
+      host.className='hall-say'; host.style.display='';
+      host.innerHTML='<div class="hs-top"><span class="hs-ttl">☎ The hall said</span>'
+        +'<span class="hs-card">'+esc(r.card)+'</span>'
+        +'<span class="hs-when">'+esc(hlWhen(r.ran_at)||'')+'</span></div>'
+        +(quote?'<p class="hs-quote">“'+esc(quote)+'”</p>':'')
+        +'<div class="hs-foot"><span class="hs-conf '+cf.cls+'">'+cf.txt+'</span><span>'+esc(ride)+'</span>'
+        +(canSay?'<button type="button" class="hs-say'+(hsAutoOn()?' on':'')+'" id="hsSay">▶ Read the call</button>':'')
+        +'</div>'
+        /* #hallsay — THE RECORDING, when the bot starts keeping one. hall_line_log has no
+           audio column today (id · ran_at · k · card · conf · heard · transcript · posted ·
+           extras), so this never draws. Give a row an `audio` column — or extras.audio — with
+           a public URL and the player appears with no further change here. */
+        +((r.audio||(r.extras&&r.extras.audio))?'<audio controls preload="none" src="'+esc(r.audio||r.extras.audio)+'"></audio>':'');
+    }
+    var b=document.getElementById('hsSay');
+    if(b)b.addEventListener('click',function(){
+      var on=!hsAutoOn();                              /* the tap both speaks NOW and sets auto */
+      try{ localStorage.setItem(K('hallsay'),on?'1':'0'); }catch(e){}
+      b.classList.toggle('on',on);
+      if(on){ window.__hsUnlocked=true; hsSpeak(true); }
+      else { try{ speechSynthesis.cancel(); }catch(e){} }
+    });
+    /* auto: only after a tap has unlocked speech in this session, and only when the
+       sentence actually changed (repredict runs on every tick) */
+    if(hsAutoOn()&&window.__hsUnlocked)hsSpeak(false);
+  }catch(e){ try{DEVLOG.err('renderHallLine: '+e.message);}catch(_){} }
 }
 
 async function sbLoadHallLine(){
