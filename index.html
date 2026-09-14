@@ -8,7 +8,7 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='sep14hall';
+window.SHK_BUILD='sep14hall2';
 /* #freezev3 — keep enough resource timings for the report to name what landed before a
    freeze: the boot alone fires ~100 requests, and the default buffer (250) then stops
    recording for the rest of the session. */
@@ -4350,17 +4350,40 @@ window.DEVLOG=(function(){
   .hall-say{margin:9px 0 2px;border:1px solid rgba(238,180,107,.34);border-radius:12px;
     background:linear-gradient(184deg,rgba(238,180,107,.10),rgba(238,180,107,.03));padding:9px 11px}
   .hall-say.cold{border-color:var(--line-soft);background:rgba(255,255,255,.03)}
-  .hall-say .hs-top{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
-  .hall-say .hs-ttl{font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
-    font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--copper-hi,#eeb46b)}
+  .hall-say .hs-top{display:flex;align-items:center;gap:7px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+  .hall-say .hs-ttl{flex:none;font-size:14px;line-height:1;color:var(--copper-hi,#eeb46b)}
+  .hall-say .hs-ttl i{font-style:normal;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;margin-left:5px}
+  @media (max-width:412px){ .hall-say .hs-ttl i{display:none} }   /* the ☎ is label enough when the row is tight */
   .hall-say.cold .hs-ttl{color:var(--steel)}
-  .hall-say .hs-card{font-family:'Anton',sans-serif;font-size:21px;letter-spacing:.05em;color:var(--bone);line-height:1}
-  .hall-say .hs-when{margin-left:auto;font-size:10.5px;color:var(--steel);white-space:nowrap}
-  .hall-say .hs-quote{margin:6px 0 0;font-size:12.5px;line-height:1.55;color:var(--bone);opacity:.92;
+  .hall-say .hs-card{font-family:'Anton',sans-serif;font-size:19px;letter-spacing:.04em;color:var(--bone);line-height:1;flex:none}
+  .hall-say .hs-gist{min-width:0;flex:1;font-size:11.5px;color:var(--steel);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* on the smallest phones the card and the clock are the line; the count is one tap down */
+  @media (max-width:340px){ .hall-say .hs-gist{display:none} }
+  .hall-say .hs-caret{flex:none;font-size:10px;color:var(--copper);transition:transform .18s}
+  .hall-say.open .hs-caret{transform:rotate(180deg)}
+  .hall-say .hs-when{flex:none;font-size:10.5px;color:var(--steel);white-space:nowrap}
+  /* everything below the one line is folded away until asked for */
+  .hall-say .hs-more{display:none}
+  .hall-say.open .hs-more{display:block}
+  .hall-say .hs-quote{margin:8px 0 0;font-size:12.5px;line-height:1.55;color:var(--bone);opacity:.92;
     font-style:italic;overflow-wrap:anywhere}
-  .hall-say .hs-foot{margin-top:5px;font-size:10.5px;color:var(--steel);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .hall-say .hs-foot{margin-top:6px;font-size:10.5px;color:var(--steel);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .hall-say .hs-conf{border:1px solid currentColor;border-radius:20px;padding:1px 7px;font-size:9.5px;letter-spacing:.1em}
   .hall-say .hs-conf.hi{color:var(--ok,#6fcf7f)} .hall-say .hs-conf.mid{color:var(--copper-hi,#eeb46b)} .hall-say .hs-conf.lo{color:var(--ember,#ff6b3d)}
+  .hall-say .hs-say{margin-left:0}
+  /* the speak button rides the CLOSED line: a casual driving in should not have to
+     open a fold to hear the call. Icon-only where the row is tight, worded where it fits. */
+  .hs-say.hs-mini{flex:none;padding:4px 9px;font-size:12px;line-height:1}
+  .hs-say.hs-mini b{font-weight:600;font-size:10.5px;letter-spacing:.1em;margin-left:5px}
+  @media (max-width:412px){ .hs-say.hs-mini b{display:none} }
+  /* keep-reading is its own considered choice, down in the fold where there is room */
+  .hs-auto{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;color:var(--steel);cursor:pointer;
+    -webkit-tap-highlight-color:transparent;user-select:none}
+  .hs-auto .hs-box{width:14px;height:14px;border-radius:4px;border:1px solid var(--line);display:grid;place-items:center;
+    font-size:10px;line-height:1;color:transparent}
+  .hs-auto.on .hs-box{border-color:var(--copper-hi,#eeb46b);color:var(--copper-hi,#eeb46b);background:rgba(238,180,107,.14)}
+  .hs-auto.on{color:var(--copper-hi,#eeb46b)}
   /* the native player follows the app's theme instead of glaring white on the dark card */
   .hall-say audio{width:100%;margin-top:8px;height:34px;display:block;color-scheme:dark;border-radius:18px}
   html.daylight .hall-say audio{color-scheme:light}
@@ -29497,7 +29520,14 @@ function hlApplyToRecord(){
     if(!imp){return;}
     if((r.conf||0)<0.5){window._hlApplied={skipped:'confidence '+(r.conf!=null?r.conf:'?')+' below .5 — not riding the record'};return;}
     const bw=window.BW&&window.BW[imp.key];
-    if(bw&&bw.patch){window._hlApplied={skipped:'the record already owns '+imp.key+' ('+(bw.by_handle||bw.by||'a casual')+')'};return;}
+    if(bw&&bw.patch){
+      /* #hallsay2 — WHO owns it decides whether this is a block or a no-op. When the owner
+         IS the phone line (the bot posts to board_wire too), the reading already landed by
+         the front door and "held back" was the success path wearing a failure's face. */
+      var _own=String(bw.by_handle||bw.by||'a casual');
+      window._hlApplied={skipped:'the record already owns '+imp.key+' ('+_own+')',
+                         owner:_own, mine:/hall\s*line|hotline|☎/i.test(_own), end:imp.end};
+      return;}
     const i=imp.key.indexOf('_'), date=imp.key.slice(0,i), slot=imp.key.slice(i+1);
     let row=RECENT.find(x=>x.date+'_'+x.slot===imp.key);
     if(!row){row={date:date,slot:slot,rain:false,hol:false};RECENT.push(row);
@@ -29583,6 +29613,41 @@ function hsSpeak(force){
 }
 function hsAutoOn(){ try{ return localStorage.getItem(K('hallsay'))==='1'; }catch(e){ return false; } }
 window.hsSpeak=hsSpeak;
+/* #hallsay2(sep14) — ONE LINE. The first cut printed the whole reading: the card, the
+   hall's entire transcript, a confidence pill and a status sentence — four or five lines
+   sitting on top of the call. Two things made it worse than it looked in the lab:
+     · THE HALL REPEATS ITSELF. Every reading is the same facts twice — "…letter A like
+       Apple, 4996. Once again, Monday morning, September 14th's count is 1160, and we're
+       on the letter A like Apple, 4996…" The quote cuts at "once again" now; nothing is
+       lost, and it halves.
+     · THE STATUS LINE WAS DEVELOPER TALK, AND WRONG. "held back — the record already owns
+       2026-09-13_Sun_PM (☎ Hall Line)" — a casual does not know what a board key is, and
+       the owner there IS the phone line: the reading had already landed by the front door
+       (the bot posts to board_wire too). The success path was wearing a failure's face.
+   So: one line — ☎ HALL LINE · A4996 · what it amounts to · the time. Tap it for the
+   hall's words, the confidence and the plain-English status. The fold is remembered, so a
+   casual who wants the detail keeps it and everyone else gets a line. */
+/* the reading in as few words as fit. ONE fact beside the card: the count if the hall
+   gave one (the number a casual actually wants), else which board it was talking about.
+   Both together clipped at every phone width worth caring about — and the day is in the
+   quote one tap away, while the count is buried mid-paragraph. */
+function hsGist(r){
+  var t=String(r&&(r.transcript||r.heard)||'');
+  var c=/\b(?:count\s+(?:is\s+)?|have\s+)(\d{2,5})\b/i.exec(t)||/\b(\d{3,5})\s*(?:,\s*\1)?\s*as a count\b/i.exec(t);
+  if(c)return 'count '+c[1];
+  var w=/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+(morning|night|evening)\b/i.exec(t);
+  if(w)return w[1].slice(0,3).charAt(0).toUpperCase()+w[1].slice(1,3).toLowerCase()+' '+(/even/i.test(w[2])?'night':w[2].toLowerCase());
+  return '';
+}
+function hsStatus(ap){                    /* plain English, and the truth about who owns it */
+  ap=ap||{};
+  if(ap.mine)return {txt:'already on the record',cls:'ok'};
+  if(ap.skipped&&/confidence/i.test(ap.skipped))return {txt:'too unsure to use',cls:'lo'};
+  if(ap.skipped)return {txt:'a casual\u2019s seal stands'+(ap.owner?' \u00b7 '+ap.owner:''),cls:'dim'};
+  if(ap.end)return {txt:'riding the record \u00b7 board ends '+ap.end,cls:'ok'};
+  return {txt:'heard, not yet on the record',cls:'dim'};
+}
+function hsOpenPref(){ try{ return localStorage.getItem(K('hallopen'))==='1'; }catch(e){ return false; } }
 function renderHallLine(){
   try{const old=document.getElementById('hallLineCard'); if(old) old.remove();}catch(e){}
   try{hlApplyToRecord();}catch(e){}
@@ -29590,42 +29655,68 @@ function renderHallLine(){
     var host=document.getElementById('hallSay'); if(!host)return;
     var r=(window.HALL_LINE_ROWS||[])[0];
     var canSay=('speechSynthesis' in window);
-    if(!r||!r.card){                                   /* nothing heard yet — the ▶ still works off the figure */
+    var sayBtn=canSay?'<button type="button" class="hs-say'+(hsAutoOn()?' on':'')+'" id="hsSay">\u25b6 Read the call</button>':'';
+    if(!r||!r.card){
       if(!canSay){ host.style.display='none'; return; }
       host.className='hall-say cold'; host.style.display='';
-      host.innerHTML='<div class="hs-top"><span class="hs-ttl">☎ The hall line</span>'
-        +'<span class="hs-when">nothing heard yet</span></div>'
-        +'<div class="hs-foot"><span>The bot has not caught a card off the phone line this board.</span>'
-        +'<button type="button" class="hs-say'+(hsAutoOn()?' on':'')+'" id="hsSay">▶ Read the call</button></div>';
+      host.innerHTML='<div class="hs-top" style="cursor:default"><span class="hs-ttl">\u260e<i>Hall line</i></span>'
+        +'<span class="hs-gist">nothing heard off the phone yet</span>'+sayBtn+'</div>';
     }else{
-      var cf=hsConf(r.conf), ap=window._hlApplied||{};
-      var ride=ap.skipped?('held back — '+ap.skipped):(ap.end?('riding the record · board ends '+ap.end):'heard, not yet on the record');
-      var quote=String(r.transcript||r.heard||'').replace(/\s+/g,' ').trim();
-      if(quote.length>240)quote=quote.slice(0,238).replace(/\s\S*$/,'')+'…';
-      host.className='hall-say'; host.style.display='';
-      host.innerHTML='<div class="hs-top"><span class="hs-ttl">☎ The hall said</span>'
+      var open=hsOpenPref(), cf=hsConf(r.conf), st=hsStatus(window._hlApplied);
+      var gist=hsGist(r);
+      /* the hall says it all twice — keep the first telling */
+      var quote=String(r.transcript||r.heard||'').replace(/\s+/g,' ').trim()
+                  .replace(/\s*\bonce again\b[\s\S]*$/i,'').replace(/[\s.,\u2026]+$/,'');
+      if(quote.length>200)quote=quote.slice(0,198).replace(/\s\S*$/,'')+'\u2026';
+      host.className='hall-say'+(open?' open':''); host.style.display='';
+      host.innerHTML='<div class="hs-top" id="hsTop" role="button" tabindex="0" aria-expanded="'+(open?'true':'false')+'">'
+        +'<span class="hs-ttl">\u260e<i>Hall line</i></span>'
         +'<span class="hs-card">'+esc(r.card)+'</span>'
-        +'<span class="hs-when">'+esc(hlWhen(r.ran_at)||'')+'</span></div>'
-        +(quote?'<p class="hs-quote">“'+esc(quote)+'”</p>':'')
-        +'<div class="hs-foot"><span class="hs-conf '+cf.cls+'">'+cf.txt+'</span><span>'+esc(ride)+'</span>'
-        +(canSay?'<button type="button" class="hs-say'+(hsAutoOn()?' on':'')+'" id="hsSay">▶ Read the call</button>':'')
+        +'<span class="hs-gist">'+esc(gist||st.txt)+'</span>'
+        +'<span class="hs-when">'+esc((hlWhen(r.ran_at)||'').split(' \u00b7 ')[0])+'</span>'
+        +(canSay?'<button type="button" class="hs-say hs-mini'+(hsAutoOn()?' on':'')+'" id="hsSay" aria-label="Read the call aloud">\u25b6<b>Read</b></button>':'')
+        +'<span class="hs-caret">\u25be</span></div>'
+        +'<div class="hs-more">'
+        +(quote?'<p class="hs-quote">\u201c'+esc(quote)+'\u201d</p>':'')
+        +'<div class="hs-foot"><span class="hs-conf '+cf.cls+'">'+cf.txt+'</span>'
+        +'<span>'+esc(st.txt)+'</span>'
+        +(canSay?'<span class="hs-auto'+(hsAutoOn()?' on':'')+'" id="hsAuto" role="checkbox" tabindex="0" aria-checked="'+(hsAutoOn()?'true':'false')+'">'
+          +'<span class="hs-box">\u2713</span>read it again when the call changes</span>':'')
         +'</div>'
         /* #hallsay — THE RECORDING, when the bot starts keeping one. hall_line_log has no
-           audio column today (id · ran_at · k · card · conf · heard · transcript · posted ·
-           extras), so this never draws. Give a row an `audio` column — or extras.audio — with
-           a public URL and the player appears with no further change here. */
-        +((r.audio||(r.extras&&r.extras.audio))?'<audio controls preload="none" src="'+esc(r.audio||r.extras.audio)+'"></audio>':'');
+           audio column today; give a row `audio` (or extras.audio) and this appears. */
+        +((r.audio||(r.extras&&r.extras.audio))?'<audio controls preload="none" src="'+esc(r.audio||r.extras.audio)+'"></audio>':'')
+        +'</div>';
+      var top=document.getElementById('hsTop');
+      if(top){
+        var flip=function(){ var now=!host.classList.contains('open');
+          host.classList.toggle('open',now); top.setAttribute('aria-expanded',now?'true':'false');
+          try{ localStorage.setItem(K('hallopen'),now?'1':'0'); }catch(e){} };
+        top.addEventListener('click',flip);
+        top.addEventListener('keydown',function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); flip(); } });
+      }
     }
+    /* #hallsay2 — ▶ IS A PLAY BUTTON AND NOTHING ELSE. It used to toggle auto as well,
+       so the second tap on a control marked "Read" went SILENT and switched auto off —
+       a casual asking to hear it again got nothing. Tap always speaks now; whether it
+       keeps speaking on later calls is the checkbox in the fold. */
     var b=document.getElementById('hsSay');
-    if(b)b.addEventListener('click',function(){
-      var on=!hsAutoOn();                              /* the tap both speaks NOW and sets auto */
-      try{ localStorage.setItem(K('hallsay'),on?'1':'0'); }catch(e){}
-      b.classList.toggle('on',on);
-      if(on){ window.__hsUnlocked=true; hsSpeak(true); }
-      else { try{ speechSynthesis.cancel(); }catch(e){} }
+    if(b)b.addEventListener('click',function(e){
+      e.stopPropagation();
+      window.__hsUnlocked=true;      /* a real tap: iOS will let the phone speak from here on */
+      hsSpeak(true);
     });
-    /* auto: only after a tap has unlocked speech in this session, and only when the
-       sentence actually changed (repredict runs on every tick) */
+    var au=document.getElementById('hsAuto');
+    if(au){
+      var flipAuto=function(e){ if(e)e.stopPropagation();
+        var on=!hsAutoOn();
+        try{ localStorage.setItem(K('hallsay'),on?'1':'0'); }catch(e2){}
+        au.classList.toggle('on',on); au.setAttribute('aria-checked',on?'true':'false');
+        if(on)window.__hsUnlocked=true; else { try{ speechSynthesis.cancel(); }catch(e2){} }
+      };
+      au.addEventListener('click',flipAuto);
+      au.addEventListener('keydown',function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); flipAuto(); } });
+    }
     if(hsAutoOn()&&window.__hsUnlocked)hsSpeak(false);
   }catch(e){ try{DEVLOG.err('renderHallLine: '+e.message);}catch(_){} }
 }
