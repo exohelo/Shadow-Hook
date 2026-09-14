@@ -8,7 +8,7 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='sep14hall4';
+window.SHK_BUILD='sep14shush';
 /* #freezev3 — keep enough resource timings for the report to name what landed before a
    freeze: the boot alone fires ~100 requests, and the default buffer (250) then stops
    recording for the rest of the session. */
@@ -4383,6 +4383,9 @@ window.DEVLOG=(function(){
      open a fold to hear the call. Icon-only where the row is tight, worded where it fits. */
   .hs-say.hs-mini{flex:none;padding:4px 9px;font-size:12px;line-height:1}
   .hs-say.hs-mini b{font-weight:600;font-size:10.5px;letter-spacing:.1em;margin-left:5px}
+  /* #shush — mid-sentence, the same button is the way out */
+  .hs-say.talking{border-color:var(--ember,#ff6b3d);color:var(--ember,#ff6b3d);background:rgba(255,107,61,.14)}
+  html.daylight .hs-say.talking{background:rgba(163,52,20,.12);border-color:rgba(163,52,20,.5)}
   @media (max-width:412px){ .hs-say.hs-mini b{display:none} }
   /* keep-reading is its own considered choice, down in the fold where there is room */
   .hs-auto{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;color:var(--steel);cursor:pointer;
@@ -29605,6 +29608,32 @@ function hsSpeech(){
   }
   return out.join(' ').replace(/\s*·\s*/g,', ').replace(/\s{2,}/g,' ').trim();   /* one clean sentence, no doubled spaces off the arrow */
 }
+/* ═══ #shush(sep14) — THE WAY OUT, MID-SENTENCE ═══
+   The voice could be started and it could be left off, but once it was talking there
+   was nothing to press: no stop, and a reading of the whole call runs a good few seconds
+   in a hall where a phone talking out loud is the last thing you want. The play button
+   is the stop button now — ▶ Read while quiet, ■ Stop while talking — because a casual
+   who wants it to shut up is already looking at the control that started it.
+   Two more manners while we are here: playing the RECORDING shuts the voice up (they
+   would otherwise talk over each other), and stopping shuts them both up. */
+function hsTalking(){ try{ return !!(window.speechSynthesis&&(speechSynthesis.speaking||speechSynthesis.pending)); }catch(e){ return false; } }
+function hsPaintSay(){
+  try{
+    var b=document.getElementById('hsSay'); if(!b)return;
+    var on=hsTalking();
+    b.classList.toggle('talking',on);
+    var mini=b.classList.contains('hs-mini');
+    b.innerHTML=on?('\u25a0'+(mini?'<b>Stop</b>':' Stop')):('\u25b6'+(mini?'<b>Read</b>':' Read the call'));
+    b.setAttribute('aria-label',on?'Stop reading':'Read the call aloud');
+  }catch(e){}
+}
+function hsStop(){
+  try{ speechSynthesis.cancel(); }catch(e){}
+  try{ var a=document.querySelector('#hallSay audio'); if(a&&!a.paused)a.pause(); }catch(e){}
+  if(window.__hsPoll){ clearInterval(window.__hsPoll); window.__hsPoll=null; }
+  hsPaintSay();
+}
+window.hsStop=hsStop;
 function hsSpeak(force){
   try{
     if(!('speechSynthesis' in window))return false;
@@ -29612,11 +29641,17 @@ function hsSpeak(force){
     if(!force&&line===window.__hsLast)return false;   /* the tick re-renders constantly — say it once */
     window.__hsLast=line;
     speechSynthesis.cancel();                          /* never talk over itself */
+    try{ var a=document.querySelector('#hallSay audio'); if(a&&!a.paused)a.pause(); }catch(e){}   /* nor over the recording */
     var u=new SpeechSynthesisUtterance(line);
     u.rate=0.95; u.pitch=1; u.volume=1; u.lang='en-US';
+    u.onstart=hsPaintSay; u.onend=hsPaintSay; u.onerror=hsPaintSay;
     speechSynthesis.speak(u);
+    hsPaintSay();
+    /* the end event is unreliable on some phones — never leave the button stuck on Stop */
+    if(window.__hsPoll)clearInterval(window.__hsPoll);
+    window.__hsPoll=setInterval(function(){ if(!hsTalking()){ clearInterval(window.__hsPoll); window.__hsPoll=null; hsPaintSay(); } },400);
     return true;
-  }catch(e){ return false; }
+  }catch(e){ hsPaintSay(); return false; }
 }
 function hsAutoOn(){ try{ return localStorage.getItem(K('hallsay'))==='1'; }catch(e){ return false; } }
 window.hsSpeak=hsSpeak;
@@ -29723,11 +29758,18 @@ function renderHallLine(){
        a casual asking to hear it again got nothing. Tap always speaks now; whether it
        keeps speaking on later calls is the checkbox in the fold. */
     var b=document.getElementById('hsSay');
-    if(b)b.addEventListener('click',function(e){
-      e.stopPropagation();
-      window.__hsUnlocked=true;      /* a real tap: iOS will let the phone speak from here on */
-      hsSpeak(true);
-    });
+    if(b){
+      hsPaintSay();                  /* a re-render mid-sentence must not show \u25b6 Read */
+      b.addEventListener('click',function(e){
+        e.stopPropagation();
+        if(hsTalking()){ hsStop(); return; }          /* #shush — talking? then this is the shut-up button */
+        window.__hsUnlocked=true;    /* a real tap: iOS will let the phone speak from here on */
+        hsSpeak(true);
+      });
+    }
+    /* the recording and the voice never run together */
+    try{ var au2=document.querySelector('#hallSay audio');
+      if(au2)au2.addEventListener('play',function(){ try{ speechSynthesis.cancel(); }catch(e){} hsPaintSay(); }); }catch(e){}
     var au=document.getElementById('hsAuto');
     if(au){
       var flipAuto=function(e){ if(e)e.stopPropagation();
