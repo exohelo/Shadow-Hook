@@ -9707,6 +9707,107 @@ function liveWindow(){ // between flex and end of the current board
   return null;
 }
 function winKey(){const w=liveWindow();return w?nowLA().toDateString()+"_"+w:null} // #107 — which board a scan belongs to · #201 LA date
+/* ═══ #ownwindow(sep15) — A DOCKET SPEAKS ONLY FOR THE DISPATCH THAT HANDED IT OUT ═══
+   THE NIGHT IT BROKE: the night board was running and C5035 walked the reel — but
+   that docket was handed out at the MORNING dispatch. The casual worked the day,
+   came home, and typed it in at 6 PM. The gate on both seal paths read
+   `date===todayISO()`, which is a DATE test, not a DISPATCH test. One calendar day
+   holds TWO dispatches, so a morning docket entered that evening read as "today"
+   and fed the night's live count a card the night board had never called.
+
+   A docket carries its own window in the fields it already has — the shift date and
+   the shift itself. That window is fixed at the hall the moment the card is handed
+   over; it does not change because the casual typed it in late. So:
+     · Day shift   on D → the DAY dispatch of D
+     · Night shift on D → the NIGHT dispatch of D
+     · Hoot owl    on D → the NIGHT dispatch of D-1. A graveyard job that starts
+                          after midnight was picked up the evening before — "a hoot
+                          owl picked up at night counts as a NIGHT job", same as the
+                          rest rules read it.
+   The seal itself is untouched: the docket is valid, it logs, it pays, it counts for
+   hours and the Race exactly as before, at any age. The ONLY thing gated here is the
+   live reel — a docket moves the board if, and only if, its own window is the window
+   running right now. Everything else is BACKLOG: on the record, silent on the board.
+   Fails CLOSED — a docket whose window can't be read does not touch the count. */
+function isoShiftDays(iso,n){   /* step an ISO date, noon-anchored so no tz drifts it a day */
+  try{const d=new Date(String(iso)+"T12:00"); if(isNaN(d.getTime()))return null;
+      d.setDate(d.getDate()+(n||0));
+      return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  }catch(e){return null}
+}
+/* "2026-09-15" + "NIGHT" → "Tue Sep 15 2026_NIGHT" — the same shape winKey() writes,
+   built from the docket's own date instead of the clock (cf. boardWinKey) */
+function apWinKey(iso,win){
+  try{const d=new Date(String(iso)+"T12:00"); if(isNaN(d.getTime()))return null;
+      return d.toDateString()+"_"+win;}catch(e){return null}
+}
+/* THE DOCKET'S OWN DISPATCH — {iso,win,key,ap,said} or null when it can't be read */
+function docketWin(j){
+  try{
+    if(!j||!/^\d{4}-\d{2}-\d{2}$/.test(String(j.date||"")))return null;
+    let shift=j.shift||"";
+    /* a docket that lost its shift (legacy rows, a half-read slip) usually still has a
+       start hour: midnight–4:59 is a hoot, 5:00–13:59 a day board, 14:00 on a night
+       board — the same split startTraits() uses to set the shift in the first place. */
+    if(shift!=="Day"&&shift!=="Night"&&shift!=="HootOwl"){
+      const h=parseInt(String(j.start||"").slice(0,2),10);
+      if(!(h>=0&&h<=23))return null;                 /* nothing to read it by — fail closed */
+      shift=(h<5)?"HootOwl":(h<14?"Day":"Night");
+    }
+    let iso=String(j.date), win;
+    if(shift==="Day")win="DAY";
+    else if(shift==="Night")win="NIGHT";
+    else if(shift==="HootOwl"){win="NIGHT";iso=isoShiftDays(iso,-1)||iso;}   /* started after midnight — dispatched the evening before */
+    else return null;
+    const key=apWinKey(iso,win); if(!key)return null;
+    /* said out loud the way a casual would say it: "this morning's DAY dispatch",
+       "last night's NIGHT dispatch", "the DAY dispatch of Mon 09/14" */
+    let said;
+    const _t=todayISO(), _y=isoShiftDays(_t,-1);
+    if(iso===_t)      said=(win==="DAY")?"this morning’s DAY dispatch":"tonight’s NIGHT dispatch";
+    else if(iso===_y) said=(win==="DAY")?"yesterday morning’s DAY dispatch":"last night’s NIGHT dispatch";
+    else{ let d8=iso; try{const dd=new Date(iso+"T12:00");
+            d8=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][dd.getDay()]+" "
+              +String(dd.getMonth()+1).padStart(2,"0")+"/"+String(dd.getDate()).padStart(2,"0");}catch(e){}
+          said="the "+win+" dispatch of "+d8; }
+    return {iso:iso,win:win,key:key,ap:(win==="DAY"?"AM":"PM"),said:said};
+  }catch(e){return null}
+}
+/* is this docket's own dispatch the one running right now? */
+function docketIsLive(j){
+  try{const wk=winKey(); if(!wk)return false;
+      const dw=docketWin(j); return !!(dw&&dw.key===wk);}catch(e){return false}
+}
+/* THE ONE DOOR from a sealed docket to the live reel. The seal already happened and is
+   not in question here — this only decides whether the casual's own card gets a vote on
+   where THIS board is standing, and says so out loud when it doesn't. */
+function feedLiveFromDocket(j,id,src){
+  try{
+    if(!id)return null;
+    const wk=winKey();
+    if(!wk)return null;                      /* no dispatch running — nothing to feed, no notice needed */
+    const dw=docketWin(j);
+    if(dw&&dw.key===wk)return submitLiveCall(id,src||'docket');   /* this dispatch's own docket — walk the board */
+    /* BACKLOG. Valid docket, wrong dispatch. It keeps its seal, its ⬡ and its hours;
+       it just doesn't speak for a board it was never called on. The swipe still lands
+       on ITS OWN window's tape, so the right board keeps its witness and tonight's
+       count never sees it. (If scan_tape constrains `outcome`, add 'backlog' to the
+       list — a refused insert is caught and changes nothing either way.) */
+    try{ stPush(id,'backlog',null,src||'docket',dw&&dw.key); }catch(e){}
+    try{
+      const liveSaid=(String(wk).indexOf("_DAY")>0)?"DAY":"NIGHT";
+      const msg=dw
+        ?('✓ Sealed — that one’s off '+dw.said+', not the '+liveSaid
+          +' board running now. It’s on the record; it just doesn’t move the live count.')
+        :('✓ Sealed — the shift on that docket couldn’t be read, so it can’t be placed on a '
+          +'dispatch. It’s on the record; it stays off the live count.');
+      setTimeout(function(){try{toast(msg);}catch(e){}},2700);   /* let the seal/⬡ toast finish its run first */
+    }catch(e){}
+    try{DEVLOG.data('backlog docket held off the reel',{id:id,src:src||'docket',docket:dw&&dw.key,live:wk});}catch(e){}
+    return 'backlog';
+  }catch(e){return null}
+}
+window.docketWin=docketWin; window.docketIsLive=docketIsLive; window.feedLiveFromDocket=feedLiveFromDocket;
 /* ===== #lof — THE LINE OF FIRE =====
    The Aug 6 mess: the board sat on B and a casual EIGHTEEN letters out logged a
    docket — their T card rode straight onto the reel. Every REAL call after it
@@ -9863,11 +9964,11 @@ function lofAgreed(h){               // is this held card the low end of a clust
    as it did; the difference is that nothing is thrown away silently any more.
    Local swipes only: applyLiveCall also runs on wire replays, and recording those
    would have every phone re-writing every other phone's swipe, forever. */
-function stPush(pos,outcome,boardAt,src){
+function stPush(pos,outcome,boardAt,src,winK){   /* #ownwindow — winK: put the swipe on the docket's OWN window's tape, not the clock's */
   try{ if(!window.SB)return;
     const a=(typeof loadAcct==="function"&&loadAcct())||{};
     window.SB.from('scan_tape').insert({
-      k:winKey()||'off-window', pos:String(pos||'').toUpperCase().trim(),
+      k:winK||winKey()||'off-window', pos:String(pos||'').toUpperCase().trim(),
       ts:Date.now(), outcome:outcome, board_at:boardAt||null,
       by:a.id||'', by_handle:a.handle||'a casual', src:src||'scan'
     }).then(function(){try{stCountRefresh(true);}catch(e){} if(outcome==='held'){try{stHeldRefresh(true);}catch(e){}}},function(){});   /* #lofwitness — my held swipe is on the tape now; see who's out there with me */
@@ -17802,9 +17903,11 @@ document.getElementById('njAdd').onclick=()=>{
   try{ if(window.scanLast&&j.photo){ scanLearn(window.scanLast.text,window.scanLast.p,j); scanRawKeep(j._id,window.scanLast); } window.scanLast=null; }catch(e){}   /* #learn */
   // a sealed hand-log means the member worked — feed the live board off their own ID, silently.
   const id=myBoardId();
-  /* #lof — only a docket dated TODAY speaks for today's board. Backlogging an old
-     slip during a live window is exactly how a casual 18 letters out threw the count. */
-  if(id&&liveWindow()&&date===todayISO())submitLiveCall(id,'docket');   // out of hours: just do nothing, no notice needed
+  /* #lof / #ownwindow — only a docket from the dispatch RUNNING RIGHT NOW speaks for the
+     live board. `date===todayISO()` used to stand here: a DATE test, not a DISPATCH test,
+     so a docket handed out this morning and typed in at 6 PM fed the NIGHT count. The seal
+     above is untouched — feedLiveFromDocket only decides whether it moves the reel. */
+  feedLiveFromDocket(j,id,'docket');   // out of hours: just do nothing, no notice needed
   njClearForm();
   checkMarks();
   drawWG();
@@ -28711,7 +28814,7 @@ function sealScan(p){
   try{ scanRawKeep(j._id,window.scanLast); window.scanLast=null; }catch(e){}   /* #learn — a later fix on this row can still teach */
   // feed the live board off the member's own dispatch number; silent when dispatch isn't running.
   const id=myBoardId()||p.pos;
-  if(w&&id&&j.date===todayISO())submitLiveCall(id,'slip');   /* #lof — an old slip scanned late says nothing about where today's board is */
+  if(w)feedLiveFromDocket(j,id,'slip');   /* #lof / #ownwindow — a slip scanned late says nothing about where THIS dispatch's board is: only its own window's docket moves the reel */
 }
 function scanHandOff(p){
   gotoTab('dockets');
