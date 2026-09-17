@@ -7430,6 +7430,42 @@ function mergeDockets(a,b){
     }catch(e){ console.warn('[cloud] flush',e); return false; }
   }
 
+  /* ═══ #slipkeep(sep17) — THE SERVER'S COPY MAY NOT TAKE A PICTURE THE STORE HASN'T GOT ═══
+     THE REPORT: two slips scanned on this very phone, and the viewer said "this slip's
+     photo is on the phone you scanned it with."
+     WHAT IT WAS: a seal leaves the picture's bytes ON THE ROW until the phone's store has
+     confirmed the write (#slipvault, by design). But the same seal pushes the row up with
+     the bytes stripped to marks, the server echoes that row straight back, and apply()
+     below wrote the echo over localStorage as it stood: a row that now said "idb" on disk
+     with nothing behind it. In memory the bytes were still there, so the 📷 kept working —
+     until the app was next restarted, when the log came off the disk and the two newest
+     slips were marks with no picture. Any reason the store's write was late or refused
+     (a database connection the browser had force-closed, a full quota, a private window,
+     a reload cutting the write short) became permanent loss, one echo later.
+     NOW: before a server copy of the log lands, every picture still riding this phone's
+     copy as bytes that the store has NOT confirmed is carried onto the incoming row. The
+     bytes stay on the disk copy until the store has them (saveDK's build swaps in the
+     mark only once `have` says so), exactly as the seal path promised. The cloud copy
+     is untouched — outbound() strips bytes at the door as before. */
+  function keepSlipBytes(cur,v){
+    try{
+      if(!cur||v==null||cur===v||cur.indexOf('data:image')<0) return v;
+      var K=window.DKPHOTO; if(!K) return v;
+      var loc=JSON.parse(cur), inc=JSON.parse(v);
+      if(!Array.isArray(loc)||!Array.isArray(inc)) return v;
+      var bytes={};
+      loc.forEach(function(j){
+        if(!j||typeof j.photo!=='string'||j.photo.indexOf('data:')!==0) return;
+        var id=String(K.key(j)); if(!K.have.has(id)) bytes[id]=j.photo;   /* unconfirmed → must ride on */
+      });
+      var n=0;
+      inc.forEach(function(j){
+        if(!j) return; var id=String(K.key(j));
+        if(bytes[id]&&(!j.photo||j.photo===K.MARK)){ j.photo=bytes[id]; n++; }
+      });
+      return n?JSON.stringify(inc):v;
+    }catch(e){ return v; }
+  }
   /* ---- apply one server row to this device (no echo back up) ---- */
   function apply(k,v){
     _applying=true;
@@ -7437,8 +7473,12 @@ function mergeDockets(a,b){
       var cur=localStorage.getItem(k);
       /* #slipvault — the server's copy of the log carries marks, not pictures. Before it
          lands over this phone's copy, any picture still riding here as bytes goes into
-         the phone's store, so the phone keeps every slip it scanned. */
-      try{ if(/^shadowhook_dockets_/.test(k)&&cur&&cur!==v&&cur.indexOf('data:image')>=0&&window.DKPHOTO){ var loc=JSON.parse(cur); if(Array.isArray(loc))window.DKPHOTO.migrate(loc); } }catch(e){}
+         the phone's store, so the phone keeps every slip it scanned.
+         #slipkeep — and rides on the incoming copy until the store has it. */
+      if(/^shadowhook_dockets_/.test(k)&&cur&&v!=null&&cur!==v&&cur.indexOf('data:image')>=0&&window.DKPHOTO){
+        try{ var loc=JSON.parse(cur); if(Array.isArray(loc))window.DKPHOTO.migrate(loc); }catch(e){}
+        v=keepSlipBytes(cur,v);
+      }
       if(v===null){ if(cur!==null){ _rem(k); return true; } return false; }
       if(cur!==v){ _set(k,v); return true; }
       return false;
@@ -7743,11 +7783,18 @@ const DKPHOTO=(function(){
       if(!idb)return rej(new Error('no store'));
       let r; try{ r=idb.open(NAME,1); }catch(e){ return rej(e); }
       r.onupgradeneeded=()=>{ try{ r.result.createObjectStore(STORE); }catch(e){} };
-      r.onsuccess=()=>{ _db=r.result; try{ _db.onversionchange=()=>{ try{_db.close()}catch(e){} _db=null; _open=null; }; }catch(e){} res(_db); };
+      r.onsuccess=()=>{ _db=r.result;
+        try{ _db.onversionchange=()=>{ try{_db.close()}catch(e){} _db=null; _open=null; }; }catch(e){}
+        /* #slipkeep — the browser can close the connection under us (storage pressure, a
+           long-lived PWA session, a profile clean-up): from then on every transaction()
+           throws until the page is reloaded. Forget the dead handle so the next call
+           opens a fresh one instead of failing for the rest of the session. */
+        try{ _db.onclose=()=>{ _db=null; _open=null; try{ DEVLOG.data('slipstore',{ok:false,latest:'store connection closed by the browser — reopening on next use'}); }catch(e){} }; }catch(e){}
+        res(_db); };
       r.onerror=()=>rej(r.error||new Error('store refused'));
       r.onblocked=()=>rej(new Error('store blocked'));
     });
-    _open.catch(()=>{ _open=null; });
+    _open.catch((e)=>{ _open=null; try{ DEVLOG.data('slipstore',{ok:false,latest:'store would not open: '+((e&&e.message)||e)}); }catch(_){} });
     return _open;
   }
   function tx(mode,fn){ return open().then(db=>new Promise((res,rej)=>{
@@ -7765,16 +7812,38 @@ const DKPHOTO=(function(){
   }
   /* which slips are on THIS phone — read once at boot, kept in step from there */
   async function load(){
-    try{ const keys=await tx('readonly',st=>st.getAllKeys()); (keys||[]).forEach(k=>have.add(String(k))); }catch(e){}
+    try{ const keys=await tx('readonly',st=>st.getAllKeys()); (keys||[]).forEach(k=>have.add(String(k)));
+         try{ DEVLOG.data('slipstore',{ok:true,latest:have.size+' slip'+(have.size===1?'':'s')+' in this phone’s store'}); }catch(_){} }
+    catch(e){ try{ DEVLOG.data('slipstore',{ok:false,latest:'store unavailable at boot: '+((e&&e.message)||e)}); }catch(_){} }
     _ready=true;
     try{ if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().then(()=>{},()=>{}); }catch(e){}   /* ask the browser not to evict the store */
     return have;
   }
+  /* #slipkeep — THE RECORD IS RAW BYTES, NOT A BLOB. A Blob in IndexedDB is a reference
+     to a side file the browser keeps, and that file is the part that goes missing:
+     WebKit has lost them across app restarts in home-screen PWAs more than once, and
+     Chrome reads them back lazily. An ArrayBuffer is structured-cloned INTO the record,
+     so if the row is there the picture is there. Older entries were written as Blobs;
+     get() reads both shapes and a Blob it finds is rewritten in the new one. */
   async function put(id,src){
     id=String(id); const blob=(src instanceof Blob)?src:dataUrlToBlob(src); if(!blob)throw new Error('bad photo');
-    await tx('readwrite',st=>st.put(blob,id)); have.add(id); return true;
+    const buf=await blob.arrayBuffer(); if(!buf||!buf.byteLength)throw new Error('empty photo');
+    await tx('readwrite',st=>st.put({t:blob.type||'image/jpeg',b:buf},id)); have.add(id); return true;
   }
-  async function get(id){ id=String(id); try{ const b=await tx('readonly',st=>st.get(id)); return (b instanceof Blob)?b:null; }catch(e){ return null; } }
+  async function get(id){
+    id=String(id);
+    try{
+      const r=await tx('readonly',st=>st.get(id));
+      if(r&&r.b&&r.b.byteLength) return new Blob([r.b],{type:r.t||'image/jpeg'});
+      if(r instanceof Blob){   /* pre-#slipkeep entry: prove the side file is still there, hand the bytes back, re-record them */
+        let buf=null; try{ buf=await r.arrayBuffer(); }catch(e){ buf=null; }
+        if(!buf||!buf.byteLength){ have.delete(id); return null; }   /* the browser lost the file — say so, don't show a broken image */
+        try{ tx('readwrite',st=>st.put({t:r.type||'image/jpeg',b:buf},id)).catch(()=>{}); }catch(e){}
+        return new Blob([buf],{type:r.type||'image/jpeg'});
+      }
+      return null;
+    }catch(e){ try{ DEVLOG.data('slipstore',{ok:false,latest:'read failed: '+((e&&e.message)||e)}); }catch(_){} return null; }
+  }
   async function del(id){ id=String(id); try{ await tx('readwrite',st=>st.delete(id)); }catch(e){} have.delete(id); if(urls[id]){ try{URL.revokeObjectURL(urls[id])}catch(e){} delete urls[id]; } }
   async function url(id){ id=String(id); if(urls[id])return urls[id]; const b=await get(id); if(!b)return null; urls[id]=URL.createObjectURL(b); return urls[id]; }
   function scheduleSave(){ clearTimeout(_t); _t=setTimeout(()=>{ try{ saveDK(); }catch(e){} },150); }
@@ -7792,7 +7861,8 @@ const DKPHOTO=(function(){
       if(typeof ph!=='string'||ph===MARK||ph.indexOf('data:')!==0)return;
       if(have.has(id)){ j.photo=MARK; return; }
       if(inflight.has(id))return; inflight.add(id);
-      put(id,ph).then(()=>{ inflight.delete(id); j.photo=MARK; scheduleSave(); },()=>{ inflight.delete(id); });
+      put(id,ph).then(()=>{ inflight.delete(id); j.photo=MARK; scheduleSave(); },
+                     (e)=>{ inflight.delete(id); try{ DEVLOG.data('slipstore',{ok:false,latest:'write refused ('+((e&&e.message)||e)+') — bytes stay on the row'}); }catch(_){} });   /* #slipkeep — a refusal is news, not silence */
     }catch(e){}
   }
   function migrate(list){ try{ (list||DOCKETS).forEach(stash); }catch(e){} }
@@ -17527,7 +17597,7 @@ function renderDockets(){
       ? [t.aka, t.operator, t.berths].filter(Boolean).join(" · ")
       : (j.terminal+((!j.berth&&!j.dock&&TERMINALS.filter(x=>x.operator.toUpperCase()===String(j.terminal||"").toUpperCase()).length>1)?' · <span class="unconf">dock not set — long-press to fix</span>':''));
     const shipLabel = (j.ship && j.ship!=="\u2014") ? j.ship : "No ship · dock/rail work";
-    el.insertAdjacentHTML('beforeend','<div class="jobrow press" data-id="'+j._id+'" data-name="'+j.ship+'" data-date="'+j.date+'"><div class="d mono">'+fmtD(j.date)+(j.start?'<br><span style="font-size:9.5px;color:var(--steel)">'+fmtStart(j.start)+(j.flex?' · FLX':'')+'</span>':'')+'</div><div class="n"><b>'+portLabel+(j.photo?' <span class="dkt-cam'+(docketPhotoHere(j)?'':' away')+'" role="button" title="'+(docketPhotoHere(j)?'View docket photo':'The photo is on the phone you scanned it with')+'" onclick="openDocketPhoto(event,\''+j._id+'\')">📷</span>':'')+'</b><span>'+shipLabel+' · '+j.shift+(j.queue?' · #'+j.queue+' in line':'')+'</span></div><span class="cat '+catCls+'">'+j.category+'</span></div><div class="detail">'+det+'</div>');
+    el.insertAdjacentHTML('beforeend','<div class="jobrow press" data-id="'+j._id+'" data-name="'+j.ship+'" data-date="'+j.date+'"><div class="d mono">'+fmtD(j.date)+(j.start?'<br><span style="font-size:9.5px;color:var(--steel)">'+fmtStart(j.start)+(j.flex?' · FLX':'')+'</span>':'')+'</div><div class="n"><b>'+portLabel+(j.photo?' <span class="dkt-cam'+(docketPhotoHere(j)?'':' away')+'" role="button" title="'+(docketPhotoHere(j)?'View docket photo':'No copy of this photo on this phone — scan the slip again to put it here')+'" onclick="openDocketPhoto(event,\''+j._id+'\')">📷</span>':'')+'</b><span>'+shipLabel+' · '+j.shift+(j.queue?' · #'+j.queue+' in line':'')+'</span></div><span class="cat '+catCls+'">'+j.category+'</span></div><div class="detail">'+det+'</div>');
   });
   // #38/#108 retired — new dockets no longer auto-expand. A fresh entry lands folded
   // like every other row (newest date on top), easy to spot; tap it to open by hand.
@@ -17566,7 +17636,7 @@ function openDocketPhoto(ev,id){
   docketPhotoSrc(j).then(src=>{
     if(window._photoLBDocket!==j)return;
     if(src){ img.src=src; if(save)save.style.display=''; note.textContent='Kept on this phone — it never goes to the server. Save it to your camera roll any time.'; }
-    else { note.innerHTML='<b style="color:var(--bone)">This slip’s photo is on the phone you scanned it with.</b><br>Every slip stays on the phone that scanned it — open the log there to see or save it.'; }
+    else { note.innerHTML='<b style="color:var(--bone)">No copy of this slip’s photo on this phone.</b><br>A slip stays on the phone that scanned it — open the log there to see or save it. Or scan the slip again here: the photo goes onto this entry, no second seal.'; }   /* #slipkeep — true whichever phone lost it, and says the way back */
   });
 }
 function closeDocketPhoto(){
@@ -17877,6 +17947,25 @@ function drawWG(){
    same date + terminal + category + shift + ship. Blank ship still de-dupes. */
 function dktKey(j){return [j.date,(j.terminal||"").toUpperCase(),(j.category||"").toUpperCase(),(j.shift||""),(j.ship||"").toUpperCase().trim()].join("|");}
 function isDupDocket(j,ignoreId){return DOCKETS.some(x=>x._id!==ignoreId&&dktKey(x)===dktKey(j));}
+/* #slipkeep — A SLIP SCANNED AGAIN LANDS ON THE ENTRY IT BELONGS TO. The seal doors used to
+   refuse a duplicate outright, which left no road back for an entry whose picture this
+   phone lost (or never had — logged by hand, or sealed on another phone). Now, when the
+   scan matches an entry that has no photo on this phone, the scan becomes that entry's
+   photo: no second row, no second ⬡. Returns true when it did that (the caller is done). */
+function slipReattach(j,pos,ignoreId){
+  try{
+    const shot=window.scanThumb; if(typeof shot!=='string'||shot.indexOf('data:')!==0)return false;
+    const had=DOCKETS.find(x=>x._id!==ignoreId&&dktKey(x)===dktKey(j)); if(!had)return false;
+    if(docketPhotoHere(had))return false;              /* it already has its picture here — the plain refusal stands */
+    had.photo=shot; had.src='photo'; window.scanThumb=null;
+    try{ window.scanLast=null; }catch(e){}
+    saveDK(); renderDockets();
+    try{ checkMarks(); }catch(e){}
+    if(pos!=null) alert("Docket read: "+pos+". That job was already in the log — this photo is now on that entry.");
+    else { try{ toast("✓ Photo added to the entry already in the log"); }catch(e){} }
+    return true;
+  }catch(e){ return false; }
+}
 function myBoardId(){return (typeof ACCT_ID==="string"&&/^[A-Z]\d{2,5}$/.test(ACCT_ID))?ACCT_ID:null;}
 
 /* Casual dispatch rules (a casual physically can't hold a docket that breaks these):
@@ -18278,7 +18367,10 @@ document.getElementById('njAdd').onclick=()=>{
 
   const j={date,ship:ship||"—",terminal:termOk,berth:termBerth,dock:termDock,category,shift,start:start||undefined,hours:hours||undefined,flex:flex||undefined,clerkPct:clerkPct||undefined,finish:njFinGet()||undefined,board:"",queue:"",photo:(window.scanThumb||null),_id:Date.now()};   /* #finish — the casual's own word on the finish-up */
   const editId=window.njEditId||null;
-  if(isDupDocket(j,editId)){alert("You already logged this job — same terminal, shift, and date. No duplicate sealed.");return;}
+  if(isDupDocket(j,editId)){
+    if(!editId&&slipReattach(j,null,editId)){ njClearForm(); return; }   /* #slipkeep — a scan that came through the form: the photo goes on the entry already in the book */
+    alert("You already logged this job — same terminal, shift, and date. No duplicate sealed.");return;
+  }
   const rest=restViolation(j,editId);
   if(rest){alert(rest);return;}   // a casual can't hold a docket that breaks dispatch rules
 
@@ -19916,7 +20008,7 @@ renderPorts();
       withPhoto.forEach(j=>{ docketPhotoSrc(j).then(src=>{ try{ const im=pick.querySelector('img[data-pid="'+String(j._id)+'"]'); if(im&&src)im.src=src; }catch(e){} }); });   /* #slipvault — thumbnails off the store */
       pick.querySelectorAll('.wp-pick').forEach(b=>b.addEventListener('click',async()=>{
         const j=DOCKETS.find(x=>String(x._id)===b.dataset.id); if(!j||!j.photo)return;
-        const bytes=await docketPhotoData(j); if(!bytes){ try{toast('That slip’s photo is on your other phone');}catch(e){} return; }   /* #slipvault */
+        const bytes=await docketPhotoData(j); if(!bytes){ try{toast('No copy of that slip’s photo on this phone — scan it again from the log to put it here');}catch(e){} return; }   /* #slipvault */
         proof={photo:await fitProof(bytes),meta:{from:'log',date:j.date,terminal:j.terminal||null,hours:j.hours||null,shift:j.shift||null,src:j.src||null,id:String(j._id),
           berth:j.berth||null,dock:j.dock||null,ship:(j.ship&&j.ship!=='—')?j.ship:null,cat:j.category||null}};   /* #slipsays — the log knows the dock; say so */
         renderProof();
@@ -29260,7 +29352,13 @@ function sealScan(p){
     tags:p.tags||undefined,               /* #gatecodes — LA · LA AU · GE, straight off the slip */
     shift:trS.shift,start:p.start||undefined,flex:trS.flex||undefined,
     board:"",queue:"",photo:(window.scanThumb||null),_id:Date.now()};
-  if(isDupDocket(j)){alert("Docket read: "+p.pos+". You already logged this job — no duplicate sealed.");window.scanThumb=null;return;}
+  if(isDupDocket(j)){
+    /* #slipkeep — the same slip scanned again, and the entry already in the book has no
+       picture on this phone (lost, or logged by hand, or sealed on another phone): the
+       scan IS the picture. Put it on the entry — no second seal, no second ⬡. */
+    if(slipReattach(j,p.pos,null))return;
+    alert("Docket read: "+p.pos+". You already logged this job — no duplicate sealed.");window.scanThumb=null;return;
+  }
   const scanRest=restViolation(j,null);
   if(scanRest){alert("Docket read: "+p.pos+". But — "+scanRest);window.scanThumb=null;return;}
   window.scanThumb=null;
