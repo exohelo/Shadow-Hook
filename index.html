@@ -5580,9 +5580,27 @@ window.DEVLOG=(function(){
       {id:'stevedore',usd:25, bucks:3000, tag:'+20% bonus'},
       {id:'harbormaster',usd:50,bucks:6500,tag:'+30% · best deal'}
     ];
+    /* ═══ #mintsoon(sep17) — THE MINT IS SHUT UNTIL THE TILL RUNS ON A LIVE KEY ═══
+       The whole road is wired — pack → bucks-till → Stripe Checkout → back here with
+       ?bucks_paid= → confirm → credit — but the till is deployed on Stripe's TEST key, so
+       a member who tapped a pack landed on a test-mode checkout page: a sandbox, with a
+       real-looking price on it. Same pattern as the Armory's GEAR_SHOW_PRICES: one flag.
+       While shut, the packs draw dimmed under a COMING SOON card and a tap says so; not
+       one call goes to the till. TO OPEN: redeploy bucks-till with the live secret key,
+       then EITHER flip MINT_OPEN to true here OR set mint = 'open' on the km_flags row
+       (no redeploy of the app; the flag rides down with the rest of the Keymaster's
+       flags at boot). The walk back from the mint below is untouched either way. */
+    const MINT_OPEN=false;
+    const mintOpen=()=>{ try{ if(window.KM_FLAGS&&String(window.KM_FLAGS.mint||'').toLowerCase()==='open')return true; }catch(e){} return MINT_OPEN; };
+    window.mintOpen=mintOpen;
     function packsDraw(){
       const host=$('bankPacks');if(!host)return;
-      host.innerHTML=PACKS.map(p=>'<button class="btn-ghost bank-pack" data-pack="'+p.id+'" style="display:block;padding:10px 6px;text-align:center">'
+      const open=mintOpen();
+      host.innerHTML=(open?'':'<div class="mint-soon" style="grid-column:1 / -1;border:1px solid var(--line-soft);border-radius:12px;padding:12px 12px 11px;text-align:center;background:rgba(122,92,255,.07)">'
+          +'<div class="big" style="font-size:15px;letter-spacing:.14em;color:var(--copper-hi)">⚓ THE MINT OPENS SOON</div>'
+          +'<div class="sub" style="margin-top:5px;line-height:1.5">Packs will sell here for real money once the till is open. Until then, earn ⬡ the usual way — seal your dockets, call the board, log the drops. Every ⬡ you hold keeps counting.</div>'
+        +'</div>')
+        +PACKS.map(p=>'<button class="btn-ghost bank-pack" data-pack="'+p.id+'" type="button"'+(open?'':' aria-disabled="true"')+' style="display:block;padding:10px 6px;text-align:center'+(open?'':';opacity:.45')+'">'
         +'<div class="mono" style="font-size:16px;color:var(--copper-hi)">'+p.bucks.toLocaleString()+' ⬡</div>'
         +'<div class="sub" style="margin-top:2px">$'+p.usd+(p.tag?' · <span style="color:var(--warn)">'+p.tag+'</span>':'')+'</div>'
         +'</button>').join('');
@@ -5623,6 +5641,7 @@ window.DEVLOG=(function(){
     }
     async function bankBuy(id){
       const m=$('bankBuyMsg');
+      if(!mintOpen()){ try{ toast('⚓ The mint isn’t open yet — the ⬡ you earn still count'); }catch(e){} return; }   /* #mintsoon — no call to the till while it's shut */
       if(!window.SB||!window.__shkUid){m.textContent='✗ claim your card and sign in first — the mint has to know whose stack to fill';return;}
       m.textContent='opening the mint…';
       try{
@@ -22060,11 +22079,7 @@ const MSG_COST=0, MEDIA_COST=0, ROOM_COST=250, GATH_COST=150, CLAN_COST=250;   /
    Shows the shortfall at a glance, offers package deals the way game apps do,
    and points at the free ways to earn. Buying goes live when the exchange
    (#60) lands — until then a tap on a pack just says so. */
-const BUCK_PACKS=[
-  {n:"Deckhand's Pouch", a:500,  usd:"$1.99"},
-  {n:"Foreman's Cut",    a:1400, usd:"$4.99", best:true},
-  {n:"Keymaster's Chest",a:3200, usd:"$9.99"}
-];
+/* #mintsoon — BUCK_PACKS retired: the Bank's PACKS (mirroring bucks-till) are the only list. */
 function openBrokeSheet(need){
   let sh=document.getElementById('brokeSheet');
   if(!sh){sh=document.createElement('div');sh.className='sheet';sh.id='brokeSheet';document.body.appendChild(sh);
@@ -22072,14 +22087,16 @@ function openBrokeSheet(need){
   sh.innerHTML='<div class="sheet-card">'
     +'<div class="big" style="font-size:22px;letter-spacing:.07em;color:var(--ember)">INSUFFICIENT FUNDS</div>'
     +'<div class="sixstrip" style="margin:14px 0 2px;justify-content:space-between"><span>Cost <b class="mono" style="color:var(--copper-hi)">'+need.toLocaleString()+' ⬡</b></span><span>Your stack <b class="mono" style="color:var(--bone)">'+CREDITS.toLocaleString()+' ⬡</b></span><span>Short <b class="mono" style="color:var(--ember)">'+(need-CREDITS).toLocaleString()+' ⬡</b></span></div>'
+    /* #mintsoon(sep17) — ONE PRICE LIST. This sheet used to draw its own three packs
+       ($1.99 / $4.99 / $9.99) that matched nothing the Bank sells ($5 / $10 / $25 / $50,
+       priced server-side in bucks-till). It points at the Bank now, which shows the real
+       packs — or the COMING SOON card while the mint is shut — so the two can't disagree. */
     +'<p class="sub" style="margin:12px 0 2px">Top up the stack —</p>'
-    +BUCK_PACKS.map((p,i)=>'<button type="button" class="pkg'+(p.best?' best':'')+'" data-i="'+i+'"><span class="amt">'+p.a.toLocaleString()+' ⬡</span><span>'+p.n+'</span>'+(p.best?'<span class="bv">BEST VALUE</span>':'')+'<span class="usd">'+p.usd+'</span></button>').join('')
+    +'<button type="button" class="btn" id="brokeBank" style="width:100%;margin-top:6px">⬡ Open the Bank'+((typeof window.mintOpen==='function'&&!window.mintOpen())?' <span style="opacity:.75;font-size:11px;letter-spacing:.12em">· MINT OPENS SOON</span>':'')+'</button>'
     +'<p class="sub" style="margin:12px 0 0;font-size:12.5px">— or earn it free: seal dockets · feed the Wire · send word.</p>'
-    +'<p class="sub mono" id="brokeNote" style="margin:10px 0 0;font-size:11.5px;color:var(--warn);visibility:hidden">⚓ The exchange window opens soon. Hold fast.</p>'
     +'<button class="btn-ghost" id="brokeNo" type="button" style="width:100%;margin-top:10px;border:0;color:#586067">Close</button></div>';
   sh.querySelector('#brokeNo').addEventListener('click',()=>sh.classList.remove('on'));
-  sh.querySelectorAll('.pkg').forEach(b=>b.addEventListener('click',()=>{
-    sh.querySelector('#brokeNote').style.visibility='visible';}));  /* store isn't live yet — say so in-sheet */
+  sh.querySelector('#brokeBank').addEventListener('click',()=>{ sh.classList.remove('on'); try{ if(typeof window.bankOpen==='function')window.bankOpen(); }catch(e){} });
   sh.classList.add('on');
 }
 window.openBrokeSheet=openBrokeSheet;
