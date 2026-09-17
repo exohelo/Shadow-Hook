@@ -1900,9 +1900,6 @@ html.daylight .hdr-seal{background:radial-gradient(circle at 50% 30%,#f6eed8,#e5
 .scan-arrow{position:relative;z-index:1;margin-left:auto;font-size:19px;color:var(--copper)}
 /* #dock2 — Picture Gallery rides HALF the scanner's build: compact console row */
 .scan-console.half{padding:8px 14px;gap:10px;border-radius:13px}
-/* #clerkdocket — the hand-log form lights up when the clerk console sends you down to it */
-@keyframes clerkFlash{0%{box-shadow:0 0 0 0 rgba(var(--scg),0)}18%{box-shadow:0 0 22px 2px rgba(var(--scg),.42)}100%{box-shadow:0 0 0 0 rgba(var(--scg),0)}}
-#njFormCard.clerk-flash{animation:clerkFlash 1.4s ease-out 1}
 .scan-console.half .scan-ic{width:30px;height:30px;border-radius:9px;font-size:15px}
 .scan-console.half .scan-tx .sl1{font-size:14px;letter-spacing:.06em}
 .scan-console.half .scan-arrow{font-size:15px}
@@ -3928,13 +3925,21 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
       try{ if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(url).then(done,function(){prompt('Copy this link, open Safari, paste it:',url);}); else prompt('Copy this link, open Safari, paste it:',url); }catch(e){}
     });
   }
-  /* wait for the loader to leave (or the gate to paint) so it never fights the boot */
+  /* #installafter(sep17) — NOT AT THE GATE. On the smaller iPhones this walkthrough came
+     up over JOIN THE BROTHERHOOD and a new casual couldn't get past it to sign up. It
+     now waits for the app itself: enterApp() adds .on to #app — the one door every
+     sign-in walks through (cached card, backend session, a fresh gate check) — and
+     before that, nothing. After it, the rule is what it was: every launch, until the
+     icon's on the home screen. The loader gets to leave first (or 9s past entry). */
+  function entered(){ try{var a=document.getElementById('app');return !!(a&&a.classList.contains('on'));}catch(e){return false} }
   function arm(){
-    var t0=Date.now();
+    var tIn=0;
     var iv=setInterval(function(){
+      if(!entered()){ tIn=0; return; }
+      if(!tIn)tIn=Date.now();
       var boot=document.getElementById('boot');
-      if(!boot||Date.now()-t0>9000){ clearInterval(iv); show(); }
-    },250);
+      if(!boot||Date.now()-tIn>9000){ clearInterval(iv); show(); }
+    },300);
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',arm,{once:true}); else arm();
 }catch(e){ try{console.warn('[iosgate]',e)}catch(_){} }})();
@@ -4900,19 +4905,12 @@ window.DEVLOG=(function(){
       <span class="scan-arrow">›</span>
     </button>
     <input type="file" id="galleryPhoto" accept="image/*" multiple hidden>
-    <!-- #clerkdocket(sep15) — CLERK SLIPS ARE HANDWRITTEN, SO THE READER NEVER SEES ONE.
-         A casual scanned a hand-written clerk docket: the reader half-read it, couldn't
-         place a dock, dropped him into a part-filled form, and the terminal he typed
-         ("LB 204") went out as a Missing-terminal word to the Keymaster. tesseract reads
-         PRINT — a handwritten slip is out of its reach, and a half-read is worse than no
-         read. So the honest path gets its own console, right where the scanner sits. -->
-    <button class="scan-console half" id="clerkBtn" type="button">
-      <span class="scan-ic">✍</span>
-      <span class="scan-tx"><span class="sl1">CLERK DOCKET · BY HAND</span></span>
-      <span class="scan-arrow">›</span>
-    </button>
-    <div class="sub" id="clerkNote" style="margin:-2px 0 12px;font-size:11px;line-height:1.5;color:var(--steel)">
-      Clerk dockets come <b style="color:var(--bone)">handwritten</b> — the reader only takes printed slips, and a half-read slip puts you at the wrong gate. Log those by hand.
+    <!-- #clerkdocket(sep15) — CLERK SLIPS ARE HANDWRITTEN. tesseract reads print; a hand-written
+         clerk docket half-reads, and a half-read is worse than none (one went out as a
+         Missing-terminal word for "LB 204"). No separate door — Log It By Hand, right below,
+         is the path. This line just says so before anyone points the camera at one. -->
+    <div class="sub" id="clerkNote" style="margin:0 0 12px;font-size:11px;line-height:1.5;color:var(--steel)">
+      Clerk dockets come <b style="color:var(--bone)">handwritten</b> — the reader only takes printed slips, and a half-read slip puts you at the wrong gate. Log those by hand below.
     </div>
 
     <!-- #dock2 — LOG IT BY HAND is an OPEN FORM on the page now (no console, no popup).
@@ -8555,6 +8553,7 @@ function enterApp(tab){
   document.getElementById('gatePage').style.display="none";
   atGate(false);
   document.getElementById('app').classList.add('on');
+  try{window.dispatchEvent(new CustomEvent('shk:entered'));}catch(e){}   /* #installafter — the home-screen invites wait for this, never the gate */
   gotoTab(tab);window.scrollTo(0,0);
   try{setTimeout(function(){try{processPendingShare()}catch(e){}},900);}catch(e){}   // #share-in — a clip shared in before sign-in floats now
 }
@@ -13807,69 +13806,135 @@ if('serviceWorker' in navigator){
    full-screen from its own home-screen icon like a native app.
    Android/Chrome: we catch beforeinstallprompt and offer a one-tap Install bar.
    iPhone/Safari: no prompt API exists, so the bar shows the two-tap route.     */
+/* ═══ #installafter(sep17) — THE INVITE WAITS UNTIL THEY'RE IN, THEN DOESN'T QUIT ═══
+   TWO REPORTS THE SAME DAY. (1) iPhone: on the smaller screens the home-screen
+   walkthrough came up over the GATE and sat on JOIN THE BROTHERHOOD — a new casual
+   couldn't sign up through it. (2) Android: a casual signing in from the browser saw
+   NO download button at all. Same root: the invite fired off the PAGE LOAD, not the
+   sign-in — and on Android it fired ONLY when Chrome handed over the install ticket
+   (beforeinstallprompt). Firefox, Samsung Internet, an Instagram/Facebook in-app
+   browser, Chrome in its cool-off after an earlier "no", or the app ALREADY on the
+   phone and opened from the browser instead of the icon: none of those hand us a
+   ticket, and a bar that only speaks with a ticket said nothing. That's what she saw.
+   THE RULE NOW, both platforms:
+     · NOTHING about installing shows at the gate. enterApp() is the one door every
+       sign-in walks through; it raises `shk:entered`, and the invite listens for that.
+     · Once they're in, Android ALWAYS gets a bar: the one-tap INSTALL when the browser
+       offers it, otherwise the menu route for the browser actually in their hand
+       (Chrome ⋮ · Samsung ☰ · Firefox ⋮ · Edge ··· · "open this in Chrome" inside an
+       app's browser, with a copy-link button). A ticket that lands late upgrades the
+       how-to bar to the one-tap button on its own.
+     · Aggressive, same rule as the iPhone gate: ✕ lasts the SESSION. Every fresh open
+       brings it back until the app runs from its own icon. (It used to write a 14-day
+       silence — one tap of ✕ and the download button was gone for two weeks.)
+     · Running from the icon → none of this ever appears. */
 let deferredInstall=null, reinstallMode=false;
 function isStandalone(){try{return matchMedia('(display-mode: standalone)').matches||navigator.standalone===true}catch(e){return false}}
-/* Dismissing the bar silences it for 14 days — NOT forever. (It used to write a
-   permanent "1"; members who deleted the app could never get the invite back.
-   A leftover "1" parses as timestamp 1 → long expired → they're unstuck.) */
-function installBarDismissed(){try{const v=+localStorage.getItem("shadowhook_installbar")||0;return (Date.now()-v)<14*86400000}catch(e){return false}}
+function appEntered(){try{const a=document.getElementById('app');return !!(a&&a.classList.contains('on'))}catch(e){return false}}
+/* ✕ silences the bar for THIS SESSION only. (The old key wrote a 14-day timestamp to
+   localStorage; whatever is left there is ignored.) */
+function installBarDismissed(){try{return sessionStorage.getItem("shadowhook_installbar_later")==="1"}catch(e){return false}}
 /* #85 — remember that the app WAS installed, so if it's ever deleted we notice
    (the browser starts offering install again) and invite the member back. */
 function wasInstalled(){try{return localStorage.getItem("shadowhook_installed")==="1"}catch(e){return false}}
 function setInstalled(on){try{on?localStorage.setItem("shadowhook_installed","1"):localStorage.removeItem("shadowhook_installed")}catch(e){}}
 function removeInstallBar(){const b=document.getElementById('installBar'); if(b)b.remove();}
-function dismissInstallBar(){try{localStorage.setItem("shadowhook_installbar",String(Date.now()))}catch(e){} removeInstallBar();}
+function dismissInstallBar(){try{sessionStorage.setItem("shadowhook_installbar_later","1")}catch(e){} removeInstallBar();}
 if(isStandalone())setInstalled(true);   // running from the home-screen icon = definitely installed
-function showInstallBar(iosMode){
-  if(isStandalone()||installBarDismissed()||document.getElementById('installBar'))return;
-  /* The bar only shows when it can actually deliver: a one-tap INSTALL button
-     (browser handed us the install ticket) or the iOS Share route (Apple allows
-     nothing else). If the browser is withholding install — e.g. its cool-off
-     right after the app was deleted — show NOTHING; the bar returns armed the
-     moment the browser re-offers. */
-  if(!iosMode&&!deferredInstall)return;
-  const canPrompt=!!deferredInstall;
+/* which Android browser is this, and what's ITS way onto the home screen? null off Android. */
+function androidRoute(){
+  const ua=navigator.userAgent||'';
+  if(!/Android/i.test(ua))return null;
+  const inApp=/Instagram/i.test(ua)?'Instagram':/FBAN|FBAV|FB_IAB/i.test(ua)?'Facebook':/Messenger/i.test(ua)?'Messenger'
+    :/TikTok|musical_ly|Bytedance/i.test(ua)?'TikTok':/Snapchat/i.test(ua)?'Snapchat':/Twitter/i.test(ua)?'X':/LinkedIn/i.test(ua)?'LinkedIn'   /* not `X\/` — that matched Firefox/ */
+    :/Line\//i.test(ua)?'LINE':/GSA\//i.test(ua)?'the Google app':/Pinterest/i.test(ua)?'Pinterest':(/; wv\)/.test(ua)?'an app':null);
+  if(inApp)return {kind:'inapp',name:inApp,
+    how:'You’re inside <b>'+inApp+'’s</b> built-in browser — it can’t install apps. Tap <b>⋮</b> → <b>Open in Chrome</b>, or copy the link and open it there.'};
+  if(/SamsungBrowser/i.test(ua))return {kind:'samsung',name:'Samsung Internet',how:'Tap <b>☰</b> (bottom right) → <b>Add page to</b> → <b>Home screen</b>.'};
+  if(/Firefox/i.test(ua))return {kind:'firefox',name:'Firefox',how:'Tap <b>⋮</b> (top right) → <b>Install</b> (or <b>Add to Home screen</b>).'};
+  if(/EdgA/i.test(ua))return {kind:'edge',name:'Edge',how:'Tap <b>···</b> (bottom) → <b>Add to phone</b>.'};
+  return {kind:'chrome',name:'Chrome',how:'Tap <b>⋮</b> (top right) → <b>Add to Home screen</b> → <b>Install</b>.'};
+}
+/* mode: 'prompt' — the browser handed us the ticket: one tap installs
+         'howto'  — Android, no ticket: the menu route for THIS browser (+ copy-link inside an app)
+         'ios'    — Apple's Share route; the full-screen #iosgate owns iPhone, this is its understudy */
+function showInstallBar(mode){
+  if(mode===true)mode='ios'; else if(mode===false)mode='prompt';    /* the old boolean callers */
+  if(isStandalone()||installBarDismissed())return;
+  if(!appEntered())return;                                           /* #installafter — never at the gate */
+  if(mode==='prompt'&&!deferredInstall)mode='howto';                 /* the ticket went away — say the route instead */
+  const route=(mode==='howto')?androidRoute():null;
+  if(mode==='howto'&&!route)return;                                  /* off Android there is no menu route to give */
+  const had=document.getElementById('installBar');
+  if(had){ if(had.dataset.mode===mode)return; had.remove(); }        /* howto → prompt: the bar upgrades in place */
+  const B='<b style="color:var(--copper-hi)">';
+  const canPrompt=(mode==='prompt'), inApp=!!(route&&route.kind==='inapp');
+  /* no ticket + the app was on this phone before: the browser can't tell "deleted" from
+     "opened in a tab instead of the icon" — so say both, don't announce a deletion */
+  const maybeStill=(mode==='howto'&&reinstallMode);
+  const title=inApp?'OPEN THIS IN CHROME TO INSTALL IT'
+    :maybeStill?'OPEN THE ORDER FROM ITS OWN ICON'
+    :reinstallMode?'WELCOME BACK — THE APP CAME OFF YOUR PHONE'
+    :'PUT THE ORDER ON YOUR HOME SCREEN';
+  const sub=(mode==='ios')?'Tap '+B+'Share ⬆</b> then '+B+'Add to Home Screen</b> — opens full-screen, no address bar.'
+    :(mode==='howto')?((maybeStill?'Still on your phone? Open it from the home-screen icon — full-screen, no address bar. Gone? ':'')
+        +route.how.replace(/<b>/g,B)+(maybeStill||inApp?'':' <span style="opacity:.8">Already installed? Open it from the icon on your home screen.</span>'))
+    :(reinstallMode?'One tap puts it back — full-screen, your log and bucks intact.':'Opens full-screen from its own icon — no address bar.');
   const bar=document.createElement('div');
-  bar.id='installBar';
+  bar.id='installBar'; bar.dataset.mode=mode;
   bar.style.cssText='position:fixed;left:50%;transform:translateX(-50%);bottom:calc(74px + env(safe-area-inset-bottom));z-index:74;width:min(430px,calc(100vw - 24px));background:linear-gradient(184deg,var(--plate-2),var(--plate));border:1px solid rgba(238,180,107,.45);border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:11px;box-shadow:0 10px 30px rgba(0,0,0,.55)';
+  const BTN='flex:none;cursor:pointer;border:1px solid rgba(238,180,107,.5);border-radius:9px;padding:10px 14px;background:linear-gradient(184deg,var(--btn-hi),var(--btn-lo));color:var(--copper-hi);font-weight:700;font-size:12px;letter-spacing:.08em';
   bar.innerHTML=
     '<img src="icon-192.png" alt="" style="width:38px;height:38px;border-radius:9px;border:1px solid var(--line);flex:none">'
     +'<div style="min-width:0;flex:1">'
-      +'<div style="font-weight:700;letter-spacing:.06em;font-size:14px;color:var(--bone)">'+(reinstallMode?'WELCOME BACK — THE APP CAME OFF YOUR PHONE':'PUT THE ORDER ON YOUR HOME SCREEN')+'</div>'
-      +'<div class="sub" style="font-size:11.5px;line-height:1.35">'+(iosMode
-        ?'Tap <b style="color:var(--copper-hi)">Share ⬆</b> then <b style="color:var(--copper-hi)">Add to Home Screen</b> — opens full-screen, no address bar.'
-        :(reinstallMode?'One tap puts it back — full-screen, your log and bucks intact.':'Opens full-screen from its own icon — no address bar.'))+'</div>'
+      +'<div style="font-weight:700;letter-spacing:.06em;font-size:14px;color:var(--bone)">'+title+'</div>'
+      +'<div class="sub" style="font-size:11.5px;line-height:1.35">'+sub+'</div>'
     +'</div>'
-    +(iosMode?'':'<button id="installGo" style="flex:none;cursor:pointer;border:1px solid rgba(238,180,107,.5);border-radius:9px;padding:10px 14px;background:linear-gradient(184deg,var(--btn-hi),var(--btn-lo));color:var(--copper-hi);font-weight:700;font-size:12px;letter-spacing:.08em">'+(reinstallMode?'REINSTALL':'INSTALL')+'</button>')
-    +'<button id="installNo" style="flex:none;background:none;border:0;color:var(--steel);font-size:16px;cursor:pointer;padding:4px" aria-label="dismiss">✕</button>';
+    +(canPrompt?'<button id="installGo" style="'+BTN+'">'+(reinstallMode?'REINSTALL':'INSTALL')+'</button>'
+      :inApp?'<button id="installCopy" style="'+BTN+'">COPY LINK</button>':'')
+    +'<button id="installNo" style="flex:none;background:none;border:0;color:var(--steel);font-size:16px;cursor:pointer;padding:4px" aria-label="not now">✕</button>';
   document.body.appendChild(bar);
   const go=document.getElementById('installGo');
   if(go)go.addEventListener('click',async()=>{
     if(!deferredInstall)return removeInstallBar();
     deferredInstall.prompt();
     try{await deferredInstall.userChoice}catch(e){}
-    deferredInstall=null; removeInstallBar();   /* #85 — declining the system prompt isn't "never ask again" */
+    deferredInstall=null; removeInstallBar();   /* #85 — declining the system prompt isn't "never ask again": it's back next open */
+  });
+  const cp=document.getElementById('installCopy');
+  if(cp)cp.addEventListener('click',()=>{
+    const url=location.href.split('#')[0], done=()=>{cp.textContent='✓ COPIED';};
+    try{ if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(url).then(done,()=>{prompt('Copy this link, open Chrome, paste it:',url);}); else prompt('Copy this link, open Chrome, paste it:',url); }catch(e){}
   });
   document.getElementById('installNo').addEventListener('click',dismissInstallBar);
 }
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredInstall=e;
   /* #85 — the browser only offers install when the app ISN'T on the phone. If we
-     know it was installed before, it's been deleted — clear the old "don't ask"
-     silence and invite the member back. */
-  if(wasInstalled()&&!isStandalone()){reinstallMode=true;setInstalled(false);try{localStorage.removeItem("shadowhook_installbar")}catch(e2){}}
-  showInstallBar(false);});
+     know it was installed before, it's been deleted — invite the member back. */
+  if(wasInstalled()&&!isStandalone()){reinstallMode=true;setInstalled(false);}
+  if(appEntered())showInstallBar('prompt');   /* #installafter — at the gate the ticket just waits; entry picks it up */
+});
 window.addEventListener('appinstalled',()=>{deferredInstall=null;setInstalled(true);reinstallMode=false;removeInstallBar();});
-/* iOS Safari never fires beforeinstallprompt — its Share-menu how-to bar is the
-   only route Apple allows, so it shows on a timer. Android shows the bar ONLY
-   when the one-tap INSTALL button is armed (beforeinstallprompt above). */
+/* #installafter — the invite is armed by ENTRY, not by the page load. */
 (function(){
   const ua=navigator.userAgent;
   const isiOS=/iPhone|iPad|iPod/.test(ua)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
   if(isStandalone())return;
-  /* deleted-the-app case, caught at load: clear the old "don't ask" silence so
-     the invite is ready the moment the browser re-offers install */
-  if(wasInstalled()){reinstallMode=true;setInstalled(false);try{localStorage.removeItem("shadowhook_installbar")}catch(e){}}
-  if(isiOS&&!window.__shkIosGate)setTimeout(()=>showInstallBar(true),7000);   /* #iosgate — the full-screen gate owns iPhone now */
+  /* was-installed-before, caught at load: could be deleted, could be a browser tab
+     while the icon still sits there — the copy above hedges until a ticket settles it */
+  if(wasInstalled()){reinstallMode=true;setInstalled(false);}
+  let armed=false;
+  function onEntered(){
+    if(armed)return; armed=true;
+    if(isiOS){ if(!window.__shkIosGate)setTimeout(()=>showInstallBar('ios'),7000); return; }   /* #iosgate — the full-screen gate owns iPhone, and it waits for entry too */
+    /* Android: the ticket lands in the first seconds of the load, long before anyone
+       finishes signing in — so if it's here, one tap. If not, one short beat more for a
+       late one, then the menu route. A ticket after that upgrades the bar by itself. */
+    if(deferredInstall){showInstallBar('prompt');return;}
+    setTimeout(()=>{showInstallBar(deferredInstall?'prompt':'howto');},2500);
+  }
+  window.addEventListener('shk:entered',onEntered);
+  if(appEntered())onEntered();
 })();
 /* ===== #70/#shift — DAYLIGHT MODE: ☀ day · ☾ night · A auto =====
    AUTO used to chase sunrise/sunset over San Pedro Bay, with an ambient-light
@@ -27872,47 +27937,6 @@ document.getElementById('galleryBtn').addEventListener('click',()=>{  // #68 —
   const inp=document.getElementById('galleryPhoto');
   inp.value=""; inp.click(); /* no capture attr — opens the phone gallery / file picker */
 });
-/* ═══ #clerkdocket(sep15) — THE CLERK'S OWN DOOR ═══
-   Clerk dockets are filled out BY HAND. The reader is tesseract with the printed-text
-   English model: it cannot read a handwritten slip, and what it does instead is worse
-   than failing — it half-reads, hands off a part-filled form, and the casual ends up
-   typing a terminal the Order doesn't list, which fires a Missing-terminal word at the
-   Keymaster. Nothing about that chain is the casual's fault: the app only ever offered
-   him a scanner. So the hand-log gets its own console, named for the slip he's holding.
-   The form it opens is the one already on this page (#dock2) — no popup, no second
-   route to keep in step. All this does is send him to it with the job already set. */
-function openClerkLog(){
-  try{
-    try{gotoTab('dockets');}catch(e){}
-    /* a correction left half-open would otherwise swallow this as an EDIT of that row */
-    window.njEditId=null; window.scanThumb=null; window.scanLast=null;
-    try{const b=document.getElementById('njAdd'); if(b)b.textContent='Seal it in the log';}catch(e){}
-    try{manualClose();}catch(e){}                       /* the form rides back to the page */
-    const cat=document.getElementById('njCat');
-    if(cat){ cat.value="CLERK";
-      try{cat.dispatchEvent(new Event('input',{bubbles:true}));}catch(e){}
-      try{njToggleClerk();}catch(e){}                   /* and the clerk-key % opens with it */
-    }
-    const d=document.getElementById('njDate'); if(d&&!d.value)d.value=todayISO();
-    const sh=document.getElementById('njShift');
-    if(sh){ sh.value=njDefaultShift();
-      try{sh.dispatchEvent(new Event('change',{bubbles:true}));}catch(e){} }
-    const card=document.getElementById('njFormCard');
-    if(card){
-      try{card.scrollIntoView({behavior:'smooth',block:'start'});}catch(e){try{card.scrollIntoView();}catch(e2){}}
-      card.classList.remove('clerk-flash');
-      try{void card.offsetWidth;}catch(e){}             /* restart the animation on a second tap */
-      card.classList.add('clerk-flash');
-      setTimeout(function(){try{card.classList.remove('clerk-flash');}catch(e){}},1500);
-    }
-    /* the terminal is the one thing only he knows — put him in it */
-    const term=document.getElementById('njTerm');
-    if(term)setTimeout(function(){try{term.focus();}catch(e){}},280);
-    try{toast('✍ Clerk docket — handwritten, so it goes in by hand. Job set to CLERK.');}catch(e){}
-  }catch(e){}
-}
-window.openClerkLog=openClerkLog;
-try{document.getElementById('clerkBtn').addEventListener('click',openClerkLog);}catch(e){}
 document.getElementById('scanNo').addEventListener('click',()=>{scanAborted=true;closeScanSheet();});
 document.getElementById('scanSheet').addEventListener('click',e=>{if(e.target.id==='scanSheet'){scanAborted=true;closeScanSheet();}});
 /* ═══ #scanfix(sep13) — THE 2.6-SECOND "DEVELOPING THE SHOT…" ═══
