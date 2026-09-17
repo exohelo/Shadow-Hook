@@ -13399,8 +13399,21 @@ function renderMyOdds(startId, moved){
   /* #204 — FIRING LINE: is your card inside the range the board is realistically predicted
      to reach — start ... the 75th-percentile stop, plus a card of slack? Only the firing line
      gets the pre-dispatch alert; nobody gets a blanket "you're a flop" ping. */
-  const hi=(window._lastStageO&&window._lastStageO.hi!=null)?window._lastStageO.hi:moved;
-  const inLine = d <= (hi+1.15);
+  /* ═══ #firingline(sep17) — THE LINE IS A PROBABILITY, NOT A RULER ═══
+     THE REPORT: "You're in the firing line" buzzed D4928 at 3:15 PM on a K4853 start —
+     nineteen letters out, K → Z → A → D — while the same alert's own body read "Right at
+     the edge of the call", the lowest bucket there is. Both came out of this function.
+     WHAT IT WAS: `inLine = d <= hi + 1.15` — your distance against the 75th-percentile
+     STOP plus a card of slack. A stop is a point on the distribution, and the rest ladder
+     can pile mass far out (the twenty-letter calls after the 9/4 lap came from there):
+     a spike at eighteen letters puts the 75th percentile AT eighteen, 18 + 1.15 reaches
+     19.0075, and a card the board has under a one-in-ten chance of ever reaching is "in
+     the line" by arithmetic. `p` two lines up is the same distribution read the honest
+     way — P(the board runs at least as far as your card) — and a spike can't fool it.
+     NOW: in the line when that probability is one in five or better. The old test's
+     intent ("inside the 75th-percentile reach, plus a card of slack") is exactly this,
+     minus the artifact. */
+  const inLine = p >= 0.20;
   const word=pct>=25?"Suit up \u2014 you\u2019re in it.":pct>=15?"Good shot \u2014 worth showing.":pct>=8?"Toss up \u2014 your call.":pct>=3?"Long shot, but you\u2019re on the board.":"Right at the edge of the call.";
   /* #anchor(aug2) — carry the anchor's state with the odds, so the bell and the alert
      can't disagree about whether this call is standing on a real opening card. */
@@ -14416,7 +14429,31 @@ setTimeout(function(){try{
    an EST/AM guess doesn't buzz anybody's pocket. */
 function alertCountIn(){ try{ const s=window._predSource; return s==='EARLY'||s==='FINAL'; }catch(e){ return false; } }
 window.alertCountIn=alertCountIn;
+/* #firingline(sep17) — THE BUZZ WAITS FOR THE CALL TO SETTLE. renderMyOdds runs on every
+   re-figure — boot, each sheet or drop landing, a seal on the record — and the first
+   figures of a session are made on whatever was cached before the fresh pulls land. The
+   alert used to go out on the first render that said "in the line", and the one-per-board
+   key was written with it, so a call that moved ten seconds later could not take it back.
+   Now: an in-line verdict starts a ten-second hold; every re-figure inside it restarts the
+   hold, and one that drops the card out cancels it; at the end the verdict is read AGAIN
+   off the current odds, and only then does anything reach the phone. */
+const FIRING_SETTLE_MS=10000;
+let _oddsAlertT=null;
 function pushOddsAlert(force){
+  if(!notifyPrefOn() || typeof Notification==="undefined" || Notification.permission!=="granted") return;
+  const my=myBoardId(); const od=window._lastOdds;
+  if(!my || !od) return;
+  if(!force){
+    const line=!!od.inLine && startConfirmed() && alertCountIn();
+    if(_oddsAlertT){ clearTimeout(_oddsAlertT); _oddsAlertT=null; }
+    if(!line) return;                                                    /* out of the line (or newly out): nothing pending */
+    try{ if(localStorage.getItem(K("lastNotif"))==="odds_"+callSlot+"_"+todayISO()) return; }catch(e){}   /* this board already buzzed */
+    _oddsAlertT=setTimeout(function(){ _oddsAlertT=null; try{ fireOddsAlert(false); }catch(e){} },FIRING_SETTLE_MS);
+    return;
+  }
+  fireOddsAlert(true);
+}
+function fireOddsAlert(force){
   if(!notifyPrefOn() || typeof Notification==="undefined" || Notification.permission!=="granted") return;
   const my=myBoardId(); const od=window._lastOdds;
   if(!my || !od) return;
@@ -14432,10 +14469,13 @@ function pushOddsAlert(force){
      early count is in (alertCountIn). Held, not lost: when the missing piece lands,
      repredict → publishCall → renderMyOdds → here, and it goes out then. */
   const line = !!od.inLine && startConfirmed() && alertCountIn();
-  if(!force && !line) return;
+  if(!force && !line) return;                                    /* #firingline — re-read at the end of the hold: the call moved, the buzz doesn't go */
   const key="odds_"+callSlot+"_"+todayISO();                    // one alert per board, not per reload
+  /* #firingline — the key is written ONLY by the real firing-line message. The forced
+     "Alerts on — I've got you" confirmation used to write it too, which silently ate
+     that board's real alert for anyone who switched alerts on that day. */
   try{ if(!force && localStorage.getItem(K("lastNotif"))===key) return;
-       localStorage.setItem(K("lastNotif"), key); }catch(e){}
+       if(line) localStorage.setItem(K("lastNotif"), key); }catch(e){}
   /* #204 \u2014 phone-friendly: the TITLE front-loads the message (phones truncate hard) \u2014 no bare
      "%" that reads as "1% chance toni...", and no confusing "flops past you". */
   let title, body;
