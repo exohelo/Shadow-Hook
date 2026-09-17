@@ -17628,6 +17628,11 @@ function openDocketPhoto(ev,id){
   if(ev){ev.stopPropagation();ev.preventDefault();}
   const j=DOCKETS.find(x=>String(x._id)===String(id));
   if(!j||!j.photo)return;
+  /* #slipquiet(sep17) — NO PICTURE ON THIS PHONE → NO VIEWER. It used to open the lightbox
+     anyway: a broken-image bar, a CLOSE button and a paragraph of small grey text nobody
+     could read. The row's dimmed 📷 already says it; a tap gets one line and nothing else. */
+  const away=()=>{ try{ toast('No photo of that slip on this phone'); }catch(e){} };
+  if(!docketPhotoHere(j)){ away(); return; }
   /* #slipvault — the picture comes off this phone's store (or the row, on an old record) */
   window._photoLBDocket=j;
   const img=document.getElementById('photoLBImg'), note=document.getElementById('photoLBNote'), save=document.getElementById('photoLBSave');
@@ -17636,7 +17641,7 @@ function openDocketPhoto(ev,id){
   docketPhotoSrc(j).then(src=>{
     if(window._photoLBDocket!==j)return;
     if(src){ img.src=src; if(save)save.style.display=''; note.textContent='Kept on this phone — it never goes to the server. Save it to your camera roll any time.'; }
-    else { note.innerHTML='<b style="color:var(--bone)">No copy of this slip’s photo on this phone.</b><br>A slip stays on the phone that scanned it — open the log there to see or save it. Or scan the slip again here: the photo goes onto this entry, no second seal.'; }   /* #slipkeep — true whichever phone lost it, and says the way back */
+    else { closeDocketPhoto(); away(); }   /* the store said yes but the read came back empty — same one line, no broken viewer */
   });
 }
 function closeDocketPhoto(){
