@@ -16341,7 +16341,7 @@ const DROP_WAVE={FLEX:"Flex","1ST":"1st","2ND":"2nd"};
 const DROP_CATS={UTR:"UTR",FLEX:"Flex",HOOTS:"Hoots",HOLD:"Hold",KH:"Key Hold",SWING:"Swing",SL:"Swing Lash",LASH:"Lash",DOCK:"Dock",CRANE:"Crane",TOP:"Top Pick",SIDE:"Side Pick",RAIL:"Rail",BULL:"Bull",DSIG:"Dock Signal",HL:"Heavy Lift",AUTO:"Autos",JIT:"Jitney",CY:"CY",SWMP:"Swamper",GEAR:"Gear",KEYS:"Keys",BCLK:"Basic Clerk",CLK:"Clerk","?":"they didn't say",EST:"ballpark"};
 function dropWaves(list){var w={FLEX:0,"1ST":0,"2ND":0},est=0;list.forEach(function(x){if(x.cat==="EST"){est=Math.max(est,x.n);return;}var p=x.ph||dropPhase(x.ts);if(w[p]==null)p="2ND";w[p]+=x.n;});return {FLEX:w.FLEX,"1ST":w["1ST"],"2ND":w["2ND"],est:est};}
 function dropData(){try{const d=JSON.parse(localStorage.getItem(K("droplog"))||"{}");return d[dropKey()]||{drops:[],paid:0}}catch(e){return{drops:[],paid:0}}}
-function dropSave(o){try{const kk=K("droplog");const d=JSON.parse(localStorage.getItem(kk)||"{}");d[dropKey()]=o;localStorage.setItem(kk,JSON.stringify(d))}catch(e){}}
+function dropSave(o){try{const kk=K("droplog");const d=JSON.parse(localStorage.getItem(kk)||"{}");d[dropKey()]=o;localStorage.setItem(kk,JSON.stringify(d));return true}catch(e){return false}}
 function dropTotal(drops){let sum=0,est=0;drops.forEach(x=>{if(x.cat==="EST")est=Math.max(est,x.n);else sum+=x.n});return Math.max(sum,est)}
 function dropRecompute(){
   const t=(typeof dropUnion==="function")?dropUnion().total:dropTotal(dropData().drops);
@@ -16384,9 +16384,27 @@ function dropUnion(){
   const me=(typeof bwMe==="function"&&bwMe())||"";
   const V=dwVoids();
   const mine=dropData().drops.map((x,i)=>({n:x.n,cat:x.cat,ph:x.ph||dropPhase(x.ts),ts:x.ts,cid:x.cid,mine:true,di:i}));
-  const remote=((window.DW||{})[dropKey()]||[]).filter(d=>d.by!==me)
+  /* #dlmine(sep17) — "STOP DELETING MY DROPS." Nobody was. A member's OWN drops lived in
+     this phone's localStorage and nowhere else on this phone: the wire pull filtered every
+     row with by === me OUT, on the theory that the local copy was the master. So the
+     moment the local copy was not there — the app opened in Safari instead of the home-
+     screen icon (separate storage), a second phone, storage evicted or full (dropSave
+     swallowed the QuotaExceeded and the toast still said ✓ logged), a card id re-pointing
+     K() at boot — the member's log came up EMPTY while every other phone still counted
+     their drops. From their side that is the app deleting what they logged. The fix is
+     the same rule the crowd's rows already ride: the wire is the record. Own rows the
+     phone doesn't hold come in as ECHOES (mine, no local index) and dropHeal() below
+     writes them back into this phone's log on every real pull, so the ✕ and the pay
+     record work on them like any drop logged here. A cid this phone struck stays gone
+     (o.gone) — the wire delete can lag or be refused, and it must not rise again. */
+  const _have={}; mine.forEach(x=>{if(x.cid)_have[x.cid]=1;});
+  const _gone={}; try{(dropData().gone||[]).forEach(c=>{_gone[c]=1;});}catch(e){}
+  const wire=((window.DW||{})[dropKey()]||[]);
+  const echoes=me?wire.filter(d=>d.by===me&&d.cid&&!_have[d.cid]&&!_gone[d.cid])
+    .map(d=>({n:+d.n,cat:d.cat,ph:d.ph||dropPhase(+d.ts||0),ts:+d.ts||0,cid:d.cid,mine:true,di:-1})):[];
+  const remote=wire.filter(d=>d.by!==me)
     .map(d=>({n:+d.n,cat:d.cat,ph:d.ph||dropPhase(+d.ts||0),ts:+d.ts||0,cid:d.cid,mine:false,by_handle:d.by_handle||"a casual"}));
-  const all=mine.concat(remote).sort((a,b)=>a.ts-b.ts);
+  const all=mine.concat(echoes,remote).sort((a,b)=>a.ts-b.ts);
   const out=[],struck=[];
   all.forEach(d=>{
     /* struck: off the count on EVERY phone, this one included, but still on screen */
@@ -16417,6 +16435,21 @@ function dropUnion(){
   });
   return {list:out,total:dropTotal(out),struck:struck};
 }
+/* #dlmine — put your own wire rows back into this phone's log. Runs off dwPull on a real
+   change (the signature gate), never pays again (earned:0 — the drop paid on the phone
+   that logged it), and skips anything this phone struck. */
+function dropHeal(){
+  const me=(typeof bwMe==="function"&&bwMe())||""; if(!me)return 0;
+  const o=dropData(); const have={}; (o.drops||[]).forEach(x=>{if(x.cid)have[x.cid]=1;}); (o.gone||[]).forEach(c=>{have[c]=1;});
+  let n=0;
+  ((window.DW||{})[dropKey()]||[]).forEach(d=>{
+    if(!d||d.by!==me||!d.cid||have[d.cid])return;
+    o.drops.push({n:+d.n,cat:d.cat,ph:d.ph||dropPhase(+d.ts||0),ts:+d.ts||0,cid:d.cid,earned:0}); have[d.cid]=1; n++;
+  });
+  if(n){o.drops.sort((a,b)=>a.ts-b.ts);dropSave(o);}
+  return n;
+}
+window.dropHeal=dropHeal;
 /* the running count lands ON the board row — no more vanishing at window close */
 function dropCommit(){
   try{
@@ -16511,6 +16544,7 @@ async function dwPull(){
       catch(e){ _sig=k+"#"+Date.now(); }   /* unreadable rows — treat as changed */
       if(_sig===window.__dwSig) return;    /* nothing moved: no commit, no re-render, no re-figure */
       window.__dwSig=_sig;
+      try{dropHeal();}catch(e){}   /* #dlmine — own rows this phone lost come home first */
       try{dropCommit();}catch(e){}
       try{renderDropLog();}catch(e){}
       try{renderRecentBoards();}catch(e){}
@@ -16696,7 +16730,10 @@ document.getElementById('dropAdd').addEventListener('click',()=>{
      gone; o.paid still counts paid drops so the record of what a board paid stays
      readable, it just no longer decides anything. */
   o.paid=(o.paid||0)+1;d.earned=PAY.DROP;addCredits(PAY.DROP,"drop logged on the wire");toast("✓ Drop logged · +"+PAY.DROP+" ⬡");try{buzz(30);}catch(e){}try{rainCoins(9);}catch(e){}   /* #dl2 — a paid catch sprinkles coins */
-  dropSave(o);dropRecompute();renderDropLog();
+  /* #dlmine — a full phone used to swallow this and the toast still said ✓: the drop rode
+     the wire, paid, and never showed on the phone that logged it. Say it, once. */
+  if(!dropSave(o))try{toast("\u26a0 Rode the wire, but this phone is out of storage \u2014 it'll show once the wire echoes it");}catch(e){}
+  dropRecompute();renderDropLog();
   try{dwPush(d);}catch(e){}                     // #118 — every member's log hears it
   try{renderRecentBoards();}catch(e){}          // #118 — the entry's count climbs live…
   try{repredict();}catch(e){}                   // …and the predictions follow it
@@ -16739,7 +16776,15 @@ document.getElementById('dropList').addEventListener('click',e=>{
     return;
   }
   const b=e.target.closest('button[data-di]');if(!b)return;
-  const o=dropData();const gone=o.drops.splice(parseInt(b.dataset.di,10),1)[0];
+  const o=dropData();const _di=parseInt(b.dataset.di,10),_cid=b.dataset.cid||'';
+  /* #dlmine — strike by cid when the row has one (an index can go stale between a render
+     and the tap; an echo row has none, di −1); the pre-#118 index path stays for rows that
+     never got a cid. Either way the cid goes on o.gone so dropHeal never resurrects it if
+     the wire delete lags or is refused. */
+  let gone=null;
+  if(_cid){const _ix=o.drops.findIndex(x=>x.cid===_cid);if(_ix>=0)gone=o.drops.splice(_ix,1)[0];}
+  else if(_di>=0&&_di<o.drops.length)gone=o.drops.splice(_di,1)[0];
+  try{if(_cid)(o.gone=o.gone||[]).push(_cid);}catch(_){}
   /* #fix2(bucks) — claw back exactly what this drop paid, mirroring the docket strike.
      o.paid is deliberately NOT decremented (it used to be the cap slot; #nocap
      retired the cap, and the counter is just a record now). */
@@ -36041,6 +36086,8 @@ const TPZ={
     desc:"Harry Bridges Boulevard — the street along the whole north fence of the yard. The Main Gate is at its west end at Figueroa St.; the terminal's address is 920 West Harry Bridges Boulevard."});
   add("FRIES","Fries Ave.","road",600,120,22,180,{ghost:true,nolabel:true,
     desc:"Fries Ave. — curves down the northeast fence from Harry Bridges Boulevard to Water St."});
+  add("CITY","City blocks — Figueroa St. to Fries Ave.","road",64,52,540,54,{ghost:true,nolabel:true,
+    desc:"The city street grid north of the yard, as the sign draws it: eleven blocks along Harry Bridges Boulevard, the streets between them named — Figueroa St., Mar Vista Ave., Hawaiian Ave., King Avenue, Wilmington Blvd., Gulf Ave., McDonald Ave., Bay View Ave., Neptune Ave., Lagoon Ave., Island Ave., Fries Ave. Not yard: it is there so you can find the Main Gate from the street. Come in on Harry Bridges Boulevard to Figueroa St."});
   add("FIG","Figueroa St.","road",34,52,32,68,{ghost:true,nolabel:true,
     desc:"Figueroa St. — the street at the Main Gate, the west end of Harry Bridges Boulevard."});
 
@@ -36104,19 +36151,21 @@ function tpBase(){
   /* the pink land: the street grid over the top, the northeast outside Fries Ave, and the east side down to the water */
   g+=`<path d="${path([[6,49],[644,49],[644,700],[600,765],[345,752],[334,723],[338,700],[344,650],[354,620],[362,600],[382,550],[399,500],[430,470],[492,410],[478,392],[520,378],[548,376],[578,366],[596,352],[604,332],[608,300],[612,118],[30,118],[6,118]],1)}" fill="${PINK}"/>`;
   g+=`<path d="${path([[6,118],[60,118],[84,204],[46,216],[6,216]],1)}" fill="${PINK}"/>`;
-  /* street blocks */
-  const ST=[103,153,203,254,304,354,404,454,504,554,604];
-  g+=`<path d="${path([[64,54],[99.5,54],[99.5,105],[44.5,105]],1)}" fill="${BLOCK}" stroke="${INK}" stroke-width="0.7"/>`;
-  for(let i=1;i<ST.length;i++){g+=`<rect x="${ST[i-1]+3.5}" y="54" width="${ST[i]-ST[i-1]-7}" height="51" rx="1.5" fill="${BLOCK}" stroke="${INK}" stroke-width="0.7"/>`;}
+  /* the city blocks north of the boulevard — Figueroa St. to Fries Ave., as the sign draws them:
+     pale blocks, the streets between them carrying their names, so a driver can find the Main Gate */
+  const ST=[103,153,203,254,304,354,404,454,504,554,604], CITY='#ecdfe2';
+  g+=`<path d="${path([[64,54],[99.5,54],[99.5,105],[44.5,105]],1)}" fill="${CITY}" stroke="${INK}" stroke-width="0.6"/>`;
+  for(let i=1;i<ST.length;i++){g+=`<rect x="${ST[i-1]+3.5}" y="54" width="${ST[i]-ST[i-1]-7}" height="51" rx="1" fill="${CITY}" stroke="${INK}" stroke-width="0.6"/>`;}
   /* street names, reading up the street */
   const SN=['MAR VISTA AVE.','HAWAIIAN AVE.','KING AVENUE','WILMINGTON BLVD.','GULF AVE.','MCDONALD AVE.','BAY VIEW AVE.','NEPTUNE AVE.','LAGOON AVE.','ISLAND AVE.'];
-  SN.forEach((n,i)=>{g+=TXT(ST[i]+1.6,80,n,4.6,{r:-90,ls:0.25,w:600});});
-  g+=TXT(52,84,'FIGUEROA ST.',4.6,{r:-69,ls:0.25,w:600});
-  g+=TXT(616,175,'FRIES AVE.',4.6,{r:-84,ls:0.25,w:600});
+  SN.forEach((n,i)=>{g+=TXT(ST[i]+1.9,80,n,5.4,{r:-90,ls:0.3,c:'#3a2a30'});});
+  g+=TXT(52,84,'FIGUEROA ST.',5.4,{r:-69,ls:0.3,c:'#3a2a30'});
+  g+=TXT(616,175,'FRIES AVE.',5.4,{r:-84,ls:0.3,c:'#3a2a30'});
   g+=`<path d="M62,50 L36,118" stroke="${INK}" stroke-width="0.7"/>`;
-  /* Harry Bridges Boulevard — the road band and the yard's north fence */
+  /* Harry Bridges Boulevard — the road band between the blocks and the yard's north fence */
+  g+=`<rect x="30" y="107" width="575" height="11" fill="#e2cfd2"/>`;
   g+=`<path d="M6,107 H604" stroke="${INK}" stroke-width="0.7"/>`;
-  g+=TXT(330,114.6,'HARRY BRIDGES BOULEVARD',5.6,{ls:0.6});
+  g+=TXT(330,114.8,'HARRY BRIDGES BOULEVARD',6.2,{ls:0.7});
   /* Fries Ave curving down the northeast, the outer road edge */
   g+=`<path d="M607.5,106 C609,140 622,180 622,220 C622,250 618,285 613,300" stroke="${INK}" stroke-width="0.7" fill="none"/>`;
   /* the outer road east of the peninsula, and Water St. */
