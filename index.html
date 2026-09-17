@@ -7796,7 +7796,22 @@ const DKPHOTO=(function(){
     }catch(e){}
   }
   function migrate(list){ try{ (list||DOCKETS).forEach(stash); }catch(e){} }
-  return {MARK,have,key,ready:()=>_ready,load,put,get,del,url,stash,migrate,dataUrlToBlob};
+  /* #slipmend(sep17) — A ROW THAT LOST ITS MARK GETS IT BACK FROM THE STORE. A device still
+     on the build before #slipvault never learned the one-word mark: its saveDK ladder
+     strips `photo` off every row older than the ten newest on EVERY save, and that copy
+     rides down through the mirror onto this phone. The picture is still in this phone's
+     store — only the word on the row went — so the 📷 vanished, the >7-day pay rule
+     stopped seeing the slip, and this phone's next save would have pushed the loss up
+     for good. Wherever the log is built from disk (boot, the card re-read, every save):
+     any row with no photo whose key the store holds gets the mark back. Returns how
+     many were mended so the caller knows whether a write is owed. */
+  function repair(list){
+    let n=0;
+    try{ (list||DOCKETS).forEach(j=>{ if(j&&!j.photo&&have.has(key(j))){ j.photo=MARK; n++; } }); }catch(e){}
+    try{ if(n)DEVLOG.data('dockets',{ok:true,latest:n+' slip mark'+(n===1?'':'s')+' restored from the phone’s store'}); }catch(e){}
+    return n;
+  }
+  return {MARK,have,key,ready:()=>_ready,load,put,get,del,url,stash,migrate,repair,dataUrlToBlob};
 })();
 window.DKPHOTO=DKPHOTO;
 /* the picture behind a row, whatever generation the row is: the store on this phone,
@@ -7822,7 +7837,7 @@ window.docketPhotoSrc=docketPhotoSrc; window.docketPhotoBlob=docketPhotoBlob; wi
 /* #slipvault — at boot: learn which slips this phone holds, move any bytes still riding rows
    across, and redraw the 📷s. Sits BELOW the vault's definition on purpose: DOCKETS loads a
    few lines above, but a `const` can't be touched before its line runs. */
-try{ DKPHOTO.load().then(function(){ try{ DKPHOTO.migrate(); }catch(e){} try{ if(typeof renderDockets==='function')renderDockets(); }catch(e){} }); }catch(e){}
+try{ DKPHOTO.load().then(function(){ try{ DKPHOTO.migrate(); }catch(e){} try{ if(DKPHOTO.repair())saveDK(); }catch(e){} try{ if(typeof renderDockets==='function')renderDockets(); }catch(e){} }); }catch(e){}   /* #slipmend — a mended row is a real change: write it, so disk and the cloud copy carry the mark again */
 function saveDK(){try{
   /* FIX — the old line capped the log at the last 500 jobs and swallowed every
      error. A full localStorage (docket photos are base64 and quota is ~5MB) threw
@@ -7833,6 +7848,7 @@ function saveDK(){try{
      The first write keeps EVERY photo (vaulted rows are one word each); the shedding
      ladder below only ever runs for bytes the store hasn't taken yet. */
   DKPHOTO.migrate();
+  DKPHOTO.repair();   /* #slipmend — never write (or push) a row as photo-less while the store holds its slip */
   const build=(cap,keepPhotos)=>DOCKETS.slice(-cap).map((j,i,arr)=>{const c={...j};
     if(typeof c.photo==='string'&&c.photo!==DKPHOTO.MARK&&DKPHOTO.have.has(DKPHOTO.key(c)))c.photo=DKPHOTO.MARK;
     if(typeof c.photo==='string'&&c.photo!==DKPHOTO.MARK&&arr.length-i>keepPhotos)delete c.photo;
@@ -8976,6 +8992,12 @@ function reloadAcctLog(){
   /* #hoursown — the starting figure is the card's too: it is what the ladder, the
      marks and the Race all read, so it must never survive a card change in memory */
   try{ const b=JSON.parse(localStorage.getItem(K("hoursbase"))); HRSBASE=(b&&typeof b==="object")?b:null; }catch(e){ HRSBASE=null; }
+  /* #slipmend — the log was just rebuilt from disk, and the disk copy may be one a
+     pre-#slipvault device stripped. If the store is already open, give back every
+     mark it can vouch for (a mend is a real change, so it IS written — unlike the
+     plain re-read above). If the store isn't open yet, the boot hook beside the
+     vault (#slipvault, up top) runs the same repair on this array the moment it is. */
+  try{ if(DKPHOTO.ready()&&DKPHOTO.repair())saveDK(); }catch(e){}
   try{ if(typeof renderDockets==="function")renderDockets(); }catch(e){}
   try{ if(typeof renderYear==="function")renderYear(); }catch(e){}
 }
@@ -28110,13 +28132,37 @@ function scanCardCamOrFile(fileInput,onFile){
 }
 window.scanCardCamOrFile=scanCardCamOrFile;
 
-let camStream=null,camShooting=false,camWatchdog=null,camMeter=null;
+/* ═══ #camlock(sep17) — THE BLACK SCREEN THAT WOULDN'T CLOSE ═══
+   THE REPORT: "every time I'm about to scan it freezes on a black screen; only after I
+   close the app and open it again can I open the camera."
+   WHAT IT WAS: openScanCam awaited getUserMedia BEFORE it drew anything. On a cold sensor
+   with the 4K ask that wait runs two to five seconds, and in that window the screen showed
+   nothing — the OPENING CAMERA… spinner from #camfix only went up once the stream had
+   arrived. So the casual tapped SCAN again. The re-entry guard (is #camScan on the page?)
+   couldn't see the second tap: there was no overlay yet. Both calls then landed. The first
+   built an overlay and wired its buttons; the second built a SECOND overlay on top with
+   the same ids — and every document.getElementById('camVid' | 'camX' | 'camGo') in it
+   answered with the FIRST overlay's elements. The top overlay: a video with no stream
+   (black), a ✕ with no handler, a shutter with no handler. The first stream was orphaned,
+   never stopped, so the camera stayed held. The watchdog looked at the first video, saw
+   frames, stood down. A black screen with no way out but killing the app.
+   NOW: (1) an opening lock, so a second tap during the wake is a no-op; (2) the overlay
+   goes up — black, spinner, a live ✕ — BEFORE getUserMedia is called, so the wait is
+   visible and escapable; (3) every lookup is scoped to the overlay, never the document;
+   (4) a generation stamp — a stream that arrives after its viewfinder was closed is
+   stopped on the spot, not attached; (5) killDocketCam removes EVERY #camScan; (6) the
+   preview resumes after a background nap (hushAllMedia pauses every <video> when the app
+   goes to the background — nothing ever played it again), and folds up with a toast if
+   the track ends (a call, another app taking the camera) instead of sitting black. */
+let camStream=null,camShooting=false,camWatchdog=null,camMeter=null,camOpening=false,camGen=0,camVis=null;
 function killDocketCam(){
+  camGen++; camOpening=false;                    /* #camlock — anything still waking belongs to a closed viewfinder now */
   if(camMeter){clearInterval(camMeter);camMeter=null;}
   if(camWatchdog){clearTimeout(camWatchdog);camWatchdog=null;}
+  if(camVis){try{document.removeEventListener('visibilitychange',camVis)}catch(e){} camVis=null;}
   if(camStream){try{camStream.getTracks().forEach(t=>t.stop())}catch(e){} camStream=null;}
   camShooting=false;
-  const o=document.getElementById('camScan'); if(o)o.remove();
+  document.querySelectorAll('#camScan').forEach(o=>{try{o.remove()}catch(e){}});   /* #camlock — every one, not just the first */
 }
 /* #shotcoach — openDocketCam is the docket face of openScanCam: same camera, same
    fallback to the phone's camera app, plus the live guide for the slip. */
@@ -28126,7 +28172,7 @@ function openDocketCam(){
 }
 async function openScanCam(opts){
   opts=opts||{}; const KIND=opts.kind||'docket', TITLE=opts.title||'▣ SCAN A DOCKET', onShot=opts.onShot||processDocketPhoto;
-  if(document.getElementById('camScan'))return;
+  if(camOpening||document.getElementById('camScan'))return;   /* #camlock — one viewfinder, and one wake, at a time */
   const fallback=()=>{killDocketCam(); try{ (opts.fallback||function(){ const inp=document.getElementById('scanPhoto'); inp.value=""; inp.click(); })(); }catch(e){} };
   if(!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia&&window.ImageCapture))return fallback();
   /* #camfix(sep3) — FIRST-OPEN FREEZE. The very first getUserMedia call on a device is the
@@ -28137,14 +28183,11 @@ async function openScanCam(opts){
      fixes: a visible "opening camera…" state instead of plain black, and a watchdog — if
      the sensor hasn't delivered a frame inside 7s, bail to the phone's own camera app
      rather than sit there black forever. */
-  let stream=null;
-  try{stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{exact:"environment"},width:{ideal:4096},height:{ideal:3072}}});}
-  catch(e1){
-    try{stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:"environment",width:{ideal:4096}}});}
-    catch(e2){return fallback();}
-  }
-  camStream=stream;
-  try{await stream.getVideoTracks()[0].applyConstraints({advanced:[{focusMode:"continuous"}]});}catch(e){}
+  /* #camlock — the overlay FIRST, then the camera. The spinner and the ✕ are on screen for
+     the whole wake, so a slow sensor reads as a wait, not a crash, and a change of mind
+     has somewhere to go. `gen` is this viewfinder's stamp: killDocketCam bumps camGen, and
+     anything that lands after that (the stream, a late constraint) is for a closed door. */
+  const gen=++camGen; const live=()=>gen===camGen;
   const o=document.createElement('div');
   o.id='camScan';
   o.style.cssText='position:fixed;top:var(--tbH,0px);left:0;right:0;bottom:0;z-index:90;background:#000';   /* #hdr2 — the dispatch header stays up over the camera */
@@ -28168,28 +28211,50 @@ async function openScanCam(opts){
       +'<button id="camGo" aria-label="capture" style="width:68px;height:68px;border-radius:50%;cursor:pointer;border:4px solid var(--copper-hi);background:rgba(238,180,107,.22);box-shadow:0 0 24px rgba(238,180,107,.35)"></button>'
     +'</div>';
   document.body.appendChild(o);
-  const vid=document.getElementById('camVid');
+  const $=sel=>o.querySelector(sel);   /* #camlock — THIS overlay's elements, never the document's first match */
+  const vid=$('#camVid');
+  $('#camX').addEventListener('click',()=>{scanAborted=true;killDocketCam();});   /* live from the first frame of the wait */
+  /* now the camera. A ✕ during the wake bumps camGen; the stream that then arrives is
+     stopped on the spot and handed straight back to the phone, never attached. */
+  let stream=null; camOpening=true;   /* the lock goes on at the first await — nothing synchronous above can strand it */
+  try{stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{exact:"environment"},width:{ideal:4096},height:{ideal:3072}}});}
+  catch(e1){
+    try{stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:"environment",width:{ideal:4096}}});}
+    catch(e2){ if(!live())return; return fallback(); }   /* closed while asking → the casual cancelled; no picker */
+  }
+  if(!live()){ try{stream.getTracks().forEach(t=>t.stop())}catch(e){} return; }
+  camStream=stream; camOpening=false;   /* from here the overlay itself is the guard */
+  try{await stream.getVideoTracks()[0].applyConstraints({advanced:[{focusMode:"continuous"}]});}catch(e){}
+  if(!live())return;   /* ✕ during the focus ask — killDocketCam already stopped the tracks */
+  /* first real frame → drop the spinner; never comes → bail out cleanly instead of a black freeze */
+  const clearWait=()=>{const w=$('#camWait'); if(w)w.remove(); if(camWatchdog){clearTimeout(camWatchdog);camWatchdog=null;}};
+  vid.addEventListener('loadeddata',clearWait,{once:true});
   vid.srcObject=stream;
   try{vid.play().catch(()=>{});}catch(e){}
-  /* first real frame → drop the spinner; never comes → bail out cleanly instead of a black freeze */
-  const clearWait=()=>{const w=document.getElementById('camWait'); if(w)w.remove(); if(camWatchdog){clearTimeout(camWatchdog);camWatchdog=null;}};
-  vid.addEventListener('loadeddata',clearWait,{once:true});
   camWatchdog=setTimeout(()=>{
+    if(!live())return;
     if(!vid.videoWidth){ killDocketCam(); toast('⚓ Camera stalled — tap SCAN A DOCKET again, or use PICTURE GALLERY'); try{fallback();}catch(e){} }
     else clearWait();
   },7000);
-  document.getElementById('camX').addEventListener('click',()=>{scanAborted=true;killDocketCam();});
+  /* #camlock — back from a nap: hushAllMedia paused this <video> along with every other
+     when the app went to the background, and nothing played it again — a frozen preview
+     with the camera light still on. Play it again on return. */
+  camVis=()=>{ if(!document.hidden&&live()){ try{vid.play().catch(()=>{});}catch(e){} } };
+  document.addEventListener('visibilitychange',camVis);
+  /* #camlock — the camera taken away (a call, another app, iOS backgrounding ends the
+     track outright): fold up and say so, rather than sit on a black frame. */
+  try{ stream.getVideoTracks()[0].addEventListener('ended',()=>{ if(!live()||camShooting)return; killDocketCam(); toast('⚓ The camera closed — tap SCAN A DOCKET again'); }); }catch(e){}
   /* #shotcoach — THE READOUTS. A 64×48 thumbnail of the frame every 350 ms: mean
      brightness (too dark under ~60/255), the share of blown-out pixels (glare past
      ~10%), and the change since the last thumbnail (moving past ~10/255). Advisory
      only — the shutter never refuses. */
   const mc=document.createElement('canvas'); mc.width=64; mc.height=48; const mx=mc.getContext('2d',{willReadFrequently:true});
   let lastLuma=null;
-  const chip=(id,ok,txtOk,txtBad)=>{ const e=document.getElementById(id); if(!e)return; e.className=ok?'good':'bad'; e.textContent=ok?txtOk:txtBad; };
+  const chip=(id,ok,txtOk,txtBad)=>{ const e=$('#'+id); if(!e)return; e.className=ok?'good':'bad'; e.textContent=ok?txtOk:txtBad; };
   camMeter=setInterval(()=>{
     try{
       if(!vid.videoWidth)return;
-      const fr=document.getElementById('cgFrame'), ov=document.getElementById('camScan'); if(!fr||!ov)return;
+      const fr=$('#cgFrame'), ov=o; if(!fr||!ov.isConnected)return;
       /* the frame's slice of the video: object-fit cover maps the overlay box onto the sensor */
       const R=ov.getBoundingClientRect(), F=fr.getBoundingClientRect();
       const sc=Math.max(R.width/vid.videoWidth,R.height/vid.videoHeight);
@@ -28206,13 +28271,13 @@ async function openScanCam(opts){
       fr.classList.toggle('ok',okL&&okG&&okS);
     }catch(e){}
   },350);
-  document.getElementById('camGo').addEventListener('click',async()=>{
-    if(camShooting||!camStream)return; camShooting=true;
-    const go=document.getElementById('camGo'); if(go)go.style.opacity=".45";
+  $('#camGo').addEventListener('click',async()=>{
+    if(camShooting||!camStream||!live())return; camShooting=true;
+    const go=$('#camGo'); if(go)go.style.opacity=".45";
     /* #shotcoach — HOLD STILL: 800 ms for the hands to settle and autofocus to land before the real photo */
-    try{ const h=document.getElementById('cgHold'); if(h)h.classList.add('on'); }catch(e){}
+    try{ const h=$('#cgHold'); if(h)h.classList.add('on'); }catch(e){}
     await new Promise(r=>setTimeout(r,800));
-    if(!camStream)return;   /* closed while we waited */
+    if(!camStream||!live())return;   /* closed while we waited */
     let blob=null;
     try{
       const ic=new ImageCapture(camStream.getVideoTracks()[0]);
@@ -28225,7 +28290,7 @@ async function openScanCam(opts){
       catch(e){try{blob=await ic.takePhoto();}catch(e2){}}
     }catch(e){}
     if(!blob){ /* photo pipeline refused — high-res frame grab beats nothing */
-      const v=document.getElementById('camVid');
+      const v=vid;
       if(v&&v.videoWidth){const c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;
         c.getContext('2d').drawImage(v,0,0);
         blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.95));}
