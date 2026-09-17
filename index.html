@@ -3834,7 +3834,7 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
   var isiPad=/iPad/.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
   var isiOS=/iPhone|iPod/.test(ua)||isiPad;
   if(!isiOS)return;
-  var standalone=false; try{standalone=matchMedia('(display-mode: standalone)').matches||navigator.standalone===true}catch(e){}
+  var standalone=false; try{standalone=navigator.standalone===true||['standalone','fullscreen','minimal-ui'].some(function(m){return matchMedia('(display-mode: '+m+')').matches})}catch(e){}   /* #installedmode — any installed mode, not just standalone */
   if(standalone){ try{localStorage.setItem('shadowhook_installed','1')}catch(e){} return; }
   window.__shkIosGate=true;                                   /* the old 7-second bar stands down */
   try{ if(sessionStorage.getItem('shadowhook_iosgate_later'))return; }catch(e){}
@@ -4909,8 +4909,8 @@ window.DEVLOG=(function(){
          clerk docket half-reads, and a half-read is worse than none (one went out as a
          Missing-terminal word for "LB 204"). No separate door — Log It By Hand, right below,
          is the path. This line just says so before anyone points the camera at one. -->
-    <div class="sub" id="clerkNote" style="margin:0 0 12px;font-size:11px;line-height:1.5;color:var(--steel)">
-      Clerk dockets come <b style="color:var(--bone)">handwritten</b> — the reader only takes printed slips, and a half-read slip puts you at the wrong gate. Log those by hand below.
+    <div class="screen-sub" id="clerkNote" style="margin:0 2px 14px;line-height:1.45">
+      Clerk dockets are <b style="color:var(--bone)">handwritten</b> — the reader can’t take them. Log those by hand below.
     </div>
 
     <!-- #dock2 — LOG IT BY HAND is an OPEN FORM on the page now (no console, no popup).
@@ -13829,7 +13829,21 @@ if('serviceWorker' in navigator){
        silence — one tap of ✕ and the download button was gone for two weeks.)
      · Running from the icon → none of this ever appears. */
 let deferredInstall=null, reinstallMode=false;
-function isStandalone(){try{return matchMedia('(display-mode: standalone)').matches||navigator.standalone===true}catch(e){return false}}
+function isStandalone(){
+  /* #installedmode(sep17) — "I HAVE IT INSTALLED AND IT STILL ASKS ME TO DOWNLOAD IT." This only
+     asked for display-mode: standalone. A manifest that launches the app FULLSCREEN (or
+     minimal-ui) answers no to that, the app decides it's a browser tab, and — now that
+     Android gets a bar even without Chrome's ticket — nags from inside the installed
+     app itself. Every installed mode counts, plus the two launcher tells. */
+  try{
+    if(navigator.standalone===true)return true;                                   /* iOS home-screen app */
+    for(const m of ['standalone','fullscreen','minimal-ui','window-controls-overlay'])
+      if(matchMedia('(display-mode: '+m+')').matches)return true;
+    if(/^android-app:\/\//.test(document.referrer||''))return true;                /* opened from the Android launcher */
+    if(/[?&](homescreen|source=pwa)\b/.test(location.search))return true;          /* a start_url marker, if the manifest carries one */
+  }catch(e){}
+  return false;
+}
 function appEntered(){try{const a=document.getElementById('app');return !!(a&&a.classList.contains('on'))}catch(e){return false}}
 /* ✕ silences the bar for THIS SESSION only. (The old key wrote a 14-day timestamp to
    localStorage; whatever is left there is ignored.) */
@@ -13871,14 +13885,14 @@ function showInstallBar(mode){
   const canPrompt=(mode==='prompt'), inApp=!!(route&&route.kind==='inapp');
   /* no ticket + the app was on this phone before: the browser can't tell "deleted" from
      "opened in a tab instead of the icon" — so say both, don't announce a deletion */
-  const maybeStill=(mode==='howto'&&reinstallMode);
+  const maybeStill=(mode==='howto'&&wasInstalled());   /* #installedmode — the icon's on this phone; a tab open isn't a deletion */
   const title=inApp?'OPEN THIS IN CHROME TO INSTALL IT'
     :maybeStill?'OPEN THE ORDER FROM ITS OWN ICON'
     :reinstallMode?'WELCOME BACK — THE APP CAME OFF YOUR PHONE'
     :'PUT THE ORDER ON YOUR HOME SCREEN';
   const sub=(mode==='ios')?'Tap '+B+'Share ⬆</b> then '+B+'Add to Home Screen</b> — opens full-screen, no address bar.'
-    :(mode==='howto')?((maybeStill?'Still on your phone? Open it from the home-screen icon — full-screen, no address bar. Gone? ':'')
-        +route.how.replace(/<b>/g,B)+(maybeStill||inApp?'':' <span style="opacity:.8">Already installed? Open it from the icon on your home screen.</span>'))
+    :(mode==='howto')?((maybeStill?'It’s on this phone — open it from the home-screen icon for full-screen, no address bar. Deleted it? ':'')
+        +route.how.replace(/<b>/g,B)+(maybeStill||inApp?'':' Already installed? Open it from the icon on your home screen.'))
     :(reinstallMode?'One tap puts it back — full-screen, your log and bucks intact.':'Opens full-screen from its own icon — no address bar.');
   const bar=document.createElement('div');
   bar.id='installBar'; bar.dataset.mode=mode;
@@ -13888,7 +13902,7 @@ function showInstallBar(mode){
     '<img src="icon-192.png" alt="" style="width:38px;height:38px;border-radius:9px;border:1px solid var(--line);flex:none">'
     +'<div style="min-width:0;flex:1">'
       +'<div style="font-weight:700;letter-spacing:.06em;font-size:14px;color:var(--bone)">'+title+'</div>'
-      +'<div class="sub" style="font-size:11.5px;line-height:1.35">'+sub+'</div>'
+      +'<div class="sub" style="font-size:13px;line-height:1.4">'+sub+'</div>'
     +'</div>'
     +(canPrompt?'<button id="installGo" style="'+BTN+'">'+(reinstallMode?'REINSTALL':'INSTALL')+'</button>'
       :inApp?'<button id="installCopy" style="'+BTN+'">COPY LINK</button>':'')
@@ -13920,9 +13934,10 @@ window.addEventListener('appinstalled',()=>{deferredInstall=null;setInstalled(tr
   const ua=navigator.userAgent;
   const isiOS=/iPhone|iPad|iPod/.test(ua)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
   if(isStandalone())return;
-  /* was-installed-before, caught at load: could be deleted, could be a browser tab
-     while the icon still sits there — the copy above hedges until a ticket settles it */
-  if(wasInstalled()){reinstallMode=true;setInstalled(false);}
+  /* #installedmode — a browser-tab open while the icon still sits on the phone used to
+     CLEAR the installed flag here and announce "the app came off your phone". It hadn't.
+     The flag now stays until a ticket proves deletion (beforeinstallprompt above); a
+     tab open with the flag set just gets the "open it from the icon" copy. */
   let armed=false;
   function onEntered(){
     if(armed)return; armed=true;
@@ -41202,7 +41217,7 @@ html.arcade .arc-aurora i{mix-blend-mode:normal;
       if(nv&&nv.domInteractive)p=' · parse '+(nv.domInteractive/1000).toFixed(1)+'s'; }catch(e){}
     return 'build '+b+p;
   }
-  var standalone=false; try{ standalone=matchMedia('(display-mode: standalone)').matches||navigator.standalone===true; }catch(e){}
+  var standalone=false; try{ standalone=(typeof isStandalone==='function')?isStandalone():(matchMedia('(display-mode: standalone)').matches||navigator.standalone===true); }catch(e){}   /* #installedmode */
   var mono=function(){ try{ return performance.now(); }catch(e){ return Date.now(); } };
   ['visibilitychange','pageshow','pagehide','freeze','resume'].forEach(function(n){ document.addEventListener(n,function(){ lastEvt=Date.now(); last=Date.now(); lastMono=mono(); },true); });
   ['focus','blur','pageshow','pagehide'].forEach(function(n){ window.addEventListener(n,function(){ lastEvt=Date.now(); last=Date.now(); lastMono=mono(); },true); });
