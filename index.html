@@ -655,6 +655,7 @@ html:has(.sheet.on),html.sheet-open{overflow:hidden}
 .sheet.lb.on .lb-card{transform:none}
 .lb-card img{width:100%;max-height:76vh;object-fit:contain;border-radius:16px;border:1px solid var(--line);background:#000;display:block}
 .dkt-cam{cursor:pointer;font-size:inherit;-webkit-tap-highlight-color:transparent}
+.dkt-cam.away{opacity:.38;filter:grayscale(1)}   /* #slipvault — scanned, but the picture is on another phone */
 .btn-del{cursor:pointer;width:100%;border:1px solid rgba(179,85,42,.7);border-radius:10px;padding:15px;background:linear-gradient(184deg,#3a1c11,#22110b);font-family:'Anton',sans-serif;font-size:17px;letter-spacing:.1em;color:#f2a184;text-transform:uppercase;box-shadow:inset 0 1px 0 rgba(242,161,132,.2)}
 .btn-del:active{transform:translateY(1px);filter:brightness(1.2)}
 .jobrow.press{cursor:pointer;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
@@ -6765,7 +6766,12 @@ window.DEVLOG=(function(){
   <div class="sheet lb" id="photoLB">
     <div class="lb-card">
       <img id="photoLBImg" alt="Docket photo" src="">
-      <button class="btn-ghost" id="photoLBClose" style="width:100%;margin-top:12px">Close</button>
+      <!-- #slipvault — the picture is on this phone; SAVE hands it to the camera roll through the share sheet -->
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button class="btn" id="photoLBSave" type="button" style="flex:1.3;font-size:14px">⬇ Save to Photos</button>
+        <button class="btn-ghost" id="photoLBClose" style="flex:1">Close</button>
+      </div>
+      <div class="sub" id="photoLBNote" style="margin-top:8px;text-align:center;font-size:12.5px;line-height:1.4"></div>
     </div>
   </div>
 
@@ -7286,13 +7292,26 @@ function mergeDockets(a,b){
     _rem(k);
     try{ if(!_applying && mine(k)){ _pending[k]=null; markDirty(); arm(PUSH_DELAY); } }catch(e){}
   };
+  /* #slipvault(sep17) — PHOTO BYTES NEVER LEAVE THE PHONE. The docket log used to ride up
+     with its base64 slip photos inside (the last ten, 50–80 KB each, every casual, every
+     save). The pictures live in the phone's own store now and the log carries a one-word
+     mark where each one is. This is the guarantee at the door: whatever the local copy
+     holds at the moment of a push, the copy that goes up has no image in it. */
+  function outbound(k,v){
+    try{
+      if(!/^shadowhook_dockets_/.test(k)||typeof v!=='string'||v.indexOf('data:image')<0) return v;
+      var arr=JSON.parse(v); if(!Array.isArray(arr)) return v;
+      arr.forEach(function(j){ if(j&&typeof j.photo==='string'&&j.photo.indexOf('data:')===0) j.photo='idb'; });
+      return JSON.stringify(arr);
+    }catch(e){ return v; }
+  }
   function arm(ms){ if(_timer) return; _timer=setTimeout(pushUp,ms); }
   function pushUp(){
     _timer=null;
     var uid=window.__shkUid; if(!window.SB||!uid){ arm(RETRY_DELAY); return; }   // no session yet — try later
     var keys=Object.keys(_pending); if(!keys.length) return;
     var a=card()||'', rows=[], dels=[], snapshot=_pending; _pending={};
-    keys.forEach(function(k){ var val=snapshot[k]; if(val===null) dels.push(k); else rows.push({owner:uid,card_id:a,k:k,v:val}); });
+    keys.forEach(function(k){ var val=snapshot[k]; if(val===null) dels.push(k); else rows.push({owner:uid,card_id:a,k:k,v:outbound(k,val)}); });   /* #slipvault */
     var ops=[];
     try{
       if(rows.length) ops.push(window.SB.from('user_kv').upsert(rows,{onConflict:'owner,k'}));
@@ -7324,7 +7343,7 @@ function mergeDockets(a,b){
       for(var i=0;i<localStorage.length;i++){
         var k=localStorage.key(i); if(!k||!mine(k)) continue;
         if(skip && skip[k]) continue;
-        var v=localStorage.getItem(k); if(v!=null) rows.push({owner:uid,card_id:a,k:k,v:String(v)});
+        var v=localStorage.getItem(k); if(v!=null) rows.push({owner:uid,card_id:a,k:k,v:outbound(k,String(v))});   /* #slipvault */
       }
     }catch(e){}
     if(!rows.length){ if(!skip) clearDirty(); return false; }
@@ -7342,6 +7361,10 @@ function mergeDockets(a,b){
     _applying=true;
     try{
       var cur=localStorage.getItem(k);
+      /* #slipvault — the server's copy of the log carries marks, not pictures. Before it
+         lands over this phone's copy, any picture still riding here as bytes goes into
+         the phone's store, so the phone keeps every slip it scanned. */
+      try{ if(/^shadowhook_dockets_/.test(k)&&cur&&cur!==v&&cur.indexOf('data:image')>=0&&window.DKPHOTO){ var loc=JSON.parse(cur); if(Array.isArray(loc))window.DKPHOTO.migrate(loc); } }catch(e){}
       if(v===null){ if(cur!==null){ _rem(k); return true; } return false; }
       if(cur!==v){ _set(k,v); return true; }
       return false;
@@ -7615,15 +7638,133 @@ let STUB = (function(){ try{ return JSON.parse(localStorage.getItem(K("stub")))|
    because the very first renderYear() reads it. */
 let HRSBASE = (function(){ try{ const b=JSON.parse(localStorage.getItem(K("hoursbase"))); return (b&&typeof b==="object")?b:null }catch(e){ return null } })();
 function saveHoursBase(){ try{ localStorage.setItem(K("hoursbase"),JSON.stringify(HRSBASE||{hrs:0})) }catch(e){} }
+/* ═══ #slipvault(sep17) — THE SLIP PHOTOS LIVE ON THE PHONE, EVERY ONE OF THEM ═══
+   THE COMPLAINT: "it does not store the docket scans after 9 dockets." True, and by
+   design until now: the log rode in localStorage as one JSON string with the slip
+   photos INSIDE it as base64, quota there is ~5 MB, so saveDK kept photos on the last
+   TEN rows and stripped the rest on every save. And because every save of that key
+   mirrors to user_kv, those ten photos rode up to the server for every casual — paid
+   storage, for pictures that then got deleted anyway.
+   NOW: the pictures go into the phone's own store (IndexedDB — hundreds of megabytes
+   on a phone, on the device, nothing billed), one entry per docket keyed by its _id.
+   The log row keeps a one-word mark ("idb") where the photo used to be, so everything
+   that asks "was this slip scanned?" (the 📷, the ⬡ rules, the marks, the merge) reads
+   exactly as before, while the JSON stays small and the cloud copy carries NO image
+   bytes at all — the mirror strips any that slip through, at the door (outbound()).
+   Every photo already on a row is moved across on the next save; a photo stays on
+   its row as bytes until the store has confirmed it, so nothing is lost if the store
+   is refused (private mode) — that phone just falls back to the old ten-photo rule.
+   A photo is on the phone that scanned it. A synced row on another phone shows the
+   📷 dimmed and the viewer says where the picture is. SAVE TO PHOTOS in the viewer
+   hands the file to the camera roll through the share sheet. */
+const DKPHOTO=(function(){
+  const NAME='shadowhook_slips', STORE='photos', MARK='idb';
+  let _db=null, _open=null, _ready=false, _t=null;
+  const have=new Set(), inflight=new Set(), urls={};
+  function open(){
+    if(_db)return Promise.resolve(_db);
+    if(_open)return _open;
+    _open=new Promise((res,rej)=>{
+      let idb=null; try{ idb=window.indexedDB; }catch(e){}
+      if(!idb)return rej(new Error('no store'));
+      let r; try{ r=idb.open(NAME,1); }catch(e){ return rej(e); }
+      r.onupgradeneeded=()=>{ try{ r.result.createObjectStore(STORE); }catch(e){} };
+      r.onsuccess=()=>{ _db=r.result; try{ _db.onversionchange=()=>{ try{_db.close()}catch(e){} _db=null; _open=null; }; }catch(e){} res(_db); };
+      r.onerror=()=>rej(r.error||new Error('store refused'));
+      r.onblocked=()=>rej(new Error('store blocked'));
+    });
+    _open.catch(()=>{ _open=null; });
+    return _open;
+  }
+  function tx(mode,fn){ return open().then(db=>new Promise((res,rej)=>{
+    let t; try{ t=db.transaction(STORE,mode); }catch(e){ return rej(e); }
+    let req=null; try{ req=fn(t.objectStore(STORE)); }catch(e){ return rej(e); }
+    t.oncomplete=()=>res(req&&('result' in req)?req.result:undefined);
+    t.onerror=()=>rej(t.error||new Error('tx')); t.onabort=()=>rej(t.error||new Error('abort'));
+  })); }
+  function dataUrlToBlob(d){
+    const m=/^data:([^;,]*)(;base64)?,([\s\S]*)$/.exec(String(d||'')); if(!m)return null;
+    const mime=m[1]||'image/jpeg';
+    if(!m[2])return new Blob([decodeURIComponent(m[3])],{type:mime});
+    const bin=atob(m[3]); const u8=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);
+    return new Blob([u8],{type:mime});
+  }
+  /* which slips are on THIS phone — read once at boot, kept in step from there */
+  async function load(){
+    try{ const keys=await tx('readonly',st=>st.getAllKeys()); (keys||[]).forEach(k=>have.add(String(k))); }catch(e){}
+    _ready=true;
+    try{ if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().then(()=>{},()=>{}); }catch(e){}   /* ask the browser not to evict the store */
+    return have;
+  }
+  async function put(id,src){
+    id=String(id); const blob=(src instanceof Blob)?src:dataUrlToBlob(src); if(!blob)throw new Error('bad photo');
+    await tx('readwrite',st=>st.put(blob,id)); have.add(id); return true;
+  }
+  async function get(id){ id=String(id); try{ const b=await tx('readonly',st=>st.get(id)); return (b instanceof Blob)?b:null; }catch(e){ return null; } }
+  async function del(id){ id=String(id); try{ await tx('readwrite',st=>st.delete(id)); }catch(e){} have.delete(id); if(urls[id]){ try{URL.revokeObjectURL(urls[id])}catch(e){} delete urls[id]; } }
+  async function url(id){ id=String(id); if(urls[id])return urls[id]; const b=await get(id); if(!b)return null; urls[id]=URL.createObjectURL(b); return urls[id]; }
+  function scheduleSave(){ clearTimeout(_t); _t=setTimeout(()=>{ try{ saveDK(); }catch(e){} },150); }
+  /* THE KEY IS THE ROW'S STABLE STAMP, NOT ITS _id. A freshly sealed row carries
+     _id = Date.now() until the next boot rewrites it to the content hash (dkUid) — a
+     photo keyed on the first would be orphaned by morning. dkStamp() answers the hash
+     from the start, and the seal doors now stamp _uid on the spot so an edit can't
+     move it either. */
+  function key(j){ try{ if(j&&j._uid)return String(j._uid); if(typeof dkStamp==='function'&&j&&j.date)return String(dkStamp(j)); }catch(e){} return String(j&&j._id); }
+  /* a row still carrying its photo as bytes → the store; the row gets the mark only
+     once the store has it, and a refused store leaves the bytes exactly where they were */
+  function stash(j){
+    try{
+      if(!j)return; const id=key(j), ph=j.photo;
+      if(typeof ph!=='string'||ph===MARK||ph.indexOf('data:')!==0)return;
+      if(have.has(id)){ j.photo=MARK; return; }
+      if(inflight.has(id))return; inflight.add(id);
+      put(id,ph).then(()=>{ inflight.delete(id); j.photo=MARK; scheduleSave(); },()=>{ inflight.delete(id); });
+    }catch(e){}
+  }
+  function migrate(list){ try{ (list||DOCKETS).forEach(stash); }catch(e){} }
+  return {MARK,have,key,ready:()=>_ready,load,put,get,del,url,stash,migrate,dataUrlToBlob};
+})();
+window.DKPHOTO=DKPHOTO;
+/* the picture behind a row, whatever generation the row is: the store on this phone,
+   or bytes still riding the row. null = not on this phone. */
+async function docketPhotoSrc(j){
+  try{ if(!j||!j.photo)return null;
+    if(j.photo!==DKPHOTO.MARK&&/^data:/.test(j.photo))return j.photo;
+    return await DKPHOTO.url(DKPHOTO.key(j));
+  }catch(e){ return null; }
+}
+async function docketPhotoBlob(j){
+  try{ if(!j||!j.photo)return null;
+    if(j.photo!==DKPHOTO.MARK&&/^data:/.test(j.photo))return DKPHOTO.dataUrlToBlob(j.photo);
+    return await DKPHOTO.get(DKPHOTO.key(j));
+  }catch(e){ return null; }
+}
+async function docketPhotoData(j){   /* as a data URL — the word's proof ships bytes */
+  const b=await docketPhotoBlob(j); if(!b)return null;
+  return await new Promise(res=>{ try{ const r=new FileReader(); r.onload=()=>res(String(r.result||'')||null); r.onerror=()=>res(null); r.readAsDataURL(b); }catch(e){ res(null); } });
+}
+function docketPhotoHere(j){ try{ if(!j||!j.photo)return false; if(j.photo!==DKPHOTO.MARK)return true; return DKPHOTO.have.has(DKPHOTO.key(j)); }catch(e){ return false; } }
+window.docketPhotoSrc=docketPhotoSrc; window.docketPhotoBlob=docketPhotoBlob; window.docketPhotoData=docketPhotoData; window.docketPhotoHere=docketPhotoHere;
+/* #slipvault — at boot: learn which slips this phone holds, move any bytes still riding rows
+   across, and redraw the 📷s. Sits BELOW the vault's definition on purpose: DOCKETS loads a
+   few lines above, but a `const` can't be touched before its line runs. */
+try{ DKPHOTO.load().then(function(){ try{ DKPHOTO.migrate(); }catch(e){} try{ if(typeof renderDockets==='function')renderDockets(); }catch(e){} }); }catch(e){}
 function saveDK(){try{
   /* FIX — the old line capped the log at the last 500 jobs and swallowed every
      error. A full localStorage (docket photos are base64 and quota is ~5MB) threw
      QuotaExceededError, the bare catch ate it, and NOTHING was written: the app
      looked fine until the next reload. Now: a higher cap, and on quota failure we
      shed photos progressively rather than lose the log. */
-  const build=(cap,keepPhotos)=>DOCKETS.slice(-cap).map((j,i,arr)=>{const c={...j};if(arr.length-i>keepPhotos)delete c.photo;return c;});
+  /* #slipvault — first, any photo still riding a row as bytes goes to the phone's store.
+     The first write keeps EVERY photo (vaulted rows are one word each); the shedding
+     ladder below only ever runs for bytes the store hasn't taken yet. */
+  DKPHOTO.migrate();
+  const build=(cap,keepPhotos)=>DOCKETS.slice(-cap).map((j,i,arr)=>{const c={...j};
+    if(typeof c.photo==='string'&&c.photo!==DKPHOTO.MARK&&DKPHOTO.have.has(DKPHOTO.key(c)))c.photo=DKPHOTO.MARK;
+    if(typeof c.photo==='string'&&c.photo!==DKPHOTO.MARK&&arr.length-i>keepPhotos)delete c.photo;
+    return c;});
   let saved=false;
-  for(const [cap,ph] of [[2000,10],[2000,3],[2000,0],[600,0]]){
+  for(const [cap,ph] of [[2000,Infinity],[2000,10],[2000,3],[2000,0],[600,0]]){
     try{ localStorage.setItem(K("dockets"),JSON.stringify(build(cap,ph))); saved=true; break; }
     catch(e){ /* quota — retry leaner */ }
   }
@@ -17239,7 +17380,7 @@ function renderDockets(){
       ? [t.aka, t.operator, t.berths].filter(Boolean).join(" · ")
       : (j.terminal+((!j.berth&&!j.dock&&TERMINALS.filter(x=>x.operator.toUpperCase()===String(j.terminal||"").toUpperCase()).length>1)?' · <span class="unconf">dock not set — long-press to fix</span>':''));
     const shipLabel = (j.ship && j.ship!=="\u2014") ? j.ship : "No ship · dock/rail work";
-    el.insertAdjacentHTML('beforeend','<div class="jobrow press" data-id="'+j._id+'" data-name="'+j.ship+'" data-date="'+j.date+'"><div class="d mono">'+fmtD(j.date)+(j.start?'<br><span style="font-size:9.5px;color:var(--steel)">'+fmtStart(j.start)+(j.flex?' · FLX':'')+'</span>':'')+'</div><div class="n"><b>'+portLabel+(j.photo?' <span class="dkt-cam" role="button" title="View docket photo" onclick="openDocketPhoto(event,\''+j._id+'\')">📷</span>':'')+'</b><span>'+shipLabel+' · '+j.shift+(j.queue?' · #'+j.queue+' in line':'')+'</span></div><span class="cat '+catCls+'">'+j.category+'</span></div><div class="detail">'+det+'</div>');
+    el.insertAdjacentHTML('beforeend','<div class="jobrow press" data-id="'+j._id+'" data-name="'+j.ship+'" data-date="'+j.date+'"><div class="d mono">'+fmtD(j.date)+(j.start?'<br><span style="font-size:9.5px;color:var(--steel)">'+fmtStart(j.start)+(j.flex?' · FLX':'')+'</span>':'')+'</div><div class="n"><b>'+portLabel+(j.photo?' <span class="dkt-cam'+(docketPhotoHere(j)?'':' away')+'" role="button" title="'+(docketPhotoHere(j)?'View docket photo':'The photo is on the phone you scanned it with')+'" onclick="openDocketPhoto(event,\''+j._id+'\')">📷</span>':'')+'</b><span>'+shipLabel+' · '+j.shift+(j.queue?' · #'+j.queue+' in line':'')+'</span></div><span class="cat '+catCls+'">'+j.category+'</span></div><div class="detail">'+det+'</div>');
   });
   // #38/#108 retired — new dockets no longer auto-expand. A fresh entry lands folded
   // like every other row (newest date on top), easy to spot; tap it to open by hand.
@@ -17270,13 +17411,36 @@ function openDocketPhoto(ev,id){
   if(ev){ev.stopPropagation();ev.preventDefault();}
   const j=DOCKETS.find(x=>String(x._id)===String(id));
   if(!j||!j.photo)return;
-  document.getElementById('photoLBImg').src=j.photo;
+  /* #slipvault — the picture comes off this phone's store (or the row, on an old record) */
+  window._photoLBDocket=j;
+  const img=document.getElementById('photoLBImg'), note=document.getElementById('photoLBNote'), save=document.getElementById('photoLBSave');
+  img.src=""; note.textContent=""; if(save)save.style.display='none';
   document.getElementById('photoLB').classList.add('on');
+  docketPhotoSrc(j).then(src=>{
+    if(window._photoLBDocket!==j)return;
+    if(src){ img.src=src; if(save)save.style.display=''; note.textContent='Kept on this phone — it never goes to the server. Save it to your camera roll any time.'; }
+    else { note.innerHTML='<b style="color:var(--bone)">This slip’s photo is on the phone you scanned it with.</b><br>Every slip stays on the phone that scanned it — open the log there to see or save it.'; }
+  });
 }
 function closeDocketPhoto(){
   document.getElementById('photoLB').classList.remove('on');
   document.getElementById('photoLBImg').src="";
+  window._photoLBDocket=null;
 }
+/* #slipvault — SAVE TO PHOTOS: the share sheet on a phone ("Save Image" / "Save to Photos"),
+   a plain download everywhere else. The file is named after the slip. */
+async function saveDocketPhotoOut(){
+  const j=window._photoLBDocket; if(!j)return;
+  const blob=await docketPhotoBlob(j);
+  if(!blob){ try{toast('No photo of that slip on this phone');}catch(e){} return; }
+  const name='docket_'+String(j.date||'').replace(/[^0-9-]/g,'')+'_'+String(j.dock||j.terminal||'slip').replace(/[^A-Za-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,24)+'.jpg';
+  const file=new File([blob],name,{type:blob.type||'image/jpeg'});
+  try{ if(navigator.canShare&&navigator.canShare({files:[file]})){ await navigator.share({files:[file],title:'Docket '+(j.date||'')}); return; } }
+  catch(e){ if(e&&e.name==='AbortError')return; }
+  try{ const u=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=u; a.download=name; document.body.appendChild(a); a.click(); setTimeout(()=>{ try{a.remove();URL.revokeObjectURL(u);}catch(e){} },1500); }
+  catch(e){ try{toast('Couldn’t hand the photo to the phone');}catch(e2){} }
+}
+document.getElementById('photoLBSave').addEventListener('click',saveDocketPhotoOut);
 document.getElementById('photoLBClose').addEventListener('click',closeDocketPhoto);
 document.getElementById('photoLB').addEventListener('click',e=>{if(e.target.id==='photoLB')closeDocketPhoto();});
 function openStrike(id,name,date){
@@ -17303,7 +17467,7 @@ document.getElementById('strikeEdit').addEventListener('click',e=>{
   window.njEditId=j._id;
   window.scanThumb=null; // keep the existing photo, don't overwrite
   const btn=document.getElementById('njAdd'); btn.textContent="Update this entry";
-  try{manualOpen(j.photo||null)}catch(e){}   /* #dock2 — correction popup; the entry's own slip rides on top */
+  docketPhotoSrc(j).then(src=>{ try{manualOpen(src||null)}catch(e){} });   /* #dock2 — correction popup; the entry's own slip rides on top · #slipvault — off the phone's store */
 });
 document.getElementById('strikeGo').addEventListener('click',e=>{
   const ix=DOCKETS.findIndex(x=>x._id==e.target.dataset.id);
@@ -17311,6 +17475,7 @@ document.getElementById('strikeGo').addEventListener('click',e=>{
     const gone=DOCKETS[ix];
     const refund=gone.earned||0;            // claw back exactly what this entry paid
     DOCKETS.splice(ix,1);saveDK();
+    try{ DKPHOTO.del(DKPHOTO.key(gone)); }catch(e){}   /* #slipvault — the picture goes with the row */
     if(refund)spendCredits(refund,"log entry struck");
   }
   document.getElementById('strikeSheet').classList.remove('on');
@@ -17994,6 +18159,7 @@ document.getElementById('njAdd').onclick=()=>{
   if(hours>0){ learnJob(category, null, hours, null); renderJobDatalist(); } // remember this job's hours
   else if(!jobEntry(category)){ learnJob(category, 0, 0, null); renderJobDatalist(); } // register a brand-new code
   j.src=j.photo?'photo':'casual'; j.at=Date.now();   /* #antifraud — provenance rides the docket for the audit */
+  try{ j._uid=dkUid(j); j._id=j._uid; }catch(e){}     /* #slipvault — the stable stamp from the first second, so the vault key never moves */
   sealBucks(j);                             /* #antifraud — decides the ⬡ (sets j.earned) and speaks the toast */
   DOCKETS.push(j);saveDK();renderDockets();
   try{ if(window.FINISH) FINISH.schedule(); }catch(e){}   /* #finish — a sealed finish-up answer refits the model */
@@ -19593,15 +19759,18 @@ renderPorts();
     }
     have.style.display='none'; shoot.style.display='';
     /* the strip: sealed dockets that carry a photo, newest first */
-    let withPhoto=[]; try{ withPhoto=DOCKETS.filter(j=>j&&j.photo&&typeof j.date==='string').sort((a,b)=>a.date<b.date?1:-1).slice(0,8); }catch(e){}
+    /* #slipvault — only slips whose picture is ON THIS PHONE can be attached */
+    let withPhoto=[]; try{ withPhoto=DOCKETS.filter(j=>j&&docketPhotoHere(j)&&typeof j.date==='string').sort((a,b)=>a.date<b.date?1:-1).slice(0,8); }catch(e){}
     if(withPhoto.length){
       pick.style.display='flex';
       pick.innerHTML=withPhoto.map(j=>'<button type="button" class="wp-pick" data-id="'+esc(String(j._id))+'" style="flex:none;width:76px;background:none;border:1px solid var(--line);border-radius:10px;padding:4px;cursor:pointer;text-align:center">'
-        +'<img src="'+j.photo+'" alt="" style="width:66px;height:66px;object-fit:cover;border-radius:7px;display:block;margin:0 auto">'
+        +'<img data-pid="'+esc(String(j._id))+'" alt="" style="width:66px;height:66px;object-fit:cover;border-radius:7px;display:block;margin:0 auto;background:#000">'
         +'<span class="sub" style="display:block;font-size:9.5px;line-height:1.3;margin-top:3px;color:var(--bone)">'+esc(String(j.date).slice(5).split('-').map(x=>String(+x)).join('/'))+'<br>'+esc(String(j.terminal||'').slice(0,10))+'</span></button>').join('');
+      withPhoto.forEach(j=>{ docketPhotoSrc(j).then(src=>{ try{ const im=pick.querySelector('img[data-pid="'+String(j._id)+'"]'); if(im&&src)im.src=src; }catch(e){} }); });   /* #slipvault — thumbnails off the store */
       pick.querySelectorAll('.wp-pick').forEach(b=>b.addEventListener('click',async()=>{
         const j=DOCKETS.find(x=>String(x._id)===b.dataset.id); if(!j||!j.photo)return;
-        proof={photo:await fitProof(j.photo),meta:{from:'log',date:j.date,terminal:j.terminal||null,hours:j.hours||null,shift:j.shift||null,src:j.src||null,id:String(j._id),
+        const bytes=await docketPhotoData(j); if(!bytes){ try{toast('That slip’s photo is on your other phone');}catch(e){} return; }   /* #slipvault */
+        proof={photo:await fitProof(bytes),meta:{from:'log',date:j.date,terminal:j.terminal||null,hours:j.hours||null,shift:j.shift||null,src:j.src||null,id:String(j._id),
           berth:j.berth||null,dock:j.dock||null,ship:(j.ship&&j.ship!=='—')?j.ship:null,cat:j.category||null}};   /* #slipsays — the log knows the dock; say so */
         renderProof();
       }));
@@ -28017,7 +28186,7 @@ async function loadShot(f){
   await shotYield();
   const big=mk(src,w,h,1600); drop();                        /* a 1:1 copy when the decode already resized; the one big draw when it didn't */
   await shotYield();
-  const thumb=mk(big,big.width,big.height,640).toDataURL('image/jpeg',0.6);   /* off the 1600, not the photo */
+  const thumb=mk(big,big.width,big.height,1280).toDataURL('image/jpeg',0.72);   /* off the 1600, not the photo · #slipvault — 1280 now the store has the room: a slip you can read a year on */
   await shotYield();
   const ocr=await canvasBlob(big,0.85);                      /* the reader's copy */
   return {ocr,thumb,src:big};
@@ -28906,6 +29075,7 @@ function sealScan(p){
   if(scanRest){alert("Docket read: "+p.pos+". But — "+scanRest);window.scanThumb=null;return;}
   window.scanThumb=null;
   j.src='photo'; j.at=Date.now();          /* #antifraud — a scanned slip is its own receipt */
+  try{ j._uid=dkUid(j); j._id=j._uid; }catch(e){}   /* #slipvault — the stable stamp from the first second, so the vault key never moves */
   sealBucks(j);                             /* #antifraud — same faucet rules as the casual seal (sets j.earned) */
   DOCKETS.push(j);saveDK();renderDockets();drawWG();checkMarks();
   try{ scanRawKeep(j._id,window.scanLast); window.scanLast=null; }catch(e){}   /* #learn — a later fix on this row can still teach */
@@ -31279,7 +31449,7 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
         var k=keyOf(o), cur=have[k];
         if(!cur){ var c=Object.assign({},o); c._id=fresh(); DOCKETS.push(c); have[k]=c; added++; }
         else{ dup++; var ch=false;
-          if(!cur.photo&&o.photo){cur.photo=o.photo;ch=true;}
+          if(!cur.photo&&o.photo&&(/^data:/.test(String(o.photo))||(window.DKPHOTO&&window.DKPHOTO.have.has(window.DKPHOTO.key(o))))){cur.photo=o.photo;ch=true;}   /* #slipvault — bytes, or a mark this phone can honour */
           if((cur.hours==null||cur.hours==='')&&o.hours){cur.hours=o.hours;ch=true;}
           if((cur.start==null||cur.start==='')&&o.start){cur.start=o.start;ch=true;}
           if(ch)rich++;
