@@ -20836,10 +20836,56 @@ function rainCoins(n){
   }
 }
 let _jpBusy=false;
+/* ═══ #jackpotback(sep18) — THE SHOW HAD NO STAGE ═══
+   THE REPORT: "I did not get a jackpot animation… now that I think about it I haven't got
+   one in a while." Right on both counts. The overlay's markup and CSS — #jackpot, #jpAmount,
+   #jpReason, #jpClaim, .jp-coin — are gone from the page; some earlier pass took them out
+   and left the code that plays on them. jackpot()'s first line bailed on the missing
+   element, so every win since has been silent: the mint, the first-to-log-the-board spin,
+   all of it. And awardJackpot credits QUIETLY on purpose ("the jackpot IS the celebration"),
+   so a member who won saw nothing but the header number change.
+   NOW: the stage builds itself the first time it is needed — one overlay, its styles
+   injected once — so a cleanup can't take the show away again without taking this too.
+   COLLECT or a tap on the dark closes it; it also folds on its own after eight seconds so
+   a member who set the phone down isn't stuck behind it. The coins get their styling back. */
+function jpStage(){
+  let jp=document.getElementById('jackpot'); if(jp)return jp;
+  if(!document.getElementById('jpStyle')){
+    const st=document.createElement('style'); st.id='jpStyle';
+    st.textContent=
+      '#jackpot{position:fixed;inset:0;z-index:95;display:flex;align-items:center;justify-content:center;padding:24px;'
+      +'background:rgba(5,6,7,.78);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);opacity:0;visibility:hidden;transition:opacity .25s,visibility .25s}'
+      +'#jackpot.on{opacity:1;visibility:visible}'
+      +'.jp-card{width:100%;max-width:360px;text-align:center;border:1px solid rgba(238,180,107,.55);border-radius:22px;padding:26px 22px 20px;'
+      +'background:linear-gradient(184deg,var(--plate-3),var(--plate));box-shadow:0 0 0 1px rgba(238,180,107,.12),0 0 48px rgba(238,180,107,.28);transform:scale(.92);transition:transform .3s cubic-bezier(.2,1.4,.4,1)}'
+      +'#jackpot.on .jp-card{transform:scale(1)}'
+      +'.jp-tag{font-family:\'Inter\',system-ui,-apple-system,\'Segoe UI\',Roboto,sans-serif;font-size:11px;letter-spacing:.3em;color:var(--copper-hi);text-transform:uppercase}'
+      +'.jp-amt{font-family:\'Inter\',system-ui,-apple-system,\'Segoe UI\',Roboto,sans-serif;font-weight:700;font-size:54px;line-height:1.1;margin:10px 0 4px;color:var(--copper-hi);font-variant-numeric:tabular-nums;text-shadow:0 0 22px rgba(238,180,107,.55)}'
+      +'.jp-why{color:var(--steel);font-size:14px;line-height:1.4;min-height:1.4em}'
+      +'.jp-btn{margin-top:18px;width:100%;padding:13px 16px;border-radius:12px;border:1px solid var(--copper-hi);background:rgba(238,180,107,.16);color:var(--bone);'
+      +'font-family:\'Inter\',system-ui,-apple-system,\'Segoe UI\',Roboto,sans-serif;font-weight:700;font-size:14px;letter-spacing:.18em;cursor:pointer}'
+      +'.jp-btn:active{transform:translateY(1px)}'
+      +'.jp-coin{position:fixed;z-index:96;pointer-events:none;font-size:22px;line-height:1;color:var(--copper-hi);text-shadow:0 0 8px rgba(238,180,107,.85);will-change:transform,opacity;margin:-11px 0 0 -8px}'
+      +'html.daylight #jackpot{background:rgba(246,244,239,.82)}'
+      +'html.daylight .jp-card{box-shadow:var(--shadow-2,0 8px 30px rgba(0,0,0,.18))}';
+    document.head.appendChild(st);
+  }
+  jp=document.createElement('div'); jp.id='jackpot'; jp.setAttribute('role','dialog'); jp.setAttribute('aria-label','Port Bucks landed');
+  jp.innerHTML='<div class="jp-card"><div class="jp-tag">⚓ Port Bucks landed</div>'
+    +'<div class="jp-amt" id="jpAmount">+0 ⬡</div><div class="jp-why" id="jpReason"></div>'
+    +'<button class="jp-btn" id="jpClaim" type="button">COLLECT</button></div>';
+  document.body.appendChild(jp);
+  const close=()=>{ jp.classList.remove('on'); _jpBusy=false; clearTimeout(jp._auto); document.querySelectorAll('.jp-coin').forEach(c=>c.remove()); };
+  jp.querySelector('#jpClaim').addEventListener('click',close);
+  jp.addEventListener('click',e=>{ if(e.target===jp)close(); });
+  jp._close=close;
+  return jp;
+}
 function jackpot(amount, reason){
-  const jp=document.getElementById('jackpot'); if(!jp)return;
+  const jp=jpStage(); if(!jp)return;
   document.getElementById('jpReason').textContent=reason?('for '+reason):'';
   const amtEl=document.getElementById('jpAmount');
+  clearTimeout(jp._auto); jp._auto=setTimeout(()=>{ try{ jp._close(); }catch(e){} },8000);   /* #jackpotback — never a wall */
   amtEl.textContent='+0 ⬡';
   jp.classList.add('on'); _jpBusy=true;
   if(navigator.vibrate)try{navigator.vibrate([15,45,15,45,80])}catch(e){}
@@ -20874,10 +20920,8 @@ function bucksSpin(tiers){
   for(const t of tiers){ if((r-=t[1])<0) return t[0]; }
   return tiers[0][0];
 }
-(function(){const b=document.getElementById('jpClaim');if(b)b.addEventListener('click',()=>{
-  const jp=document.getElementById('jackpot'); if(jp)jp.classList.remove('on'); _jpBusy=false;
-  document.querySelectorAll('.jp-coin').forEach(c=>c.remove());
-});})();
+/* #jackpotback — the COLLECT button is wired inside jpStage() when the stage is built;
+   the load-time binding that used to sit here found no #jpClaim and bound nothing. */
 
 const TOWN_CRIER=BADGES.findIndex(b=>b[1].startsWith('Town Crier'));
 const bix=p=>BADGES.findIndex(b=>b[1].startsWith(p));
