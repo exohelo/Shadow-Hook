@@ -8,7 +8,7 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='sep18eof';
+window.SHK_BUILD='sep18net';
 /* #freezev3 — keep enough resource timings for the report to name what landed before a
    freeze: the boot alone fires ~100 requests, and the default buffer (250) then stops
    recording for the rest of the session. */
@@ -7004,12 +7004,196 @@ try{
   if(!window.SUPABASE_ANON_KEY) window.SUPABASE_ANON_KEY = localStorage.getItem('shadowhook_sb_key')||"";
 }catch(e){}
 
+/* ═══ #netwatch(sep18) — FROZEN, OR JUST NO SIGNAL? THE APP KNOWS NOW, AND SAYS SO ═══
+   THE REPORT (the Keymaster, on the job, poor reception): the app opened and sat there. It
+   looked frozen. He knew it was the signal — a casual wouldn't, and the app never said a word.
+
+   WHY IT SAID NOTHING. The #netstate banner (aug12) listens to the browser's own
+   online/offline events — and a phone on one bar, on terminal wi-fi with no route out, or
+   behind a captive portal still reports ONLINE. No event, no banner. (#fix5 already knew
+   navigator.onLine lies on a dock; nothing was ever built to ask a better question.)
+
+   WHY IT LOOKED FROZEN. No call to the backend had a time limit. On a dead-but-"online"
+   line a fetch can hang for minutes, and the supabase client queues EVERY request behind
+   its own token refresh — so one hung refresh parked the whole app. sbStartup sat on
+   `await getSession()`, the loader gave up at 8 s, and what was left was an empty page.
+   (Reproduced in the lab with the backend made to swallow requests: crest for 8 s, then a
+   blank page with a tab bar, for as long as you cared to wait.)
+
+   WHAT THIS BLOCK IS — the measuring half. The banner still lives down at #netstate; the
+   two doors that needed mending are sbStartup and the gate's TAKE MY PLACE, each marked
+   #netwatch where it changed.
+     · EVERY backend call goes through shkNet.fetch (handed to createClient just below),
+       so the app's own traffic is the first witness: a call refused, or still hanging
+       after 3 s, is a reason to ASK — and an answer, while the line is marked bad, is a
+       reason to ask again at once. The traffic only ever raises the question.
+     · ASKING is one tiny HEAD at the backend's health door — straight down the wire,
+       never through the client (which may itself be parked behind a hung refresh). The
+       ask alone sets the state, because it is the one call nothing can fake: HEAD plus a
+       one-off query string can't be served from, or stored in, any cache, and a reply
+       that didn't come off the wire (a service worker's stand-in) isn't 'opaque' and
+       isn't believed.
+     · THREE STATES: ok · weak (no answer inside 3 s, or answers that crawl) · down (the
+       browser says offline, or two asks in a row went unanswered). One refused ask is a
+       blip until a second agrees — a blip gets no banner.
+     · While it isn't ok it keeps asking — 2 s, 3, 5, 8, 12, then every 15 — and only while
+       the app is on screen. While it IS ok it asks nothing: no heartbeat, no battery.
+     · ONE TIME LIMIT, and only on the sign-in calls (/auth/ — 20 s). Those are safe to
+       repeat, and they are the ones every other request queues behind. NOTHING ELSE IS CUT
+       OFF: apply_bucks retries on failure, and a retry of a charge that really landed is
+       money moved twice. Slow gets reported; only sign-in is ever given up on. Photo and
+       video uploads and the edge functions are slow by nature — they are not watched.
+   window.shkNet — .state ('ok'|'weak'|'down') · .on(fn)→off · .check() · .sure(ms) ·
+   .whenBack(fn) · .isNetErr(e) · .say() · .limit(ms) · .fetch */
+window.shkNet=null;
+try{ window.shkNet=(function(){
+  var REQ_SLOW=3000, ASK_SLOW=3000, ASK_LIMIT=8000, FAST=2500, AUTH_LIMIT=20000;
+  var STEPS=[2000,3000,5000,8000,12000,15000];
+  var S='ok', fails=0, step=0, asking=false, askT=null, lastAsk=0, lastGood=0, leaving=false, subs=[], backs=[], waiters=[];
+  function note(m){ try{ if(window.DEVLOG)DEVLOG.note('net: '+m); }catch(e){} }
+  function flush(){ if(!backs.length)return; var b=backs; backs=[]; b.forEach(function(fn){ try{ fn(); }catch(e){} }); }
+  function set(n,why){
+    if(leaving||n===S)return;
+    var prev=S; S=n; note(prev+' → '+n+(why?' · '+why:''));
+    if(n==='ok'){ fails=0; step=0; if(askT){ clearTimeout(askT); askT=null; } }
+    subs.slice().forEach(function(fn){ try{ fn(n,prev); }catch(e){} });
+    if(n==='ok')flush();
+  }
+  function again(ms){                       /* the next ask — never while the app is off screen */
+    if(askT){ clearTimeout(askT); askT=null; }
+    if(leaving||document.hidden)return;
+    askT=setTimeout(function(){ askT=null; ask(); }, ms!=null?ms:STEPS[Math.min(step++,STEPS.length-1)]);
+  }
+  function ask(){
+    if(asking||leaving)return;
+    var base=String(window.SUPABASE_URL||'').replace(/\/+$/,'');
+    if(!base){ if(navigator.onLine!==false)set('ok','no backend to ask — the browser says online'); return; }   /* a local-only build: the browser's own word is all there is */
+    asking=true;
+    var t0=lastAsk=Date.now(), ctrl=null, slowT=null, killT=null;
+    try{ ctrl=new AbortController(); }catch(e){}
+    /* THE WAIT IS COUNTED IN TICKS, NOT READ OFF THE CLOCK. This app's own boot can hold the
+       main thread for seconds on an older phone (the freeze reports say 2–3 s). A plain 3 s
+       timer would come due during that stall, fire the instant the thread came back — ahead
+       of the answer that had been sitting there the whole time — and call a good line weak.
+       Each tick credits at most 700 ms, so a stalled thread runs the count up by one tick,
+       not by the length of the stall: `waited` is time the phone could actually have heard
+       an answer in. */
+    var waited=0, lastTick=t0;
+    var credit=function(){ var n=Date.now(); waited+=Math.min(n-lastTick,700); lastTick=n; };
+    slowT=setInterval(function(){ credit(); if(asking&&S==='ok'&&waited>=ASK_SLOW)set('weak','no answer in '+(ASK_SLOW/1000)+'s'); },500);
+    killT=setTimeout(function(){ try{ if(ctrl)ctrl.abort(); }catch(e){} },ASK_LIMIT);
+    var end=function(ok){
+      credit(); var ms=waited; asking=false; clearInterval(slowT); clearTimeout(killT);
+      if(leaving)return;
+      if(ok){
+        fails=0; lastGood=Date.now();
+        set(ms<FAST?'ok':'weak','the line answered in '+ms+'ms');
+        if(S==='ok')flush(); else again();
+      }else{
+        fails++;
+        if(navigator.onLine===false||fails>=2){ set('down',navigator.onLine===false?'the browser says offline':fails+' asks went unanswered'); again(); }
+        else if(S==='ok')again(1200);       /* one refusal is a blip until a second ask agrees */
+        else again();
+      }
+      if(waiters.length){ var w=waiters; waiters=[]; w.forEach(function(fn){ try{ fn(); }catch(e){} }); }   /* whoever was waiting on this ask (sure()) has their answer */
+    };
+    /* an answer that came off the wire to another origin in no-cors mode is ALWAYS 'opaque';
+       anything else was made up on this side of it (a service worker's offline fallback) */
+    var cross=true; try{ cross=(new URL(base,location.href).origin!==location.origin); }catch(e){}
+    try{
+      fetch(base+'/auth/v1/health?apikey='+encodeURIComponent(window.SUPABASE_ANON_KEY||'')+'&_='+t0,
+            {method:'HEAD',mode:'no-cors',cache:'no-store',credentials:'omit',signal:ctrl?ctrl.signal:undefined})
+        .then(function(res){ end(!!res&&(cross?res.type==='opaque':res.status>0)); },function(){ end(false); });
+    }catch(e){ end(false); }
+  }
+  function hope(){                          /* a backend call got an answer while the line is marked bad: ask NOW rather than on schedule.
+                                               The ask still decides — it cannot be answered from a cache; a GET, in principle, can. */
+    if(S==='ok'||leaving||asking||Date.now()-lastAsk<(S==='weak'?4000:1500))return;   /* …but a crawling line gets at most one extra ask every 4 s — it doesn't need the company */
+    step=0; again(0);
+  }
+  function doubt(){                         /* the app's own traffic saw trouble: ask */
+    if(leaving||asking||askT)return;
+    if(S!=='ok'){ again(0); return; }
+    again(Math.max(0,5000-(Date.now()-lastGood)));   /* proven good a moment ago: let the dust settle first */
+  }
+  function shkFetch(input,init){
+    var url=''; try{ url=typeof input==='string'?input:String((input&&input.url)||input||''); }catch(e){}
+    var kind=/\/auth\/v1\//.test(url)?'auth':/\/rest\/v1\//.test(url)?'rest':'';
+    if(!kind)return fetch(input,init);      /* storage, functions: slow by nature, watched by nobody */
+    var outer=init&&init.signal, cut=false, killT=null, slowT=null, opts=init;
+    if(kind==='auth'){
+      try{
+        var ctrl=new AbortController();
+        if(outer){ if(outer.aborted)ctrl.abort(); else outer.addEventListener('abort',function(){ try{ ctrl.abort(); }catch(e){} },{once:true}); }
+        opts=Object.assign({},init||{},{signal:ctrl.signal});
+        killT=setTimeout(function(){ cut=true; try{ ctrl.abort(); }catch(e){} },AUTH_LIMIT);
+      }catch(e){ opts=init; }
+    }
+    var armed=Date.now();
+    slowT=setTimeout(function(){ slowT=null;
+      if(Date.now()-armed-REQ_SLOW>500){ slowT=setTimeout(function(){ slowT=null; doubt(); },1500); return; }   /* the timer itself ran late: the phone stalled, not the line — give the answer a moment to be heard */
+      doubt(); },REQ_SLOW);
+    var done=function(){ if(killT)clearTimeout(killT); if(slowT)clearTimeout(slowT); };
+    var p; try{ p=fetch(input,opts); }catch(e){ done(); throw e; }
+    return p.then(function(res){ done(); hope(); return res; },
+                  function(err){ done(); if(cut)note('a sign-in call was given up on at '+(AUTH_LIMIT/1000)+'s');
+                                 if(!(outer&&outer.aborted))doubt(); throw err; });
+  }
+  function isNetErr(e){                     /* "the call never got an answer" — as opposed to an answer we didn't like */
+    try{
+      if(!e)return false;
+      if(e.name==='AuthRetryableFetchError'||e.name==='AbortError'||e.name==='TimeoutError')return true;
+      if(e.status===0)return true;
+      return /failed to fetch|load failed|networkerror|network request failed|network error|fetch is aborted|aborted|timed? ?out/i.test(String(e.message||e));
+    }catch(_){ return false; }
+  }
+  function say(){                           /* the gate's one line, in plain words */
+    return (S==='down'||navigator.onLine===false)
+      ? '> No internet connection — find a signal, then tap again.'
+      : '> Poor connection — couldn’t get through. Try again where the signal is better.';
+  }
+  function limit(ms){ try{ var c=new AbortController(); setTimeout(function(){ try{ c.abort(); }catch(e){} },ms); return c.signal; }catch(e){ return undefined; } }
+  function on(fn){ subs.push(fn); return function(){ var i=subs.indexOf(fn); if(i>=0)subs.splice(i,1); }; }
+  function check(){ step=0; if(!asking)again(0); }
+  function sure(ms){                        /* "is the line really dead?" — ask now; the answer comes with the ask, or in ms at the latest */
+    return new Promise(function(res){
+      if(S==='ok'){ res(true); return; }
+      var t=null, over=false, fin=function(){ if(over)return; over=true; if(t)clearTimeout(t); res(S==='ok'); };
+      waiters.push(fin);
+      t=setTimeout(fin,ms||2500);
+      check();
+    });
+  }
+  function whenBack(fn){                    /* run once, the next time the line is known good */
+    if(typeof fn!=='function')return;
+    backs.push(fn);
+    if(S==='ok'&&!asking&&!askT)again(4000);
+  }
+  try{
+    window.addEventListener('offline',function(){ set('down','the browser says offline'); again(); });
+    window.addEventListener('online',function(){ step=0; if(S!=='ok')again(0); });
+    document.addEventListener('visibilitychange',function(){
+      if(document.hidden){ if(askT){ clearTimeout(askT); askT=null; } return; }
+      leaving=false; step=0;
+      if(S!=='ok'||backs.length||Date.now()-lastGood>60000)again(0);
+    });
+    window.addEventListener('pagehide',function(){ leaving=true; });   /* a reload tears down its own fetches — that is not an outage */
+    window.addEventListener('pageshow',function(){ leaving=false; });
+  }catch(e){}
+  try{ if(navigator.onLine===false){ S='down'; note('booted with the browser offline'); } }catch(e){}
+  try{ ask(); }catch(e){}                   /* one ask at the door, so the loader and the gate know what they are dealing with */
+  return { get state(){ return S; }, on:on, check:check, sure:sure, whenBack:whenBack, isNetErr:isNetErr, say:say, limit:limit, fetch:shkFetch };
+})(); }catch(e){ window.shkNet=null; try{ console.warn('[netwatch] not built — the app runs as it did before it',e); }catch(_){} }
+/* ↑ belt and braces: this sits in the same script block that builds the backend client. If the watch ever
+   failed to build, it must cost the app the banner — never the backend. Every user of shkNet checks for it. */
+
 /* build the client only if configured AND the library loaded (offline-safe) */
 window.SB = null;
 try{
   if(window.SUPABASE_URL && window.SUPABASE_ANON_KEY && window.supabase && window.supabase.createClient){
     window.SB = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY, {
-      auth:{ persistSession:true, autoRefreshToken:true }   // "remember me" — the session sticks across visits
+      auth:{ persistSession:true, autoRefreshToken:true },  // "remember me" — the session sticks across visits
+      global:(window.shkNet&&window.shkNet.fetch)?{ fetch: window.shkNet.fetch }:{}   // #netwatch — every backend call is a witness to the state of the line
     });
   }
 }catch(e){ console.warn("Supabase init skipped:", e && e.message); }
@@ -8623,6 +8807,7 @@ let _ocrWorker=null;
 async function getOCR(){
   if(_ocrWorker)return _ocrWorker;
   if(!window.Tesseract){
+    try{ if(window.shkNet)shkNet.check(); }catch(e){}   /* #netwatch — the reader comes down the wire the first time: if the line is bad, the banner says so while "loading the reader…" sits there */
     await new Promise((res,rej)=>{
       const s=document.createElement('script');
       s.src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js";
@@ -8810,8 +8995,24 @@ function rosterEnroll(name,id){
     if(!window.SB){ rm.textContent='> the backend is off on this build — there is no account to reset'; return; }
     const label=go.textContent; go.disabled=true; go.textContent='⚓ RESETTING…';
     const undo=()=>{ go.disabled=false; go.textContent=label; };
+    /* #netwatch(sep18) — the same word as TAKE MY PLACE below (the full note is there): a line
+       that swallowed the reset used to leave "⚓ RESETTING…" on a dead button for good, and one
+       that refused it printed the browser's own "Failed to fetch". Now nobody-answered is said
+       in plain words and the button comes back. Once the reset itself has LANDED, a line that
+       drops afterwards says so — a casual who scans again for nothing burns one of the three
+       resets a day. */
+    const NET=window.shkNet||null;
+    const NETFAIL=function(e,landed){ try{ if(NET&&e&&NET.isNetErr(e)){
+      rm.textContent=landed?'> the new password is set — but the connection dropped. When you have a signal, use TAKE MY PLACE above with the new password.':NET.say();
+      undo(); return true; } }catch(_){} return false; };
+    const LIMIT=function(q){ try{ if(NET&&q&&typeof q.abortSignal==='function'){ const sg=NET.limit(25000); if(sg)return q.abortSignal(sg); } }catch(_){} return q; };
     try{
-      const r=await window.SB.rpc('reset_by_card',{p_card_id:pa.id,p_full_name:pa.name||null,p_new_password:np,p_handle:h||null});
+      if(NET){
+        if(NET.state==='down'&&!(await NET.sure(2500))){ rm.textContent=NET.say(); undo(); return; }
+        NET.check();
+      }
+      const r=await LIMIT(window.SB.rpc('reset_by_card',{p_card_id:pa.id,p_full_name:pa.name||null,p_new_password:np,p_handle:h||null}));
+      if(r.error && NETFAIL(r.error,false)) return;
       if(r.error){
         const m=r.error.message||'';
         rm.textContent=/could not find the function|PGRST202|schema cache/i.test(m)
@@ -8823,17 +9024,19 @@ function rosterEnroll(name,id){
       /* the lock is new — walk in with it, exactly like a sign-in */
       const si=await window.SB.auth.signInWithPassword({email:cardToEmail(pa.id),password:np});
       if(si.error){ rm.textContent='> the reset landed but the sign-in didn’t — try TAKE MY PLACE with the new password'; undo(); return; }
-      const prof=await sbLoadProfile();
+      const lp=await sbLoadProfileEx(20000), prof=lp.prof;
+      if(lp.net){ NETFAIL({status:0},true); return; }   /* #netwatch — nobody answered: that is not "no profile", so no claim is made on it */
       if(prof&&prof.since)pa.since=prof.since;
       let handle=d.handle||(prof&&prof.handle)||h;   /* the server's word first — it just wrote the handle */
       if(!prof){   /* a claim that never finished (#stalled) — finish it now, with the handle they picked */
         const hh=h||genHandle();
-        const cl=await window.SB.rpc('claim_account',{p_card_id:pa.id,p_handle:hh,p_full_name:pa.name||null});
+        const cl=await LIMIT(window.SB.rpc('claim_account',{p_card_id:pa.id,p_handle:hh,p_full_name:pa.name||null}));
+        if(cl.error && NETFAIL(cl.error,true)) return;   /* #netwatch */
         if(cl.error){ rm.textContent='> '+cl.error.message; undo(); return; }
         handle=hh;
       }
       finishEnter(handle, pa, (prof&&prof.port_bucks!=null)?(+prof.port_bucks||0):null);
-    }catch(e){ console.warn(e); rm.textContent='> couldn’t reach the backend — try again'; undo(); }
+    }catch(e){ console.warn(e); rm.textContent=(NET&&NET.isNetErr(e))?NET.say():'> couldn’t reach the backend — try again'; undo(); }   /* #netwatch — a dead line gets plain words */
   });
 })();
 
@@ -8886,6 +9089,14 @@ window.atGate=atGate;
 function enterApp(tab){
   document.getElementById('gatePage').style.display="none";
   atGate(false);
+  /* #netwatch(sep18) — found while testing the gate on a bad line, and not a network bug at
+     all: the three roads BACK to the gate (the signed-out notice's SIGN IN, goGateForHandle,
+     #stalled) hide the app with an inline display:none — and nothing ever took it off. .on
+     can't outrank an inline style, so a member who signed in again from inside the app
+     passed the gate into an empty page: no gate, no app, until they reloaded. (The cloud
+     pull's one-time reload hid it whenever the server had something new.) The one door
+     every entry walks through now clears it. */
+  document.getElementById('app').style.display="";
   document.getElementById('app').classList.add('on');
   try{window.dispatchEvent(new CustomEvent('shk:entered'));}catch(e){}   /* #installafter — the home-screen invites wait for this, never the gate */
   gotoTab(tab);window.scrollTo(0,0);
@@ -8929,19 +9140,41 @@ function bootScreen(cb,fast){
 }
 /* ===== backend account helpers (all no-ops if the backend is off) ===== */
 function cardToEmail(id){ return String(id||"").trim().toLowerCase()+"@shadowhook.com"; }
-async function sbLoadProfile(){
-  if(!window.SB) return null;
+/* #netwatch(sep18) — "NO PROFILE" AND "NO ANSWER" ARE NOT THE SAME NEWS. sbLoadProfile()
+   returns null for both: the server saying "this login has no profile", and the request
+   never reaching a server at all. Its callers read null as the first — and act on it.
+   The worst of them was sbStartup's #stalled branch: a member opening the app in a dead
+   zone (live session on the phone, no route out) had the lookup fail, was taken for a
+   claim that never finished, had the claim "refused" by the same dead line — and the
+   branch then did what it does to a refused claim: ERASED THE HANDLE from this phone and
+   stood them at the gate. No signal, no name, and a sign-up form that can't reach anyone.
+   (Lab: saved handle gone inside one second of opening, every time.) At the gate the same
+   null sent a returning member's sign-in on to claim_account with a freshly rolled handle.
+   sbLoadProfileEx() says which it was — {prof, net}: net=true means nobody answered, so
+   nothing may be concluded. A HALF answer counts as none: if the public row lands and the
+   private row (card #, name) doesn't, the old code saved a record with no card id.
+   `ms` puts a time limit on the two lookups — the gate passes one, because a casual is
+   watching a button; the boot doesn't, because by then nobody is waiting on it.
+   sbLoadProfile() is unchanged for every other caller. */
+async function sbLoadProfileEx(ms){
+  const out={prof:null,net:false};
+  if(!window.SB) return out;
+  const NE=function(e){ try{ return !!(window.shkNet&&e&&shkNet.isNetErr(e)); }catch(_){ return false; } };
+  const lim=function(q){ try{ if(ms&&window.shkNet&&q&&typeof q.abortSignal==='function'){ const sg=shkNet.limit(ms); if(sg)return q.abortSignal(sg); } }catch(_){} return q; };
   try{
     const u=await window.SB.auth.getUser();
     const uid=u && u.data && u.data.user && u.data.user.id;
-    if(!uid) return null;
-    const pr=await window.SB.from('profiles').select('handle,port_bucks,badges,circle,since,is_keymaster,banned').eq('id',uid).maybeSingle();
-    const pv=await window.SB.from('profiles_private').select('card_id,full_name,verified').eq('id',uid).maybeSingle();
+    if(!uid){ out.net=NE(u&&u.error); return out; }
+    const pr=await lim(window.SB.from('profiles').select('handle,port_bucks,badges,circle,since,is_keymaster,banned').eq('id',uid).maybeSingle());
+    const pv=await lim(window.SB.from('profiles_private').select('card_id,full_name,verified').eq('id',uid).maybeSingle());
     if(pr.error){ console.warn('profile load:', pr.error.message); }
-    if(!pr.data) return null;
-    return Object.assign({}, pr.data, (pv&&pv.data)||{});
-  }catch(e){ console.warn('sbLoadProfile', e); return null; }
+    if(!pr.data){ out.net=NE(pr.error); return out; }
+    if(pv&&pv.error&&NE(pv.error)){ out.net=true; return out; }   /* half an answer is no answer */
+    out.prof=Object.assign({}, pr.data, (pv&&pv.data)||{});
+    return out;
+  }catch(e){ console.warn('sbLoadProfile', e); out.net=NE(e); return out; }
 }
+async function sbLoadProfile(){ return (await sbLoadProfileEx()).prof; }
 /* #fix3(bucks) — the round-2 sequence guard was not enough. It stopped a STALE response
    from winning, but it assumed the server applies requests in issue order, which nothing
    guarantees: two apply_bucks calls 5 ms apart are independent HTTP requests, and if the
@@ -9145,7 +9378,15 @@ function reloadAcctBucks(){
   try{ circleChip(); renderCircles(); }catch(e){}
 }
 
+/* #netwatch(sep18) — "is the member already in, or on the way in?" The restore can now
+   land AFTER the app has opened on the saved account (see sbStartup), and it must not
+   walk them through the door a second time — enterApp() means gotoTab() + scroll-to-top,
+   which would yank a member off whatever they had opened while the line was slow.
+   _entering covers the ~½ s between an entry being ordered and the loader handing over. */
+var _entering=false;   /* var, not let: finishEnter and the restore read it, and a var has no dead zone to fall into (#fix(tdz)) */
+function appIsUp(){ try{ return _entering||document.getElementById('app').classList.contains('on'); }catch(e){ return _entering; } }
 function localEnter(){
+  _entering=true;
   document.getElementById('meHandle').textContent=savedAcct.handle;
   /* #floorwho2 — if presence joined before entry, re-broadcast with the real name */
   try{if(typeof floorTrack==='function')floorTrack(null);}catch(e){}
@@ -9157,14 +9398,54 @@ function localEnter(){
 /* on open: if a backend session is live, restore the account from the server
    (this is what makes it the SAME account on every device). Otherwise fall back
    to the local cache, and otherwise show the gate. */
-(async function sbStartup(){
+/* ═══ #netwatch(sep18) — THE NETWORK IS NOT ON THE ROAD IN ═══
+   For a member this phone already knows, the restore below is an improvement, not a
+   toll gate. It used to be one: nothing entered the app until getSession(), getUser()
+   and two profile lookups had all answered, none of them with a time limit. On a line
+   that swallows requests that meant: crest for 8 s (the loader's failsafe), then an
+   empty page with a tab bar — "it looked like it froze". Four changes, all in this
+   function:
+     1 · THE EARLY DOOR. If shkNet calls the line weak or down — or 5 s pass with no
+         restore — a known member goes in on the saved account (the same localEnter()
+         the signed-out path has always used), under the banner that says why. The
+         restore keeps running behind them and, when it lands, updates the header, the
+         balance and the keys in place — it never walks them through the door twice.
+     2 · NO ANSWER IS NOT "NO PROFILE". See sbLoadProfileEx(): a lookup nobody answered
+         used to fall into #stalled, which erased the saved handle and raised the gate.
+         A dead line now concludes nothing — and a claim_account the line ate is not a
+         claim the server refused.
+     3 · NO ANSWER IS NOT "SIGNED OUT" EITHER. A token refresh that can't get through
+         comes back as "no session" with a network error attached; the session is still
+         on the phone. That used to raise "This device isn't signed in" with a SIGN IN
+         button — which led to a gate that couldn't reach anyone. The notice now waits
+         for a real answer.
+     4 · IT COMES BACK FOR IT. When nobody answered, shkNet.whenBack() re-runs this once
+         the line is good (three more tries at most), so identity, balance, the Keymaster
+         key and a ban all still arrive — late instead of never. */
+var _sbTries=0;
+async function sbStartup(){
+  _sbTries++;
+  let netFail=false;   /* nobody answered — as opposed to an answer we can act on */
   if(window.SB){
+    const NET=window.shkNet||null;
+    const NE=function(e){ try{ return !!(NET&&e&&NET.isNetErr(e)); }catch(_){ return false; } };
+    const known=!!(savedAcct&&savedAcct.handle);
+    let earlyT=0, earlyOff=null;
+    const earlyStop=function(){ if(earlyT){ clearTimeout(earlyT); earlyT=0; } if(earlyOff){ try{ earlyOff(); }catch(e){} earlyOff=null; } };
+    const earlyOpen=function(){ earlyStop(); if(appIsUp())return;
+      try{ DEVLOG.note('net: opened on the saved account — the restore had not answered ('+(NET?NET.state:'?')+')'); }catch(e){}
+      localEnter(); };
+    if(known&&!appIsUp()){
+      if(NET&&NET.state!=='ok') earlyOpen();
+      else{ earlyT=setTimeout(earlyOpen,5000); if(NET)earlyOff=NET.on(function(st){ if(st!=='ok')earlyOpen(); }); }
+    }
     try{
       const s=await window.SB.auth.getSession();
       if(s && s.data && s.data.session){
-        document.getElementById('gatePage').style.display="none";   // logged in — no gate flash
-        const prof=await sbLoadProfile();
-        if(prof){
+        if(!appIsUp()) document.getElementById('gatePage').style.display="none";   // logged in — no gate flash
+        const lp=await sbLoadProfileEx(), prof=lp.prof;
+        if(lp.net){ netFail=true; }   /* #netwatch — nobody answered: conclude nothing */
+        else if(prof){
           ACCT_ID=prof.card_id||(savedAcct&&savedAcct.id)||ACCT_ID;
           document.getElementById('meHandle').textContent=prof.handle;
           document.getElementById('meName').textContent=prettyName(prof.full_name||"");   /* #gateorder */
@@ -9246,6 +9527,7 @@ function localEnter(){
             if(a0&&a0.id&&a0.handle){
               const cl=await window.SB.rpc('claim_account',{p_card_id:a0.id,p_handle:a0.handle,p_full_name:a0.name||null});
               if(!cl.error){ fixed=true; document.getElementById('meHandle').textContent=a0.handle; try{ toast('⚓ Your place on the record is finished — welcome back'); }catch(e){} }
+              else if(NE(cl.error)){ netFail=true; }   /* #netwatch — the line ate the claim; the server refused nothing. The handle stays. */
               else{ a0.handle=null; saveAcct(a0); }   /* no name until the gate gives one that holds */
             }
           }catch(e){}
@@ -9253,12 +9535,17 @@ function localEnter(){
              to land inside with the tabs padlocked and a "Who goes there?" popup; the
              gate says the same thing better, and the tab bar only appears once you're
              in. Hold here — the gate is already on screen. */
-          if(!fixed){ try{ const gp=document.getElementById('gatePage'); if(gp){gp.style.display=''; gp.classList.add('on');} document.getElementById('app').style.display='none'; atGate(true); }catch(e){} return; }
+          if(!fixed&&!netFail){ earlyStop(); try{ const gp=document.getElementById('gatePage'); if(gp){gp.style.display=''; gp.classList.add('on');} document.getElementById('app').style.display='none'; atGate(true); }catch(e){} return; }
         }
-        bootScreen(()=>enterApp(openingTab()),true);
-        return;
+        if(!netFail){
+          earlyStop();
+          if(!appIsUp()) bootScreen(()=>enterApp(openingTab()),true);   /* #netwatch — already in through the early door: the restore just landed in place */
+          return;
+        }
       }
-    }catch(e){ console.warn('session restore failed', e); }
+      else if(s&&s.error&&NE(s.error)) netFail=true;   /* #netwatch — the refresh couldn't get through. That is not "signed out": the session is still on the phone. */
+    }catch(e){ console.warn('session restore failed', e); if(NE(e))netFail=true; }
+    earlyStop();
   }
   /* #fix5 — REVERSED, deliberately. The previous pass blocked a signed-out device at
      the gate until it signed in. Reviewing it turned up three things that make that
@@ -9274,9 +9561,14 @@ function localEnter(){
      every device" while signed out — so it gets fixed by reporting, not by a wall:
      enter local-first, say plainly that this device isn't signed in, and let the
      server take over the moment a session does resolve. */
-  if(savedAcct&&savedAcct.handle) localEnter();
-  try{ signedOutNotice(); }catch(e){}
-})();
+  if(savedAcct&&savedAcct.handle){ if(!appIsUp()) localEnter(); }   /* #netwatch — unless the early door already let them in */
+  else if(netFail){   /* #netwatch — nobody this phone knows, and nobody answered: the gate, not the blank page the "no gate flash" line left behind */
+    try{ const gp=document.getElementById('gatePage'); if(gp&&!appIsUp()){ gp.style.display=''; gp.classList.add('on'); atGate(true); } }catch(e){}
+  }
+  if(netFail){ try{ if(window.shkNet&&_sbTries<4)shkNet.whenBack(function(){ sbStartup(); }); }catch(e){} }   /* #netwatch — come back for it when the line is good */
+  else{ try{ signedOutNotice(); }catch(e){} }
+}
+sbStartup();
 /* A signed-out device is not "synced". Say so where the member will see it, offer the
    way back, and let them tuck it away for the session — it returns next launch. */
 /* keep the notice clear of the chips that hang off the header. Called again and
@@ -9374,14 +9666,45 @@ document.getElementById('enterBtn').addEventListener('click',async ()=>{
     if(!pass||pass.length<6){pm.textContent="> set a password — 6 characters or more";return;}
     const label=btn.textContent; btn.disabled=true; btn.textContent="⚓ SECURING…";
     const undo=()=>{ btn.disabled=false; btn.textContent=label; };
+    /* ═══ #netwatch(sep18) — THE GATE SAYS "NO INTERNET" IN SO MANY WORDS ═══
+       Every step from here needs the backend, and none of them could tell a casual the
+       line was the problem. What a bad signal looked like at this button, before:
+         · a line that swallows requests → "⚓ SECURING…" and a dead button, for good;
+         · a line that refuses them → the browser's own words under the password field
+           ("Failed to fetch" on Android, "Load failed" on iPhone);
+         · a refused SIGN-IN → "that password doesn't match this card" plus the reset
+           offer — a returning member told their password was wrong because of one bar;
+         · a refused profile lookup → read as "no profile yet", and the sign-in went on
+           to claim_account with the handle this form had just rolled.
+       Now: NETFAIL() is asked before any error is believed. If nobody answered, the
+       casual is told exactly that (shkNet.say(): "No internet connection…" or "Poor
+       connection…"), the button comes back, and nothing is concluded about their
+       password, their profile or their handle. Each step has a time limit — the
+       sign-in calls get theirs from shkNet.fetch (20 s), the lookups and the claim get
+       LIMIT — and every one of them is safe to repeat: a signUp that landed unseen
+       answers "already registered" next tap and falls into the sign-in below, and a
+       claim that landed unseen is found by the profile lookup (#stalled's own design).
+       A line already known dead is asked once more first (2.5 s), so "No internet"
+       arrives at once instead of after the wait — and a line that just came back isn't
+       turned away on old news. */
+    const NET=window.shkNet||null;
+    const NETFAIL=function(e){ try{ if(NET&&e&&NET.isNetErr(e)){ pm.textContent=NET.say(); undo(); return true; } }catch(_){} return false; };
+    const LIMIT=function(q){ try{ if(NET&&q&&typeof q.abortSignal==='function'){ const sg=NET.limit(20000); if(sg)return q.abortSignal(sg); } }catch(_){} return q; };
     try{
+      if(NET){
+        if(NET.state==='down'&&!(await NET.sure(2500))){ pm.textContent=NET.say(); undo(); return; }
+        NET.check();   /* and ask as the attempt starts, so the banner is up before the wait feels like a freeze */
+      }
       const email=cardToEmail(pa.id);
       const up=await window.SB.auth.signUp({email:email,password:pass});
+      if(up.error && NETFAIL(up.error)) return;
       if(up.error && /already registered|already exists|registered/i.test(up.error.message||"")){
         // this card already has an account → log them in instead
         const si=await window.SB.auth.signInWithPassword({email:email,password:pass});
+        if(si.error && NETFAIL(si.error)) return;   /* #netwatch — a dead line is not a wrong password */
         if(si.error){ pm.textContent="> that password doesn't match this card"; try{ if(window.pwResetReveal)pwResetReveal(true); }catch(e){} undo(); return; }   /* #pwreset — and here's the way back in */
-        const prof=await sbLoadProfile();
+        const lp=await sbLoadProfileEx(20000), prof=lp.prof;
+        if(lp.net){ NETFAIL({status:0}); return; }   /* #netwatch — nobody answered: that is not "no profile", so no claim is made on it */
         /* #fix(bucks) — sbLoadProfile() returns null on a thrown error, an RLS denial,
            a network blip or a missing row. The old `prof?…:0` passed a hard 0, which
            is !=null, so finishEnter durably wrote 0 over this card's real balance on
@@ -9395,7 +9718,8 @@ document.getElementById('enterBtn').addEventListener('click',async ()=>{
            local handle, so the server never got a profile and the casual stayed a ghost
            for good. Finish the claim here, with the handle they just picked. */
         if(!prof){
-          const cl2=await window.SB.rpc('claim_account',{p_card_id:pa.id,p_handle:h,p_full_name:pa.name||null});
+          const cl2=await LIMIT(window.SB.rpc('claim_account',{p_card_id:pa.id,p_handle:h,p_full_name:pa.name||null}));
+          if(cl2.error && NETFAIL(cl2.error)) return;   /* #netwatch */
           if(cl2.error){
             if(/handle|duplicate|unique/i.test(cl2.error.message||"")){ hm.textContent="> that handle's taken — roll another"; }
             else{ pm.textContent="> "+cl2.error.message; }
@@ -9405,11 +9729,12 @@ document.getElementById('enterBtn').addEventListener('click',async ()=>{
         finishEnter(prof?prof.handle:h, pa, (prof&&prof.port_bucks!=null)?(+prof.port_bucks||0):null);
         return;
       }
-      if(up.error){ pm.textContent="> "+up.error.message; undo(); return; }
+      if(up.error){ pm.textContent="> "+up.error.message; undo(); return; }   /* (a dead line was already answered above — #netwatch) */
       if(!up.data || !up.data.session){
         pm.textContent="> backend needs 'Confirm email' turned OFF (Auth → Providers → Email)"; undo(); return;
       }
-      const cl=await window.SB.rpc('claim_account',{p_card_id:pa.id,p_handle:h,p_full_name:pa.name||null});
+      const cl=await LIMIT(window.SB.rpc('claim_account',{p_card_id:pa.id,p_handle:h,p_full_name:pa.name||null}));
+      if(cl.error && NETFAIL(cl.error)) return;   /* #netwatch — the login stands, the claim didn't land: next tap signs in and #stalled finishes it */
       if(cl.error){
         if(/handle|duplicate|unique/i.test(cl.error.message||"")){ hm.textContent="> that handle's taken — roll another"; }
         else{ pm.textContent="> "+cl.error.message; }
@@ -9425,7 +9750,7 @@ document.getElementById('enterBtn').addEventListener('click',async ()=>{
          opened mid-story: a four-figure balance with nothing behind it. */
       try{ if(CREDITS>0) sbApplyBucks(CREDITS, 'opening balance carried from this device', true); }catch(e){}
       return;
-    }catch(e){ console.warn(e); pm.textContent="> couldn't reach the backend — try again"; undo(); return; }
+    }catch(e){ console.warn(e); pm.textContent=(NET&&NET.isNetErr(e))?NET.say():"> couldn't reach the backend — try again"; undo(); return; }   /* #netwatch — a dead line gets plain words */
   }
 
   // ---- local fallback (backend off): original behavior ----
@@ -9438,6 +9763,10 @@ document.getElementById('enterBtn').addEventListener('click',async ()=>{
 });
 /* seat the member and board through the loading screen */
 function finishEnter(handle, pa, balance){
+  _entering=true;   /* #netwatch — a restore landing in the next half second must not open the door a second time */
+  /* #netwatch — they just signed in: "This device isn't signed in" comes down with it. (It never
+     did — but until enterApp() learned to un-hide the app, nobody got far enough to see it.) */
+  try{ if(window.SB){ const so=document.getElementById('soNote'); if(so){ so.remove(); document.documentElement.classList.remove('so-open'); } } }catch(e){}
   ACCT_ID=pa.id||"anon"; // from here on, everything earned belongs to THIS card
   try{ addActiveId(pa.id); }catch(e){}   // #204 — a new casual lands on the ACTIVE board + the calc
   document.getElementById('meHandle').textContent=handle;
@@ -14131,27 +14460,80 @@ if('serviceWorker' in navigator){
    weak/dead signal (see sw.js #swfast); this layer tells the member what's happening: a
    slim banner while offline, a quiet "back online" when the signal returns, and a re-pull
    of the live feeds the moment it does. navigator.onLine can read TRUE on a dead wi-fi with
-   no route out, so we trust the online/offline EVENTS and use onLine only as the boot hint. */
+   no route out, so we trust the online/offline EVENTS and use onLine only as the boot hint.
+
+   #netwatch(sep18) — THE BANNER LISTENS TO THE WATCH NOW, NOT TO THE BROWSER. Trusting the
+   events was the hole: on one bar of reception the browser never fires "offline", so this
+   banner never spoke and the app just looked frozen. shkNet (up by the backend config)
+   measures the line itself; this block only paints what it reports:
+     · down — "⚠ No internet — showing your last update"; at the gate it says what the gate
+              needs instead: "connect to sign in".
+     · weak — "📶 Poor connection — still trying…": the line is up but crawling, or
+              swallowing requests whole. This is the one that used to read as a freeze.
+     · ok   — folds away. If it had been DOWN: the old "✓ Back online" and the same re-pull
+              of the live feeds. A weak spell of 10 s or more gets the re-pull too, quietly.
+   It rides above the loader (z 95 over 90), so a member watching the crest on a bad line
+   is told why it is slow; it clears the notch when there is no header to sit under (the
+   gate, the loader); it wraps instead of running off a small or big-type screen; and it
+   stays up at least 1.8 s, so a line that flickers doesn't strobe. If shkNet never built,
+   the aug12 behaviour below is the fallback, word for word. */
 (function(){
   try{
     var s=document.createElement('style');
-    s.textContent='#netBanner{position:fixed;left:50%;top:calc(var(--tbH,0px) + 8px);transform:translate(-50%,-160%);z-index:95;background:linear-gradient(184deg,#3a2a12,#241a0e);border:1px solid rgba(238,180,107,.5);color:#eeb46b;font:600 12.5px/1.35 system-ui,-apple-system,sans-serif;letter-spacing:.02em;padding:9px 16px;border-radius:99px;box-shadow:0 10px 26px rgba(0,0,0,.55);opacity:0;transition:transform .3s cubic-bezier(.4,0,.2,1),opacity .3s;pointer-events:none;white-space:nowrap;max-width:92vw;text-align:center}'
-      +'#netBanner.on{transform:translate(-50%,0);opacity:1}';
+    s.textContent='#netBanner{position:fixed;left:50%;top:calc(var(--tbH,0px) + 8px);top:calc(max(var(--tbH,0px),env(safe-area-inset-top,0px)) + 8px);transform:translate(-50%,-220%);z-index:95;background:linear-gradient(184deg,#3a2a12,#241a0e);border:1px solid rgba(238,180,107,.5);color:#eeb46b;font:600 12.5px/1.35 system-ui,-apple-system,sans-serif;letter-spacing:.02em;padding:9px 16px;border-radius:18px;box-shadow:0 10px 26px rgba(0,0,0,.55);opacity:0;transition:transform .3s cubic-bezier(.4,0,.2,1),opacity .3s;pointer-events:none;white-space:normal;width:max-content;max-width:92%;box-sizing:border-box;text-align:center}'   /* 92%, not 92vw: #textsize zooms <body>, and vw doesn't shrink with it — at MEDIUM a 92vw pill is 106% of the screen */
+      +'#netBanner.on{transform:translate(-50%,0);opacity:1}'
+      +'#netBanner.down{background:linear-gradient(184deg,#40190f,#260f0a);border-color:rgba(255,122,82,.6);color:#ffb59a}'
+      +'@media (prefers-reduced-motion:reduce){#netBanner{transition:opacity .3s}}';
     document.head.appendChild(s);
   }catch(e){}
-  function banner(){var b=document.getElementById('netBanner');if(!b){b=document.createElement('div');b.id='netBanner';try{document.body.appendChild(b);}catch(e){}}return b;}
-  function setOffline(off){var b=banner();if(off){b.textContent='⚠ Offline — showing your last update';b.classList.add('on');}else{b.classList.remove('on');}}
-  var wasOffline=false;
-  window.addEventListener('offline',function(){wasOffline=true;setOffline(true);});
-  window.addEventListener('online',function(){
-    setOffline(false);
-    if(!wasOffline)return; wasOffline=false;
-    try{if(typeof toast==='function')toast('✓ Back online');}catch(e){}
+  function banner(){var b=document.getElementById('netBanner');if(!b){b=document.createElement('div');b.id='netBanner';b.setAttribute('role','status');b.setAttribute('aria-live','polite');try{document.body.appendChild(b);}catch(e){}}return b;}
+  function repull(){
     try{if(typeof floorJoin==='function')floorJoin();}catch(e){}          // presence roster
     try{if(typeof sbLoadStories==='function')sbLoadStories();}catch(e){}  // the wall
     try{if(typeof CURRENT_ROOM!=='undefined'&&CURRENT_ROOM&&typeof chatJoin==='function')chatJoin(CURRENT_ROOM);}catch(e){}  // rejoin the open room
-  });
-  try{ if(navigator.onLine===false){wasOffline=true;setOffline(true);} }catch(e){}   // reflect the state we booted in
+  }
+  if(!window.shkNet){   /* the watch never built — the aug12 behaviour, unchanged */
+    var setOffline=function(off){var b=banner();if(off){b.textContent='⚠ Offline — showing your last update';b.classList.add('on');}else{b.classList.remove('on');}};
+    var wasOffline=false;
+    window.addEventListener('offline',function(){wasOffline=true;setOffline(true);});
+    window.addEventListener('online',function(){
+      setOffline(false);
+      if(!wasOffline)return; wasOffline=false;
+      try{if(typeof toast==='function')toast('✓ Back online');}catch(e){}
+      repull();
+    });
+    try{ if(navigator.onLine===false){wasOffline=true;setOffline(true);} }catch(e){}   // reflect the state we booted in
+    return;
+  }
+  var cur='ok', shownAt=0, hideT=null, badSince=0, wasDown=false;
+  function atGateNow(){ try{ return document.documentElement.classList.contains('at-gate'); }catch(e){ return false; } }
+  function words(st){
+    if(st==='down')return atGateNow()?'⚠ No internet — connect to sign in':'⚠ No internet — showing your last update';
+    return '📶 Poor connection — still trying…';
+  }
+  function paint(st){
+    cur=st; var b=banner();
+    if(hideT){ clearTimeout(hideT); hideT=null; }
+    if(st==='ok'){
+      hideT=setTimeout(function(){ hideT=null; if(cur==='ok')b.classList.remove('on'); },Math.max(0,1800-(Date.now()-shownAt)));
+      return;
+    }
+    b.textContent=words(st);
+    b.classList.toggle('down',st==='down');
+    if(!b.classList.contains('on')){ shownAt=Date.now(); b.classList.add('on'); }
+  }
+  function onState(st,prev){
+    paint(st);
+    if(st!=='ok'){ if(prev==='ok')badSince=Date.now(); if(st==='down')wasDown=true; return; }
+    var down=wasDown, gap=Date.now()-badSince; wasDown=false;
+    if(down){ try{if(typeof toast==='function')toast('✓ Back online');}catch(e){} }
+    if(down||gap>=10000)repull();
+  }
+  window.shkNet.on(onState);
+  try{ var st0=window.shkNet.state; if(st0!=='ok'){ badSince=Date.now(); wasDown=(st0==='down'); paint(st0); } }catch(e){}   // reflect the state we booted in
+  /* the words follow the gate: walk through it (or get sent back to it) with the banner up, and it re-reads */
+  try{ new MutationObserver(function(){ if(cur==='ok')return; var b=banner(), w=words(cur); if(b.textContent!==w)b.textContent=w; })
+         .observe(document.documentElement,{attributes:true,attributeFilter:['class']}); }catch(e){}
 })();
 
 /* ── #45 — INSTALL THE APP (no more address bar) ─────────────────────────────
