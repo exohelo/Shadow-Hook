@@ -8,7 +8,7 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='sep18thin';
+window.SHK_BUILD='sep18eof';
 /* #freezev3 — keep enough resource timings for the report to name what landed before a
    freeze: the boot alone fires ~100 requests, and the default buffer (250) then stops
    recording for the rest of the session. */
@@ -17520,9 +17520,34 @@ document.getElementById('ymBack').addEventListener('click',closeYardMap);
 window.shkChunk=(function(){
   var done={}, hooks={};
   function blocks(name){ return document.querySelectorAll('script[type="text/x-lazy"][data-chunk="'+name+'"]'); }
+  /* #eofguard(sep18) — NEVER LIGHT A BLOCK FROM A CUT-OFF PAGE. THE ALARMS, Sep 18 2:11 PM:
+     "Uncaught SyntaxError: Failed to execute 'insertBefore' on 'Node': Unexpected end of input
+     @ :391" on a first visit. The blocks in the file are whole (every one parses, none is 391
+     lines) — that phone's COPY of index.html was not: a one-bar download stopped partway, the
+     browser ran what it had, and the idle door then re-inserted a block sliced mid-line. And a
+     page cut there is missing everything after the cut, so the app was broken anyway. The last
+     thing in the file is now a one-line sentinel; if it never ran, the parser never reached the
+     end. Then: don't light the blocks, say so in the dev log, and fetch the page again — once
+     per session, when the signal is back — instead of running a half-app. */
+  var _cut=false;
+  function truncated(){
+    if(window.__SHK_EOF||_cut)return _cut;
+    _cut=true;
+    try{ if(window.DEVLOG&&DEVLOG.err)DEVLOG.err('index.html cut off in transit — maps held; reloading for a whole copy'); }catch(e){}
+    try{
+      var K='shk_eof_reload';
+      if(!sessionStorage.getItem(K)){
+        sessionStorage.setItem(K,'1');
+        var go=function(){ try{ location.reload(); }catch(e){} };
+        if(navigator.onLine!==false)setTimeout(go,1500); else window.addEventListener('online',go,{once:true});
+      }
+    }catch(e){}
+    return true;
+  }
   function now(name){
     if(done[name])return true;
     var list=blocks(name); if(!list.length)return false;     /* asked before the parser reached them — the idle door tries again */
+    if(truncated())return false;                              /* #eofguard — a sliced block would throw, and the rest of the app is missing too */
     done[name]=1;
     var t0=performance.now(), n=0, h=hooks[name]||{};
     try{ if(h.before)h.before(); }catch(e){}
@@ -43780,6 +43805,8 @@ html.arcade .arc-aurora i{mix-blend-mode:normal;
   window.addEventListener('resize',function(){ if(open){ clampT(); draw(); } });
 })();
 </script>
+<!-- #eofguard — the last line of the file. If this never runs, the download was cut off: shkChunk holds the maps and fetches a whole copy. Keep it last. -->
+<script>window.__SHK_EOF=1;</script>
 
 </body>
 </html>
