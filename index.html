@@ -2224,8 +2224,13 @@ html.so-open #bankStrip,html.so-open .dayBtn{display:none!important}
 #gearView{display:none}
 .pdp-back{background:none;border:0;color:var(--steel);font-family:'Barlow Condensed',sans-serif;font-weight:600;
   font-size:13px;letter-spacing:.1em;text-transform:uppercase;padding:6px 0;cursor:pointer}
-.pdp-hero{border-radius:12px;overflow:hidden;border:1px solid var(--line-soft);background:var(--plate-2);aspect-ratio:1/1}
+.pdp-hero{border-radius:12px;overflow:hidden;border:1px solid var(--line-soft);background:var(--plate-2);aspect-ratio:1/1;
+  position:relative;touch-action:pan-y}   /* #heroswipe(sep19) — the picture takes the sideways drag; the page keeps its own up-and-down scroll */
 .pdp-hero img{width:100%;height:100%;object-fit:cover;display:block}
+.pdp-slide{position:absolute;inset:0;z-index:1}   /* #heroswipe — the shot sliding in beside the one you're leaving */
+.pdp-count{position:absolute;right:9px;bottom:9px;z-index:2;pointer-events:none;padding:3px 9px;border-radius:999px;
+  background:rgba(8,6,15,.66);color:#f2f0fa;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  font-size:11px;font-weight:600;letter-spacing:.04em;-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
 .pdp-thumbs{display:flex;gap:8px;margin-top:10px;overflow-x:auto;scrollbar-width:none}
 .pdp-thumbs::-webkit-scrollbar{display:none}
 .pdp-thumbs button{flex:none;width:54px;height:54px;border-radius:8px;overflow:hidden;padding:0;cursor:pointer;
@@ -19952,8 +19957,13 @@ function paintGear(){
   const pics=gearPics(p);
   if(!(gearPic>=0&&gearPic<pics.length))gearPic=-1;
   const _oldStrip=host.querySelector('.pdp-thumbs'), _stripX=_oldStrip?_oldStrip.scrollLeft:0;
+  /* #heroswipe(sep19) — how many shots this piece carries, and which one is up. The strip
+     below is the same list in the same order, so "3 / 6" and the lit thumb cannot disagree. */
+  const _nCol=cols.length>1?cols.length:1, _shots=_nCol+pics.length,
+        _at=(gearPic>=0?_nCol+gearPic:gearColor)+1;
   host.innerHTML=
-     '<div class="pdp-hero"><img id="gearHero" alt="'+shEsc(p.name)+'" src="'+shEsc(gearPic>=0?pics[gearPic]:gearShot(p,gearColor))+'"></div>'
+     '<div class="pdp-hero"><img id="gearHero" alt="'+shEsc(p.name)+'" src="'+shEsc(gearPic>=0?pics[gearPic]:gearShot(p,gearColor))+'">'
+      +(_shots>1?'<span class="pdp-count">'+_at+' / '+_shots+'</span>':'')+'</div>'
     +((cols.length>1||pics.length)?'<div class="pdp-thumbs">'
         +(cols.length>1?cols:[cols[0]||null]).map((cc,i)=>'<button type="button" data-i="'+i+'"'+((gearPic<0&&i===gearColor)?' class="on"':'')+'><img alt="'+shEsc(cc&&cc.n)+'" src="'+shEsc(gearShot(p,i))+'"></button>').join('')
         +pics.map((u,i)=>'<button type="button" data-pi="'+i+'"'+(i===gearPic?' class="on"':'')+'><img loading="lazy" alt="'+shEsc(p.name)+' — photo '+(i+2)+'" src="'+shEsc(u)+'"></button>').join('')
@@ -19995,7 +20005,17 @@ function paintGear(){
       }catch(e){return '';} })()
     +gearRevBlock(p);   /* #reviews — the word of the Order closes the page */
 
-  { const _ns=host.querySelector('.pdp-thumbs'); if(_ns&&_stripX)_ns.scrollLeft=_stripX; }   /* #gallery — the strip stays where the thumb left it */
+  { const _ns=host.querySelector('.pdp-thumbs');
+    if(_ns){ if(_stripX)_ns.scrollLeft=_stripX;                                   /* #gallery — the strip stays where the thumb left it… */
+      /* …but a swipe on the picture moves the lit thumb, and on a long strip that thumb can
+         be off the end of it. Bring it back by the shortest distance that shows it, no more. */
+      /* MEASURED AGAINST EACH OTHER, not against offsetLeft: the strip isn't a positioned
+         box, so a thumb's offsetLeft is counted from some ancestor further up and compares
+         to nothing useful here. Two rects always tell the truth. */
+      const _on=_ns.querySelector('button.on');
+      if(_on){ const b=_on.getBoundingClientRect(), r=_ns.getBoundingClientRect();
+        if(b.left<r.left) _ns.scrollLeft+=b.left-r.left-8;
+        else if(b.right>r.right) _ns.scrollLeft+=b.right-r.right+8; } } }
   host.querySelectorAll('.pdp-thumbs button[data-i]').forEach(b=>b.addEventListener('click',()=>{gearColor=+b.dataset.i||0;gearPic=-1;paintGear();}));
   host.querySelectorAll('.pdp-thumbs button[data-pi]').forEach(b=>b.addEventListener('click',()=>{gearPic=+b.dataset.pi||0;paintGear();}));   /* #gallery — by INDEX, never by value */
   host.querySelectorAll('.pdp-cols button').forEach(b=>b.addEventListener('click',()=>{gearColor=+b.dataset.ci||0;gearPic=-1;paintGear();}));
@@ -43356,6 +43376,12 @@ window.shareCall=shareCall;
        and the chat feed scrolls); the shelf strips still bow out via onSideScroller. */
     var anywhere=(v.el.id==='gearView');
     if(!left&&!right&&!anywhere) return;
+    /* #heroswipe(sep19) — THE PICTURE OWNS A DRAG THAT STARTS ON IT. Everywhere else in the
+       world a thumb dragged across a product photo means "show me the next shot"; here it
+       meant "leave the page". It pages the shots now (#heroswipe, at the foot of this file)
+       — but only where there IS more than one shot. On a one-photo piece the whole page is
+       still "back", exactly as it was. */
+    try{ if(window.__heroSwipeOwns&&window.__heroSwipeOwns(e.target)) return; }catch(e2){}
     if(onSideScroller(e.target,v.el)) return;
     g={el:v.el,btn:v.btn,x0:t.clientX,y0:t.clientY,dir:left?1:(right?-1:0),t0:Date.now(),live:false,W:W};
   },{passive:true});
@@ -43418,6 +43444,145 @@ window.shareCall=shareCall;
   },400);
 
   document.documentElement.classList.add('swipeback');   // armed — the CSS may hide the arrows now
+})();
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   #heroswipe(sep19) — SWIPE THE PICTURE TO SEE THE NEXT PICTURE
+
+   #pdpswipe took a sideways drag from ANYWHERE on a product page and used it to
+   leave — including a drag straight across the photo, which is the one place on
+   that page where the gesture already means something else to everybody on earth:
+   show me the next shot. So the photo claims it, and only the photo:
+
+     · a drag ON THE PICTURE pages through that piece's shots, one-to-one under the
+       thumb, the next one sliding in beside the one being left
+     · a drag anywhere else on the page still goes back to the Armory
+     · a piece with only ONE shot claims nothing at all — the whole page is "back",
+       exactly as it was before today
+
+   IT NEVER INVENTS STATE. A committed swipe CLICKS THE THUMBNAIL it landed on, so
+   the picture, the lit thumb, the colourway line and the counter all move through
+   the same door a tap uses and cannot end up disagreeing. (Same trick as #swipeback
+   clicking the view's own back button.)
+
+   THE ENDS DON'T WRAP, and they don't fall through to "back" either: past the last
+   shot the drag goes heavy and snaps home. One more swipe than there are pictures
+   is the commonest thing a thumb does, and it must never throw you off the page.
+
+   Vertical wins instantly — the page scrolls under a thumb that's really scrolling
+   (touch-action:pan-y on the hero says the same thing to the browser).
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function(){
+  "use strict";
+  var TOUCH=false;
+  try{ TOUCH=('ontouchstart' in window)||(navigator.maxTouchPoints>0); }catch(e){}
+  if(!TOUCH) return;                  // a mouse has the thumbnails and the swatches
+
+  var SLOP=10,       // movement before we commit to a direction
+      TAKE=0.22,     // past this share of the width, the page turns
+      FLICK=0.40,    // …or this fast (px per ms), however short
+      HEAVY=0.28;    // how much of the thumb the ends give back
+  var REDUCED=false;
+  try{ REDUCED=window.matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(e){}
+
+  function heroOf(node){
+    try{ return (node&&node.closest)?node.closest('.pdp-hero'):null; }catch(e){ return null; }
+  }
+  function shots(){
+    try{ return Array.prototype.slice.call(document.querySelectorAll('#gearBody .pdp-thumbs button')); }
+    catch(e){ return []; }
+  }
+  function srcOf(btn){ var im=btn&&btn.querySelector('img'); return im?(im.getAttribute('src')||''):''; }
+  /* #swipeback asks this before it takes a drag — see the hand-off up there */
+  window.__heroSwipeOwns=function(node){ return !!heroOf(node)&&shots().length>1; };
+
+  var g=null, slide=null;
+  function ghost(box){
+    if(!slide){ slide=document.createElement('img'); slide.className='pdp-slide'; slide.alt=''; }
+    if(slide.parentNode!==box) box.appendChild(slide);
+    return slide;
+  }
+  function drop(){ try{ if(slide&&slide.parentNode)slide.parentNode.removeChild(slide); }catch(e){} }
+
+  function settle(tr,to){
+    var ms=REDUCED?0:200, go=to>=0,
+        ease='transform '+ms+'ms cubic-bezier(.22,.61,.36,1)';
+    tr.hero.style.transition=ms?ease:'none';
+    tr.hero.style.transform='translateX('+(go?(-tr.side*tr.wl):0)+'px)';
+    if(slide&&slide.parentNode){
+      slide.style.transition=ms?ease:'none';
+      slide.style.transform='translateX('+(go?0:(tr.side*tr.wl))+'px)';
+    }
+    window.setTimeout(function(){
+      /* the click repaints the page with that shot already up, at rest — so the hand-off
+         from this animation to the real hero happens inside one frame and is invisible */
+      if(go){ try{ tr.btns[to].click(); }catch(e){} }
+      drop();
+      try{ tr.hero.style.transition=''; tr.hero.style.transform=''; }catch(e){}
+    }, ms+20);
+  }
+  function cancel(){ if(!g)return; var tr=g; g=null; if(tr.live)settle(tr,-1); else drop(); }
+
+  document.addEventListener('touchstart',function(e){
+    g=null;
+    if(!e.touches||e.touches.length!==1) return;      // two fingers is a pinch, not us
+    var box=heroOf(e.target); if(!box) return;
+    var btns=shots(); if(btns.length<2) return;       // one shot: the page keeps the gesture
+    var hero=document.getElementById('gearHero'); if(!hero) return;
+    var cur=0, i;
+    for(i=0;i<btns.length;i++) if(btns[i].classList.contains('on'))cur=i;
+    /* TWO WIDTHS, ON PURPOSE. A member who has turned the app's text size up is reading
+       a page under `body{zoom:1.15}` (or 1.3) — so a pixel the finger travels is NOT a
+       pixel a transform moves. The rect is what the thumb sees; offsetWidth is what a
+       translateX is counted in; k is the ratio between them, and it is 1 on a phone with
+       the text size left alone. Without this the incoming shot sits a finger's width
+       away from the one it's replacing, and only for the members who need big text. */
+    var t=e.touches[0], wl=hero.offsetWidth||box.clientWidth||1,
+        w=hero.getBoundingClientRect().width||wl, k=w/wl||1;
+    g={box:box,hero:hero,btns:btns,cur:cur,w:w,wl:wl,k:k,side:1,next:-1,
+       x0:t.clientX,y0:t.clientY,t0:Date.now(),live:false};
+  },{passive:true});
+
+  document.addEventListener('touchmove',function(e){
+    if(!g) return;
+    if(!e.touches||e.touches.length!==1){ cancel(); return; }   // a second finger landed
+    var t=e.touches[0], dx=t.clientX-g.x0, dy=t.clientY-g.y0;
+    if(!g.live){
+      if(Math.abs(dy)>Math.abs(dx)&&Math.abs(dy)>SLOP){ g=null; return; }   // they're scrolling the page
+      if(Math.abs(dx)<SLOP) return;
+      g.live=true; g.hero.style.transition='none';
+    }
+    var side=dx<0?1:-1, want=g.cur+side, off=dx;
+    if(want<0||want>=g.btns.length){ off=dx*HEAVY; want=-1; }    // nothing that way: the drag goes heavy
+    if(side!==g.side||want!==g.next){
+      g.side=side; g.next=want;
+      if(want<0){ if(slide)slide.style.display='none'; }
+      else{
+        var im=ghost(g.box); im.style.display=''; im.style.transition='none';
+        var src=srcOf(g.btns[want]);
+        if(im.getAttribute('src')!==src) im.setAttribute('src',src);
+      }
+    }
+    var loc=off/g.k;                                          // the thumb's travel, in the units a transform speaks
+    g.hero.style.transform='translateX('+loc+'px)';
+    if(g.next>=0&&slide) slide.style.transform='translateX('+(loc+g.side*g.wl)+'px)';
+    if(e.cancelable) e.preventDefault();          // the page must not scroll under the drag
+  },{passive:false});
+
+  document.addEventListener('touchend',function(e){
+    if(!g) return;
+    var tr=g; g=null;
+    if(!tr.live){ drop(); return; }               // a tap, not a drag
+    var t=(e.changedTouches&&e.changedTouches[0])||null, dx=t?(t.clientX-tr.x0):0;
+    var far=Math.abs(dx), speed=far/Math.max(1,Date.now()-tr.t0);
+    var to=(tr.next>=0&&(far>tr.w*TAKE||speed>FLICK))?tr.next:-1;
+    /* the catalog can be swapped under an open product page (sbLoadProducts), which
+       rebuilds these buttons: a thumb that is no longer on the page can't be clicked,
+       so that drag simply snaps home instead of going nowhere in silence */
+    if(to>=0&&!document.contains(tr.btns[to])) to=-1;
+    settle(tr,to);
+  },{passive:true});
+  document.addEventListener('touchcancel',function(){ cancel(); },{passive:true});
 })();
 /* ═══════════════ #alerts(aug10) — THE BELLS ═══════════════
    THE PROBLEM: a member posts in the hall and nobody knows. The board alert was
