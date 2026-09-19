@@ -9077,6 +9077,7 @@ function gotoTab(name){
     try{renderSocialFeed();}catch(e){} try{sbLoadStories();}catch(e){}}   // #hall — the Hall IS the tab now: fresh feed + stories + standings
   if(name==='ports'){try{if(window.shkChunk)shkChunk.now('maps');}catch(e){} try{renderHarborBoard();}catch(e){}}   /* #lazy — the vault comes up with the tab */
   if(name==='board'){try{openPendingSheet();}catch(e){}}   // #93 — the Wire opens with the pending dispatch sheet showing
+  if(name==='armory'){try{ if(typeof sbFreshProducts==='function')sbFreshProducts(); if(typeof shopKmNote==='function')shopKmNote(); }catch(e){}}   // #freshshelf(sep19) — the Armory was the one tab with no hook here: its shelf was read once at boot, so new postings never showed in an app that was already open
 }
 /* #gateonly(aug31) — the gate and the tab bar are opposites: while the gate is up the
    bar is gone, and it appears the moment a casual is through. One switch, called from
@@ -19385,6 +19386,7 @@ const GEAR_SEED=[
 ];
 let GEAR=GEAR_SEED.slice();            // merged catalog: server rows win over seed
 let gearCat="all", gearProd=null, gearColor=0, gearSize=null;
+var gearPic=-1;                        // #gallery(sep19) — which EXTRA photo is up in the hero; -1 = the colourway's own shot (`var` on purpose — see #prvsafe)
 
 /* ---- SAFETY RAILS ---------------------------------------------------------
    Everything below renders UNTRUSTED REMOTE DATA: every product field arrives
@@ -19451,6 +19453,24 @@ function gearArt(p,ci){
 function gearShot(p,ci){
   const imgs=gearArr(p.images), real=gearSrc(imgs[ci||0]||p.image);
   return real || gearArt(p,ci);
+}
+/* ---- #gallery(sep19) — THE EXTRA PHOTOS -------------------------------------
+   A posting can carry more than one picture now: `image` is still the store
+   picture, and `gallery` (a jsonb list, POSTING-EXTRAS.sql) holds the rest — the
+   back, the inside, the close-up. The Dock Office writes both.
+   This returns the shots that belong in the strip under the hero AFTER the
+   colourway thumbs: every photo a colourway thumb isn't already showing, store
+   picture first. No gallery → [] → the page draws exactly as it always has, so a
+   product nobody has touched cannot change. UNTRUSTED like everything else here:
+   every URL goes through gearSrc(), and the strip carries them by INDEX.
+   Keep in step with pvStrip() in vendor.html — the Dock Office previews this. */
+function gearPics(p){
+  const extra=gearArr(p.gallery).map(gearSrc).filter(Boolean);
+  if(!extra.length)return [];
+  const n=Math.max(1,gearArr(p.colors).length), seen=Object.create(null), out=[];
+  for(let i=0;i<n;i++)seen[gearShot(p,i)]=1;
+  [gearSrc(p.image)].concat(extra).forEach(u=>{ if(u&&!seen[u]&&out.length<12){ seen[u]=1; out.push(u); } });
+  return out;
 }
 function gearMoney(n){ const v=gearNum(n); if(v==null)return null;
   return (v<0?"-$":"$")+(Math.round(Math.abs(v)*100)/100).toFixed(2).replace(/\.00$/,""); }
@@ -19668,6 +19688,7 @@ function shopScore(p,Q){
 function renderShop(){
   const rail=document.getElementById('shopRail'), grid=document.getElementById('shopGrid');
   if(!rail||!grid)return;
+  try{ shopKmNote(); }catch(e){}   /* #freshshelf — the Keymaster's own line under the grid */
   /* #shop2 — SAVED rides at the front of the shelves. It only appears once
      there is something on it, so an empty shelf never taunts anybody. */
   const cats = favCount() ? [['saved','♥ SAVED ('+favCount()+')']].concat(GEAR_CATS) : GEAR_CATS.slice();
@@ -19829,7 +19850,7 @@ try{ favLoad().then(function(){ try{ renderShop(); }catch(e){} }); }catch(e){}
 /* ---- one product ---- */
 function openGear(id){
   const p=GEAR.find(x=>String(x.id)===String(id)); if(!p)return;
-  gearProd=p; gearColor=0; gearSize=null;
+  gearProd=p; gearColor=0; gearSize=null; gearPic=-1;
   _prvDirty=false;   /* #reviews — a fresh page reads your standing word, not the last page's draft */
   document.getElementById('gearShop').style.display="none";
   document.getElementById('gearView').style.display="block";
@@ -19838,7 +19859,7 @@ function openGear(id){
   try{window.scrollTo(0,0);}catch(e){}
 }
 function closeGear(){
-  gearProd=null;
+  gearProd=null; gearPic=-1;
   const v=document.getElementById('gearView'), s=document.getElementById('gearShop');
   if(v)v.style.display="none";
   if(s)s.style.display="block";
@@ -19863,9 +19884,20 @@ function paintGear(){
   const badge=p.deal?'<span class="gbadge deal" style="position:static;display:inline-block;border-radius:6px;margin-bottom:8px">'+shEsc(p.deal)+'</span>'
               :p.status==='soon'?'<span class="gbadge soon" style="position:static;display:inline-block;border-radius:6px;margin-bottom:8px">Coming soon</span>':'';
   const usd=gearMoney(p.usd), was=gearMoney(p.usd_was), bk=gearNum(p.bucks);
+  /* #gallery(sep19) — the strip under the hero: one thumb per colourway (as ever), then
+     the extra photos. A colourway thumb picks the colourway; a photo thumb just goes up
+     in the hero. The catalog can be swapped under an open page, so the index is
+     re-clamped every paint, and the strip keeps its sideways scroll across repaints —
+     without that, tapping the ninth thumb on a phone snapped the row back to the first. */
+  const pics=gearPics(p);
+  if(!(gearPic>=0&&gearPic<pics.length))gearPic=-1;
+  const _oldStrip=host.querySelector('.pdp-thumbs'), _stripX=_oldStrip?_oldStrip.scrollLeft:0;
   host.innerHTML=
-     '<div class="pdp-hero"><img id="gearHero" alt="'+shEsc(p.name)+'" src="'+shEsc(gearShot(p,gearColor))+'"></div>'
-    +(cols.length>1?'<div class="pdp-thumbs">'+cols.map((cc,i)=>'<button type="button" data-i="'+i+'"'+(i===gearColor?' class="on"':'')+'><img alt="'+shEsc(cc&&cc.n)+'" src="'+shEsc(gearShot(p,i))+'"></button>').join('')+'</div>':'')
+     '<div class="pdp-hero"><img id="gearHero" alt="'+shEsc(p.name)+'" src="'+shEsc(gearPic>=0?pics[gearPic]:gearShot(p,gearColor))+'"></div>'
+    +((cols.length>1||pics.length)?'<div class="pdp-thumbs">'
+        +(cols.length>1?cols:[cols[0]||null]).map((cc,i)=>'<button type="button" data-i="'+i+'"'+((gearPic<0&&i===gearColor)?' class="on"':'')+'><img alt="'+shEsc(cc&&cc.n)+'" src="'+shEsc(gearShot(p,i))+'"></button>').join('')
+        +pics.map((u,i)=>'<button type="button" data-pi="'+i+'"'+(i===gearPic?' class="on"':'')+'><img loading="lazy" alt="'+shEsc(p.name)+' — photo '+(i+2)+'" src="'+shEsc(u)+'"></button>').join('')
+        +'</div>':'')
     +'<div class="pdp-brand">'+shEsc(p.brand||"The Shadow Hook")+'</div>'
     +'<div class="pdp-name">'+shEsc(p.name)+'</div>'
     +(function(){const s=prvStats(p.id);   /* #reviews — the word, right under the name */
@@ -19903,8 +19935,10 @@ function paintGear(){
       }catch(e){return '';} })()
     +gearRevBlock(p);   /* #reviews — the word of the Order closes the page */
 
-  host.querySelectorAll('.pdp-thumbs button').forEach(b=>b.addEventListener('click',()=>{gearColor=+b.dataset.i||0;paintGear();}));
-  host.querySelectorAll('.pdp-cols button').forEach(b=>b.addEventListener('click',()=>{gearColor=+b.dataset.ci||0;paintGear();}));
+  { const _ns=host.querySelector('.pdp-thumbs'); if(_ns&&_stripX)_ns.scrollLeft=_stripX; }   /* #gallery — the strip stays where the thumb left it */
+  host.querySelectorAll('.pdp-thumbs button[data-i]').forEach(b=>b.addEventListener('click',()=>{gearColor=+b.dataset.i||0;gearPic=-1;paintGear();}));
+  host.querySelectorAll('.pdp-thumbs button[data-pi]').forEach(b=>b.addEventListener('click',()=>{gearPic=+b.dataset.pi||0;paintGear();}));   /* #gallery — by INDEX, never by value */
+  host.querySelectorAll('.pdp-cols button').forEach(b=>b.addEventListener('click',()=>{gearColor=+b.dataset.ci||0;gearPic=-1;paintGear();}));
   /* size is carried by INDEX, never by value — reading it back out of a data-
      attribute hands you the raw string the parser decoded, which would put an
      unescaped remote value straight back into innerHTML on the next paint. */
@@ -20228,8 +20262,67 @@ async function sbLoadProductReviews(){
   setTimeout(function(){ try{ rvnPing(); }catch(e){} },4000);
 }
 /* ---- the catalog off the server; the seed holds the floor until it answers ---- */
+/* #freshshelf(sep19) — THE SHELF WAS READ ONCE, AT BOOT, AND NEVER AGAIN.
+   The price switch is re-asked on open, on wake and every few minutes; the catalog
+   itself was not. So a posting the Keymaster shelved from the Dock Office — which
+   promises "changes land on the store floor the moment you save" — never reached an
+   app that was already open, and a phone keeps this app open for days. It showed on
+   the Dock Office's own browse-only floor (that page reads the table each time) and
+   nowhere a casual could see it.
+   sbFreshProducts() is the polite ask: opening the Armory, coming back to the app,
+   and a slow tick while the Armory is up all call it, and it won't go to the server
+   more than once every 45 seconds. And a read that comes back the SAME as the floor
+   already shows repaints nothing — no flicker, no product page rebuilt under a thumb.
+   window.__armoryRead keeps the last answer (rows / error / when) so "why isn't it
+   showing" can be answered from the console instead of guessed at. */
+var _gearAskedAt=0, _gearAsking=false, _gearSig='', _gearSeq=0;
+/* #freshshelf — KEYMASTER ONLY: one quiet line under the grid that says what the server
+   actually handed THIS login — how many postings, when, or why not. "I shelved it and
+   can't see it" has exactly three causes (the app hadn't re-read, the read was refused,
+   the read came back empty) and they look identical on the floor; this tells them apart
+   from a phone, no console needed. Tap it to re-read now. Members never see it. */
+function shopKmNote(){
+  try{
+    var grid=document.getElementById('shopGrid'); if(!grid||!grid.parentNode)return;
+    var el=document.getElementById('shopKmNote');
+    if(!window.__isKM){ if(el)el.remove(); return; }
+    if(!el){
+      el=document.createElement('p'); el.id='shopKmNote'; el.className='sub';
+      el.setAttribute('role','button'); el.tabIndex=0;
+      el.style.cssText='margin:16px 2px 0;font-size:11.5px;line-height:1.6;cursor:pointer';
+      var again=function(){ try{ el.textContent='☠ re-reading the shelf…'; sbFreshProducts(true); }catch(e){} };
+      el.addEventListener('click',again);
+      el.addEventListener('keydown',function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); again(); } });
+      grid.parentNode.insertBefore(el,grid.nextSibling);
+    }
+    var a=window.__armoryRead, when='';
+    try{ if(a&&a.at)when=new Date(a.at).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}); }catch(e){}
+    var floor=0; try{ floor=GEAR.filter(function(p){ return !p.status||p.status==='live'||p.status==='soon'; }).length; }catch(e){}
+    var bad=false, msg;
+    if(!window.SB){ bad=true; msg='⚠ Keymaster only · the backend isn’t connected on this device, so the floor is the built-in samples.'; }
+    else if(!a){ msg='☠ Keymaster only · the shelf hasn’t been read from the server yet · tap to read it now'; }
+    else if(a.error){ bad=true; msg='⚠ Keymaster only · the shelf read failed at '+when+' (“'+a.error+'”) — the floor is showing the built-in samples, so new postings can’t appear · tap to try again'; }
+    else if(!a.rows){ bad=true; msg='⚠ Keymaster only · at '+when+' the server sent THIS login 0 postings, so the floor is the built-in samples and a new posting can’t show. If the Dock Office lists postings, this login isn’t being allowed to read the products table (row-level security in Supabase) · tap to re-read'; }
+    else msg='☠ Keymaster only · shelf read at '+when+' — '+a.rows+' posting'+(a.rows===1?'':'s')+' came from the server · '+floor+' on the floor · tap to re-read';
+    el.textContent=msg;
+    el.style.color=bad?'var(--ember)':'';
+  }catch(e){}
+}
+window.shopKmNote=shopKmNote;
+function sbFreshProducts(force){
+  try{
+    if(!window.SB||_gearAsking)return;
+    if(!force&&Date.now()-_gearAskedAt<45000)return;
+    sbLoadProducts();
+  }catch(e){}
+}
+window.sbFreshProducts=sbFreshProducts;
 async function sbLoadProducts(){
   if(!window.SB)return;
+  /* only the NEWEST ask may answer: a slow read from a bad patch of signal must never land
+     after a fresh one and put the old shelf (or an old error) back on the floor */
+  const seq=++_gearSeq;
+  _gearAsking=true; _gearAskedAt=Date.now();
   try{
     /* #stockroom(aug13) — the vendor's RETURNS & WARRANTY ride along with the catalog:
        one quiet read, keyed by brand, painted on every product page (see paintGear).
@@ -20238,11 +20331,16 @@ async function sbLoadProducts(){
       .then(function(pr){ const m={}; ((pr&&pr.data)||[]).forEach(function(x){ if(x&&x.brand)m[String(x.brand).toLowerCase()]=x; });
         window.__vendPol=m; try{ if(gearProd)paintGear(); }catch(e){} },function(){});
     const r=await window.SB.from('products').select('*');
+    if(seq!==_gearSeq)return;                        // a newer ask went out while this one was on the wire — its answer wins
+    try{ window.__armoryRead={at:new Date().toISOString(),rows:(r&&Array.isArray(r.data))?r.data.length:null,error:(r&&r.error&&r.error.message)||null}; }catch(e){}
     if(!r||r.error||!Array.isArray(r.data)){
       if(r&&r.error)console.warn('[armory] products:',r.error.message,'— run ARMORY-SETUP.sql');
       return;                                        // seed stands
     }
-    if(!r.data.length)return;                        // empty table: seed stands
+    if(!r.data.length){                              // empty table — OR a table this login isn't allowed to read: seed stands
+      console.warn('[armory] products: the server sent 0 rows — the floor is showing the built-in seed only. If the Dock Office lists postings, this login cannot read the products table (row-level security).');
+      return;
+    }
     const byId=Object.create(null); GEAR_SEED.forEach(p=>{byId[p.id]=p;});
     r.data.forEach(row=>{
       if(!row||row.id==null)return;
@@ -20255,12 +20353,17 @@ async function sbLoadProducts(){
          an array field when it parses to a real array. */
       const clean={};
       Object.keys(row).forEach(k=>{ if(row[k]!=null)clean[k]=row[k]; });
-      ['colors','sizes','specs','images'].forEach(k=>{
+      ['colors','sizes','specs','images','gallery'].forEach(k=>{   /* #gallery(sep19) — the extra photos ride in the same way */
         if(k in clean){ const a=gearArr(clean[k]); if(a.length)clean[k]=a; else delete clean[k]; }
       });
       byId[id]=Object.assign({},byId[id]||{},clean,{id:id});
     });
-    GEAR=Object.keys(byId).map(k=>byId[k]);
+    const next=Object.keys(byId).map(k=>byId[k]);
+    /* #freshshelf — the same shelf as last time? then there is nothing to repaint */
+    let sig=''; try{ sig=JSON.stringify(next); }catch(e){ sig=String(Date.now()); }
+    if(sig===_gearSig)return;
+    _gearSig=sig;
+    GEAR=next;
     renderShop();
     if(gearProd){                                    // a product page may be open right now
       const f=GEAR.find(x=>String(x.id)===String(gearProd.id));
@@ -20268,7 +20371,16 @@ async function sbLoadProducts(){
       else { try{toast('That one just left the floor');}catch(e){} closeGear(); }
     }
   }catch(e){ console.warn('[armory] products',e); }
+  finally{ if(seq===_gearSeq){ _gearAsking=false; try{ shopKmNote(); }catch(e){} } }
 }
+/* #freshshelf — back to the app, or sitting on the Armory: ask again (politely) */
+(function(){
+  function armoryUp(){ try{ var s=document.getElementById('scr-armory'); return !!(s&&s.classList.contains('on')); }catch(e){ return false; } }
+  try{ document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='visible')sbFreshProducts(); }); }catch(e){}
+  try{ window.addEventListener('pageshow',function(ev){ if(ev&&ev.persisted)sbFreshProducts(true); }); }catch(e){}   /* restored from the back-forward cache: that page is as old as the day it was frozen */
+  try{ window.addEventListener('online',function(){ sbFreshProducts(); }); }catch(e){}
+  try{ setInterval(function(){ if(document.visibilityState==='visible'&&armoryUp())sbFreshProducts(); },180000); }catch(e){}
+})();
 window.renderShop=renderShop; window.openGear=openGear; window.sbLoadProducts=sbLoadProducts;
 window.sbLoadProductReviews=sbLoadProductReviews;   /* #reviews */
 (function(){ const b=document.getElementById('gearBack'); if(b)b.addEventListener('click',closeGear); })();
