@@ -218,6 +218,20 @@ select.field{appearance:none;-webkit-appearance:none}
 .df-ph-add b{font-size:22px;font-weight:400;line-height:1;color:var(--copper-hi)}
 .df-ph-add:hover,.df-ph-add:focus-visible{border-color:rgba(77,226,255,.55);color:var(--bone)}
 .df-ph-add:disabled{opacity:.5;cursor:wait}
+/* #waitlist(sep19) — WHO'S WAITING, inside the posting editor */
+.wl-count{font-size:11px;letter-spacing:.1em;color:var(--copper-hi);margin-left:6px}
+.wl-list{margin-top:7px;border:1px solid var(--line);border-radius:10px;background:var(--well);
+  max-height:210px;overflow:auto}
+.wl-row{display:flex;gap:9px;align-items:baseline;padding:8px 11px;border-top:1px solid var(--line-soft);font-size:12.5px}
+.wl-row:first-child{border-top:0}
+.wl-row b{flex:none;color:var(--bone);font-weight:700;letter-spacing:.04em}
+.wl-row .w{flex:1;min-width:0;color:var(--copper-hi)}
+.wl-row .t{flex:none;color:var(--steel);font-size:11px}
+.wl-row .tl{flex:none;color:var(--ok);font-size:11px;letter-spacing:.06em}
+.wl-tot{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.wl-tot span{padding:4px 9px;border:1px solid var(--line);border-radius:999px;background:var(--well);
+  font-size:11.5px;color:var(--bone)}
+.wl-tot b{color:var(--copper-hi)}
 /* #memo(sep19) — links typed into the restock memo, handed back as buttons */
 .df-memo-links{display:flex;flex-wrap:wrap;gap:7px;margin-top:8px}
 .df-memo-links:empty{display:none}
@@ -795,6 +809,27 @@ body.shelf-dragging,body.shelf-dragging *{cursor:grabbing!important;user-select:
     <div class="df-memo-links" id="dfMemoLinks"></div>
     <p class="sub" id="dfMemoNote" style="margin-top:6px;font-size:11.5px"></p>
   </div>
+  <!-- #waitlist(sep19) — WHO'S WAITING. Every member who tapped 🔔 TELL ME WHEN IT
+       DROPS on this piece, and the colour and size they asked for — which is the
+       number you actually want when you're deciding how many of each to order.
+       Reads product_interest (WAITING-LIST.sql); the Keymaster is the only account
+       the database lets read it. -->
+  <div id="dfWaitWrap" hidden>
+    <div class="lbl">🔔 WHO’S WAITING <span id="dfWaitCount" class="wl-count"></span></div>
+    <div id="dfWaitList"></div>
+    <div id="dfWaitTellWrap" hidden>
+      <button class="btn-line gold" id="dfWaitTell" type="button" style="margin-top:9px">📣 DROP THE LIST A LINE</button>
+      <div id="dfWaitCompose" hidden>
+        <textarea class="field" id="dfWaitBody" maxlength="400" style="min-height:76px;margin-top:9px"></textarea>
+        <p class="sub" style="margin:6px 2px 0;font-size:11.5px">They see this at the top of the Armory next time they open it. Nothing is emailed or texted.</p>
+        <div class="stat-row" style="margin-top:8px">
+          <button class="btn-line gold" id="dfWaitSend" type="button">SEND IT TO THE LIST</button>
+          <button class="btn-line" id="dfWaitCancel" type="button">Never mind</button>
+        </div>
+      </div>
+    </div>
+    <p class="sub" id="dfWaitNote" style="margin-top:7px;font-size:11.5px"></p>
+  </div>
   <div class="msgline" id="dfMsg"></div>
   <button class="btn" id="dfGo" style="margin-top:10px">SEND IT UP</button>
   <div class="stat-row" id="dfDanger" hidden>
@@ -980,6 +1015,10 @@ function picUrl(u){ const s=String(u==null?'':u).trim(); return /^(https?:\/\/|d
    select('*') and every phone would download the memo along with the price.
    MEMOS: product_id → memo text. MEMO_OK=false → the table isn't built yet. */
 let MEMOS={}, MEMO_OK=false;
+/* #waitlist(sep19) — product_id → the members waiting on it (WAITING-LIST.sql).
+   WAIT_OK=false → the file hasn't been run, and the editor says so instead of
+   showing an empty list that looks like nobody wants anything. */
+let WAITING={}, WAIT_OK=false;
 let WIRE_KIND='v', inviteKind='vendor', payoutKind='v';
 let WIRE_VENDOR=null;           /* which vendor's wire the Keymaster has open */
 let editVendorId=null, assignVendorId=null, payoutVendorId=null, shipTarget=null;
@@ -1369,7 +1408,7 @@ function openTab(k){
 
 /* ════════ DATA ════════ */
 async function refreshAll(){
-  await Promise.all([loadOrders(), loadLedger(), loadProducts(), loadStore(), loadReviews(), loadGate(), (ME.km||ME.amb)?loadVendors():Promise.resolve(), loadLastMsgs(), loadDrafts(), loadAmbStuff(), ME.km?loadService():Promise.resolve(), loadArt(), loadNotify(), loadThreads(), loadContact(), loadInvites(), ME.km?loadMemos():Promise.resolve()]);   /* #memo — the restock memos ride along, Keymaster only */
+  await Promise.all([loadOrders(), loadLedger(), loadProducts(), loadStore(), loadReviews(), loadGate(), (ME.km||ME.amb)?loadVendors():Promise.resolve(), loadLastMsgs(), loadDrafts(), loadAmbStuff(), ME.km?loadService():Promise.resolve(), loadArt(), loadNotify(), loadThreads(), loadContact(), loadInvites(), ME.km?loadMemos():Promise.resolve(), ME.km?loadWaiting():Promise.resolve()]);   /* #memo — the restock memos ride along, Keymaster only · #waitlist — and the 🔔 lists */
 }
 
 /* ═══ #ambinvite(sep8) — INVITATIONS. An ambassador types an address and taps INVITE;
@@ -1529,6 +1568,29 @@ async function loadStore(){
     const r=await productsSelect('id,name,brand,cat,blurb,usd,cost,status,vendor_id,sort,image,images,colors,sizes,specs,size_label,color_label,deal,ship_usd');
     if(!r.error) STORE=(r.data||[]).filter(p=>p.status!=='retired');
   }catch(e){}
+}
+/* #waitlist(sep19) — the waiting lists, one read for the whole shelf. The database
+   hands the whole list to the Keymaster and a member only their own row, so this
+   read simply comes back empty for anybody else. No table yet → WAIT_OK=false and
+   the gear form names the file; nothing else notices. */
+async function loadWaiting(){
+  if(!ME.km){ WAITING={}; WAIT_OK=false; return; }
+  try{
+    const r=await SB.from('product_interest').select('*').limit(4000);
+    if(r.error)throw r.error;
+    const by={};
+    (r.data||[]).forEach(x=>{ if(!x||x.product_id==null)return;
+      const k=String(x.product_id); (by[k]||(by[k]=[])).push(x); });
+    Object.keys(by).forEach(k=>by[k].sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||''))));
+    WAITING=by; WAIT_OK=true;
+  }catch(e){ WAITING={}; WAIT_OK=false; }
+}
+function waitFor(pid){ return WAITING[String(pid)]||[]; }
+/* how many want each colour+size, biggest first — the line that decides the order */
+function waitTally(rows){
+  const by={}; rows.forEach(r=>{ const a=[]; if(r.color)a.push(r.color); if(r.size)a.push(r.size);
+    const k=a.length?a.join(' · '):'any'; by[k]=(by[k]||0)+1; });
+  return Object.keys(by).map(k=>[k,by[k]]).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]));
 }
 /* #memo(sep19) — the Keymaster's restock memos, one quiet read. No table yet →
    MEMO_OK=false and the gear form says which file to run; nothing else notices. */
@@ -2954,6 +3016,7 @@ function dfDress(mode, copyOf){
   $('dfRetailLbl').textContent = km?'RETAIL — WHAT BUYERS PAY':'SUGGESTED RETAIL — THE ORDER SETS THE FINAL';
   $('dfVendorWrap').hidden=!km; $('dfStatusWrap').hidden=!km; $('dfNoteWrap').hidden=km;
   $('dfMemoWrap').hidden=!km;                 /* #memo — the restock memo is the Keymaster's alone */
+  $('dfWaitWrap').hidden=true; $('dfWaitCompose').hidden=true;   /* #waitlist — paintWaiting() decides; never flash a stale list while the form re-dresses */
   /* DUPLICATE + DELETE only make sense on a posting that exists. The hidden ATTRIBUTE
      alone never hid this row — .stat-row carries display:flex, and a stylesheet rule
      beats the UA's [hidden]{display:none} (same trap as #onedeck) — so a vendor pitching
@@ -3011,6 +3074,10 @@ function openDraftSheet(mode, ref, tpl){
   if(km&&!MEMO_OK) loadMemos().then(()=>{ if(sess!==dfSession)return;
     if(MEMO_OK&&src&&$('dfMemo').value===(mode==='kmedit'?dfMemoWas:'')){ const m=MEMOS[String(src.id)]||''; if(mode==='kmedit')dfMemoWas=m; $('dfMemo').value=m; }
     paintMemo(); });
+  /* #waitlist — same courtesy: WAITING-LIST.sql may have been run since this page
+     loaded, so ask once more rather than making anybody reload to see their list */
+  paintWaiting();
+  if(km&&!WAIT_OK) loadWaiting().then(()=>{ if(sess!==dfSession)return; paintWaiting(); });
   if(!GALLERY_COL) galleryProbe().then(ok=>{ if(ok){ loadProducts(); loadStore(); } if(sess===dfSession)paintPhotos(); });
   /* #gallery — the store picture leads; the extras follow in the order they were saved */
   [src&&src.image].concat(dfArr(src&&src.gallery)).forEach(u=>{
@@ -3544,6 +3611,80 @@ async function galleryWrite(run,row){
   }
   return r;
 }
+/* ---- #waitlist(sep19) — WHO'S WAITING, AND TELLING THEM ----
+   🔔 TELL ME WHEN IT DROPS in the app used to write to a table that didn't exist and
+   tell the member the Keymaster had heard them. This is the other end of that fix:
+   the names land here, with the colour and size each one asked for, and one button
+   drops the whole list a line when the piece goes live. */
+function waitAgo(iso){
+  const t=Date.parse(iso||''); if(!t)return '';
+  const m=Math.round((Date.now()-t)/60000);
+  if(m<1)return 'just now';
+  if(m<60)return m+'m ago';
+  const h=Math.round(m/60); if(h<24)return h+'h ago';
+  const d=Math.round(h/24); if(d<30)return d+'d ago';
+  try{ return new Date(t).toLocaleDateString(); }catch(e){ return ''; }
+}
+function waitWant(r){ const a=[]; if(r.color)a.push(r.color); if(r.size)a.push(r.size);
+  return a.length?a.join(' · '):'any'; }
+function paintWaiting(){
+  const wrap=$('dfWaitWrap'); if(!wrap)return;
+  /* only on a posting that EXISTS — a form being filled in has nobody waiting on it */
+  const pid = draftMode==='kmedit' ? String(draftEditId||'') : '';
+  const show = (draftMode==='kmedit') && !!pid;
+  wrap.hidden=!show;
+  if(!show)return;
+  const rows=waitFor(pid), list=$('dfWaitList'), cnt=$('dfWaitCount'), note=$('dfWaitNote');
+  cnt.textContent = (WAIT_OK&&rows.length) ? '· '+rows.length+(rows.length===1?' member':' members') : '';
+  $('dfWaitTellWrap').hidden = !(WAIT_OK && rows.length);
+  const untold=rows.filter(r=>!r.told_at).length;
+  list.innerHTML = rows.length
+    ? '<div class="wl-list">'+rows.slice(0,300).map(r=>
+        '<div class="wl-row"><b>'+esc(r.by_handle||'a casual')+'</b>'
+        +'<span class="w">'+esc(waitWant(r))+'</span>'
+        +(r.told_at?'<span class="tl">✓ told</span>':'')
+        +'<span class="t">'+esc(waitAgo(r.created_at))+'</span></div>').join('')+'</div>'
+      +'<div class="wl-tot">'+waitTally(rows).map(t=>'<span><b>'+t[1]+'</b> × '+esc(t[0])+'</span>').join('')+'</div>'
+    : '';
+  note.style.color = WAIT_OK ? '' : 'var(--warn)';
+  note.textContent = !WAIT_OK
+    ? 'The list isn’t built yet — run WAITING-LIST.sql once in Supabase and names land here. Until then the app keeps each name on that member’s own phone and tells them so, instead of claiming you heard it.'
+    : !rows.length
+      ? 'Nobody yet. Every 🔔 TELL ME WHEN IT DROPS on this piece lands here, with the colour and size they asked for.'
+      : untold
+        ? untold+' of them '+(untold===1?'hasn’t':'haven’t')+' been told anything yet.'
+        : 'Everybody on this list has been told.';
+}
+async function waitTell(){
+  const btn=$('dfWaitSend'), pid=String(draftEditId||''), rows=waitFor(pid);
+  const body=($('dfWaitBody').value||'').trim();
+  if(!pid||!rows.length)return;
+  if(!body){ toast('⚠ Say something first'); $('dfWaitBody').focus(); return; }
+  const was=btn.textContent; btn.disabled=true; btn.textContent='SENDING…';
+  try{
+    const now=new Date().toISOString();
+    const r=await SB.from('product_interest').update({told_at:now,told_note:body}).eq('product_id',pid);
+    if(r.error)throw r.error;
+    rows.forEach(x=>{ x.told_at=now; x.told_note=body; });
+    $('dfWaitCompose').hidden=true;
+    toast('📣 '+rows.length+(rows.length===1?' member hears it':' members hear it')+' next time they open the Armory');
+    paintWaiting();
+  }catch(e){ toast('⚠ '+String((e&&e.message)||'the list didn’t take it')); }
+  finally{ btn.disabled=false; btn.textContent=was; }
+}
+$('dfWaitTell').addEventListener('click',()=>{
+  /* the piece's NAME is not in here on purpose — the card in the Armory prints it in
+     bold directly above this line, so repeating it just eats the 400 characters */
+  const live=$('dfStatus').value==='live', usd=$('dfRetail').value;
+  $('dfWaitBody').value = (live&&usd)
+    ? 'It just landed on the floor — '+money(usd)+'. You asked about it, so here’s the word.'
+    : 'Word from the Dock Office about the piece you asked about.';
+  $('dfWaitCompose').hidden=false;
+  $('dfWaitBody').focus(); $('dfWaitBody').select();
+});
+$('dfWaitCancel').addEventListener('click',()=>{ $('dfWaitCompose').hidden=true; });
+$('dfWaitSend').addEventListener('click',waitTell);
+
 /* ---- #memo(sep19) — THE RESTOCK MEMO ---- */
 function memoLinks(text){
   const out=[], seen={}, re=/((?:https?:\/\/|www\.)[^\s<>"'`]+)/gi; let m;
@@ -3736,7 +3877,11 @@ function renderWork(){
       +'<span class="n"><b>'+esc(p.name)+'</b><i>'+esc(vName(p.vendor_id))
       +' · retail '+(p.usd!=null?money(p.usd):'—')+' · cut '+(p.cost!=null?money(p.cost):'—')+(p.ship_usd>0?' · S&amp;H '+money(p.ship_usd):'')
       +(dfArr(p.gallery).length?' · 📷 '+(dfArr(p.gallery).length+(p.image?1:0)):'')                                      /* #gallery — how many shots it carries */
-      +(MEMOS[String(p.id)]?' · <span title="'+esc(MEMOS[String(p.id)].slice(0,300))+'">📝 memo</span>':'')+'</i></span>'   /* #memo — restock notes on file */
+      +(MEMOS[String(p.id)]?' · <span title="'+esc(MEMOS[String(p.id)].slice(0,300))+'">📝 memo</span>':'')   /* #memo — restock notes on file */
+      +(function(){ const w=waitFor(p.id); if(!WAIT_OK||!w.length)return '';   /* #waitlist — how many tapped 🔔 on this piece */
+         const u=w.filter(x=>!x.told_at).length;
+         return ' · <span title="'+esc(waitTally(w).map(t=>t[1]+' × '+t[0]).join('  ·  '))+'" style="color:var(--copper-hi)">🔔 '+w.length+' waiting'+(u?'':' · told')+'</span>'; })()
+      +'</i></span>'
       +'<span class="m">'+(p.status==='live'?'<span class="pill grn">LIVE</span>':p.status==='retired'?'<span class="pill red">RETIRED</span>':'<span class="pill amb">SOON</span>')+'</span>'
       +'<button class="btn-line" data-pdup="'+esc(p.id)+'" title="Duplicate as a template — a new posting with everything carried over" aria-label="duplicate as a template">⧉</button>'   /* #dupe */
       +'<button class="btn-line" data-pedit="'+esc(p.id)+'" title="Edit this posting" aria-label="edit">✎</button></div>').join('')

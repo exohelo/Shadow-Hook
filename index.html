@@ -2252,6 +2252,29 @@ html.so-open #bankStrip,html.so-open .dayBtn{display:none!important}
   text-transform:uppercase;color:var(--copper-hi)}
 .pdp-soon{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:19px;letter-spacing:.15em;
   text-transform:uppercase;color:var(--copper-hi);margin-top:12px}
+/* #waitlist(sep19) — ON THE LIST reads as a state, not another thing to press:
+   the copper fill drops away and it goes quiet and outlined, the way a checked box
+   does. Still a button, still tappable, just no longer shouting for the tap. */
+.btn.on-list{background:none;border-color:rgba(127,174,106,.55);color:#9ccb86;box-shadow:none}
+.btn.on-list:active{background:rgba(127,174,106,.08)}
+/* the card at the head of the shelf when something you asked about lands */
+.want-drop{margin:2px 0 14px;border-color:rgba(238,180,107,.42);
+  background:linear-gradient(184deg,var(--btn-hi),var(--btn-lo))}
+.want-drop .card-b{position:relative;padding-top:12px}
+.wd-h{font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12.5px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--copper-hi);margin:0 0 9px;padding-right:26px}
+.wd-x{position:absolute;top:6px;right:2px;background:none;border:0;color:var(--steel);font-size:15px;
+  line-height:1;padding:4px 6px;cursor:pointer}
+.wd-x:hover,.wd-x:focus-visible{color:var(--bone)}
+.wd-row{display:block;width:100%;text-align:left;background:none;border:0;border-top:1px solid var(--line-soft);
+  padding:9px 0 8px;cursor:pointer;color:inherit;font:inherit}
+.wd-row:first-of-type{border-top:0;padding-top:0}
+.wd-row b{display:block;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:15px;
+  letter-spacing:.02em;color:var(--bone);line-height:1.25}
+.wd-row i{display:block;font-style:normal;font-size:12.5px;line-height:1.55;color:var(--bone);margin-top:3px}
+.wd-row em{display:block;font-style:normal;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--steel);margin-top:4px}
+.wd-row:active{opacity:.7}
 .gsw{display:flex;gap:5px;align-items:center;margin-top:1px}
 .gsw i{width:13px;height:13px;border-radius:50%;border:1px solid rgba(220,214,201,.35);display:block}
 .gsw span{font-size:11px;color:var(--steel)}
@@ -5571,6 +5594,10 @@ window.DEVLOG=(function(){
       <button id="shopQX" type="button" aria-label="clear">✕</button>
     </div>
     <div class="shop-rail" id="shopRail"></div>
+    <!-- #waitlist(sep19) — the Keymaster dropped the waiting list a line and this
+         member is on it. Their own news only: the database hands each member their
+         own rows and nobody else's. Hidden until there is something to say. -->
+    <div id="wantDrop" style="display:none"></div>
     <!-- #verified(aug10) — the week-later ask. Empty and hidden until a casual has
          gear that's been with them long enough to have an opinion worth having. -->
     <div id="revNudge" style="display:none"></div>
@@ -9187,7 +9214,7 @@ function gotoTab(name){
     try{renderSocialFeed();}catch(e){} try{sbLoadStories();}catch(e){}}   // #hall — the Hall IS the tab now: fresh feed + stories + standings
   if(name==='ports'){try{if(window.shkChunk)shkChunk.now('maps');}catch(e){} try{renderHarborBoard();}catch(e){}}   /* #lazy — the vault comes up with the tab */
   if(name==='board'){try{openPendingSheet();}catch(e){}}   // #93 — the Wire opens with the pending dispatch sheet showing
-  if(name==='armory'){try{ if(typeof sbFreshProducts==='function')sbFreshProducts(); if(typeof shopKmNote==='function')shopKmNote(); }catch(e){}}   // #freshshelf(sep19) — the Armory was the one tab with no hook here: its shelf was read once at boot, so new postings never showed in an app that was already open
+  if(name==='armory'){try{ if(typeof sbFreshProducts==='function')sbFreshProducts(); if(typeof shopKmNote==='function')shopKmNote(); if(typeof wantLoad==='function')wantLoad(); }catch(e){}}   // #waitlist(sep19) — and your own 🔔 list, so the button knows you and a landed drop can say so   // #freshshelf(sep19) — the Armory was the one tab with no hook here: its shelf was read once at boot, so new postings never showed in an app that was already open
 }
 /* #gateonly(aug31) — the gate and the tab bar are opposites: while the gate is up the
    bar is gone, and it appears the moment a casual is through. One switch, called from
@@ -20060,8 +20087,21 @@ function paintGear(){
         var buyable=GEAR_SHOW_PRICES && p.status==='live' && (gearNum(p.usd)||0)>0;
         if(buyable) return '<button class="btn" id="gearAdd" type="button" style="margin-top:18px">🛡 ADD TO THE CART</button>'
           +'<p class="sub" style="text-align:center;margin-top:8px;font-size:12px">Secure card checkout · ships from the Order&#39;s suppliers</p>';
-        return '<button class="btn" id="gearNotify" type="button" style="margin-top:18px">🔔 TELL ME WHEN IT DROPS</button>'
-          +'<p class="sub" style="text-align:center;margin-top:8px;font-size:12px">Prices post on opening day. No charge today.</p>';
+        /* #waitlist(sep19) — the button remembers. It used to say the same thing on
+           every visit because nothing ever read the list back; now it knows whether
+           this member is down for THIS colour and size, and says what else they're
+           down for on this piece. */
+        var _onL=wantHas(p.id,(c&&c.n)||'',gearSize||''), _mine=wantMineFor(p.id);
+        var _other=_mine.filter(function(x){ return x!==wantLabel((c&&c.n)||'',gearSize||''); });
+        return '<button class="btn'+(_onL?' on-list':'')+'" id="gearNotify" type="button" style="margin-top:18px">'
+            +(_onL?'✓ YOU’RE ON THE LIST':'🔔 TELL ME WHEN IT DROPS')+'</button>'
+          +'<p class="sub" style="text-align:center;margin-top:8px;font-size:12px">'
+            +(_onL
+               ? 'Down for '+shEsc(wantLabel((c&&c.n)||'',gearSize||''))
+                 +(_other.length?' (and '+shEsc(_other.join(', '))+')':'')+'. Tap again to come off it.'
+               : (_other.length?'You’re on the list for '+shEsc(_other.join(', '))+'. ':'')
+                 +'Prices post on opening day. No charge today.')
+          +'</p>';
       })()
     +(specs.length?'<div class="pdp-spec"><div class="pdp-lbl" style="margin:0 0 4px">The Details</div>'
        +specs.map(s=>{ const a=gearArr(s); return '<div><span>'+shEsc(a[0])+'</span><span>'+shEsc(a[1])+'</span></div>'; }).join('')+'</div>':'')
@@ -20107,20 +20147,152 @@ function paintGear(){
     rt.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); jump(); } }); }
   gearRevWire(host,p);
 }
-/* interest goes on the wire so the command centre can see what to order first */
-function gearNotify(p,c){
-  const row={product_id:String(p.id||""),color:(c&&c.n)||null,size:gearSize||null,
-             by_id:(typeof ACCT_ID==='string'?ACCT_ID:''),by_handle:(typeof chatMyHandle==='function'?chatMyHandle():'')};
-  try{ const o=JSON.parse(localStorage.getItem(K('wantlist'))||'{}');
-       o[row.product_id+'|'+(row.color||'')+'|'+(row.size||'')]=Date.now();
-       localStorage.setItem(K('wantlist'),JSON.stringify(o)); }catch(e){}
-  if(window.SB&&window.__shkUid){
-    try{ window.SB.from('product_interest').insert(Object.assign({owner:window.__shkUid},row))
-      .then(r=>{ if(r&&r.error)console.warn('interest:',r.error.message); })
-      .catch(e=>console.warn('interest',e)); }catch(e){}
-  }
-  try{ toast('🔔 On the list — the Keymaster hears it'); }catch(e){}
+/* ═══ #waitlist(sep19) — 🔔 TELL ME WHEN IT DROPS, FOR REAL THIS TIME ═══
+   WHAT WAS WRONG. This button took names and threw them away. It wrote one row to
+   `product_interest` — a table that has never existed in the project — so every tap
+   came back "Could not find the table 'public.product_interest' in the schema cache",
+   the error went to a console no member will ever open, and the toast said "On the
+   list — the Keymaster hears it" regardless. It also stashed a copy in localStorage
+   that nothing ever read back, so the button couldn't even remember you on your own
+   phone. And nothing in the Dock Office read the list either. Three dead ends and a
+   cheerful message on top of them.
+
+   WHAT IT DOES NOW. WAITING-LIST.sql builds the table (a member may add and remove
+   only their own row and can read only their own; the Keymaster reads the list).
+   From here:
+     · the button knows whether you're already on the list, and takes you off
+     · every message it shows is the truth about what actually happened
+     · no table yet → it keeps the name ON THIS PHONE and says exactly that,
+       instead of claiming the Keymaster heard it
+   WANT.table: null = haven't asked, true = the list is open, false = no table yet. */
+var WANT={table:null, mine:Object.create(null), uid:null, asking:false};
+function wantKey(pid,color,size){ return String(pid)+'|'+String(color||'')+'|'+String(size||''); }
+function wantLabel(color,size){ var a=[]; if(color)a.push(color); if(size)a.push(size);
+  return a.length?a.join(' · '):'any'; }
+function wantLocal(){ try{ return JSON.parse(localStorage.getItem(K('wantlist'))||'{}')||{}; }catch(e){ return {}; } }
+function wantLocalSet(o){ try{ localStorage.setItem(K('wantlist'),JSON.stringify(o)); }catch(e){} }
+/* the shape PostgREST uses to say "that table isn't there" — the same read the
+   gallery and the restock memo use, so one missing file never looks like an outage */
+function wantNoTable(e){ var m=String((e&&(e.message||e.code))||e||'');
+  return /schema cache|does not exist|find the table|PGRST205|PGRST20[0-9]|42P01/i.test(m); }
+function wantOn(){ return WANT.table===true && !!window.SB && !!window.__shkUid; }
+function wantHas(pid,color,size){ var k=wantKey(pid,color,size);
+  return wantOn() ? !!WANT.mine[k] : !!wantLocal()[k]; }
+/* everything this member is waiting on for one piece, as "Green · L" strings */
+function wantMineFor(pid){
+  var out=[], seen=Object.create(null), p=String(pid)+'|';
+  var src=wantOn()?WANT.mine:wantLocal();
+  for(var k in src){ if(k.indexOf(p)!==0)continue;
+    var bits=k.slice(p.length).split('|'), lbl=wantLabel(bits[0],bits[1]);
+    if(!seen[lbl]){ seen[lbl]=1; out.push(lbl); } }
+  return out.sort();
 }
+/* one quiet read of THIS member's own rows — never anybody else's, the database
+   sees to that. Called when the Armory opens, same rhythm as #freshshelf. */
+async function wantLoad(force){
+  var uid=window.__shkUid||null;
+  if(!window.SB||!uid){ WANT.mine=Object.create(null); WANT.uid=null; try{wantDropCard();}catch(e){} return; }
+  if(WANT.asking)return;
+  if(!force && WANT.uid===uid && WANT.table!==null)return;
+  WANT.asking=true;
+  try{
+    var r=await window.SB.from('product_interest').select('*').eq('owner',uid).limit(500);
+    if(r.error)throw r.error;
+    var m=Object.create(null);
+    (r.data||[]).forEach(function(x){ if(x&&x.product_id!=null)m[wantKey(x.product_id,x.color,x.size)]=x; });
+    WANT.mine=m; WANT.uid=uid; WANT.table=true;
+  }catch(e){
+    if(wantNoTable(e))WANT.table=false;   /* the file hasn't been run — fall back to this phone, quietly */
+    WANT.mine=Object.create(null);
+  }
+  finally{ WANT.asking=false; }
+  try{ wantDropCard(); }catch(e){}
+  try{ if(document.getElementById('gearNotify'))paintGear(); }catch(e){}
+}
+window.wantLoad=wantLoad;
+/* the tap. On the list already → come off it. Otherwise → on it. Either way the
+   member is told what actually happened, including when it only reached this phone. */
+async function gearNotify(p,c){
+  var pid=String(p.id||''), color=(c&&c.n)||'', size=gearSize||'';
+  var key=wantKey(pid,color,size), uid=window.__shkUid||null;
+  var btn=document.getElementById('gearNotify');
+  if(btn)btn.disabled=true;
+  var say=function(m){ try{ toast(m); }catch(e){} };
+  var keepHere=function(msg){ var o=wantLocal();
+    if(o[key]){ delete o[key]; wantLocalSet(o); say('Taken off the list on this phone'); }
+    else { o[key]=Date.now(); wantLocalSet(o); say(msg); } };
+  try{
+    if(!window.SB||!uid){ keepHere('🔔 Saved on this phone — claim your card and the Order hears it too'); return; }
+    if(WANT.table===null)await wantLoad();
+    if(WANT.table===false){ keepHere('🔔 Saved on this phone — the Order’s list isn’t open yet'); return; }
+    if(WANT.mine[key]){
+      var d=await window.SB.from('product_interest').delete()
+              .eq('owner',uid).eq('product_id',pid).eq('color',color).eq('size',size);
+      if(d.error)throw d.error;
+      delete WANT.mine[key];
+      var o1=wantLocal(); delete o1[key]; wantLocalSet(o1);
+      say('Off the list — '+wantLabel(color,size));
+    }else{
+      var row={owner:uid,product_id:pid,color:color,size:size,
+               by_id:(typeof ACCT_ID==='string'?ACCT_ID:''),
+               by_handle:(typeof chatMyHandle==='function'?chatMyHandle():'')};
+      var i=await window.SB.from('product_interest').insert(row);
+      /* 23505 = the unique index doing its job: this member is already down for this
+         exact colour and size, from another phone or another tab. Not an error to them. */
+      if(i.error&&!/23505|duplicate key/i.test(String(i.error.message||i.error.code||'')))throw i.error;
+      WANT.mine[key]=row;
+      var o2=wantLocal(); o2[key]=Date.now(); wantLocalSet(o2);
+      say('🔔 On the list — the Keymaster sees it');
+    }
+  }catch(e){
+    if(wantNoTable(e)){ WANT.table=false; keepHere('🔔 Saved on this phone — the Order’s list isn’t open yet'); }
+    else say('⚠ The list didn’t take it — '+String((e&&e.message)||'try again in a moment'));
+  }
+  finally{ if(btn)btn.disabled=false; try{ paintGear(); }catch(e){} }
+}
+/* ═══ #waitlist — WHEN THE DROP LANDS.
+   The Keymaster drops the whole list a line from the Dock Office; that stamps
+   told_at / told_note on every waiting row. Each member only ever reads their own,
+   so this card is one member's own news and nobody else's. Dismissing it remembers
+   the newest stamp seen, so it stays gone until the NEXT drop. */
+function wantSeen(){ try{ return +localStorage.getItem(K('wantseen'))||0; }catch(e){ return 0; } }
+function wantDropCard(){
+  var host=document.getElementById('wantDrop'); if(!host)return;
+  var seen=wantSeen(), hits=[], newest=0;
+  for(var k in WANT.mine){ var r=WANT.mine[k]; if(!r||!r.told_at)continue;
+    var t=Date.parse(r.told_at)||0; if(t>newest)newest=t;
+    if(t>seen)hits.push({r:r,t:t}); }
+  if(!hits.length){ host.style.display='none'; host.innerHTML=''; return; }
+  hits.sort(function(a,b){ return b.t-a.t; });
+  var byPid=Object.create(null), order=[];
+  hits.forEach(function(h){ var id=String(h.r.product_id);
+    if(!byPid[id]){ byPid[id]={note:h.r.told_note||'',want:[]}; order.push(id); }
+    byPid[id].want.push(wantLabel(h.r.color,h.r.size)); });
+  host.style.display='';
+  host.innerHTML='<div class="card want-drop"><div class="card-b">'
+    +'<button type="button" class="wd-x" id="wantDropX" aria-label="Dismiss">✕</button>'
+    +'<div class="wd-h">🔔 SOMETHING YOU ASKED FOR</div>'
+    +order.map(function(id){
+        var g=(typeof GEAR!=='undefined'&&GEAR)?GEAR.filter(function(x){return String(x.id)===id;})[0]:null;
+        var nm=(g&&g.name)||'A piece you were waiting on';
+        return '<button type="button" class="wd-row" data-wd="'+shEsc(id)+'">'
+          +'<b>'+shEsc(nm)+'</b>'
+          +(byPid[id].note?'<i>'+shEsc(byPid[id].note)+'</i>':'')
+          +'<em>you asked about '+shEsc(byPid[id].want.join(', '))+'</em></button>';
+      }).join('')
+    +'</div></div>';
+  var x=document.getElementById('wantDropX');
+  if(x)x.addEventListener('click',function(){ try{ localStorage.setItem(K('wantseen'),String(newest)); }catch(e){} wantDropCard(); });
+  host.querySelectorAll('[data-wd]').forEach(function(b){
+    b.addEventListener('click',function(){
+      try{ localStorage.setItem(K('wantseen'),String(newest)); }catch(e){}
+      var id=b.getAttribute('data-wd');
+      try{ if(typeof openGear==='function')openGear(id); else if(typeof gearOpen==='function')gearOpen(id); }catch(e){}
+      wantDropCard();
+    });
+  });
+}
+window.wantDropCard=wantDropCard;
 
 /* ═══ #reviews — THE WORD ON THE GEAR: 5★ + comments, one voice per member ═══
    Mirrors the service board's book (service_reviews) exactly, keyed by product
