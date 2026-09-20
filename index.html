@@ -568,8 +568,23 @@ html.at-gate .nav{display:none}
 .live-badge{display:inline-flex;align-items:center;gap:4px;font-size:8.5px;font-weight:700;letter-spacing:.18em;color:#e0492e;margin-right:6px;vertical-align:middle}
 .live-badge::before{content:"";width:6px;height:6px;border-radius:50%;background:#e0492e;animation:pulse 1.4s ease-in-out infinite}
 /* strike sheet */
-.sheet{position:fixed;inset:0;z-index:60;background:rgba(5,6,7,.7);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);display:flex;align-items:flex-end;justify-content:center;opacity:0;visibility:hidden;transition:.25s;padding-bottom:var(--kb,0px)}   /* #ioskb — sheet fields stay above the keyboard */
-.sheet.on{opacity:1;visibility:visible}
+.sheet{position:fixed;inset:0;z-index:60;background:rgba(5,6,7,.7);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);display:flex;align-items:flex-end;justify-content:center;opacity:0;visibility:hidden;padding-bottom:var(--kb,0px);
+  /* #openfast(sep19) — VISIBILITY IS NOT PART OF THE FADE. It used to ride the blanket
+     `transition:.25s`, and a transitioned `visibility` does not flip until the fade is
+     underway — so for the first beat after a sheet was opened it was still `hidden`, which
+     means not tappable. Open a sheet and tap straight at it and that tap hit the page
+     behind instead; on a phone busy drawing the sheet's own contents the dead window
+     stretched past a fifth of a second. Now: 0s on the way in (tappable the instant it is
+     asked for) and 0s AFTER the fade on the way out (so it still fades, and stops taking
+     taps at once — see #fadeout). The keyboard padding keeps its glide. */
+  transition:opacity .25s, padding-bottom .25s, visibility 0s linear .25s}
+.sheet.on{opacity:1;visibility:visible;transition:opacity .25s, padding-bottom .25s, visibility 0s}
+/* #fadeout(sep19) — A SHEET ON ITS WAY OUT MUST NOT SWALLOW THE NEXT TAP. `visibility`
+   only flips to hidden when the .25s fade FINISHES, so for a quarter second after it is
+   dismissed the backdrop is still lying over the whole screen eating clicks — close one
+   sheet, tap straight at something behind it, and that tap went nowhere. It stops being
+   a target the instant it loses .on; it is still there to look at while it fades. */
+.sheet:not(.on){pointer-events:none}
 /* #hdr2 — the ⚓ seal is reachable from ANY screen now (the header never leaves), so the
    sheets it can spawn must ride above the fullscreen overlays (chat 80 · story 85 · cam 90):
    profile → rename/pay → insufficient-funds keep their stacking order on top of it all */
@@ -615,7 +630,12 @@ html.at-gate .nav{display:none}
    dvh (the live viewport) with a vh fallback for iOS 15.0–15.3, minus --kb so a
    raised keyboard shrinks the card instead of pushing its bottom off-screen.
    overscroll-behavior:contain stops the scroll chaining out to the page. */
-.sheet-card{width:100%;max-width:460px;background:linear-gradient(184deg,var(--plate-3),var(--plate));border:1px solid var(--line);border-radius:22px 22px 0 0;padding:22px 20px calc(22px + env(safe-area-inset-bottom));text-align:center;transform:translateY(24px);transition:.25s;
+.sheet-card{width:100%;max-width:460px;background:linear-gradient(184deg,var(--plate-3),var(--plate));border:1px solid var(--line);border-radius:22px 22px 0 0;padding:22px 20px calc(22px + env(safe-area-inset-bottom));text-align:center;transform:translateY(24px);
+  /* #openfast(sep19) — NAMED, NOT BLANKET. `transition:.25s` meant this card also transitioned
+     the `visibility` it INHERITS from the sheet — so with the sheet made visible at once,
+     everything inside it stayed hidden for another beat: an empty pane you could not tap into.
+     It only ever animates its slide-up. */
+  transition:transform .25s;
   max-height:calc(88vh - var(--kb,0px));max-height:calc(88dvh - var(--kb,0px));   /* #ios — vh first: iOS 15.0–15.3 has no dvh */
   overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
 .sheet.on .sheet-card{transform:none}
@@ -651,7 +671,7 @@ html:has(.sheet.on),html.sheet-open{overflow:hidden}
 .ym-row .g b{letter-spacing:.05em}
 /* #47 — docket photo viewer */
 .sheet.lb{align-items:center}
-.lb-card{width:100%;max-width:460px;padding:0 16px calc(16px + env(safe-area-inset-bottom));transform:translateY(24px);transition:.25s}
+.lb-card{width:100%;max-width:460px;padding:0 16px calc(16px + env(safe-area-inset-bottom));transform:translateY(24px);transition:transform .25s}   /* #openfast — same reason as .sheet-card: never transition inherited visibility */
 .sheet.lb.on .lb-card{transform:none}
 .lb-card img{width:100%;max-height:76vh;object-fit:contain;border-radius:16px;border:1px solid var(--line);background:#000;display:block}
 .dkt-cam{cursor:pointer;font-size:inherit;-webkit-tap-highlight-color:transparent}
@@ -19313,6 +19333,9 @@ function tonightBoardHTML(bs, op){
    below is the fallback: it is what a casual sees offline, before the SQL is run,
    or if the table read is blocked. Server rows win over seed rows with the same
    id, so the seed can be corrected from the command centre without a deploy.
+   #noseed(sep19) — and the seed ADDS NOTHING once the server has answered: the rows
+   that come back are the whole shelf, so a deleted posting stays deleted instead of
+   falling back to its sample. See sbLoadProducts.
 
    Run ARMORY-SETUP.sql in the Supabase SQL editor to create the table.
 
@@ -19457,7 +19480,32 @@ const GEAR_SEED=[
   colors:[{n:"Void Black",hex:"#14171a"},{n:"Hi-Vis Yellow",hex:"#d8d13a"}],
   sizes:[],specs:[["Count","Two magnets"],["Size","4 in"],["Stock","Weatherproof — outdoor rated"],["Pull","Holds through a glove"]]},
 ];
-let GEAR=GEAR_SEED.slice();            // merged catalog: server rows win over seed
+/* #noseed(sep19) — THE SEED IS A FALLBACK, NOT A FLOOR.
+   GEAR used to be the seed UNION the server's rows, so a product deleted from the
+   `products` table didn't leave the store — its built-in sample quietly stood back up in
+   its place, with its "ARTWORK PENDING" art, looking to every casual like stock. That
+   was fine when the seed WAS the catalog and the table only patched it; it is wrong now
+   that the table is the catalog. Once the server answers with rows, those rows ARE the
+   shelf: delete a posting and it's gone.
+   A seed twin is still merged UNDER a row that kept its id, so a sample that's been
+   edited into a real posting keeps the extras the table has no column for (its glyph,
+   its Port Bucks price).
+   AND THE LAST GOOD SHELF IS REMEMBERED. The seed used to be what a casual saw for the
+   second or two before the server answered — 28 samples flashing up in front of a real
+   store. The last catalog that actually loaded is kept on the phone and painted instead;
+   the seed is now only for a phone that has never once reached the shelf. */
+const SHELF_KEY='shadowhook_shelf';
+function shelfCached(){
+  try{ const o=JSON.parse(localStorage.getItem(SHELF_KEY)||'null');
+       if(o&&Array.isArray(o.rows)&&o.rows.length)return o.rows; }catch(e){}
+  return null;
+}
+function shelfRemember(rows){
+  try{ const s=JSON.stringify({at:Date.now(),rows:rows});
+       if(s.length<600000) localStorage.setItem(SHELF_KEY,s);   /* a shelf this big is a bug, not a catalog — don't wedge localStorage */
+  }catch(e){}
+}
+let GEAR=shelfCached()||GEAR_SEED.slice();   // the shelf: the server's, last known, or the built-in samples
 let gearCat="all", gearProd=null, gearColor=0, gearSize=null;
 var gearPic=-1;                        // #gallery(sep19) — which EXTRA photo is up in the hero; -1 = the colourway's own shot (`var` on purpose — see #prvsafe)
 
@@ -20429,7 +20477,9 @@ async function sbLoadProducts(){
       console.warn('[armory] products: the server sent 0 rows — the floor is showing the built-in seed only. If the Dock Office lists postings, this login cannot read the products table (row-level security).');
       return;
     }
-    const byId=Object.create(null); GEAR_SEED.forEach(p=>{byId[p.id]=p;});
+    /* #noseed — the seed is now only the layer UNDERNEATH a row that shares its id */
+    const seedById=Object.create(null); GEAR_SEED.forEach(p=>{seedById[p.id]=p;});
+    const next=[], seen=Object.create(null);
     r.data.forEach(row=>{
       if(!row||row.id==null)return;
       const id=String(row.id); if(id==='__proto__'||id==='constructor'||id==='prototype')return;
@@ -20444,14 +20494,15 @@ async function sbLoadProducts(){
       ['colors','sizes','specs','images','gallery'].forEach(k=>{   /* #gallery(sep19) — the extra photos ride in the same way */
         if(k in clean){ const a=gearArr(clean[k]); if(a.length)clean[k]=a; else delete clean[k]; }
       });
-      byId[id]=Object.assign({},byId[id]||{},clean,{id:id});
+      if(seen[id])return; seen[id]=1;                 // a doubled id would otherwise draw the same card twice
+      next.push(Object.assign({},seedById[id]||{},clean,{id:id}));
     });
-    const next=Object.keys(byId).map(k=>byId[k]);
     /* #freshshelf — the same shelf as last time? then there is nothing to repaint */
     let sig=''; try{ sig=JSON.stringify(next); }catch(e){ sig=String(Date.now()); }
     if(sig===_gearSig)return;
     _gearSig=sig;
     GEAR=next;
+    shelfRemember(next);   /* #noseed — so the next boot opens on the real store, not the samples */
     renderShop();
     if(gearProd){                                    // a product page may be open right now
       const f=GEAR.find(x=>String(x.id)===String(gearProd.id));
@@ -20472,6 +20523,9 @@ async function sbLoadProducts(){
 window.renderShop=renderShop; window.openGear=openGear; window.sbLoadProducts=sbLoadProducts;
 window.sbLoadProductReviews=sbLoadProductReviews;   /* #reviews */
 (function(){ const b=document.getElementById('gearBack'); if(b)b.addEventListener('click',closeGear); })();
+/* #noseed — the shelf we're painting came off the phone, so don't repaint it when the
+   server answers with the very same thing */
+try{ if(GEAR!==GEAR_SEED&&shelfCached()) _gearSig=JSON.stringify(GEAR); }catch(e){}
 renderShop();
 try{ sbLoadProducts(); }catch(e){}
 try{ sbLoadProductReviews(); }catch(e){}   /* #reviews — the word rides along; the floor never waits on it */

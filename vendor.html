@@ -163,9 +163,23 @@ select.field{appearance:none;-webkit-appearance:none}
 .vrow .n i.bk-type{font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:10px;letter-spacing:.08em;color:var(--copper-hi);margin-top:3px}   /* #marktype — the setting line under each brand word */
 
 /* ---- sheets ---- */
-.sheet{position:fixed;inset:0;z-index:60;background:rgba(5,6,7,.72);backdrop-filter:blur(4px);display:flex;align-items:flex-end;justify-content:center;opacity:0;visibility:hidden;transition:.22s}
-.sheet.on{opacity:1;visibility:visible}
-.sheet-card{width:100%;max-width:560px;max-height:88vh;overflow-y:auto;background:linear-gradient(184deg,var(--plate-3),var(--plate));border:1px solid var(--line);border-radius:22px 22px 0 0;padding:20px 18px calc(22px + env(safe-area-inset-bottom));transform:translateY(24px);transition:.22s}
+.sheet{position:fixed;inset:0;z-index:60;background:rgba(5,6,7,.72);backdrop-filter:blur(4px);display:flex;align-items:flex-end;justify-content:center;opacity:0;visibility:hidden;transition:opacity .22s, visibility 0s linear .22s}
+/* #openfast(sep19) — visibility is out of the fade: 0s on the way in, so a sheet takes a
+   click the instant it opens (transitioned, it stayed `hidden` — untappable — for the first
+   beat, and longer on a busy page), and 0s after the fade on the way out so it still fades. */
+.sheet.on{opacity:1;visibility:visible;transition:opacity .22s, visibility 0s}
+/* #fadeout(sep19) — A SHEET ON ITS WAY OUT MUST NOT SWALLOW THE NEXT TAP. `visibility`
+   only flips to hidden when the .22s fade FINISHES, so for a quarter second after it is
+   dismissed the backdrop is still lying over the whole screen eating clicks — close one
+   sheet, tap straight at something behind it, and that tap went nowhere. It stops being
+   a target the instant it loses .on; it is still there to look at while it fades. */
+.sheet:not(.on){pointer-events:none}
+.sheet-card{width:100%;max-width:560px;max-height:88vh;overflow-y:auto;background:linear-gradient(184deg,var(--plate-3),var(--plate));border:1px solid var(--line);border-radius:22px 22px 0 0;padding:20px 18px calc(22px + env(safe-area-inset-bottom));transform:translateY(24px);
+   /* #openfast(sep19) — NAMED, NOT BLANKET. `transition:.22s` meant this card also
+      transitioned the `visibility` it INHERITS from the sheet — so when the sheet was made
+      visible at once, everything inside it stayed hidden for another beat and the sheet was
+      an empty pane you could not tap into. It only ever animates its slide-up. */
+  transition:transform .22s}
 .sheet.on .sheet-card{transform:none}
 .sheet-t{font-family:'Anton',sans-serif;font-size:20px;letter-spacing:.06em;text-align:center;margin-bottom:4px}
 
@@ -2851,9 +2865,6 @@ function paintKindChips(){
     dfChips=p.chips.slice(); paintSizeChips([]); schedulePv();
   }));
 }
-/* the 28 ids baked into index.html as GEAR_SEED — DELETING one of these from
-   the server only resurrects its placeholder in the app; RETIRE hides it for good */
-const SEED_IDS=['order-hard-hat','hi-vis-vest','cut-gloves','safety-glasses','ear-muffs','steel-toe-boot','knee-pads','rain-jacket','crest-hoodie','bite-tee','winter-beanie','challenge-coin','hat-stickers','hat-decals','gear-tote','tally-pad','hat-hanger','sun-shade','cab-air','tumbler','card-holder','cooler-bag','phone-mount','dock-light','tally-counter','plate-frame','enamel-pins','crest-magnets'];
 /* #gallery(sep19) — THE PHOTOS. dfPhotos is the form's ordered list: [0] is the store
    picture (saved as `image`), the rest are saved as `gallery`. Each entry is
    {url, blob}: blob=null means it's already on the server; a blob is a fresh shot
@@ -3648,15 +3659,16 @@ $('dfDup').addEventListener('click',()=>{
 });
 $('dfDelete').addEventListener('click', async()=>{
   if(draftMode!=='kmedit'||!draftEditId)return;
-  const isSeed=SEED_IDS.indexOf(String(draftEditId))>=0;
-  if(isSeed){
-    if(!confirm('This one is baked into the app as a sample — DELETING it here brings the placeholder back. RETIRE (in Standing) hides it for good instead.\n\nDelete anyway?'))return;
-  } else if(!confirm('Delete this posting outright? Past orders keep their records either way.'))return;
+  /* #noseed(sep19) — this used to warn that deleting one of the 28 built-in samples only
+     brought its placeholder back, and to RETIRE it instead. The app doesn't do that any
+     more (see #noseed in index.html): the shelf the server sends IS the store, so a
+     delete is a delete, whichever posting it is. */
+  if(!confirm('Delete this posting outright? It leaves the store for good. Past orders keep their records either way.'))return;
   const gone=draftEditId;
   const r=await SB.from('products').delete().eq('id',gone);
   if(r.error){ $('dfMsg').textContent='> '+r.error.message; return; }
   try{ if(MEMO_OK){ await SB.from('product_memos').delete().eq('product_id',String(gone)); delete MEMOS[String(gone)]; } }catch(e){}   /* #memo — its memo goes with it */
-  sheet('draftSheet',false); toast('🗑 Gone'+(isSeed?' — the app shows its placeholder again; use RETIRE to hide it':''));
+  sheet('draftSheet',false); toast('🗑 Gone — off the floor');
   await Promise.all([loadProducts(), loadStore()]); if(TAB==='work')renderWork();
 });
 
