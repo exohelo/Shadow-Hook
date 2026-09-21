@@ -8,7 +8,7 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='sep21zim';   /* sep 21 (5th) — Zim rails confirmed by the Keymaster: they go in the dock-side gate, now labeled "Dockwork, rails & clerks"; its gate check is retired (#gatecheck). Before it, sep21gates — sep 21 (4th) — the gate check: the three gates nobody has confirmed ask the crews who worked them (#gatecheck). Before it, sep21docks — NYK back on YTI, and the docks the old Port Maps app had that we didn't: Pier J berths 246-247, SSA Outer Harbor (LA 54-55), Pasha on Terminal Island (TI 206-209) (#oldapp). Before it, sep21ports — YTI on Terminal Island + the Terminal Island spans (#tiberths). Before it, sep21perf — the freeze fixes (#v5slice #calmemo #knntop #logonce #fmtonce) and the mirror fixes (#samesheets #onlyedits). The sep 19–20 builds went out still stamped sep18net; the byte size in a report (3943k was the waiting-list build) tells those apart. */
+window.SHK_BUILD='sep21del';   /* sep 21 (6th) — every delete a member can see now checks it really went, and alarms when the server kept it (#delcheck); the burns and the close ride WIPE-MESSAGES.sql. Before it, sep21zim — sep 21 (5th) — Zim rails confirmed by the Keymaster: they go in the dock-side gate, now labeled "Dockwork, rails & clerks"; its gate check is retired (#gatecheck). Before it, sep21gates — sep 21 (4th) — the gate check: the three gates nobody has confirmed ask the crews who worked them (#gatecheck). Before it, sep21docks — NYK back on YTI, and the docks the old Port Maps app had that we didn't: Pier J berths 246-247, SSA Outer Harbor (LA 54-55), Pasha on Terminal Island (TI 206-209) (#oldapp). Before it, sep21ports — YTI on Terminal Island + the Terminal Island spans (#tiberths). Before it, sep21perf — the freeze fixes (#v5slice #calmemo #knntop #logonce #fmtonce) and the mirror fixes (#samesheets #onlyedits). The sep 19–20 builds went out still stamped sep18net; the byte size in a report (3943k was the waiting-list build) tells those apart. */
 /* #freezev3 — keep enough resource timings for the report to name what landed before a
    freeze: the boot alone fires ~100 requests, and the default buffer (250) then stops
    recording for the rest of the session. */
@@ -7449,6 +7449,19 @@ function wipeAcct(){try{localStorage.removeItem('shadowhook_account')}catch(e){}
 const savedAcct=loadAcct();
 let ACCT_ID=(savedAcct&&savedAcct.id)?savedAcct.id:"anon";
 function K(s){return "shadowhook_"+s+"_"+ACCT_ID;}
+/* #delcheck(sep21) — A DELETE THAT DELETED NOTHING IS NOT "DONE". Supabase answers a delete
+   its rules don't allow with NO error and NO rows — on the wire it looks exactly like
+   success, so a button that only checked for an error said "struck" while the story, the
+   clip, the flyer sat on the server and came back on the next reload. Every delete of a
+   thing the member can see on screen (so the row is known to be there) now asks for the
+   rows back and, when none come back, says so and raises an alarm naming the table — a
+   missing delete rule turns up in THE ALARMS the way the close desk did. Toggles (likes,
+   saves, reactions) are left alone: an empty answer there is an ordinary "nothing to undo". */
+function delKept(r){ return !!(r&&!r.error&&Array.isArray(r.data)&&r.data.length===0); }
+function delRefused(what,table){
+  try{ toast('The server kept it — the '+what+' didn’t delete. The Keymaster has been told.'); }catch(e){}
+  try{ if(window.shkAlert)window.shkAlert('delete '+what,new Error('the server kept it — nothing on '+table+' lets this member delete it (a delete rule is missing)')); }catch(e){}
+}
 /* ═══ #idle(aug24) — A NEW VISIT, OR THE SAME SITTING? ═══
    Folds that reset on every launch punish the casual who checks the app eight times
    during a dispatch window; folds that never reset quietly carry a choice made last
@@ -20664,8 +20677,9 @@ async function gearNotify(p,c){
     if(WANT.table===false){ keepHere('🔔 Saved on this phone — the Order’s list isn’t open yet'); return; }
     if(WANT.mine[key]){
       var d=await window.SB.from('product_interest').delete()
-              .eq('owner',uid).eq('product_id',pid).eq('color',color).eq('size',size);
+              .eq('owner',uid).eq('product_id',pid).eq('color',color).eq('size',size).select('product_id');
       if(d.error)throw d.error;
+      if(delKept(d)){ delRefused('waiting-list spot','product_interest'); return; }   /* #delcheck — still on the list, and it says so */
       delete WANT.mine[key];
       var o1=wantLocal(); delete o1[key]; wantLocalSet(o1);
       say('Off the list — '+wantLabel(color,size));
@@ -20885,8 +20899,9 @@ async function prvDel(rid){
   if(!confirm('Strike this review from the record?'))return;
   try{
     const mineGone=gearProd&&(function(){const m=prvMine(gearProd.id);return !!(m&&String(m.id)===String(rid));})();
-    const r=await window.SB.from('product_reviews').delete().eq('id',rid);
+    const r=await window.SB.from('product_reviews').delete().eq('id',rid).select('id');
     if(r.error)throw r.error;
+    if(delKept(r)){ delRefused('review','product_reviews'); await sbLoadProductReviews(); return; }   /* #delcheck */
     if(mineGone){ _prvStars=0; _prvDraft=''; _prvDirty=false; }   // your word struck — the form clears
     try{toast('✕ struck');}catch(e2){}
     await sbLoadProductReviews();
@@ -24405,7 +24420,8 @@ async function gathFlyerSend(gid,g,src,pos){
 async function gathFlyerClear(gid){
   var f=gathFlyer(gid); if(!f||!window.SB)return;
   try{
-    var r=await window.SB.from('gath_flyers').delete().eq('id',gid); if(r.error)throw r.error;
+    var r=await window.SB.from('gath_flyers').delete().eq('id',gid).select('id'); if(r.error)throw r.error;
+    if(delKept(r)){ delRefused('flyer','gath_flyers'); return; }   /* #delcheck */
     try{ var k=String(f.url||'').match(/\/chat-media\/(gath\/[^?#]+)/); if(k)window.SB.storage.from('chat-media').remove([decodeURIComponent(k[1])]).catch(function(){}); }catch(e){}
     delete GATH_FLYER[gid]; toast('✕ Flyer down');
     try{ renderSocialFeed(); }catch(e){}
@@ -24593,8 +24609,9 @@ async function rsvpToggle(gid){
   const on=!!MY_RSVPS[gid];
   try{
     if(on){
-      const r=await window.SB.from('gathering_rsvps').delete().eq('gathering_id',gid).eq('owner',window.__shkUid);
+      const r=await window.SB.from('gathering_rsvps').delete().eq('gathering_id',gid).eq('owner',window.__shkUid).select('gathering_id');
       if(r.error)throw r.error;
+      if(delKept(r)){ delRefused('RSVP','gathering_rsvps'); return null; }   /* #delcheck */
       delete MY_RSVPS[gid];RSVP_N[gid]=Math.max(0,(RSVP_N[gid]||1)-1);
       /* #gathroom — the RSVP was the key; dropping out closes the door again.
          The caller keeps theirs — it's their room whether or not they mark going. */
@@ -24628,8 +24645,9 @@ async function socialDelete(kind,id){
        would outlive it as an orphan nobody can reach (it's hidden from the floor
        precisely because it belongs to the gathering). */
     let gRoom=null; if(kind==='gath'){ try{ const g=gathById(id); gRoom=g&&g.room_id; }catch(e){} }
-    const r=await window.SB.from(kind==='room'?'rooms':'gatherings').delete().eq('id',id);
+    const r=await window.SB.from(kind==='room'?'rooms':'gatherings').delete().eq('id',id).select('id');
     if(r.error)throw r.error;
+    if(delKept(r)){ delRefused(kind==='room'?'room':'gathering',kind==='room'?'rooms':'gatherings'); return false; }   /* #delcheck */
     if(gRoom){ try{ await window.SB.from('rooms').delete().eq('id',gRoom); }catch(e){}
       try{ ALL_ROOMS=ALL_ROOMS.filter(x=>x.id!==gRoom);
            localStorage.setItem(K('joinedrooms'),JSON.stringify(joinedRooms().filter(x=>x.id!==gRoom))); }catch(e){} }
@@ -25303,8 +25321,9 @@ async function deleteStory(id){
   }
   if(!window.SB||!window.__shkUid)return false;
   try{
-    const r=await window.SB.from('stories').delete().eq('id',id);
+    const r=await window.SB.from('stories').delete().eq('id',id).select('id');
     if(r.error)throw r.error;
+    if(delKept(r)){ delRefused('story','stories'); return false; }   /* #delcheck */
     ALL_STORIES=ALL_STORIES.filter(s=>s.id!==id);
     renderSocialFeed();return true;
   }catch(e){toast("Couldn't strike it — check your connection");return false;}
@@ -26185,7 +26204,12 @@ async function svcSend(media){
       setTimeout(()=>{if(b.isConnected){b.classList.remove('arm');b.textContent='✕';}},2200);return;}
     const id=b.getAttribute('data-cdel');
     if(b.getAttribute('data-loc')||/^c[0-9a-z]/.test(String(id))){const o=_svcStore();o[_svcId]=(o[_svcId]||[]).filter(c=>String(c.id)!==String(id));_svcSave(o);}
-    else if(window.SB){try{await window.SB.from('story_comments').delete().eq('id',id);}catch(e){}
+    else if(window.SB){
+      /* #delcheck — the comment leaves the screen once the server says it went, not before */
+      let dr=null; try{ dr=await window.SB.from('story_comments').delete().eq('id',id).select('id'); }catch(e){ dr={error:e}; }
+      if(dr&&(dr.error||delKept(dr))){ b.classList.remove('arm'); b.textContent='✕';
+        if(dr.error)toast('Couldn’t delete it — '+((dr.error&&dr.error.message)||'check your signal')); else delRefused('comment','story_comments');
+        return; }
       try{ const m=b.closest('.svc-row')&&b.closest('.svc-row').querySelector('.svc-media'); const src=m&&(m.getAttribute('src')||''); const k=src&&src.match(/\/chat-media\/(talk\/[^?#]+)/);
         if(k)window.SB.storage.from('chat-media').remove([decodeURIComponent(k[1])]).catch(()=>{}); }catch(e){} }   /* #talkmedia — the file goes with the comment */
     const row=b.closest('.svc-row');if(row)row.remove();
@@ -26752,12 +26776,16 @@ async function dmAccept(uid){
 }
 window.dmAccept=dmAccept;
 async function dmDecline(uid){
-  try{await window.SB.from('friend_requests').delete().eq('from_id',uid).eq('to_id',window.__shkUid);}catch(e){}
+  let r=null; try{ r=await window.SB.from('friend_requests').delete().eq('from_id',uid).eq('to_id',window.__shkUid).select('from_id'); }catch(e){ r={error:e}; }
+  if(r&&r.error){ toast('Couldn’t turn it down — '+((r.error&&r.error.message)||'check your signal')); return; }
+  if(delKept(r)){ delRefused('friend request','friend_requests'); return; }   /* #delcheck */
   delete DM.reqIn[uid]; dmRenderAll();
 }
 window.dmDecline=dmDecline;
 async function dmUnfriend(uid){
-  try{await window.SB.from('friends').delete().or('and(a.eq.'+window.__shkUid+',b.eq.'+uid+'),and(a.eq.'+uid+',b.eq.'+window.__shkUid+')');}catch(e){}
+  let r=null; try{ r=await window.SB.from('friends').delete().or('and(a.eq.'+window.__shkUid+',b.eq.'+uid+'),and(a.eq.'+uid+',b.eq.'+window.__shkUid+')').select('a'); }catch(e){ r={error:e}; }
+  if(r&&r.error){ toast('Couldn’t unfriend — '+((r.error&&r.error.message)||'check your signal')); return; }
+  if(delKept(r)){ delRefused('friendship','friends'); return; }   /* #delcheck */
   delete DM.friends[uid]; dmRenderAll();
   try{openDmCard(uid,dmPeerName(uid));}catch(e){}
 }
@@ -28154,7 +28182,8 @@ async function clanBannerClear(clanId){
   var c=clanById(clanId); if(!c||!clanMine(c)||!window.SB)return;
   var old=clanBannerUrl(c);
   try{
-    var r=await window.SB.from('clan_banners').delete().eq('id',clanId); if(r.error)throw r.error;
+    var r=await window.SB.from('clan_banners').delete().eq('id',clanId).select('id'); if(r.error)throw r.error;
+    if(delKept(r)){ delRefused('clan cover','clan_banners'); return; }   /* #delcheck */
     try{ var k=String(old||'').match(/\/chat-media\/(clans\/[^?#]+)/); if(k)window.SB.storage.from('chat-media').remove([decodeURIComponent(k[1])]).catch(function(){}); }catch(e){}
     delete CLAN_BANNER[clanId]; try{ c.banner_url=null; }catch(e){}
     toast('✕ Cover down — back to the house art');
@@ -28295,8 +28324,9 @@ window.approveClanAsk=approveClanAsk;
 async function declineClanAsk(cid,uid,h){
   const c=clanById(cid); if(!c||!clanMine(c))return;
   try{
-    const r=await window.SB.from('clan_members').delete().eq('clan_id',cid).eq('user_id',uid);
+    const r=await window.SB.from('clan_members').delete().eq('clan_id',cid).eq('user_id',uid).select('clan_id');
     if(r.error)throw r.error;
+    if(delKept(r)){ delRefused('clan request','clan_members'); return; }   /* #delcheck */
     await sbLoadClans(); renderSocialFeed(); openClanSheet(cid);
     toast('Turned down '+(h||'them'));
   }catch(e){ toast('Couldn’t turn it down — '+((e&&e.message)||'try again')); }
@@ -28306,6 +28336,7 @@ async function leaveClan(id){
   const c=clanById(id); if(!c)return;
   const r=await window.SB.from('clan_members').delete().eq('clan_id',c.id).eq('user_id',window.__shkUid).select('clan_id');
   if(r.error){ toast('Couldn’t leave — '+r.error.message); return; }
+  if(delKept(r)){ delRefused('clan membership','clan_members'); return; }   /* #delcheck */
   clanDropRoomKey(c); await sbLoadClans(); renderSocialFeed();
   try{ document.getElementById('clanSheet').classList.remove('on'); }catch(e){}
   toast('You left '+c.name);
@@ -28942,7 +28973,8 @@ async function clanClipDelete(clanId,id){
   if(!(window.SB&&window.__shkUid))return;
   try{
     const x=(CLAN_CLIPS[clanId]||[]).find(r=>String(r.id)===String(id));
-    const r=await window.SB.from('clan_clips').delete().eq('id',id); if(r.error)throw r.error;
+    const r=await window.SB.from('clan_clips').delete().eq('id',id).select('id'); if(r.error)throw r.error;
+    if(delKept(r)){ delRefused('clip','clan_clips'); clanClipsPaint(clanId); return; }   /* #delcheck */
     try{ const k=x&&String(x.url||'').match(/\/chat-media\/(clans\/[^?#]+)/); if(k)window.SB.storage.from('chat-media').remove([decodeURIComponent(k[1])]).catch(()=>{}); }catch(e){}
     CLAN_CLIPS[clanId]=(CLAN_CLIPS[clanId]||[]).filter(r=>String(r.id)!==String(id));
     clanClipsPaint(clanId); toast('✕ Clip struck');
@@ -29046,6 +29078,7 @@ async function removeRoomMember(roomId,uid,h){
 async function leaveRoomKey(r){
   const q=await window.SB.from('room_members').delete().eq('room_id',r.id).eq('user_id',window.__shkUid).select('user_id');
   if(q.error){ toast('Couldn’t leave — '+q.error.message); return; }
+  if(delKept(q)){ delRefused('room key','room_members'); return; }   /* #delcheck */
   delete MY_KEYS[r.id];
   try{ const j=joinedRooms().filter(k=>k.id!==r.id); localStorage.setItem(K('joinedrooms'),JSON.stringify(j)); }catch(e){}
   try{ document.getElementById('roomKeysSheet').classList.remove('on'); }catch(e){}

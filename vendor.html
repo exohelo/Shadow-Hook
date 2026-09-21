@@ -969,6 +969,13 @@ document.querySelectorAll('.sheet').forEach(s=>s.addEventListener('click',e=>{ i
    run ERROR-LOG.sql once. They surface as THE ALARMS at the top of the
    Command Center in the main app. Capped per session so a broken loop
    can't flood the book. */
+/* #delcheck(sep21) — a delete its rules don't allow comes back with no error and no rows,
+   which reads like success. Every delete here asks for the rows back; none back = kept. */
+function delKept(r){ return !!(r&&!r.error&&Array.isArray(r.data)&&r.data.length===0); }
+function delRefused(what,table){
+  try{ toast('⚠ The server kept it — the '+what+' didn’t delete.'); }catch(e){}
+  try{ shkAlert('delete '+what,new Error('the server kept it — nothing on '+table+' lets this login delete it (a delete rule is missing)')); }catch(e){}
+}
 function shkAlert(where,err){
   try{
     if(!SB||!ME.uid)return;
@@ -2071,7 +2078,8 @@ function renderGear(){
       : st==='approved' ? 'Clear this from your list? The shelved product STAYS in the store — if you want it pulled off the floor, say so on the wire.'
       : 'Clear this from your list?';
     if(!confirm(word))return;
-    const r=await SB.from('product_drafts').delete().eq('id',b.dataset.dkill);
+    const r=await SB.from('product_drafts').delete().eq('id',b.dataset.dkill).select('id');
+    if(delKept(r)){ delRefused('draft','product_drafts'); await loadDrafts(); renderGear(); return; }   /* #delcheck */
     if(r.error){toast('⚠ '+r.error.message+(/policy|permission/i.test(r.error.message)?' — run the updated OPENING-DAY.sql':'') );return;}
     toast(st==='pending'?'Withdrawn':'Cleared'); await loadDrafts(); renderGear(); }));
 }
@@ -2156,8 +2164,9 @@ function renderAmbs(){
   host.querySelectorAll('[data-asettle]').forEach(b=>b.addEventListener('click',()=>openAmbPayout(b.dataset.asettle)));
   host.querySelectorAll('[data-amrevoke]').forEach(b=>b.addEventListener('click',async()=>{
     if(!confirm('Pull this crown’s login?'))return;
-    const r=await SB.from('ambassador_members').delete().eq('user_id',b.dataset.amrevoke);
+    const r=await SB.from('ambassador_members').delete().eq('user_id',b.dataset.amrevoke).select('user_id');
     if(r.error){toast('⚠ '+r.error.message);shkAlert('amb revoke',r.error);return;}
+    if(delKept(r)){ delRefused('ambassador login','ambassador_members'); return; }   /* #delcheck */
     toast('Login pulled'); await loadAmbStuff(); renderAmbs(); }));
 }
 function wireVendorRows(host){ /* #ambtab — vendor levers, wired for the vendors tab */
@@ -2172,8 +2181,9 @@ function wireVendorRows(host){ /* #ambtab — vendor levers, wired for the vendo
     await loadVendors(); renderVendors(); }));
   host.querySelectorAll('[data-mrevoke]').forEach(b=>b.addEventListener('click',async()=>{
     if(!confirm('Pull this pass? They lose the Dock Office immediately.'))return;
-    const r=await SB.from('vendor_members').delete().eq('user_id',b.dataset.mrevoke);
+    const r=await SB.from('vendor_members').delete().eq('user_id',b.dataset.mrevoke).select('user_id');
     if(r.error){toast('⚠ '+r.error.message);return;}
+    if(delKept(r)){ delRefused('vendor pass','vendor_members'); return; }   /* #delcheck */
     toast('Pass pulled'); await loadVendors(); renderVendors(); }));
 }
 function vendorCard(v){
@@ -2383,8 +2393,9 @@ function renderMyVend(){
     await loadVendors(); renderMyVend(); }));
   host.querySelectorAll('[data-mrevoke]').forEach(b=>b.addEventListener('click',async()=>{
     if(!confirm('Pull this pass? They lose the Dock Office immediately.'))return;
-    const r=await SB.from('vendor_members').delete().eq('user_id',b.dataset.mrevoke);
+    const r=await SB.from('vendor_members').delete().eq('user_id',b.dataset.mrevoke).select('user_id');
     if(r.error){toast('⚠ '+r.error.message);return;}
+    if(delKept(r)){ delRefused('vendor pass','vendor_members'); return; }   /* #delcheck */
     toast('Pass pulled'); await loadVendors(); renderMyVend(); }));
   host.querySelectorAll('[data-vkill]').forEach(b=>b.addEventListener('click',async()=>{
     const v=VENDORS.find(x=>x.id===b.dataset.vkill); if(!v)return;
@@ -3297,8 +3308,9 @@ function renderService(){
     if(!confirm('Take “'+(t.headline||'this one')+'” off the board? It’s yours — nobody gets told anything.'))return;
     b.disabled=true;
     try{
-      const r=await SB.from('trade_posts').delete().eq('user_id',t.user_id);
+      const r=await SB.from('trade_posts').delete().eq('user_id',t.user_id).select('user_id');
       if(r.error)throw r.error;
+      if(delKept(r)){ delRefused('service post','trade_posts'); b.disabled=false; return; }   /* #delcheck */
       toast('✕ off the board'); await loadService(); renderService();
     }catch(e){ toast('⚠ '+e.message); shkAlert('service take down',e); b.disabled=false; }
   }));
@@ -3716,8 +3728,10 @@ async function memoSave(pid, memo){
   try{
     const r = memo
       ? await SB.from('product_memos').upsert({product_id:pid, memo:memo, updated_at:new Date().toISOString(), updated_by:ME.uid},{onConflict:'product_id'})
-      : await SB.from('product_memos').delete().eq('product_id',pid);
+      : await SB.from('product_memos').delete().eq('product_id',pid).select('product_id');
     if(r&&r.error)return r.error;
+    /* #delcheck — clearing a memo that was on the book and getting nothing back: it's still there */
+    if(!memo&&MEMOS[pid]&&delKept(r)){ delRefused('memo','product_memos'); return new Error('the server kept the memo'); }
     if(memo)MEMOS[pid]=memo; else delete MEMOS[pid];
     return null;
   }catch(e){ return e||new Error('memo'); }
@@ -3813,8 +3827,9 @@ $('dfDelete').addEventListener('click', async()=>{
      delete is a delete, whichever posting it is. */
   if(!confirm('Delete this posting outright? It leaves the store for good. Past orders keep their records either way.'))return;
   const gone=draftEditId;
-  const r=await SB.from('products').delete().eq('id',gone);
+  const r=await SB.from('products').delete().eq('id',gone).select('id');
   if(r.error){ $('dfMsg').textContent='> '+r.error.message; return; }
+  if(delKept(r)){ $('dfMsg').textContent='> the server kept it — this posting didn’t delete. The Keymaster’s alarm book has it.'; delRefused('posting','products'); return; }   /* #delcheck */
   try{ if(MEMO_OK){ await SB.from('product_memos').delete().eq('product_id',String(gone)); delete MEMOS[String(gone)]; } }catch(e){}   /* #memo — its memo goes with it */
   sheet('draftSheet',false); toast('🗑 Gone — off the floor');
   await Promise.all([loadProducts(), loadStore()]); if(TAB==='work')renderWork();
@@ -4584,8 +4599,9 @@ function artWire(host){
     if(!confirm('Take this out of the locker? It’s gone for good.'))return;
     b.disabled=true;
     try{
-      const d=await SB.from('vendor_artwork').delete().eq('id',b.dataset.artdel);
+      const d=await SB.from('vendor_artwork').delete().eq('id',b.dataset.artdel).select('id');
       if(d.error)throw d.error;
+      if(delKept(d)){ delRefused('artwork','vendor_artwork'); b.disabled=false; return; }   /* #delcheck */
       try{ await SB.storage.from('artwork').remove([b.dataset.artpath]); }catch(e2){}
       toast('✕ out of the locker'); await loadArt(); renderBrand();
     }catch(e){ toast('⚠ '+(e.message||'couldn’t remove it')); shkAlert('artwork remove',e); b.disabled=false; }
