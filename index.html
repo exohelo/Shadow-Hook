@@ -8,7 +8,7 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='sep18net';
+window.SHK_BUILD='sep21perf';   /* sep 21 — the freeze fixes (#v5slice #calmemo #knntop #logonce #fmtonce) and the mirror fixes (#samesheets #onlyedits). The sep 19–20 builds went out still stamped sep18net; the byte size in a report (3943k was the waiting-list build) tells those apart. */
 /* #freezev3 — keep enough resource timings for the report to name what landed before a
    freeze: the boot alone fires ~100 requests, and the default buffer (250) then stops
    recording for the rest of the session. */
@@ -7661,6 +7661,10 @@ function mergeDockets(a,b){
   var _applying=false;                     // true while writing server->local (kills echo)
   var _pending={};                         // key -> string value, or null = delete
   var _timer=null, _channel=null, _hydrated=false;
+  /* #onlyedits(sep21) — was the outbox already dirty when this page loaded? That means an
+     EARLIER visit made edits that never reached the server, and which keys is not known —
+     the one case that still needs every key pushed. Read here, before this page writes. */
+  var _dirtyAtLoad=false; try{ _dirtyAtLoad=!!localStorage.getItem(DIRTY); }catch(e){}
 
   // Which Work ID (card) is signed in on this device?
   function card(){
@@ -7711,10 +7715,23 @@ function mergeDockets(a,b){
   function markDirty(){ try{ _set(DIRTY,'1'); }catch(e){} }
   function clearDirty(){ try{ _rem(DIRTY); }catch(e){} }
 
-  /* ---- write-through: every save to a Work ID key rides up to the server ---- */
+  /* ---- write-through: every save to a Work ID key rides up to the server ----
+     #onlyedits(sep21) — …every save that CHANGES something. A save that writes back the
+     value already stored is not an edit, and it used to count as one: the prediction
+     engine re-saves its learned tables at every boot, identical to the byte, and that alone
+     marked the outbox dirty — so every open pushed EVERY key this member holds (a season of
+     dispatch sheets included: over a megabyte, from every phone, every open, on dock
+     signal), and pushed it with this device's copy WINNING. A tablet left in a drawer for a
+     week would open, re-save one table, and roll the member's ring, starting hours and board
+     record on the server back to last week's — and wipe off the server's job log any job
+     sealed on the other phone since. (All of it reproduced against a server that keeps
+     what it is sent.) The value is compared before it is written; only a real change
+     queues a push. */
   localStorage.setItem=function(k,v){
+    var sv=String(v), watch=false, was=null;
+    try{ watch=(!_applying && mine(k)); if(watch) was=localStorage.getItem(k); }catch(e){ watch=false; }
     _set(k,v);
-    try{ if(!_applying && mine(k)){ _pending[k]=String(v); markDirty(); arm(PUSH_DELAY); } }catch(e){}
+    try{ if(watch && was!==sv){ _pending[k]=sv; markDirty(); arm(PUSH_DELAY); } }catch(e){}
   };
   localStorage.removeItem=function(k){
     _rem(k);
@@ -7734,10 +7751,10 @@ function mergeDockets(a,b){
     }catch(e){ return v; }
   }
   function arm(ms){ if(_timer) return; _timer=setTimeout(pushUp,ms); }
-  function pushUp(){
+  function pushUp(){   /* #onlyedits — hands back a promise now (true = it all went up), so pull() can wait on it */
     _timer=null;
-    var uid=window.__shkUid; if(!window.SB||!uid){ arm(RETRY_DELAY); return; }   // no session yet — try later
-    var keys=Object.keys(_pending); if(!keys.length) return;
+    var uid=window.__shkUid; if(!window.SB||!uid){ arm(RETRY_DELAY); return Promise.resolve(false); }   // no session yet — try later
+    var keys=Object.keys(_pending); if(!keys.length) return Promise.resolve(true);
     var a=card()||'', rows=[], dels=[], snapshot=_pending; _pending={};
     keys.forEach(function(k){ var val=snapshot[k]; if(val===null) dels.push(k); else rows.push({owner:uid,card_id:a,k:k,v:outbound(k,val)}); });   /* #slipvault */
     var ops=[];
@@ -7745,12 +7762,13 @@ function mergeDockets(a,b){
       if(rows.length) ops.push(window.SB.from('user_kv').upsert(rows,{onConflict:'owner,k'}));
       dels.forEach(function(k){ ops.push(window.SB.from('user_kv').delete().eq('owner',uid).eq('k',k)); });
     }catch(e){ ops=[Promise.reject(e)]; }
-    Promise.all(ops.map(function(p){ return Promise.resolve(p).then(function(r){ if(r&&r.error) throw new Error(r.error.message); return r; }); }))
-      .then(function(){ if(!Object.keys(_pending).length) clearDirty(); },
+    return Promise.all(ops.map(function(p){ return Promise.resolve(p).then(function(r){ if(r&&r.error) throw new Error(r.error.message); return r; }); }))
+      .then(function(){ if(!Object.keys(_pending).length) clearDirty(); return true; },
             function(err){                         // failed (offline?) — requeue and retry
               console.warn('[cloud] push retry:', err&&err.message);
               Object.keys(snapshot).forEach(function(k){ if(!(k in _pending)) _pending[k]=snapshot[k]; });
               arm(RETRY_DELAY);
+              return false;
             });
   }
 
@@ -7850,7 +7868,15 @@ function mergeDockets(a,b){
     _hydrated=true;
     // Unsent edits on THIS device? Push them up first so the pull below can't
     // overwrite fresh local work with an older server copy.
-    try{ if(localStorage.getItem(DIRTY)) await flushAllLocal(false); }catch(e){}
+    /* #onlyedits(sep21) — and push THOSE, not the whole profile. The outbox used to be read
+       as one flag: dirty → upload every key, this device's copy winning. But most of what
+       dirtied it was this very open, which knows exactly which keys it touched (_pending).
+       Only edits left over from an EARLIER visit — dirty before this page wrote anything —
+       are of unknown keys, and those still send everything, exactly as before. */
+    try{
+      if(_dirtyAtLoad){ _dirtyAtLoad=false; await flushAllLocal(false); }
+      else if(Object.keys(_pending).length){ if(_timer){ clearTimeout(_timer); _timer=null; } await pushUp(); }
+    }catch(e){}
     var res;
     try{ res=await window.SB.from('user_kv').select('k,v').eq('owner',uid); }
     catch(e){ console.warn('[cloud] pull',e); return; }
@@ -7867,6 +7893,19 @@ function mergeDockets(a,b){
        Same exposure for CIRCLE_LVL, which decides what the member is charged. */
     rows.forEach(function(row){ seen[row.k]=1;
       if(deviceOnly(row.k)){ try{ window.SB.from('user_kv').delete().eq('owner',uid).eq('k',row.k).then(function(){},function(){}); }catch(e){} return; }   /* #doubleboot — leftover stamp rows: drop, don't apply */
+      /* #onlyedits(sep21) — WRITTEN HERE WHILE THIS READ WAS IN FLIGHT. The push above only
+         covers edits made BEFORE the read went out. An open keeps working while it waits —
+         the 14-day dispatch pull lands, the board record re-chains — and anything saved in that
+         gap is newer than the server copy now arriving and is already queued to go up. Laying
+         the server copy over it threw the new work away on disk (the phone's saved copy of a
+         freshly corrected sheet was put back to the old one like this — in the old build and
+         the new, whenever the two crossed), and the mismatch then counted as "the server
+         changed something" and reloaded the whole app a second time.
+         The two keys that MERGE on arrival are the exception and still take the server copy:
+         settle() folds it together with what this phone holds in memory — the job log by job,
+         the marks by mark — and writes the union back, which is the only way a job sealed on
+         another phone can join this one. */
+      if((row.k in _pending) && !/^shadowhook_(dockets|badges)_/.test(row.k)) return;
       if(apply(row.k,row.v)){ changed++; try{ settle(row.k); }catch(e){} } });
     // MIGRATION / GAP-FILL: push up any Work ID data this device holds that the
     // server is still missing — never clobbering what's already up there. This is
@@ -10039,7 +10078,15 @@ function openPendingSheet(){
 }
 
 /* ================= HELPERS ================= */
-const fmt$=n=>"$"+n.toLocaleString(undefined,{maximumFractionDigits:0});
+/* #fmtonce(sep21) — ONE FORMATTER, NOT ONE PER DOLLAR SIGN. n.toLocaleString(undefined,{…})
+   with an options bag builds a brand-new Intl.NumberFormat on every call and throws it away —
+   the browser only keeps one around for the no-options form. It showed up as a FIFTH of the
+   time it takes to draw the job log (one call per docket, every redraw, and the log redraws
+   on every seal). toLocaleString(l,o) is defined as new Intl.NumberFormat(l,o).format(n), so
+   building that once gives the same characters every time. Anything that isn't a plain
+   number keeps the old road exactly — a string's own toLocaleString, or the same throw. */
+const _fmt$0=(function(){ try{ return new Intl.NumberFormat(undefined,{maximumFractionDigits:0}); }catch(e){ return null; } })();
+const fmt$=n=>"$"+((_fmt$0&&typeof n==="number")?_fmt$0.format(n):n.toLocaleString(undefined,{maximumFractionDigits:0}));
 const fmtD=iso=>{try{if(!iso||typeof iso!=="string")return "—";const[p]=iso.split("T");const[y,m,d]=p.split("-");return (m&&d&&y)?(m+"/"+d+"/"+y.slice(2)):"—";}catch(e){return "—";}};   /* #jul23e — never throw on a bad date; a "—" beats a dead button */
 const DOW=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 function isWeekend(d){return d.getDay()===0||d.getDay()===6}
@@ -12078,8 +12125,21 @@ const V4 = (function(){
   function saveLearn(){ try{ localStorage.setItem(LSK('v4learn'), JSON.stringify(learn)); }catch(e){} }
 
   /* ---- calendar helpers ---- */
-  function nthDow(y,m,dow,n){ const d=new Date(y,m,1); let c=0; while(d.getMonth()===m){ if(d.getDay()===dow){ if(++c===n) return new Date(d); } d.setDate(d.getDate()+1);} return null; }
-  function lastDow(y,m,dow){ const d=new Date(y,m+1,0); while(d.getDay()!==dow) d.setDate(d.getDate()-1); return d; }
+  /* #calmemo(sep21) — see the note on V5's copy of these two: the same walk through the
+     month, remembered per (year, month, weekday, n) instead of redone on every ask. */
+  const _nthMemo=Object.create(null), _lastMemo=Object.create(null);
+  function nthDow(y,m,dow,n){
+    const key=y+'|'+m+'|'+dow+'|'+n; let day=_nthMemo[key];
+    if(day===undefined){ day=0; const d=new Date(y,m,1); let c=0;
+      while(d.getMonth()===m){ if(d.getDay()===dow){ if(++c===n){ day=d.getDate(); break; } } d.setDate(d.getDate()+1); }
+      _nthMemo[key]=day; }
+    return day?new Date(y,m,day):null;
+  }
+  function lastDow(y,m,dow){
+    const key=y+'|'+m+'|'+dow; let day=_lastMemo[key];
+    if(day===undefined){ const d=new Date(y,m+1,0); while(d.getDay()!==dow) d.setDate(d.getDate()-1); day=_lastMemo[key]=d.getDate(); }
+    return new Date(y,m,day);
+  }
   function sameDay(a,b){ return a&&b&&a.getFullYear()===b.getFullYear()&&a.getMonth()===b.getMonth()&&a.getDate()===b.getDate(); }
   function ymd(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
 
@@ -12373,7 +12433,22 @@ const V4 = (function(){
     if(n<40 || !isFinite(chHat) || chHat<=0) return null;
     const p=CAS_P[isAM?'AM':'PM'];
     const wknd=x=>x>=5?1:0, myCls=wknd(dow);
-    const cands=new Array(n); let nc=0;
+    /* #knntop(sep21) — ONLY THE 23 NEAREST EVER VOTE; STOP SORTING THE OTHER 1,341.
+       This ran a full sort of the whole log (1,364 boards by sep 2026, each wrapped in its
+       own little array) to read the first 23 off the top. One call is nothing — but the
+       regime check asks once per sealed board on the record (~160 calls the moment a seal
+       lands) and the 30-day forecast asks sixty times more, all of it inside the wire's
+       handler. In the lab (6× CPU throttle, a season of data): 2.4 ms a call, about a
+       sixth of the sealed-board freeze THE ALARMS caught on sep 20, most of a second of
+       every open. Now the k nearest are kept in a short ordered list as the log is walked,
+       and everything farther than the current k-th is dropped on sight — 0.1 ms a call.
+       THE SAME VOTE, TO THE LAST BIT: ties keep the order the sort gave them (an equal
+       distance goes in BEHIND the one already there — the old sort was stable), so the
+       kernel sums below add the same numbers in the same order. A distance that isn't a
+       finite number — a broken log row — would make "nearest" mean nothing; on the first
+       one seen this hands the whole job back to the original sort, untouched. */
+    const KTOP=p.k, bd=[], ba=[]; let odd=false;
+    const ds=new Array(n), acts=new Array(n); let nc=0;   /* two flat lists, not 1,364 two-item arrays: only the fallback ever needs them whole */
     for(let j=0;j<n;j++){
       const r=rows[j];                                   /* [ch,tot,dow,act,hm,mo,i,xm,date] */
       if(skipDate&&r[8]===skipDate)continue;             /* #regime — a board never votes on itself */
@@ -12386,10 +12461,19 @@ const V4 = (function(){
       let md=Math.abs(r[5]-month); md=Math.min(md,12-md); d+=Math.pow(p.monw*md,2);
       if(r[4]!=null && isFinite(mom)) d+=Math.pow(p.momw*(r[4]-mom),2);
       if(p.xmomw>0 && r[7]!=null && xmHat!=null) d+=Math.pow(p.xmomw*(r[7]-xmHat),2);
-      cands[nc++]=[d,r[3]];
+      ds[nc]=d; acts[nc]=r[3]; nc++;
+      if(odd) continue;
+      if(!(d-d===0)){ odd=true; continue; }              /* NaN or ±Infinity → the original sort decides, below */
+      let at=bd.length;
+      if(at===KTOP && !(d<bd[at-1])) continue;           /* farther than (or level with) the k-th → it could never have made the cut */
+      while(at>0 && bd[at-1]>d) at--;                    /* strictly farther ones move down; a tie stays ahead of the newcomer */
+      bd.splice(at,0,d); ba.splice(at,0,r[3]);
+      if(bd.length>KTOP){ bd.pop(); ba.pop(); }
     }
-    cands.length=nc; if(nc<40) return null;
-    cands.sort((a,b)=>a[0]-b[0]);
+    if(nc<40) return null;
+    let cands;
+    if(odd){ cands=new Array(nc); for(let i=0;i<nc;i++) cands[i]=[ds[i],acts[i]]; cands.sort((a,b)=>a[0]-b[0]); }   /* the original, whole */
+    else { cands=new Array(bd.length); for(let i=0;i<bd.length;i++) cands[i]=[bd[i],ba[i]]; }                        /* the head of the list, exactly as that sort would have left it */
     const k=Math.min(p.k,nc), pmf=new Array(27).fill(0);
     /* KERNEL VOTE: the 5th-nearest night should not carry the same weight as the 23rd.
        Weights decay with distance, scaled by the k-th neighbour's own distance so the
@@ -12719,15 +12803,42 @@ const V5=(function(){
   function dateOf(s){ return new Date(s+"T12:00:00"); }
   function shiftDays(s,n){ const d=dateOf(s); d.setDate(d.getDate()+n); return ymd(d); }
   /* calendar: same rules as V4.calendarCats (hard no-work days / soft holidays) */
-  function nthDow(y,m,dow,n){ const d=new Date(y,m,1); let c=0; while(d.getMonth()===m){ if(d.getDay()===dow){ if(++c===n) return new Date(d); } d.setDate(d.getDate()+1);} return null; }
-  function lastDow(y,m,dow){ const d=new Date(y,m+1,0); while(d.getDay()!==dow) d.setDate(d.getDate()-1); return d; }
+  /* #calmemo(sep21) — THE CALENDAR WAS BEING WORKED OUT FROM SCRATCH, FOR EVERY ROW, EVERY FIT.
+     THE ALARMS, sep 20, RED_SILVER_32, Android: "long task 2.1s on #scr-order · after:
+     board_wire -10ms" and a 7.1s one behind the loader. Profiled at 6× CPU throttle with a
+     season of data on the phone: when one board is sealed anywhere in the Order, every open
+     phone retrains this engine inside the wire's handler — and a THIRD of that freeze (449
+     of 1,342 ms; over a second of every open) was nthDow() below, asked "when is
+     Thanksgiving this year?" by walking a Date through November a day at a time. cal() asks
+     it five ways per date, and one fit asks cal() for every board in the log (1,364 by now),
+     twice — once for the row, once more for its features.
+     Same answers, worked out once: the day-of-month is remembered per (year, month, weekday,
+     n), and a date's three flags per date string. Only the DAY NUMBER is kept, never the Date
+     — the Date is rebuilt on the way out, so a phone that changes timezone with the app
+     open still compares calendar days in the zone it is in now, exactly as before. */
+  const _nthMemo=Object.create(null), _lastMemo=Object.create(null), _calMemo=Object.create(null);
+  function nthDow(y,m,dow,n){
+    const key=y+'|'+m+'|'+dow+'|'+n; let day=_nthMemo[key];
+    if(day===undefined){ day=0; const d=new Date(y,m,1); let c=0;
+      while(d.getMonth()===m){ if(d.getDay()===dow){ if(++c===n){ day=d.getDate(); break; } } d.setDate(d.getDate()+1); }
+      _nthMemo[key]=day; }
+    return day?new Date(y,m,day):null;
+  }
+  function lastDow(y,m,dow){
+    const key=y+'|'+m+'|'+dow; let day=_lastMemo[key];
+    if(day===undefined){ const d=new Date(y,m+1,0); while(d.getDay()!==dow) d.setDate(d.getDate()-1); day=_lastMemo[key]=d.getDate(); }
+    return new Date(y,m,day);
+  }
   function sameDay(a,b){ return a&&b&&a.getFullYear()===b.getFullYear()&&a.getMonth()===b.getMonth()&&a.getDate()===b.getDate(); }
   function cal(s){
+    const hit=_calMemo[s]; if(hit) return {shutdown:hit[0], holiday:hit[1], first:hit[2]};   /* a fresh object every time, as it always was */
     const d=dateOf(s), y=d.getFullYear(), m=d.getMonth(), day=d.getDate();
     const thanks=nthDow(y,10,4,4);
     const hard=(m===11&&(day===24||day===25))||(m===0&&day===1)||(m===11&&day===31)||(m===6&&(day===4||day===5))||(thanks&&sameDay(d,thanks))||sameDay(d,nthDow(y,8,1,1));
     const soft=sameDay(d,nthDow(y,0,1,3))||sameDay(d,nthDow(y,1,1,3))||sameDay(d,lastDow(y,4,1))||(m===5&&day===19)||sameDay(d,nthDow(y,9,1,2))||(m===10&&day===11);
-    return {shutdown:!!hard, holiday:soft?1:0, first:(day<=1)?1:0};
+    const out={shutdown:!!hard, holiday:soft?1:0, first:(day<=1)?1:0};
+    if(typeof s==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(s)) _calMemo[s]=[out.shutdown,out.holiday,out.first];   /* only a clean date string is a safe key */
+    return out;
   }
   /* ---- tiny dense linear algebra ---- */
   function solve(A,b){
@@ -12829,8 +12940,16 @@ const V5=(function(){
     if(this.kind==='W') return Math.max(0,Math.exp(this.mu(x))-1);
     const p=this.pmf(x); let m=0; for(let i=0;i<27;i++) m+=i*p[i]; return m;
   };
-  /* ---- one slot's engine, built from log arrays [[date,dow,ch,tot,act],...] ---- */
-  function Slot(logRows,otherRows,isAM){
+  /* ---- one slot's engine, built from log arrays [[date,dow,ch,tot,act],...] ----
+     #v5slice(sep21) — THE FIT CAN BE TAKEN A STEP AT A TIME. The walk-forward below is
+     ~30 refits of two heads over the whole log: one unbroken second of arithmetic on a
+     dock phone, and it used to run inside whatever task asked for it. `paced` leaves the
+     walk un-run; the caller then turns the crank with step() between frames (see the
+     builder under V4.predict). NOT a different fit: step() is the body of the old loop,
+     unchanged and in the same order — the H head warm-starts each refit from its last, so
+     the order IS the answer — and new Slot(...) with no third flag still runs it straight
+     through, which is what V5.buildNow() and the equivalence test lean on. */
+  function Slot(logRows,otherRows,isAM,paced){
     this.isAM=isAM; this.other={}; for(const r of otherRows) this.other[r[0]]={act:r[4],ch:r[2]};
     this.rows=[]; this.byDate={}; let e=null;
     for(const r of logRows){
@@ -12843,18 +12962,29 @@ const V5=(function(){
     this.momNow=(e===null)?1.5:e;
     this.X=this.rows.map(r=>feats(r,this.byDate,this.other,isAM));
     const n=this.rows.length; this.hist={W:[],H:[]};
-    const heads={W:new Head('W'),H:new Head('H')}, fittedAt={W:-99,H:-99};
-    const start=Math.max(P.MIN_TRAIN,n-P.CAL_N);
-    for(let i=start;i<n;i++){
-      if(!this.rows[i].ok) continue;
-      for(const k in heads){ const h=heads[k];
-        if(i-fittedAt[k]>=P.CAL_STEP){ if(h.fit(this.rows,this.X,i)) fittedAt[k]=i; }
-        if(h.beta) this.hist[k].push([i,h.raw(this.X[i]),this.rows[i].act]); }
+    this._walk={heads:{W:new Head('W'),H:new Head('H')}, fittedAt:{W:-99,H:-99}, i:Math.max(P.MIN_TRAIN,n-P.CAL_N), n:n};
+    if(!paced){ while(this.step()){} }
+  }
+  /* one turn of the crank: a single board of the walk-forward, or — once the walk is done —
+     the two final fits. true = there is more to do. */
+  Slot.prototype.step=function(){
+    const wk=this._walk; if(!wk) return false;
+    if(wk.i<wk.n){
+      const i=wk.i++;
+      if(this.rows[i].ok){
+        for(const k in wk.heads){ const h=wk.heads[k];
+          if(i-wk.fittedAt[k]>=P.CAL_STEP){ if(h.fit(this.rows,this.X,i)) wk.fittedAt[k]=i; }
+          if(h.beta) this.hist[k].push([i,h.raw(this.X[i]),this.rows[i].act]); }
+      }
+      return true;
     }
+    const n=wk.n;
     this.W=new Head('W'); this.W.fit(this.rows,this.X,n);
     this.H=new Head('H'); this.H.fit(this.rows,this.X,n);
     this.n=n; this.last=n?this.rows[n-1].date:null;
-  }
+    this._walk=null;
+    return false;
+  };
   Slot.prototype.predict=function(date,dow,ch,mom,xm,knnPmf){
     const c=cal(date);
     if(c.shutdown){ const p=new Array(27).fill(0); p[0]=0.9; p[1]=0.08; p[2]=0.02; return {pmf:p,dbg:{shutdown:true}}; }
@@ -12895,20 +13025,81 @@ window.V5=V5;
   }
   /* #v5boot — the first build of each slot runs OFF the boot path (a phone must never freeze
      on a 300 ms fit while the loader is up): predict() hands back the v4 call until the build
-     lands, then re-figures the wire once. A build that is merely STALE (a board sealed, a sheet
-     landed) is redone on the spot — the caller is already re-figuring because data moved. */
-  const pending={AM:null,PM:null};
-  function slotFor(isAM){
-    const kk=isAM?'AM':'PM', sig=sigOf(isAM);
-    if(cache[kk]&&cache[kk].sig===sig) return cache[kk].slot;
-    if(cache[kk]) return build(isAM);
-    if(!pending[kk]) pending[kk]=setTimeout(function(){ pending[kk]=null;
-      try{ build(isAM); }catch(e){ try{ if(window.DEVLOG&&DEVLOG.err)DEVLOG.err('v5 build: '+(e&&e.message)); }catch(_){} return; }
-      try{ if(typeof repredict==="function") repredict(); }catch(e){} },0);
-    return null;
+     lands, then re-figures the wire once.
+     #v5slice(sep21) — AND SO DOES EVERY BUILD AFTER IT, A SLICE AT A TIME.
+     The line that used to close this note read "a build that is merely STALE is redone on the
+     spot — the caller is already re-figuring because data moved." On the spot meant INSIDE the
+     caller's task, and the caller is the wire: somebody seals a board, the 90-second pull lands
+     on every open phone in the Order, and each one refit BOTH slots — AM and PM share a
+     signature, so one seal stales the pair — in the middle of the board_wire handler. Measured
+     on a throttled CPU with a season of sheets on the phone: one 1,342 ms task. On
+     RED_SILVER_32's Android, sep 20 at 10:27 PM: "long task 2.1s on #scr-order · after:
+     board_wire -10ms". The whole Order's phones locked up together, twice a day.
+     Now a stale slot goes on answering — its call is the one that was on the screen a moment
+     ago, one board behind at worst — while the refit runs in slices of a few milliseconds with
+     the page free to scroll and paint in between. When it lands the wire re-figures once, the
+     same hand-off the first build has always used. Nothing that hangs off the call can be
+     caught out by the gap: the snapshot the bot is scored on is overwritten by the next
+     publishCall, and the phone alert waits out its own 10 s settle and re-reads before it buzzes.
+     One build at a time, both slots through one queue, ONE repredict when the queue drains. */
+  const SLICE_MS=8;                      /* a fit turn is ~2-4 ms on a phone; stay well inside a frame */
+  const queue=[]; let running=null, gen=0, landed=false;
+  function trainSliced(isAM,done){
+    const kk=isAM?'AM':'PM', sig=sigOf(isAM); let slot, spent=0;
+    const now=function(){ try{ return performance.now(); }catch(e){ return Date.now(); } };
+    try{ const t=now(); slot=new V5.Slot(toArr(V4._log(isAM)),toArr(V4._log(!isAM)),isAM,true); spent+=now()-t; }
+    catch(e){ done(e); return; }
+    (function turn(){
+      const t=now();
+      try{ while(slot.step()){ if(now()-t>=SLICE_MS){ spent+=now()-t; setTimeout(turn,0); return; } } }
+      catch(e){ done(e); return; }
+      spent+=now()-t;
+      cache[kk]={sig:sig,slot:slot,ms:Math.round(spent),at:new Date().toISOString().slice(11,19),builds:((cache[kk]&&cache[kk].builds)||0)+1};
+      gen++;
+      try{ if(window.DEVLOG&&DEVLOG.note)DEVLOG.note('v5 '+kk+' trained on '+slot.n+' boards (through '+slot.last+') in '+cache[kk].ms+'ms of slices'); }catch(e){}
+      done(null);
+    })();
   }
-  V5._clear=function(){ cache.AM=null; cache.PM=null; };
-  V5.buildNow=function(){ try{ build(true); build(false); }catch(e){} return V5.status(); };
+  function pump(){
+    if(running||!queue.length) return;
+    running=queue.shift();
+    const kk=running, isAM=(kk==='AM');
+    trainSliced(isAM,function(err){
+      running=null;
+      /* a fit that THROWS lands nothing: no re-figure for it. Re-figuring would ask for the
+         slot again, which would queue the same failing fit, which would re-figure… — an
+         endless loop on a bad log. The old code never re-figured after a failed first build
+         either; the next real event asks again, the way it always has. */
+      if(err){ try{ if(window.DEVLOG&&DEVLOG.err)DEVLOG.err('v5 build: '+(err&&err.message)); }catch(_){} }
+      else{
+        landed=true;
+        /* the data moved again while this one was fitting → it is stale on arrival: go again */
+        if(cache[kk]&&cache[kk].sig!==sigOf(isAM)&&queue.indexOf(kk)<0) queue.push(kk);
+      }
+      if(queue.length){ setTimeout(pump,0); return; }
+      if(!landed) return;
+      landed=false;
+      try{ if(typeof repredict==="function") repredict(); }catch(e){}
+    });
+  }
+  function want(isAM){
+    const kk=isAM?'AM':'PM';
+    if(running===kk||queue.indexOf(kk)>=0) return;      /* already fitting, or already in line (a build still running re-checks its own signature when it lands) */
+    queue.push(kk);
+    setTimeout(pump,0);                                  /* never inside the asker's task */
+  }
+  function slotFor(isAM){
+    const kk=isAM?'AM':'PM', c=cache[kk];
+    if(c&&c.sig===sigOf(isAM)) return c.slot;
+    want(isAM);
+    return c?c.slot:null;                                /* stale → the last fit holds the wire · never built → v4 does */
+  }
+  /* which fits the wire is standing on. Anything that REMEMBERS a call (the forecast's memo)
+     keys on this, or it would go on serving numbers worked out before a refit landed. */
+  V5.gen=function(){ return gen; };
+  V5.busy=function(){ return !!running||queue.length>0; };
+  V5._clear=function(){ cache.AM=null; cache.PM=null; gen++; };
+  V5.buildNow=function(){ try{ build(true); build(false); gen++; }catch(e){} return V5.status(); };   /* the dev tool: straight through, no slices */
   V5.status=function(){ const o={}; for(const k in cache){ const c=cache[k]; o[k]=c?{boards:c.slot.n,through:c.slot.last,ms:c.ms,builtAt:c.at,
       calW:c.slot.hist.W.length,calH:c.slot.hist.H.length,sigW:+c.slot.W.sig.toFixed(2),sigH:+c.slot.H.sig.toFixed(2),builds:c.builds}:null; } return o; };
   V4.predict=function(o){
@@ -14054,7 +14245,16 @@ window.renderMyOdds=renderMyOdds;
     var valve=Math.floor(Date.now()/1800000);
     /* #ladder — the pending cell reads the stretched call, so the ladder is an input */
     var lad=null; try{ lad=(window._restLadder&&window._restLadder.any&&window._restLadder.anchor===anchor)?window._restLadder:null; }catch(e){}
-    var key=[anchor,my,ymdOf(from),startPM?1:0,confirmed?1:0,eng,valve,(lad?lad.sig:"")].join("|");
+    /* #v5slice(sep21) — THE FIT IS AN INPUT TOO. Every other piece of this key describes the
+       DATA; none of it says which v5 fit turned the data into numbers. That was already a
+       small hole at boot — the first forecast is worked out while v5 is still training, on
+       the v4 fallback, and when v5 landed repredict() came back here, found the same key,
+       and went on showing the v4 month until something else moved — and with refits now
+       landing a beat AFTER the data that caused them it would have become the rule instead
+       of the exception. V5.gen() ticks once per landed fit, so the memo is good for exactly
+       as long as the engine behind it is. */
+    var v5gen=""; try{ v5gen=(window.V5&&typeof V5.gen==="function")?V5.gen():""; }catch(e){}
+    var key=[anchor,my,ymdOf(from),startPM?1:0,confirmed?1:0,eng,valve,(lad?lad.sig:""),v5gen].join("|");
     if(_memo&&_memoKey===key) return _memo;
 
     var D=new Array(BINS); for(var b=0;b<BINS;b++)D[b]=0;
@@ -16113,9 +16313,22 @@ try{renderCallStart();}catch(e){}
 let _dispQuiet=false;                        // true while a batch lands: hold the per-sheet paint + persist
 function _dispPersist(keys){                 // one read-merge-write, for one sheet or a whole batch
   try{
-    const ex=JSON.parse(localStorage.getItem(K('dispatch'))||'{}');
+    /* #samesheets(sep21) — A MEGABYTE UP THE PIPE ON EVERY OPEN, TO SAVE NOTHING.
+       Every open pulls the last 14 days of sheets and lands them here, and this wrote the
+       whole store back whether or not a single number in it had moved. The write itself is
+       the small half. K('dispatch') is a Work-ID key, so the cloud mirror's write-through
+       (localStorage.setItem, up by WORK ID CLOUD) saw a "change" and UPLOADED THE ENTIRE
+       STORE to user_kv — measured with a season of sheets on the phone: 821 KB of sheets
+       inside a 1,021 KB POST, on every open, from every member, on dock signal, for a store
+       that was byte-for-byte what the server already held. Together with the outbox flush
+       it had dirtied (#onlyedits, WORK ID CLOUD) one ordinary open sent 2,074 KB up.
+       The store is only written when the merge actually changed it. A new sheet, a
+       corrected total, a repaired row — all still land and still ride up, once. */
+    const was=localStorage.getItem(K('dispatch'))||'{}';
+    const ex=JSON.parse(was);
     (keys||Object.keys(DISPATCH_DATA)).forEach(k=>{ if(DISPATCH_DATA[k])ex[k]=DISPATCH_DATA[k]; });
-    localStorage.setItem(K('dispatch'),JSON.stringify(ex));
+    const now=JSON.stringify(ex);
+    if(now!==was) localStorage.setItem(K('dispatch'),now);
   }catch(e){}
 }
 window.addDispatchData=function(key,data){   // ← the dispatch bot calls this with each new sheet
@@ -18166,6 +18379,19 @@ function renderDockets(){
     el.innerHTML='<div class="empty-state"><div class="es-ico">▣</div><p class="sub">Your log is empty. <b style="color:var(--copper-hi)">Scan your first docket</b> after your next job — snap the slip and the system reads it. It lands here, feeds your pay &amp; hours, and earns your first mark.</p></div>';
     return;
   }
+  /* #logonce(sep21) — THE LOG GOES UP IN ONE PIECE. Each docket used to be parsed straight
+     into the live card, one insertAdjacentHTML per row — a mutation of the live page per
+     docket — and the log is redrawn on every seal, every sync and three or four times an
+     open. Now each row is still parsed ON ITS OWN, in a div like the one it lands in (so a
+     docket with a stray "<" in a ship's name can only ever mangle itself, exactly as before),
+     but into a holding fragment off the page, and the whole log is attached once. The page
+     it produces is identical to the byte; ~20% less time on a long log.
+     For the record: THE ALARMS, sep 20, "long task 2.6s on #scr-dockets · after: nothing in
+     the 3s before" caught a member arriving on this tab (the screen's entrance and the tab
+     bar's two colour fades were still running). The lab could NOT make the switch itself
+     cost anything like that (~60 ms at 6× CPU), so this is not claimed as the fix for that
+     one — the build stamp will say whether it comes back on this build. */
+  const _hold=document.createDocumentFragment(), _bench=document.createElement('div');
   [...DOCKETS].sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))).forEach(j=>{
     const p=estPay(j);const catCls=(j.category||"").startsWith("CLERK")?"CLERK":j.category;
     const t=dkTerminal(j);   // #berthlog — operator + berth, not operator alone
@@ -18215,8 +18441,10 @@ function renderDockets(){
       ? [t.aka, t.operator, t.berths].filter(Boolean).join(" · ")
       : (j.terminal+((!j.berth&&!j.dock&&TERMINALS.filter(x=>x.operator.toUpperCase()===String(j.terminal||"").toUpperCase()).length>1)?' · <span class="unconf">dock not set — long-press to fix</span>':''));
     const shipLabel = (j.ship && j.ship!=="\u2014") ? j.ship : "No ship · dock/rail work";
-    el.insertAdjacentHTML('beforeend','<div class="jobrow press" data-id="'+j._id+'" data-name="'+j.ship+'" data-date="'+j.date+'"><div class="d mono">'+fmtD(j.date)+(j.start?'<br><span style="font-size:9.5px;color:var(--steel)">'+fmtStart(j.start)+(j.flex?' · FLX':'')+'</span>':'')+'</div><div class="n"><b>'+portLabel+(j.photo?' <span class="dkt-cam'+(docketPhotoHere(j)?'':' away')+'" role="button" title="'+(docketPhotoHere(j)?'View docket photo':'No copy of this photo on this phone — scan the slip again to put it here')+'" onclick="openDocketPhoto(event,\''+j._id+'\')">📷</span>':'')+'</b><span>'+shipLabel+' · '+j.shift+(j.queue?' · #'+j.queue+' in line':'')+'</span></div><span class="cat '+catCls+'">'+j.category+'</span></div><div class="detail">'+det+'</div>');
+    _bench.innerHTML=('<div class="jobrow press" data-id="'+j._id+'" data-name="'+j.ship+'" data-date="'+j.date+'"><div class="d mono">'+fmtD(j.date)+(j.start?'<br><span style="font-size:9.5px;color:var(--steel)">'+fmtStart(j.start)+(j.flex?' · FLX':'')+'</span>':'')+'</div><div class="n"><b>'+portLabel+(j.photo?' <span class="dkt-cam'+(docketPhotoHere(j)?'':' away')+'" role="button" title="'+(docketPhotoHere(j)?'View docket photo':'No copy of this photo on this phone — scan the slip again to put it here')+'" onclick="openDocketPhoto(event,\''+j._id+'\')">📷</span>':'')+'</b><span>'+shipLabel+' · '+j.shift+(j.queue?' · #'+j.queue+' in line':'')+'</span></div><span class="cat '+catCls+'">'+j.category+'</span></div><div class="detail">'+det+'</div>');
+    while(_bench.firstChild)_hold.appendChild(_bench.firstChild);   /* #logonce */
   });
+  el.appendChild(_hold);   /* #logonce — one attach for the whole log */
   // #38/#108 retired — new dockets no longer auto-expand. A fresh entry lands folded
   // like every other row (newest date on top), easy to spot; tap it to open by hand.
   try{refreshShipLines()}catch(e){}   // #40 — upgrade ship lines to the live feed when configured
