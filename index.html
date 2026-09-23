@@ -8,12 +8,61 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='sep22zoom';   /* sep 22 — tap the product picture: it opens full screen, zooms (pinch · tap · wheel), pans, and swipes through every shot the piece carries (#gearzoom). Before it, sep21del — sep 21 (6th) — every delete a member can see now checks it really went, and alarms when the server kept it (#delcheck); the burns and the close ride WIPE-MESSAGES.sql. Before it, sep21zim — sep 21 (5th) — Zim rails confirmed by the Keymaster: they go in the dock-side gate, now labeled "Dockwork, rails & clerks"; its gate check is retired (#gatecheck). Before it, sep21gates — sep 21 (4th) — the gate check: the three gates nobody has confirmed ask the crews who worked them (#gatecheck). Before it, sep21docks — NYK back on YTI, and the docks the old Port Maps app had that we didn't: Pier J berths 246-247, SSA Outer Harbor (LA 54-55), Pasha on Terminal Island (TI 206-209) (#oldapp). Before it, sep21ports — YTI on Terminal Island + the Terminal Island spans (#tiberths). Before it, sep21perf — the freeze fixes (#v5slice #calmemo #knntop #logonce #fmtonce) and the mirror fixes (#samesheets #onlyedits). The sep 19–20 builds went out still stamped sep18net; the byte size in a report (3943k was the waiting-list build) tells those apart. */
+window.SHK_BUILD='sep22crumb';   /* sep 22 (2nd) — every freeze report now says what the app was DOING when it froze — the last taps, tab switches, saves, wakes and realtime messages, as offsets from the task (#crumbs); transitions are named in the roll-call. Before it, sep22zoom — sep 22 — tap the product picture: it opens full screen, zooms (pinch · tap · wheel), pans, and swipes through every shot the piece carries (#gearzoom). Before it, sep21del — sep 21 (6th) — every delete a member can see now checks it really went, and alarms when the server kept it (#delcheck); the burns and the close ride WIPE-MESSAGES.sql. Before it, sep21zim — sep 21 (5th) — Zim rails confirmed by the Keymaster: they go in the dock-side gate, now labeled "Dockwork, rails & clerks"; its gate check is retired (#gatecheck). Before it, sep21gates — sep 21 (4th) — the gate check: the three gates nobody has confirmed ask the crews who worked them (#gatecheck). Before it, sep21docks — NYK back on YTI, and the docks the old Port Maps app had that we didn't: Pier J berths 246-247, SSA Outer Harbor (LA 54-55), Pasha on Terminal Island (TI 206-209) (#oldapp). Before it, sep21ports — YTI on Terminal Island + the Terminal Island spans (#tiberths). Before it, sep21perf — the freeze fixes (#v5slice #calmemo #knntop #logonce #fmtonce) and the mirror fixes (#samesheets #onlyedits). The sep 19–20 builds went out still stamped sep18net; the byte size in a report (3943k was the waiting-list build) tells those apart. */
 /* #freezev3 — keep enough resource timings for the report to name what landed before a
    freeze: the boot alone fires ~100 requests, and the default buffer (250) then stops
    recording for the rest of the session. */
 try{ performance.setResourceTimingBufferSize(1000);
      performance.addEventListener('resourcetimingbufferfull',function(){ try{ performance.clearResourceTimings(); }catch(e){} }); }catch(e){}
+/* ═══ #crumbs(sep22) — WHAT THE APP WAS DOING WHEN IT FROZE ═══
+   THE ALARMS, sep 20 and sep 22: "long task 2.6s / 5.0s on #scr-dockets" — the same
+   screen twice, and both times the `after:` line (the fetches that landed just before)
+   had nothing to offer: "nothing in the 3s before", then only the line-check ping. The
+   report can name a response whose handler froze the phone; it cannot see a tab switch,
+   a save, a wake from the pocket or a realtime message, and the lab couldn't make the
+   switch itself cost anything (#logonce). So the report now carries a trail: the last
+   few things the app did, each stamped with performance.now(), read back ONLY when a
+   freeze is filed, as offsets from the moment the task began — "tab dockets +0.0s"
+   means that tap started it; "-6.3s" means it happened before. A one-word note per
+   door, forty deep, a few microseconds each; nothing on screen, nothing on the wire.
+   Defined here, before any other script, so every door can call it from the first
+   line of the page. Dropped at: enter · tab · vis on/off · net ok/weak/down · rt <table>
+   (every realtime message) · settle <key> · saveDK · renderDockets N · dispatch N ·
+   sheet · chunk maps · yardmap OP · scan shot · ocr · renderShop · sw swap · and the
+   last taps (the nearest element with an id). */
+window.shkCrumb=(function(){
+  var N=40, ring=[];
+  function mono(){ try{ return performance.now(); }catch(e){ return 0; } }
+  function add(s){ try{ ring.push({t:mono(),s:String(s).slice(0,26)}); if(ring.length>N)ring.shift(); }catch(e){} }
+  /* the crumbs from `from` to `to` (performance.now() ms), oldest first, at most `max` of
+     the LATEST and at most `chars` long — the ones inside the task are the culprits, they
+     come last, and when the line is too long it is the OLDEST that go. Each is
+     'label ±N.Ns' from `at`; a run of the same label folds into 'label ×3'. */
+  add.since=function(from,to,at,max,chars){
+    try{
+      var out=[], i, c, last=null;
+      for(i=0;i<ring.length;i++){ c=ring[i]; if(c.t<from||c.t>to)continue;
+        if(last&&last.s===c.s){ last.n++; continue; }
+        last={s:c.s,t:c.t,n:1}; out.push(last); }
+      out=out.slice(-(max||6)).map(function(c){ var d=(c.t-at)/1000; return c.s+(c.n>1?' ×'+c.n:'')+' '+(d<0?'-':'+')+Math.abs(d).toFixed(1)+'s'; });
+      while(out.length>1&&out.join(', ').length>(chars||96))out.shift();
+      return out.join(', ');
+    }catch(e){ return ''; }
+  };
+  add.all=function(){ return ring.slice(); };
+  try{
+    document.addEventListener('visibilitychange',function(){ add('vis '+(document.hidden?'off':'on')); },true);
+    ['pageshow','pagehide','online','offline','resume','freeze'].forEach(function(n){ (n==='resume'||n==='freeze'?document:window).addEventListener(n,function(){ add(n); },true); });
+    /* a tap is named by the nearest thing with an id — or the button it landed in, with its
+       data-scr / data-tab word when it has one (the nav's buttons carry no id) */
+    document.addEventListener('click',function(e){ try{ var t=e.target; if(!t||!t.closest)return;
+      var el=t.closest('[id]'), b=t.closest('button,a,[role="button"]'), w;
+      if(b&&(!el||b.contains(el)===false&&el.contains(b))){ w=b.getAttribute('data-scr')||b.getAttribute('data-tab')||''; add('tap '+(b.id?'#'+b.id:(b.tagName||'?').toLowerCase()+(w?' '+w:(b.className&&typeof b.className==='string'&&b.className.split(' ')[0]?' .'+b.className.split(' ')[0]:'')))); }
+      else add('tap '+(el&&el.id?'#'+el.id:(t.tagName||'?').toLowerCase())); }catch(x){} },true);
+    if(navigator.serviceWorker)navigator.serviceWorker.addEventListener('controllerchange',function(){ add('sw swap'); });
+  }catch(e){}
+  return add;
+})();
 /* #70 — apply day/night before first paint so there's no flash.
    #shift — AUTO now runs on the SHIFT CLOCK, not the sun: day 05:00–16:00,
    night 16:00–05:00, on the phone's own clock. AUTO is also the default now,
@@ -7204,6 +7253,7 @@ try{ window.shkNet=(function(){
   function set(n,why){
     if(leaving||n===S)return;
     var prev=S; S=n; note(prev+' → '+n+(why?' · '+why:''));
+    try{ shkCrumb('net '+n); }catch(e){}   /* #crumbs */
     if(n==='ok'){ fails=0; step=0; if(askT){ clearTimeout(askT); askT=null; } }
     subs.slice().forEach(function(fn){ try{ fn(n,prev); }catch(e){} });
     if(n==='ok')flush();
@@ -7344,6 +7394,30 @@ try{
       auth:{ persistSession:true, autoRefreshToken:true },  // "remember me" — the session sticks across visits
       global:(window.shkNet&&window.shkNet.fetch)?{ fetch: window.shkNet.fetch }:{}   // #netwatch — every backend call is a witness to the state of the line
     });
+    /* #crumbs — a realtime message leaves no resource-timing entry (it comes down the
+       socket), so the freeze report's `after:` line can never name one. Every channel's
+       handlers get a one-word note in front of them: 'rt user_kv', 'rt messages'…
+       Same handler, same arguments, same return, same `this`; the wrapper only ever adds
+       the note. If this dressing fails for any reason the client keeps its own channel(). */
+    try{
+      var _sbCh=window.SB.channel;
+      if(typeof _sbCh==='function') window.SB.channel=function(){
+        var ch=_sbCh.apply(this,arguments);
+        try{
+          var _on=ch.on;
+          if(typeof _on==='function') ch.on=function(){
+            var a=Array.prototype.slice.call(arguments), i=a.length-1;
+            while(i>0&&typeof a[i]!=='function')i--;
+            if(i>0&&typeof a[i]==='function'){
+              var fn=a[i], tag='rt '+((a[1]&&typeof a[1]==='object'&&a[1].table)||(a[1]&&typeof a[1]==='object'&&a[1].event)||a[0]||'?');
+              a[i]=function(){ try{ shkCrumb(tag); }catch(e){} return fn.apply(this,arguments); };
+            }
+            return _on.apply(ch,a);
+          };
+        }catch(e){}
+        return ch;
+      };
+    }catch(e){}
   }
 }catch(e){ console.warn("Supabase init skipped:", e && e.message); }
 
@@ -7978,6 +8052,7 @@ function mergeDockets(a,b){
   }
   var _soft=null;
   function settle(key){
+    try{ shkCrumb('settle '+String(key||'').replace(/^shadowhook_/,'').replace(/_[^_]*$/,'')); }catch(e){}   /* #crumbs — 'settle dockets' */
     try{
       var a=card();
       if(a && key==='shadowhook_dockets_'+a && typeof DOCKETS!=='undefined'){
@@ -8327,6 +8402,7 @@ window.docketPhotoSrc=docketPhotoSrc; window.docketPhotoBlob=docketPhotoBlob; wi
    few lines above, but a `const` can't be touched before its line runs. */
 try{ DKPHOTO.load().then(function(){ try{ DKPHOTO.migrate(); }catch(e){} try{ if(DKPHOTO.repair())saveDK(); }catch(e){} try{ if(typeof renderDockets==='function')renderDockets(); }catch(e){} }); }catch(e){}   /* #slipmend — a mended row is a real change: write it, so disk and the cloud copy carry the mark again */
 function saveDK(){try{
+  try{ shkCrumb('saveDK'); }catch(e){}   /* #crumbs */
   /* FIX — the old line capped the log at the last 500 jobs and swallowed every
      error. A full localStorage (docket photos are base64 and quota is ~5MB) threw
      QuotaExceededError, the bare catch ate it, and NOTHING was written: the app
@@ -9397,6 +9473,7 @@ function validHandle(h){return /^[A-Za-z0-9_\-]{3,20}$/.test(h)}
    to do that: it lives here now, above its only reader. */
 let alertsLoaded=false;
 function gotoTab(name){
+  try{ shkCrumb('tab '+name); }catch(e){}   /* #crumbs */
   /* #gateonly(aug31) — every tab is open: you only get here with a handle. */
   /* #shop — a product page is a mode, not a screen. Leaving the Armory with one
      open left gearShop, gearView and armoryHead pinned by inline styles, so
@@ -9429,6 +9506,7 @@ function atGate(on){
 }
 window.atGate=atGate;
 function enterApp(tab){
+  try{ shkCrumb('enter '+tab); }catch(e){}   /* #crumbs */
   document.getElementById('gatePage').style.display="none";
   atGate(false);
   /* #netwatch(sep18) — found while testing the gate on a bad line, and not a network bug at
@@ -16608,6 +16686,7 @@ function ensureRecentRow(key,data){
 }
 function ingestForecast(key,data){
   if(!key||!data)return;
+  try{ if(!_dispQuiet)shkCrumb('sheet'); }catch(e){}   /* #crumbs — one sheet on its own (realtime, the editor); a batch notes itself once below */
   try{addDispatchData(key,data);}catch(e){}
   ensureRecentRow(key,data);
   if(_dispQuiet)return;                       // #freezefix — the batch paints and re-figures once, below
@@ -16640,6 +16719,7 @@ function ingestForecast(key,data){
    reads them — declared here they would sit in the TDZ for a bot sheet landing early.) */
 function ingestForecastBatch(rows){
   const keys=[];
+  try{ shkCrumb('dispatch '+((rows&&rows.length)||0)); }catch(e){}   /* #crumbs */
   _dispQuiet=true;
   try{ (rows||[]).forEach(row=>{ try{ if(row&&row.key&&row.data){ ingestForecast(row.key,row.data); keys.push(row.key); } }catch(e){} }); }
   finally{ _dispQuiet=false; }
@@ -18486,6 +18566,7 @@ window.shkChunk=(function(){
     var list=blocks(name); if(!list.length)return false;     /* asked before the parser reached them — the idle door tries again */
     if(truncated())return false;                              /* #eofguard — a sliced block would throw, and the rest of the app is missing too */
     done[name]=1;
+    try{ shkCrumb('chunk '+name); }catch(e){}   /* #crumbs — compiling the vault is one synchronous task */
     var t0=performance.now(), n=0, h=hooks[name]||{};
     try{ if(h.before)h.before(); }catch(e){}
     for(var i=0;i<list.length;i++){ var s=list[i];
@@ -18530,6 +18611,7 @@ shkChunk.on('maps',(function(){ var rp=null, asked=false; return {
   var core=openYardMap;                                        /* the photo / "pending" viewer above */
   var gate=function(op,label){
     if(gate._in)return core(op,label);                         /* reached as `orig` from a vault wrapper → the core viewer */
+    try{ shkCrumb('yardmap '+op); }catch(e){}                  /* #crumbs */
     try{ if(window.shkChunk)shkChunk.now('maps'); }catch(e){}
     if(window.openYardMap!==gate){                             /* the vault is up: its wrappers now sit on top of this gate */
       gate._in=true; try{ return window.openYardMap(op,label); } finally{ gate._in=false; }
@@ -18578,6 +18660,7 @@ shkChunk.idle('maps',6000);                                    /* a few seconds 
   vp.addEventListener('wheel',e=>{e.preventDefault();ymZoomAt({x:e.clientX,y:e.clientY},e.deltaY<0?1.15:.87);ymApply();},{passive:false});
 })();
 function renderDockets(){
+  try{ shkCrumb('renderDockets '+DOCKETS.length); }catch(e){}   /* #crumbs */
   const el=document.getElementById('docketList');el.innerHTML="";
   if(!DOCKETS.length){
     el.innerHTML='<div class="empty-state"><div class="es-ico">▣</div><p class="sub">Your log is empty. <b style="color:var(--copper-hi)">Scan your first docket</b> after your next job — snap the slip and the system reads it. It lands here, feeds your pay &amp; hours, and earns your first mark.</p></div>';
@@ -20303,6 +20386,7 @@ function shopScore(p,Q){
 function renderShop(){
   const rail=document.getElementById('shopRail'), grid=document.getElementById('shopGrid');
   if(!rail||!grid)return;
+  try{ shkCrumb('renderShop'); }catch(e){}   /* #crumbs */
   try{ shopKmNote(); }catch(e){}   /* #freshshelf — the Keymaster's own line under the grid */
   /* #shop2 — SAVED rides at the front of the shelves. It only appears once
      there is something on it, so an empty shelf never taunts anybody. */
@@ -29953,6 +30037,7 @@ async function shotDecode(f,max){
   return img;                                                                                 /* no bitmaps: draw the <img>; loadShot revokes */
 }
 async function loadShot(f){
+  try{ shkCrumb('scan shot'); }catch(e){}   /* #crumbs */
   const src=await shotDecode(f,1600);                        /* ImageBitmap at 1600, upright — or an <img> off an object URL */
   const w=src.width||src.naturalWidth, h=src.height||src.naturalHeight;
   const drop=()=>{ try{ if(src.close)src.close(); else if(src.src&&/^blob:/.test(src.src))URL.revokeObjectURL(src.src); }catch(e){} };
@@ -30010,6 +30095,7 @@ async function ocrDocket(img){
     if(m&&m.status==='recognizing text')scanSt("Reading the docket\u2026 "+Math.round((m.progress||0)*100)+"%");
   }};
   if(TESS_OPTS)Object.assign(opts,TESS_OPTS);
+  try{ shkCrumb('ocr'); }catch(e){}   /* #crumbs */
   const r=await Tesseract.recognize(img,'eng',opts);
   return (r&&r.data&&r.data.text)||"";
 }
@@ -44785,6 +44871,7 @@ html.arcade .arc-aurora i{mix-blend-mode:normal;
       hasLT=true;
       new PerformanceObserver(function(list){ list.getEntries().forEach(function(en){
         if(en.duration>=2000){ var at=''; try{ var a=en.attribution&&en.attribution[0]; at=a?[a.containerType,a.containerName||a.containerSrc].filter(Boolean).join(' '):''; }catch(x){}
+          if(at==='window')at='';   /* #crumbs — every task is "window" unless an iframe ran it; the word bought nothing and cost the tail of the report */
           file(en.duration,'long task',at,en.startTime); }
       }); }).observe({type:'longtask',buffered:false});
     }
@@ -44795,17 +44882,22 @@ html.arcade .arc-aurora i{mix-blend-mode:normal;
       var key=what+'|'+scr; if(seen[key]||++filed>3)return; seen[key]=1;
       var open=''; try{ var o=document.querySelector('.sheet.on,.dlg.on,#roomView.on,#gearView.on,[id$="View"].on'); open=o?(' · '+(o.id||o.className.split(' ')[0])+' open'):''; }catch(e){}
       var loader=''; try{ loader=document.getElementById('boot')?' · loader up':''; }catch(e){}
-      var anims=0, names=''; try{ var by={}; document.getAnimations().forEach(function(a){ var n=a.animationName||'?'; by[n]=(by[n]||0)+1; anims++; });
+      /* #crumbs — a transition has no animationName; it used to count as "?" (sep 22: "18×?").
+         It has a transitionProperty, so it reads as ~opacity, ~color, ~transform… now. */
+      var anims=0, names=''; try{ var by={}; document.getAnimations().forEach(function(a){ var n=a.animationName||(a.transitionProperty?'~'+a.transitionProperty:'?'); by[n]=(by[n]||0)+1; anims++; });
         names=Object.keys(by).sort(function(a,b){ return by[b]-by[a]; }).slice(0,6).map(function(n){ return by[n]+'×'+n; }).join(' '); }catch(e){}
       var gifs=0; try{ gifs=[].filter.call(document.images,function(i){ var r=i.getBoundingClientRect(); return /\.gif(\?|$)/i.test(i.currentSrc||i.src||'')&&r.bottom>0&&r.top<innerHeight; }).length; }catch(e){}
       var dom=0; try{ dom=document.getElementsByTagName('*').length; }catch(e){}
       /* the suspects, the build and the phone come first; the animation roll-call last,
          so error_log's 300-char cut can only ever trim the names */
-      var msg=what+' '+(ms/1000).toFixed(1)+'s on '+(scr||'?')+open+loader
-        +' · after: '+(suspects(startAt)||'?')
-        +' · '+buildTag()
-        +' · '+Math.round((Date.now()-T0)/1000)+'s after boot · '+(standalone?'home-screen':'browser tab')+' · '+uaShort()
-        +' · '+dom+' nodes · '+anims+' animations'+(names?' ('+names+')':'')+(gifs?' · '+gifs+' gifs in view':'')+(extra?' · '+extra:'');
+      /* #crumbs — the trail: the 8 s before the task began, and everything inside it. It takes
+         the room left between the suspects and the phone line — error_log keeps 300 characters,
+         and the roll-call's names were always the part to give — but never less than 48, so a
+         boot report with four fetches in `after:` still says what the app was doing. */
+      var head=what+' '+(ms/1000).toFixed(1)+'s on '+(scr||'?')+open+loader+' · after: '+(suspects(startAt)||'?');
+      var tail=' · '+buildTag()+' · '+Math.round((Date.now()-T0)/1000)+'s after boot · '+(standalone?'home-screen':'browser tab')+' · '+uaShort()+' · '+dom+' nodes · '+anims+' animations';
+      var did=''; try{ if(window.shkCrumb&&shkCrumb.since&&startAt>0)did=shkCrumb.since(startAt-8000,startAt+(ms||0),startAt,6,Math.max(48,300-head.length-tail.length-8)); }catch(e){}
+      var msg=head+' · did: '+(did||'nothing noted')+tail+(names?' ('+names+')':'')+(gifs?' · '+gifs+' gifs in view':'')+(extra?' · '+extra:'');
       try{ if(typeof window.shkAlert==='function')window.shkAlert('freeze',msg); }catch(e){}
       try{ console.warn('[freeze]',msg); }catch(e){}
     }catch(e){}
