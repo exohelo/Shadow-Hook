@@ -113,6 +113,25 @@ select.field{appearance:none;-webkit-appearance:none}
 .vrow .n i{display:block;font-style:normal;font-size:11.5px;color:var(--steel)}
 .vrow .m{font-family:'IBM Plex Mono',monospace;font-size:13px}
 
+/* ---- #svcpics (sep24) — banner cards, the provider page, the photo pickers ---- */
+.svc-card{cursor:pointer;overflow:hidden}
+.svc-ban{position:relative;aspect-ratio:3/1;background:linear-gradient(135deg,var(--plate-3),var(--plate));border-bottom:1px solid var(--line-soft);display:grid;place-items:center;font-size:44px}
+.svc-ban img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.svc-ban .cat{position:absolute;left:10px;bottom:8px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;background:rgba(5,6,7,.66);color:var(--bone);padding:3px 8px;border-radius:8px;backdrop-filter:blur(3px)}
+.svc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px}
+.svc-grid .ph{position:relative;aspect-ratio:1/1;border-radius:10px;overflow:hidden;border:1px solid var(--line-soft);background:var(--plate-3);cursor:pointer}
+.svc-grid .ph img{width:100%;height:100%;object-fit:cover;display:block}
+.svc-grid .ph .x{position:absolute;top:4px;right:4px;width:24px;height:24px;border-radius:50%;border:0;background:rgba(5,6,7,.75);color:#fff;font-size:13px;line-height:24px;text-align:center;cursor:pointer}
+.svc-grid .add{display:grid;place-items:center;font-size:26px;color:var(--steel);border-style:dashed}
+.svc-hero{position:relative;aspect-ratio:3/1;border-radius:14px;overflow:hidden;border:1px solid var(--line-soft);background:linear-gradient(135deg,var(--plate-3),var(--plate));display:grid;place-items:center;font-size:52px;margin-bottom:12px}
+.svc-hero img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.pick-ban{position:relative;aspect-ratio:3/1;border-radius:12px;border:1px dashed var(--line);background:var(--plate-3);display:grid;place-items:center;color:var(--steel);font-size:13px;cursor:pointer;overflow:hidden;margin:4px 0 10px}
+.pick-ban img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.pick-ban .x{position:absolute;top:6px;right:6px;width:26px;height:26px;border-radius:50%;border:0;background:rgba(5,6,7,.75);color:#fff;cursor:pointer}
+#lbx{position:fixed;inset:0;z-index:95;background:rgba(3,4,6,.94);display:none;align-items:center;justify-content:center}
+#lbx.on{display:flex}
+#lbx img{max-width:96vw;max-height:92vh;object-fit:contain;border-radius:8px}
+#lbx .c{position:absolute;top:14px;right:16px;width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:rgba(20,22,28,.9);color:#fff;font-size:18px;cursor:pointer}
 /* ---- sheets ---- */
 .sheet{position:fixed;inset:0;z-index:60;background:rgba(5,6,7,.72);backdrop-filter:blur(4px);display:flex;align-items:flex-end;justify-content:center;opacity:0;visibility:hidden;transition:.22s}
 .sheet.on{opacity:1;visibility:visible}
@@ -340,10 +359,20 @@ select.field{appearance:none;-webkit-appearance:none}
   <span class="lbl">YOUR RATE — PLAIN WORDS</span><input class="field" id="fRate" maxlength="60" placeholder="$40/hr · free quotes">
   <span class="lbl">WHERE YOU WORK</span><input class="field" id="fArea" maxlength="60" placeholder="San Pedro · Long Beach · Wilmington">
   <span class="lbl">PHONE — WHERE THE CALLS LAND</span><input class="field" id="fPhone" inputmode="tel" placeholder="(310) 555-0199">
+  <span class="lbl">BANNER PHOTO — THE WIDE SHOT ON YOUR CARD</span>
+  <div class="pick-ban" id="fBanPick"><span id="fBanHint">📷 tap to add a banner · wide shots look best</span></div>
+  <input type="file" id="fBanFile" accept="image/*" hidden>
+  <span class="lbl">PHOTOS OF YOUR WORK — UP TO 8</span>
+  <div class="svc-grid" id="fGal"></div>
+  <input type="file" id="fGalFile" accept="image/*" multiple hidden>
   <div class="msgline" id="fMsg"></div>
   <button class="btn" id="fGo" style="margin-top:10px;width:100%">⚓ SEND IT FOR APPROVAL</button>
   <button class="btn-ghost" style="width:100%;margin-top:8px" onclick="document.getElementById('postSheet').classList.remove('on')">Never mind</button>
 </div></div>
+
+<!-- #svcpics — one provider, the whole page: banner, the work, the word, the phone -->
+<div class="sheet" id="svcSheet"><div class="sheet-card" id="svcBody"></div></div>
+<div id="lbx"><button class="c" type="button" onclick="document.getElementById('lbx').classList.remove('on')">✕</button><img alt=""></div>
 
 <!-- the sign-in gate -->
 <div class="sheet" id="authSheet"><div class="sheet-card">
@@ -490,33 +519,54 @@ function boardDraw(){
   const host=$('board');
   const rows=LIVE.filter(t=>FILTER==='all'||t.category===FILTER);
   if(!rows.length){host.innerHTML='';$('boardNote').style.display='';$('boardNote').textContent='No hands on the board yet — be the first.';return;}
+  /* #svcpics — a banner card per provider: the wide shot (or the trade's mark when there
+     isn't one yet), the headline, the stars. The whole card opens the provider's page. */
   host.innerHTML=rows.map(t=>{
-    const c=catOf(t.category),tl=_tel(t.phone);
-    return '<div class="card"><div class="card-h">'+c[1]+' '+esc(t.headline||'')
-      +'<span class="tag">'+esc(t.handle||'')+'</span></div>'
+    const c=catOf(t.category), s=RV.ok?rvStats(t.user_id):{n:0};
+    return '<div class="card svc-card" data-open="'+esc(t.user_id)+'" role="button" tabindex="0">'
+      +'<div class="svc-ban">'+(t.banner?'<img src="'+esc(t.banner)+'" alt="" loading="lazy">':c[1])+'<span class="cat">'+c[1]+' '+esc(c[2])+'</span></div>'
       +'<div class="card-b">'
-      +'<div class="sub">'+c[2]+(t.area?' · '+esc(t.area):'')+'</div>'
-      +(t.blurb?'<div class="sub" style="margin-top:5px;color:#a9adbf;line-height:1.6">'+esc(t.blurb)+'</div>':'')
-      +(t.rate?'<div style="margin-top:7px"><b style="color:var(--copper-hi,#4de2ff)">'+esc(t.rate)+'</b></div>':'')
-      +(RV.ok?(function(){const s=rvStats(t.user_id);
-          return s.n?'<div style="margin-top:7px"><span style="color:#ffd53d;letter-spacing:2px">'+starStr(s.avg)+'</span> <b>'+s.avg.toFixed(1)+'</b> <span class="sub">· '+s.n+' review'+(s.n===1?'':'s')+'</span></div>'
-                    :'<div class="sub" style="margin-top:7px">no reviews yet — hired them? leave the first</div>';})():'')
-      +'<div class="stat-row">'
-      +(tl?'<a class="btn-line gold" style="text-decoration:none" href="tel:'+tl+'">☎ CALL</a>'
-          +'<a class="btn-line" style="text-decoration:none" href="sms:'+tl+'">💬 TEXT</a>':'')
-      +(RV.ok?'<button class="btn-line" data-rev="'+esc(t.user_id)+'">📝 REVIEWS</button>':'')
-      +(ME.km?'<button class="btn-line red" data-pull="'+esc(t.user_id)+'">✕ PULL</button>':'')
-      +'</div></div></div>';
+      +'<div style="display:flex;gap:8px;align-items:baseline"><b style="font-size:16px;flex:1">'+esc(t.headline||'')+'</b><span class="tag">'+esc(t.handle||'')+'</span></div>'
+      +'<div class="sub" style="margin-top:3px">'+(t.area?esc(t.area):'')+(t.rate?(t.area?' · ':'')+'<b style="color:var(--copper-hi,#4de2ff)">'+esc(t.rate)+'</b>':'')+'</div>'
+      +(s.n?'<div style="margin-top:5px"><span style="color:#ffd53d;letter-spacing:2px">'+starStr(s.avg)+'</span> <b>'+s.avg.toFixed(1)+'</b> <span class="sub">· '+s.n+' review'+(s.n===1?'':'s')+'</span></div>'
+          :'<div class="sub" style="margin-top:5px">no reviews yet</div>')
+      +(Array.isArray(t.gallery)&&t.gallery.length?'<div class="sub" style="margin-top:3px">📷 '+t.gallery.length+' photo'+(t.gallery.length===1?'':'s')+' of their work</div>':'')
+      +'</div></div>';
   }).join('');
-  host.querySelectorAll('[data-rev]').forEach(b=>b.addEventListener('click',()=>revOpen(b.dataset.rev)));
-  host.querySelectorAll('[data-pull]').forEach(b=>b.addEventListener('click',async()=>{
-    const t=LIVE.find(x=>x.user_id===b.dataset.pull);if(!t)return;
+  host.querySelectorAll('[data-open]').forEach(b=>{
+    b.addEventListener('click',()=>svcOpen(b.dataset.open));
+    b.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();svcOpen(b.dataset.open);}});
+  });
+}
+/* ═══ #svcpics — THE PROVIDER'S PAGE ═══ */
+function svcOpen(uid){
+  const t=LIVE.find(x=>x.user_id===uid); if(!t)return;
+  const c=catOf(t.category), tl=_tel(t.phone), s=RV.ok?rvStats(uid):{n:0};
+  const gal=Array.isArray(t.gallery)?t.gallery.filter(u=>typeof u==='string'&&/^https:\/\//.test(u)):[];
+  $('svcBody').innerHTML=
+     '<div class="svc-hero">'+(t.banner?'<img src="'+esc(t.banner)+'" alt="">':c[1])+'</div>'
+    +'<div style="display:flex;gap:8px;align-items:baseline"><b style="font-family:\'Anton\',sans-serif;font-size:22px;letter-spacing:.04em;flex:1">'+esc(t.headline||'')+'</b><span class="tag">'+esc(t.handle||'')+'</span></div>'
+    +'<div class="sub" style="margin-top:4px">'+c[1]+' '+esc(c[2])+(t.area?' · '+esc(t.area):'')+'</div>'
+    +(s.n?'<div style="margin-top:6px"><span style="color:#ffd53d;letter-spacing:2px;font-size:16px">'+starStr(s.avg)+'</span> <b>'+s.avg.toFixed(1)+'</b> <span class="sub">· '+s.n+' review'+(s.n===1?'':'s')+'</span></div>':'')
+    +(t.blurb?'<p style="margin-top:12px;line-height:1.65;color:#d9dce6">'+esc(t.blurb)+'</p>':'')
+    +(t.rate?'<div style="margin-top:10px"><span class="lbl">THE RATE</span><div><b style="font-size:17px;color:var(--copper-hi,#4de2ff)">'+esc(t.rate)+'</b></div></div>':'')
+    +(gal.length?'<span class="lbl" style="margin-top:14px">THEIR WORK</span><div class="svc-grid">'+gal.map(u=>'<div class="ph" data-big="'+esc(u)+'"><img src="'+esc(u)+'" alt="" loading="lazy"></div>').join('')+'</div>':'')
+    +'<div class="stat-row" style="margin-top:16px">'
+    +(tl?'<a class="btn-line gold" style="text-decoration:none" href="tel:'+tl+'">☎ CALL</a><a class="btn-line" style="text-decoration:none" href="sms:'+tl+'">💬 TEXT</a>':'')
+    +(RV.ok?'<button class="btn-line" id="svcRev" type="button">📝 REVIEWS'+(s.n?' ('+s.n+')':'')+'</button>':'')
+    +(ME.km?'<button class="btn-line red" id="svcPull" type="button">✕ PULL</button>':'')
+    +'</div>'
+    +'<button class="btn-ghost" style="width:100%;margin-top:12px" onclick="document.getElementById(\'svcSheet\').classList.remove(\'on\')">Close</button>';
+  $('svcBody').querySelectorAll('[data-big]').forEach(d=>d.addEventListener('click',()=>{const l=$('lbx');l.querySelector('img').src=d.dataset.big;l.classList.add('on');}));
+  const rb=$('svcRev'); if(rb)rb.addEventListener('click',()=>revOpen(uid));
+  const pb=$('svcPull'); if(pb)pb.addEventListener('click',async()=>{
     if(!confirm('Pull '+(t.handle||'this hand')+'’s post off the board? They’ll be told to rework it.'))return;
     try{const r=await SB.from('trade_posts').update({status:'passed'}).eq('user_id',t.user_id);if(r.error)throw r.error;
       try{await SB.rpc('km_warn',{p_handle:t.handle,p_msg:'Your service post was pulled from the board. Rework it and send it through again.'});}catch(e2){}
-      toast('✕ pulled');await load();kmDraw();chipsDraw();boardDraw();}
+      toast('✕ pulled');$('svcSheet').classList.remove('on');await load();kmDraw();chipsDraw();boardDraw();}
     catch(e){toast('✗ '+e.message);shkAlert('pull',e);}
-  }));
+  });
+  $('svcSheet').classList.add('on');
 }
 function kmDraw(){
   const card=$('kmCard');if(!card)return;
@@ -530,11 +580,14 @@ function kmDraw(){
       +'<span class="pill '+(kindOf(t)==='product'?'amb':'cop')+'">'+(kindOf(t)==='product'?'📦 PRODUCT':'🛠 SERVICE')+'</span>'
       +'<i>'+esc(t.handle||'')+' · '+c[2]+' · '+esc(t.phone||'—')+(t.area?' · '+esc(t.area):'')+(t.rate?' · '+esc(t.rate):'')
       +(t.blurb?' · “'+esc(t.blurb)+'”':'')
-      +(kindOf(t)==='product'?'<br>🤝 Armory-worthy? Recruit them as a vendor from the Dock Office — or point an ambassador at them.':'')+'</i></span>'
+      +(kindOf(t)==='product'?'<br>🤝 Armory-worthy? Recruit them as a vendor from the Dock Office — or point an ambassador at them.':'')+'</i>'
+      +((t.banner||(Array.isArray(t.gallery)&&t.gallery.length))?'<div class="svc-grid" style="grid-template-columns:repeat(4,1fr)">'+[t.banner].concat(Array.isArray(t.gallery)?t.gallery:[]).filter(Boolean).map(u=>'<div class="ph" data-big="'+esc(u)+'"><img src="'+esc(u)+'" alt="" loading="lazy"></div>').join('')+'</div>':'')
+      +'</span>'
       +'<button class="btn-line gold km-r" data-do="live" data-u="'+esc(t.user_id)+'">✓ POST IT</button>'
       +'<button class="btn-line km-r" data-do="pass" data-u="'+esc(t.user_id)+'">✕ PASS</button>'
       +'</div>';
   }).join('');
+  host.querySelectorAll('[data-big]').forEach(d=>d.addEventListener('click',()=>{const l=$('lbx');l.querySelector('img').src=d.dataset.big;l.classList.add('on');}));
   host.querySelectorAll('button.km-r').forEach(b=>b.addEventListener('click',async()=>{
     const t=PEND.find(x=>x.user_id===b.dataset.u);if(!t)return;
     const on=b.dataset.do==='live';
@@ -614,9 +667,76 @@ function revOpen(uid){
   }));
   $('revSheet').classList.add('on');
 }
+/* ═══ #svcpics — THE PICTURES ON THE FORM ═══
+   One banner (the wide shot on the card) and up to 8 photos of the work. Each is shrunk on
+   the phone the way the Armory shrinks a product shot — 1200 px on the long side, JPEG —
+   and goes up to the chat-media bucket under services/<uid>/ when the post is sent. A
+   picture already on the post rides along as its URL; one taken off is deleted from the
+   bucket after the save lands, never before. */
+const GAL_MAX=8;
+let F_BAN=null;      /* {url} kept · {blob,prev} new · null none */
+let F_GAL=[];        /* [{url} | {blob,prev}] */
+let F_DROP=[];       /* URLs taken off — removed from the bucket after the save */
+function shrinkPhoto(file){ return new Promise(res=>{
+  try{
+    const img=new Image(); let src=null; const drop=()=>{ try{ if(src)URL.revokeObjectURL(src); }catch(x){} src=null; };
+    img.onload=()=>{ try{
+      const M=1200, r=Math.min(1, M/Math.max(img.width,img.height));
+      const c=document.createElement('canvas');
+      c.width=Math.max(1,Math.round(img.width*r)); c.height=Math.max(1,Math.round(img.height*r));
+      c.getContext('2d').drawImage(img,0,0,c.width,c.height); drop();
+      c.toBlob(b=>res(b||null),'image/jpeg',0.85);
+    }catch(e){ drop(); res(null); } };
+    img.onerror=()=>{ drop(); res(null); };
+    src=URL.createObjectURL(file); img.src=src;
+  }catch(e){ res(null); }
+}); }
+function picSrc(x){ return x?(x.url||x.prev||''):''; }
+function picsDraw(){
+  const bp=$('fBanPick'); if(bp){
+    bp.innerHTML=F_BAN?'<img src="'+esc(picSrc(F_BAN))+'" alt=""><button class="x" type="button" id="fBanX" aria-label="take the banner off">✕</button>'
+                      :'<span id="fBanHint">📷 tap to add a banner · wide shots look best</span>';
+    const x=$('fBanX'); if(x)x.addEventListener('click',e=>{e.stopPropagation(); if(F_BAN&&F_BAN.url)F_DROP.push(F_BAN.url); F_BAN=null; picsDraw();});
+  }
+  const g=$('fGal'); if(g){
+    g.innerHTML=F_GAL.map((x,i)=>'<div class="ph"><img src="'+esc(picSrc(x))+'" alt=""><button class="x" type="button" data-i="'+i+'" aria-label="take this photo off">✕</button></div>').join('')
+      +(F_GAL.length<GAL_MAX?'<div class="ph add" id="fGalAdd" role="button" title="add photos">＋</div>':'');
+    g.querySelectorAll('button.x').forEach(b=>b.addEventListener('click',()=>{const x=F_GAL.splice(+b.dataset.i,1)[0]; if(x&&x.url)F_DROP.push(x.url); picsDraw();}));
+    const ad=$('fGalAdd'); if(ad)ad.addEventListener('click',()=>$('fGalFile').click());
+  }
+}
+$('fBanPick').addEventListener('click',()=>$('fBanFile').click());
+$('fBanFile').addEventListener('change',async e=>{
+  const f=e.target.files&&e.target.files[0]; e.target.value=''; if(!f)return;
+  const b=await shrinkPhoto(f); if(!b){toast('✗ that picture wouldn’t read');return;}
+  if(F_BAN&&F_BAN.url)F_DROP.push(F_BAN.url);
+  F_BAN={blob:b,prev:URL.createObjectURL(b)}; picsDraw();
+});
+$('fGalFile').addEventListener('change',async e=>{
+  const fs=Array.from(e.target.files||[]); e.target.value=''; if(!fs.length)return;
+  for(const f of fs){ if(F_GAL.length>=GAL_MAX){toast('that’s the '+GAL_MAX+' — take one off to add another');break;}
+    const b=await shrinkPhoto(f); if(b)F_GAL.push({blob:b,prev:URL.createObjectURL(b)}); }
+  picsDraw();
+});
+async function picUp(blob){
+  const path='services/'+ME.uid+'/'+Date.now()+'-'+Math.random().toString(36).slice(2,8)+'.jpg';
+  const up=await SB.storage.from('chat-media').upload(path,blob,{contentType:'image/jpeg',cacheControl:'31536000'});
+  if(up.error)throw new Error('photo upload failed: '+up.error.message);
+  const pu=SB.storage.from('chat-media').getPublicUrl(path);
+  const url=pu&&pu.data&&pu.data.publicUrl; if(!url)throw new Error('photo upload failed: no address came back');
+  return url;
+}
+function picDropAll(){
+  const keys=F_DROP.map(u=>{const k=String(u||'').match(/\/chat-media\/(services\/[^?#]+)/);return k?decodeURIComponent(k[1]):null;}).filter(Boolean);
+  F_DROP=[]; if(!keys.length)return;
+  SB.storage.from('chat-media').remove(keys).then(()=>{},()=>{});
+}
 function formOpen(prev){
   fCatFill(prev?prev.category:null);
   vendHint();
+  F_BAN=(prev&&prev.banner)?{url:prev.banner}:null;
+  F_GAL=(prev&&Array.isArray(prev.gallery))?prev.gallery.filter(u=>typeof u==='string').map(u=>({url:u})):[];
+  F_DROP=[]; picsDraw();
   $('fHead').value=prev?(prev.headline||''):'';
   $('fBlurb').value=prev?(prev.blurb||''):'';
   $('fRate').value=prev?(prev.rate||''):'';
@@ -636,10 +756,16 @@ $('fGo').addEventListener('click',async()=>{
   $('fGo').disabled=true;m.textContent='';
   try{
     const cat=$('fCat').value;
+    /* #svcpics — new pictures go up first; a failed upload stops the save with the reason */
+    m.textContent=(F_BAN&&F_BAN.blob)||F_GAL.some(x=>x.blob)?'… sending the pictures up':'';
+    if(F_BAN&&F_BAN.blob){ F_BAN={url:await picUp(F_BAN.blob)}; }
+    for(let i=0;i<F_GAL.length;i++){ if(F_GAL[i].blob)F_GAL[i]={url:await picUp(F_GAL[i].blob)}; }
     const row={user_id:ME.uid,handle:ME.handle,name:null,kind:(PCATS.some(c=>c[0]===cat)?'product':'service'),category:cat,headline:head,blurb:blurb,
-      rate:($('fRate').value||'').trim()||null,area:($('fArea').value||'').trim()||null,phone:phone,status:'pending'};
+      rate:($('fRate').value||'').trim()||null,area:($('fArea').value||'').trim()||null,phone:phone,status:'pending',
+      banner:F_BAN?F_BAN.url:null,gallery:F_GAL.map(x=>x.url)};
     const r=await SB.from('trade_posts').upsert(row,{onConflict:'user_id'});
     if(r.error)throw r.error;
+    picDropAll();
     $('postSheet').classList.remove('on');
     toast('⚓ Sent in for approval — word comes when it’s on the board');
     await load();mineDraw();boardDraw();
@@ -683,6 +809,7 @@ $('aGo').addEventListener('click',async()=>{
 });
 $('chips').addEventListener('click',e=>{const b=e.target.closest('button');if(b){FILTER=b.dataset.v;chipsDraw();boardDraw();}});
 document.querySelectorAll('.sheet').forEach(s=>s.addEventListener('click',e=>{if(e.target===s)s.classList.remove('on');}));
+$('lbx').addEventListener('click',e=>{if(e.target.id==='lbx')e.currentTarget.classList.remove('on');});
 boot();
 
 </script>
