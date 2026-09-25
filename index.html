@@ -8,7 +8,8 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='sep24read';   /* sep 24 — NO SLIP, NO SWIPE: a docket typed by hand seals for the record at 0 ⬡ and never moves the live board; only a scanned slip (read clean, or shot then fixed) does (#slipfirst). The reader: shots cut to the guide frame (#framecrop), 2200 px to Tesseract (#inkup), ship names snapped to every sheet + registry hull through the OCR swap table (#shipsnap). */
+window.SHK_BUILD='sep24clock';   /* sep 24 (2nd) — THE SLIP'S CLOCK DECIDES: a docket moves the live board only when the slip itself printed today's date and an AM/PM start on the side of the running board (AM → DAY, PM → NIGHT). A date or shift the app filled in, guessed, or the form defaulted never counts (#slipclock). */
+/* was: sep24read */   /* sep 24 — NO SLIP, NO SWIPE: a docket typed by hand seals for the record at 0 ⬡ and never moves the live board; only a scanned slip (read clean, or shot then fixed) does (#slipfirst). The reader: shots cut to the guide frame (#framecrop), 2200 px to Tesseract (#inkup), ship names snapped to every sheet + registry hull through the OCR swap table (#shipsnap). */
 /* sep 23 (4th) — THE MAP BOX ZOOMS, FOOD GETS A DOOR: pinch, double-tap or ± right in the harbor card (no full screen); labels hold their size as you zoom and anything that would sit on top of another label or icon steps aside until there is room (#hmdeclutter); the 🗺 badges are off the map; the dock list is always open (no FULL LIST button); ⤢ FULL SCREEN is now 🍔 FOOD — the whole roll in a sheet; the food strip is off the Ports tab and out of the dock sheet — a casual sees the food close by right after a scanned docket seals (#ftscan). Before it, sep23trucks — sep 23 (3rd) — THE ROACH COACH ROLL: food trucks under the dock list on the Ports tab, FEATURED first then by taps; the trucks closest to a dock inside its sheet; a truck's sheet with menu, hours and ➤ GO (#foodtrucks #ftnear). Trucks run their own desk at /foodtruck. Before it, sep23pull — sep 23 (2nd) — the dock sheet loses its Close button: pull it down from the top, or grab the handle — finger or mouse — and a tap on the handle still closes (#hdpull). Before it, sep23sky2 — sep 23 — THE HARBOR on the Ports tab: a sky view of San Pedro Bay drawn from the real coastline, every dock a tap, the two ports and Terminal Island tappable for their stories, ⤢ full screen with pinch (#harbor); the dock sheet is now the one place a dock lives — history, yard map, gates, tonight's board, who's working — and the thirty cards fold to an index behind FULL LIST (#docklist); the sheet opens on the dock from the sky with its yard map pinned as a peek card — tap it for the map (#dockhero); full screen on a tall screen gets the bridge and the cranes over the map with the date and the weather on a strip beneath (#skyline). Before it, sep22crumb — sep 22 (2nd) — every freeze report now says what the app was DOING when it froze — the last taps, tab switches, saves, wakes and realtime messages, as offsets from the task (#crumbs); transitions are named in the roll-call. Before it, sep22zoom — sep 22 — tap the product picture: it opens full screen, zooms (pinch · tap · wheel), pans, and swipes through every shot the piece carries (#gearzoom). Before it, sep21del — sep 21 (6th) — every delete a member can see now checks it really went, and alarms when the server kept it (#delcheck); the burns and the close ride WIPE-MESSAGES.sql. Before it, sep21zim — sep 21 (5th) — Zim rails confirmed by the Keymaster: they go in the dock-side gate, now labeled "Dockwork, rails & clerks"; its gate check is retired (#gatecheck). Before it, sep21gates — sep 21 (4th) — the gate check: the three gates nobody has confirmed ask the crews who worked them (#gatecheck). Before it, sep21docks — NYK back on YTI, and the docks the old Port Maps app had that we didn't: Pier J berths 246-247, SSA Outer Harbor (LA 54-55), Pasha on Terminal Island (TI 206-209) (#oldapp). Before it, sep21ports — YTI on Terminal Island + the Terminal Island spans (#tiberths). Before it, sep21perf — the freeze fixes (#v5slice #calmemo #knntop #logonce #fmtonce) and the mirror fixes (#samesheets #onlyedits). The sep 19–20 builds went out still stamped sep18net; the byte size in a report (3943k was the waiting-list build) tells those apart. */
 /* #freezev3 — keep enough resource timings for the report to name what landed before a
    freeze: the boot alone fires ~100 requests, and the default buffer (250) then stops
@@ -11145,10 +11146,52 @@ function docketWin(j){
     return {iso:iso,win:win,key:key,ap:(win==="DAY"?"AM":"PM"),said:said};
   }catch(e){return null}
 }
+/* ═══ #slipclock(sep24) — THE SLIP'S OWN DATE AND CLOCK DECIDE, NOTHING ELSE ═══
+   THE NIGHT IT BROKE (again): Thu 9/24 NIGHT, 5:57 PM — C4973 walked the reel from
+   Y4841 off a slip. #ownwindow reads the window off j.date + j.shift — but on the scan
+   door those two fields are FILLED IN when the reader misses them: no date → todayISO(),
+   no shift → the window running on the clock (NIGHT at 5:57), far-future date → today,
+   no AM/PM → guessed. So a morning slip (or yesterday's) whose date/AM-PM glared off
+   came out "tonight's NIGHT docket" and #ownwindow waved it through. The form door is
+   the same: its date defaults to today and its shift to the clock.
+   The rule now — a docket moves the live board ONLY when the slip ITSELF printed:
+     · a date the reader actually read, and it is TODAY (LA), and
+     · a start time with AM/PM actually printed, on the side of the running board:
+         5:00 AM – 3:59 PM → DAY board   ·   4:00 PM – 11:59 PM → NIGHT board
+         midnight – 4:59 AM (hoot owl) → never the live board (its slip is dated tomorrow)
+   Anything the app filled in, guessed, or the casual typed over the form does not count.
+   Fails CLOSED. The seal, the hours and the ⬡ are untouched — this gates the reel only. */
+function slipProof(p){
+  try{ if(!p)return null;
+    const date=(p.dateRead===true&&/^\d{4}-\d{2}-\d{2}$/.test(String(p.date||"")))?String(p.date):null;
+    const start=(p.apRead===true&&/^\d{2}:\d{2}$/.test(String(p.start||"")))?String(p.start):null;
+    return {date:date,start:start};
+  }catch(e){return null}
+}
+function slipSide(start){ const h=parseInt(String(start||"").slice(0,2),10);
+  if(!(h>=0&&h<=23))return null; return h<5?"HOOT":(h<16?"DAY":"NIGHT"); }
+function slipLiveCheck(j,wk){
+  try{
+    wk=wk||winKey(); if(!wk)return {ok:false,why:null};
+    const live=(String(wk).indexOf("_DAY")>0)?"DAY":"NIGHT";
+    const s=j&&j.slip, md=function(iso){return String(+iso.slice(5,7))+"/"+String(+iso.slice(8,10));};
+    if(!s||!s.date)return {ok:false,why:"the reader couldn’t read the date printed on the slip, so it can’t prove it’s today’s"};
+    if(s.date!==todayISO())return {ok:false,why:"the slip is dated "+md(s.date)+", not today"};
+    if(!s.start)return {ok:false,why:"the reader couldn’t read the AM/PM start time on the slip, so it can’t tell day from night"};
+    const side=slipSide(s.start);
+    if(side!==live){
+      const t=(function(){try{return fmtStartLong(s.start);}catch(e){return s.start;}})();
+      return {ok:false,why:"the slip starts "+t+" — "+(side==="HOOT"?"a hoot owl":("a "+side+" job"))+", and the "+live+" board is running"};
+    }
+    if(j.date&&j.date!==s.date)return {ok:false,why:"the date on the form doesn’t match the date printed on the slip"};
+    return {ok:true,why:null,tag:md(s.date)+" "+(function(){try{return fmtStart(s.start);}catch(e){return s.start;}})()};
+  }catch(e){return {ok:false,why:"the slip couldn’t be checked"}}
+}
+window.slipProof=slipProof; window.slipLiveCheck=slipLiveCheck;
 /* is this docket's own dispatch the one running right now? */
 function docketIsLive(j){
   try{const wk=winKey(); if(!wk)return false;
-      const dw=docketWin(j); return !!(dw&&dw.key===wk);}catch(e){return false}
+      const dw=docketWin(j); return !!(dw&&dw.key===wk&&slipLiveCheck(j,wk).ok);}catch(e){return false}   /* #slipclock */
 }
 /* THE ONE DOOR from a sealed docket to the live reel. The seal already happened and is
    not in question here — this only decides whether the casual's own card gets a vote on
@@ -11159,7 +11202,8 @@ function feedLiveFromDocket(j,id,src){
     const wk=winKey();
     if(!wk)return null;                      /* no dispatch running — nothing to feed, no notice needed */
     const dw=docketWin(j);
-    if(dw&&dw.key===wk)return submitLiveCall(id,src||'docket');   /* this dispatch's own docket — walk the board */
+    const sc=slipLiveCheck(j,wk);   /* #slipclock — the slip's own printed date + AM/PM, never a filled-in guess */
+    if(dw&&dw.key===wk&&sc.ok)return submitLiveCall(id,src||'docket');   /* this dispatch's own docket, proven by its slip — walk the board */
     /* BACKLOG. Valid docket, wrong dispatch. It keeps its seal, its ⬡ and its hours;
        it just doesn't speak for a board it was never called on. The swipe still lands
        on ITS OWN window's tape, so the right board keeps its witness and tonight's
@@ -11168,14 +11212,16 @@ function feedLiveFromDocket(j,id,src){
     try{ stPush(id,'backlog',null,src||'docket',dw&&dw.key); }catch(e){}
     try{
       const liveSaid=(String(wk).indexOf("_DAY")>0)?"DAY":"NIGHT";
-      const msg=dw
+      const msg=(dw&&dw.key===wk&&!sc.ok&&sc.why)
+        ?('✓ Sealed — but it doesn’t move the live board: '+sc.why+'. It’s on the record and pays as usual.')
+        :dw
         ?('✓ Sealed — that one’s off '+dw.said+', not the '+liveSaid
           +' board running now. It’s on the record; it just doesn’t move the live count.')
         :('✓ Sealed — the shift on that docket couldn’t be read, so it can’t be placed on a '
           +'dispatch. It’s on the record; it stays off the live count.');
       setTimeout(function(){try{toast(msg);}catch(e){}},2700);   /* let the seal/⬡ toast finish its run first */
     }catch(e){}
-    try{DEVLOG.data('backlog docket held off the reel',{id:id,src:src||'docket',docket:dw&&dw.key,live:wk});}catch(e){}
+    try{DEVLOG.data('backlog docket held off the reel',{id:id,src:src||'docket',docket:dw&&dw.key,live:wk,slip:j&&j.slip||null,why:sc&&sc.why});}catch(e){}
     return 'backlog';
   }catch(e){return null}
 }
@@ -19338,6 +19384,7 @@ function slipReattach(j,pos,ignoreId){
     const had=DOCKETS.find(x=>x._id!==ignoreId&&dktKey(x)===dktKey(j)); if(!had)return false;
     if(docketPhotoHere(had))return false;              /* it already has its picture here — the plain refusal stands */
     had.photo=shot; had.src='photo'; window.scanThumb=null;
+    try{ if(j&&j.slip)had.slip=j.slip; }catch(e){}   /* #slipclock — the slip's own date + clock ride onto the entry */
     try{ window.scanLast=null; }catch(e){}
     /* #slipfirst(sep24) — a docket that was typed by hand (0 ⬡, no vote on the reel) just
        got its slip. The slip is the receipt: pay it now under the normal faucet rules, and
@@ -19772,6 +19819,7 @@ document.getElementById('njAdd').onclick=()=>{
     if(termHit&&sb&&berthMatch(sb,termHit.berths))return sb;
   }catch(e){} return undefined; })();
   const j={date,ship:ship||"—",terminal:termOk,berth:termBerth,dock:termDock,bno:termBno,category,shift,start:start||undefined,hours:hours||undefined,flex:flex||undefined,clerkPct:clerkPct||undefined,finish:njFinGet()||undefined,board:"",queue:"",photo:(window.scanThumb||null),_id:Date.now()};   /* #finish — the casual's own word on the finish-up */
+  try{ if(j.photo&&window.scanLast&&window.scanLast.p)j.slip=slipProof(window.scanLast.p); }catch(e){}   /* #slipclock — the reader's read of the slip, not the form's defaults */
   const editId=window.njEditId||null;
   if(isDupDocket(j,editId)){
     if(!editId&&slipReattach(j,null,editId)){ njClearForm(); return; }   /* #slipkeep — a scan that came through the form: the photo goes on the entry already in the book */
@@ -30845,7 +30893,7 @@ function parseDocket(t, knownId){
     else splits=[[md.slice(0,2),md.slice(2)]];
     const valid=splits.filter(([MM,DD])=>{const Mo=+MM,Da=+DD;return Mo>=1&&Mo<=12&&Da>=1&&Da<=31;});
     for(const[MM,DD]of valid)
-      cands.push({mo:+MM,da:+DD,yr:+yr,hr,ap,amb:valid.length>1,idx:m.index});
+      cands.push({mo:+MM,da:+DD,yr:+yr,hr,ap,apRead:!!m[5],amb:valid.length>1,idx:m.index});   /* #slipclock — apRead: the slip printed AM/PM, not guessed */
   }
   while((m=dtRe.exec(up))){
     let mo=[...m[1]].map(dktDigit).join(""), dy=[...m[2]].map(dktDigit).join("");
@@ -30859,7 +30907,7 @@ function parseDocket(t, knownId){
     for(const[MM,DD]of splits){
       const Mo=parseInt(MM,10),Da=parseInt(mo.length===3?DD:dy,10);
       if(Mo>=1&&Mo<=12&&Da>=1&&Da<=31)
-        cands.push({mo:Mo,da:Da,yr:parseInt(yr,10),hr,ap,amb:mo.length===3&&splits.length>1,idx:m.index});
+        cands.push({mo:Mo,da:Da,yr:parseInt(yr,10),hr,ap,apRead:!!m[6],amb:mo.length===3&&splits.length>1,idx:m.index});   /* #slipclock */
     }
   }
   const YNOW=(new Date()).getFullYear(), YMIN=2024, YMAX=YNOW+1;
@@ -30871,7 +30919,7 @@ function parseDocket(t, knownId){
     while((m=dtRe3.exec(up))){
       const Mo=+m[1],Da=+m[2];
       if(Mo>=1&&Mo<=12&&Da>=1&&Da<=31)
-        cands.push({mo:Mo,da:Da,yr:2000+ +m[3],hr:null,ap:m[4]?m[4].toUpperCase():null,amb:false,idx:m.index});
+        cands.push({mo:Mo,da:Da,yr:2000+ +m[3],hr:null,ap:m[4]?m[4].toUpperCase():null,apRead:false,amb:false,idx:m.index});   /* #slipclock — no hour, no clock */
     }
   }
   cands.sort((a,b)=>a.idx-b.idx);
@@ -30884,21 +30932,22 @@ function parseDocket(t, knownId){
     if(!first.amb&&first.yr>=YMIN&&first.yr<=YMAX)job=first;
     else{
       const alt=good.find(g=>g.idx!==first.idx)||good[0];
-      job=alt?{...alt,hr:first.hr,ap:first.ap,idx:first.idx}:first;
+      job=alt?{...alt,hr:first.hr,ap:first.ap,apRead:first.apRead,idx:first.idx}:first;
     }
   }
   let dateLineIdx=-1;
   if(job){
     /* year sanity: dockets are current-era; wild years mean a misread digit */
-    let yr=job.yr;
+    let yr=job.yr, _yrGuess=false;
     if(yr<YMIN||yr>YMAX){
       const alt=good.find(g=>g.yr>=YMIN&&g.yr<=YMAX);
-      yr=alt?alt.yr:YNOW;
+      yr=alt?alt.yr:YNOW; if(!alt)_yrGuess=true;
     }
     const d=new Date(yr,job.mo-1,job.da);
     if(d.getTime()-Date.now()>45*864e5){ /* far-future = misread; docket in hand is today-ish */
-      p.date=todayISO();
-    } else p.date=yr+"-"+String(job.mo).padStart(2,"0")+"-"+String(job.da).padStart(2,"0");
+      p.date=todayISO(); p.dateRead=false;   /* #slipclock — a stand-in, NOT what the slip says */
+    } else { p.date=yr+"-"+String(job.mo).padStart(2,"0")+"-"+String(job.da).padStart(2,"0"); p.dateRead=!_yrGuess; }
+    p.apRead=!!(job.hr!=null&&job.apRead);   /* #slipclock — the start's AM/PM was printed on the slip */
     /* shift from the job start time */
     if(job.hr!=null&&job.ap)p.start=String(job.ap==="P"?(job.hr%12)+12:(job.hr%12)).padStart(2,"0")+":00"; // #27
     if(job.hr==null)p.shift=job.ap?(job.ap==="P"?"Night":"Day"):null;
@@ -31334,6 +31383,7 @@ function sealScan(p){
     tags:p.tags||undefined,               /* #gatecodes — LA · LA AU · GE, straight off the slip */
     shift:trS.shift,start:p.start||undefined,flex:trS.flex||undefined,
     board:"",queue:"",photo:(window.scanThumb||null),_id:Date.now()};
+  try{ j.slip=slipProof(p); }catch(e){}   /* #slipclock — what the slip itself printed, for the live-board gate */
   if(isDupDocket(j)){
     /* #slipkeep — the same slip scanned again, and the entry already in the book has no
        picture on this phone (lost, or logged by hand, or sealed on another phone): the
