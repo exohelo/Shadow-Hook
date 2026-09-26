@@ -8,7 +8,7 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='sep26read';   /* sep 26 — TWO-PASS READER: the frame-cropped slip is read at 1400 px first and only re-read at 2200 when fields are missing; at 2200 a slip that fills the frame lost its ship line and read 8:00AM as 3:00AM (#twopass). The wire hero says CYCLE only at 85%+, not 50% (#cyclehero). */
+window.SHK_BUILD='sep26read';   /* sep 26 — THE HALL'S WEEKDAY BEATS ITS DATE: a hall-line reading is keyed to the weekday the hall said, nearest the call, not the numeric date the announcer misread (#hallday). TWO-PASS READER: the frame-cropped slip is read at 1400 px first and only re-read at 2200 when fields are missing; at 2200 a slip that fills the frame lost its ship line and read 8:00AM as 3:00AM (#twopass). The wire hero says CYCLE only at 85%+, not 50% (#cyclehero). */
 /* was: sep24clock */   /* sep 24 (2nd) — THE SLIP'S CLOCK DECIDES: a docket moves the live board only when the slip itself printed today's date and an AM/PM start on the side of the running board (AM → DAY, PM → NIGHT). A date or shift the app filled in, guessed, or the form defaulted never counts (#slipclock). */
 /* was: sep24read */   /* sep 24 — NO SLIP, NO SWIPE: a docket typed by hand seals for the record at 0 ⬡ and never moves the live board; only a scanned slip (read clean, or shot then fixed) does (#slipfirst). The reader: shots cut to the guide frame (#framecrop), 2200 px to Tesseract (#inkup), ship names snapped to every sheet + registry hull through the OCR swap table (#shipsnap). */
 /* sep 23 (4th) — THE MAP BOX ZOOMS, FOOD GETS A DOOR: pinch, double-tap or ± right in the harbor card (no full screen); labels hold their size as you zoom and anything that would sit on top of another label or icon steps aside until there is room (#hmdeclutter); the 🗺 badges are off the map; the dock list is always open (no FULL LIST button); ⤢ FULL SCREEN is now 🍔 FOOD — the whole roll in a sheet; the food strip is off the Ports tab and out of the dock sheet — a casual sees the food close by right after a scanned docket seals (#ftscan). Before it, sep23trucks — sep 23 (3rd) — THE ROACH COACH ROLL: food trucks under the dock list on the Ports tab, FEATURED first then by taps; the trucks closest to a dock inside its sheet; a truck's sheet with menu, hours and ➤ GO (#foodtrucks #ftnear). Trucks run their own desk at /foodtruck. Before it, sep23pull — sep 23 (2nd) — the dock sheet loses its Close button: pull it down from the top, or grab the handle — finger or mouse — and a tap on the handle still closes (#hdpull). Before it, sep23sky2 — sep 23 — THE HARBOR on the Ports tab: a sky view of San Pedro Bay drawn from the real coastline, every dock a tap, the two ports and Terminal Island tappable for their stories, ⤢ full screen with pinch (#harbor); the dock sheet is now the one place a dock lives — history, yard map, gates, tonight's board, who's working — and the thirty cards fold to an index behind FULL LIST (#docklist); the sheet opens on the dock from the sky with its yard map pinned as a peek card — tap it for the map (#dockhero); full screen on a tall screen gets the bridge and the cranes over the map with the date and the weather on a strip beneath (#skyline). Before it, sep22crumb — sep 22 (2nd) — every freeze report now says what the app was DOING when it froze — the last taps, tab switches, saves, wakes and realtime messages, as offsets from the task (#crumbs); transitions are named in the roll-call. Before it, sep22zoom — sep 22 — tap the product picture: it opens full screen, zooms (pinch · tap · wheel), pans, and swipes through every shot the piece carries (#gearzoom). Before it, sep21del — sep 21 (6th) — every delete a member can see now checks it really went, and alarms when the server kept it (#delcheck); the burns and the close ride WIPE-MESSAGES.sql. Before it, sep21zim — sep 21 (5th) — Zim rails confirmed by the Keymaster: they go in the dock-side gate, now labeled "Dockwork, rails & clerks"; its gate check is retired (#gatecheck). Before it, sep21gates — sep 21 (4th) — the gate check: the three gates nobody has confirmed ask the crews who worked them (#gatecheck). Before it, sep21docks — NYK back on YTI, and the docks the old Port Maps app had that we didn't: Pier J berths 246-247, SSA Outer Harbor (LA 54-55), Pasha on Terminal Island (TI 206-209) (#oldapp). Before it, sep21ports — YTI on Terminal Island + the Terminal Island spans (#tiberths). Before it, sep21perf — the freeze fixes (#v5slice #calmemo #knntop #logonce #fmtonce) and the mirror fixes (#samesheets #onlyedits). The sep 19–20 builds went out still stamped sep18net; the byte size in a report (3943k was the waiting-list build) tells those apart. */
@@ -32224,12 +32224,44 @@ function hlPrevCard(card){const m=/^([A-Z])(\d{3,5})$/.exec(card||'');if(!m)retu
    only have k = the slot the call ran in — so re-read the transcript: "start …
    for Thursday night" means the named board OPENS on that card, i.e. the board
    before it ENDED one card earlier (the chain rule). */
+/* ═══ #hallday(sep26) — THE WEEKDAY THE HALL SAYS BEATS THE DATE IT SAYS ═══
+   Sat 9/26 09:42 the hall said "early forecast for SATURDAY evening, September 25th …
+   letter I, 5040" — the announcer misread the date. The phone bot keyed on the number:
+   about = 2026-09-25_Fri_PM, and posted "Fri AM ends I5039" over a board that was
+   already sealed (A4997 → Q4946). Saturday night's start never landed and the wire kept
+   "Starting on Q4947" all day. The hall does not get the weekday wrong — it is the day
+   they are standing in — so when the transcript names one, the board key is that weekday
+   nearest the call, and the numeric date only breaks a tie. */
+function hlSaidKey(r){
+  try{
+    const tx=String(r.transcript||r.heard||'').toLowerCase();
+    const m=/\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday)(?:'?s)?\s+(?:on\s+the\s+)?(morning|night|evening|day\s*side|night\s*side)\b/.exec(tx);   /* "Saturday evening" · "Saturday on the day side" · "Saturday evening's" */
+    if(!m)return null;
+    const want=["sunday","monday","tuesday","wednesday","thursday","friday","saturday"].indexOf(m[1]);
+    const slot=/morning|day/.test(m[2])?'AM':'PM';
+    const at=nowLA(r.ran_at||Date.now());
+    /* the named weekday nearest the call: today, else the closest within ±3 days */
+    let best=null;
+    for(let d=-3;d<=3;d++){ const c=new Date(at.getTime()); c.setDate(c.getDate()+d);
+      if(c.getDay()===want&&(best==null||Math.abs(d)<Math.abs(best)))best=d; }
+    if(best==null)return null;
+    const c=new Date(at.getTime()); c.setDate(c.getDate()+best);
+    const iso=c.getFullYear()+'-'+String(c.getMonth()+1).padStart(2,'0')+'-'+String(c.getDate()).padStart(2,'0');
+    return hlKeyFor(iso,slot);
+  }catch(e){return null;}
+}
 function hlImplied(r){
   try{
     if(!r||!r.card)return null;
     const x=r.extras||{}; let kind=x.kind, about=x.about;
     const tx=String(r.transcript||r.heard||'').toLowerCase();
     if(kind!=='start'&&kind!=='end') kind=/\bstart(ing|s)?\b/.test(tx)?'start':'end';
+    /* #hallday — a "start" reading names the board that opens; an "end" reading ("you
+       reached … for Saturday on the day side, we left off C5054") names the NEXT board,
+       so the one that ended is the key before it. Either way the spoken weekday wins. */
+    try{ const said=hlSaidKey(r);
+      if(said){ const want=(kind==='start')?said:hlPrevKey(said);
+        if(want&&want!==about){ try{DEVLOG.note('☎ hall said '+said+', bot keyed '+(about||'—')+' — going with the hall');}catch(e){} about=want; } } }catch(e){}
     if(!about){
       const datePart=String(r.k||'').slice(0,10);
       if(kind==='start'&&/^\d{4}-\d{2}-\d{2}$/.test(datePart)){
