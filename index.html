@@ -8,7 +8,8 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='sep24clock';   /* sep 24 (2nd) — THE SLIP'S CLOCK DECIDES: a docket moves the live board only when the slip itself printed today's date and an AM/PM start on the side of the running board (AM → DAY, PM → NIGHT). A date or shift the app filled in, guessed, or the form defaulted never counts (#slipclock). */
+window.SHK_BUILD='sep26read';   /* sep 26 — TWO-PASS READER: the frame-cropped slip is read at 1400 px first and only re-read at 2200 when fields are missing; at 2200 a slip that fills the frame lost its ship line and read 8:00AM as 3:00AM (#twopass). The wire hero says CYCLE only at 85%+, not 50% (#cyclehero). */
+/* was: sep24clock */   /* sep 24 (2nd) — THE SLIP'S CLOCK DECIDES: a docket moves the live board only when the slip itself printed today's date and an AM/PM start on the side of the running board (AM → DAY, PM → NIGHT). A date or shift the app filled in, guessed, or the form defaulted never counts (#slipclock). */
 /* was: sep24read */   /* sep 24 — NO SLIP, NO SWIPE: a docket typed by hand seals for the record at 0 ⬡ and never moves the live board; only a scanned slip (read clean, or shot then fixed) does (#slipfirst). The reader: shots cut to the guide frame (#framecrop), 2200 px to Tesseract (#inkup), ship names snapped to every sheet + registry hull through the OCR swap table (#shipsnap). */
 /* sep 23 (4th) — THE MAP BOX ZOOMS, FOOD GETS A DOOR: pinch, double-tap or ± right in the harbor card (no full screen); labels hold their size as you zoom and anything that would sit on top of another label or icon steps aside until there is room (#hmdeclutter); the 🗺 badges are off the map; the dock list is always open (no FULL LIST button); ⤢ FULL SCREEN is now 🍔 FOOD — the whole roll in a sheet; the food strip is off the Ports tab and out of the dock sheet — a casual sees the food close by right after a scanned docket seals (#ftscan). Before it, sep23trucks — sep 23 (3rd) — THE ROACH COACH ROLL: food trucks under the dock list on the Ports tab, FEATURED first then by taps; the trucks closest to a dock inside its sheet; a truck's sheet with menu, hours and ➤ GO (#foodtrucks #ftnear). Trucks run their own desk at /foodtruck. Before it, sep23pull — sep 23 (2nd) — the dock sheet loses its Close button: pull it down from the top, or grab the handle — finger or mouse — and a tap on the handle still closes (#hdpull). Before it, sep23sky2 — sep 23 — THE HARBOR on the Ports tab: a sky view of San Pedro Bay drawn from the real coastline, every dock a tap, the two ports and Terminal Island tappable for their stories, ⤢ full screen with pinch (#harbor); the dock sheet is now the one place a dock lives — history, yard map, gates, tonight's board, who's working — and the thirty cards fold to an index behind FULL LIST (#docklist); the sheet opens on the dock from the sky with its yard map pinned as a peek card — tap it for the map (#dockhero); full screen on a tall screen gets the bridge and the cranes over the map with the date and the weather on a strip beneath (#skyline). Before it, sep22crumb — sep 22 (2nd) — every freeze report now says what the app was DOING when it froze — the last taps, tab switches, saves, wakes and realtime messages, as offsets from the task (#crumbs); transitions are named in the roll-call. Before it, sep22zoom — sep 22 — tap the product picture: it opens full screen, zooms (pinch · tap · wheel), pans, and swipes through every shot the piece carries (#gearzoom). Before it, sep21del — sep 21 (6th) — every delete a member can see now checks it really went, and alarms when the server kept it (#delcheck); the burns and the close ride WIPE-MESSAGES.sql. Before it, sep21zim — sep 21 (5th) — Zim rails confirmed by the Keymaster: they go in the dock-side gate, now labeled "Dockwork, rails & clerks"; its gate check is retired (#gatecheck). Before it, sep21gates — sep 21 (4th) — the gate check: the three gates nobody has confirmed ask the crews who worked them (#gatecheck). Before it, sep21docks — NYK back on YTI, and the docks the old Port Maps app had that we didn't: Pier J berths 246-247, SSA Outer Harbor (LA 54-55), Pasha on Terminal Island (TI 206-209) (#oldapp). Before it, sep21ports — YTI on Terminal Island + the Terminal Island spans (#tiberths). Before it, sep21perf — the freeze fixes (#v5slice #calmemo #knntop #logonce #fmtonce) and the mirror fixes (#samesheets #onlyedits). The sep 19–20 builds went out still stamped sep18net; the byte size in a report (3943k was the waiting-list build) tells those apart. */
 /* #freezev3 — keep enough resource timings for the report to name what landed before a
@@ -31455,24 +31456,51 @@ async function readDocketShot(f,label){
   try{shot=await loadShot(f);}catch(err){shot=null;}
   if(scanAborted)return null;
   const thumb=shot?shot.thumb:null;
-  let text="", readOk=false;
+  const myId=(typeof ACCT_ID==="string"&&/^[A-Z]\d{2,5}$/.test(ACCT_ID))?ACCT_ID:null;
+  /* ═══ #twopass(sep26) — BIGGER IS NOT BETTER ═══
+     #inkup (sep24) pushed the reader's copy 1600 → 2200 for a slip that filled half the
+     photo. The same day #framecrop started cutting the photo to the guide frame, so the
+     slip now fills the WHOLE image — and at 2200 its bold print is blown up past what
+     Tesseract reads. The Keymaster's own 9/26 slip, cut to the frame: at 2200 the ship
+     line came back as junk and 8:00AM read as 3:00AM (the AM/PM the live board needs);
+     at 1300–1400 every line read clean. A gallery photo with the slip small in the frame
+     still wants the big copy. So: read at OCR_PASS_1 first, and only if the parse is
+     short (no card, no date, no start, no ship…) read again at the full OCR_SIDE and keep
+     whichever parse says more. The rotation retry runs at the first-pass size, and the
+     raw text that rides to the lessons is the winning pass's. */
+  const OCR_PASS_1=1400;
+  const scaled=async(src,L)=>{ const w=src.width,h=src.height, s=Math.min(1,L/Math.max(w,h));
+    if(s>=1)return canvasBlob(src,0.9);
+    const c=document.createElement('canvas'); c.width=Math.max(1,Math.round(w*s)); c.height=Math.max(1,Math.round(h*s));
+    const g=c.getContext('2d'); g.imageSmoothingEnabled=true; g.imageSmoothingQuality='high'; g.drawImage(src,0,0,c.width,c.height);
+    await shotYield(); return canvasBlob(c,0.9); };
+  const score=q=>!q?0:((q.pos?4:0)+(q.dateRead?2:0)+(q.apRead?2:0)+(q.ship?2:0)+(q.cat?1:0)+((q.terminal||q.berth)?1:0));
+  const FULL=12;
+  let text="", readOk=false, p=parseDocket("",myId);
   if(shot){
-    try{scanSt(label+"waking the reader\u2026");text=await ocrDocket(shot.ocr);readOk=true;}
-    catch(err){readOk=false;}
+    try{
+      scanSt(label+"waking the reader…");
+      const t1=await ocrDocket(await scaled(shot.src,OCR_PASS_1)); readOk=true;
+      const p1=parseDocket(t1,myId); text=t1; p=p1;
+      if(scanAborted)return null;
+      if(score(p1)<FULL&&Math.max(shot.src.width,shot.src.height)>OCR_PASS_1){
+        scanSt(label+"reading it closer…");
+        try{ const t2=await ocrDocket(shot.ocr); const p2=parseDocket(t2,myId);
+          if(score(p2)>score(p1)){ text=t2; p=p2; } }catch(err){}
+      }
+    }catch(err){ if(!text)readOk=false; }
   }
   if(scanAborted)return null;
-  const myId=(typeof ACCT_ID==="string"&&/^[A-Z]\d{2,5}$/.test(ACCT_ID))?ACCT_ID:null;
-  let p=parseDocket(text,myId);
   /* sideways photo? spin it and read again before giving up */
   if(readOk&&!p.pos){
     for(const deg of [90,270,180]){
       if(scanAborted)return null;
-      scanSt(label+"trying another angle\u2026");
+      scanSt(label+"trying another angle…");
       try{
         const turned=await rotateShot(shot.src,deg);   /* #scanfix — turn the canvas, not a data URL */
-        const t2=await ocrDocket(turned);
+        const t2=await ocrDocket(await scaled(await createImageBitmap(turned),OCR_PASS_1));   /* #twopass — the turned copy at the first-pass size */
         const p2=parseDocket(t2,myId);
-        if(p2.pos){p=p2;break;}
+        if(p2.pos){p=p2;text=t2;break;}
       }catch(err){}
     }
   }
