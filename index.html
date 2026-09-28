@@ -1940,12 +1940,21 @@ html.daylight .btn{box-shadow:inset 0 1px 0 rgba(255,255,255,.5)}
   padding:7px 12px 8px}   /* #hdr2 — the only row now; the row-divider border is gone */
 .hc-left{display:flex;align-items:center;gap:8px;min-width:0;flex:1 1 0}
 /* #106 — matching right column so the clock sits truly centered */
-.hc-right{flex:1 1 0;min-width:0;display:flex;justify-content:flex-end;gap:7px}
-/* #hdrmsg(sep28) — the ✉ beside the ⚓, and its badge */
-.hdr-msg{font-size:17px}
-.hdr-msg::after{content:none}
-.hdr-msg i{position:absolute;top:-6px;right:-6px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:var(--ember);color:#fff;font:700 10.5px/17px 'Inter',system-ui,sans-serif;font-style:normal;text-align:center;box-shadow:0 0 0 2px var(--void),0 0 8px rgba(224,73,46,.7)}
+.hc-right{flex:1 1 0;min-width:0;display:flex;justify-content:flex-end;align-items:center;gap:12px}
+/* #hdrmsg(sep28) — ✉ AN ALERT, NOT A FIXTURE: nothing in the header until a wire or a friend
+   request is waiting, then a lit pill drops in beside the ⚓ with the count. Gone again once read. */
+.hdr-msg{flex:none;display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 8px 0 7px;border-radius:9px;cursor:pointer;
+  color:#fff;background:linear-gradient(160deg,#ff5a3c,#c4281a);border:1px solid rgba(255,140,110,.7);
+  box-shadow:0 0 12px rgba(224,73,46,.55),0 2px 0 #7a1608,inset 0 1px 0 rgba(255,255,255,.3);
+  font:700 12px/1 'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;letter-spacing:.02em;animation:hdrMsgIn .35s cubic-bezier(.2,.9,.3,1.2),hdrMsgPulse 2.4s ease-in-out 1s infinite}
+.hdr-msg .ic{font-size:13px;line-height:1}
+.hdr-msg i{font-style:normal;min-width:10px;text-align:center}
+.hdr-msg:active{transform:translateY(2px);box-shadow:0 0 16px rgba(224,73,46,.6),0 1px 0 #7a1608}
 .hdr-msg.ring{animation:hdrMsgRing .6s ease-out}
+@keyframes hdrMsgIn{0%{transform:scale(.6);opacity:0}100%{transform:scale(1);opacity:1}}
+@keyframes hdrMsgPulse{0%,100%{box-shadow:0 0 16px rgba(224,73,46,.6),0 3px 0 #7a1608,inset 0 1px 0 rgba(255,255,255,.3)}50%{box-shadow:0 0 26px rgba(255,90,60,.95),0 3px 0 #7a1608,inset 0 1px 0 rgba(255,255,255,.3)}}
+html.daylight .hdr-msg{box-shadow:0 0 10px rgba(224,73,46,.35),0 3px 0 #7a1608}
+@media (prefers-reduced-motion:reduce){.hdr-msg{animation:none}}
 @keyframes hdrMsgRing{0%{transform:scale(1)}30%{transform:scale(1.18) rotate(-8deg)}60%{transform:scale(1.05) rotate(6deg)}100%{transform:scale(1)}}
 /* #hdr2 — .sixchip retired with the header pill; .six-days now reads in the profile sheet */
 .six-days{font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:8.5px;letter-spacing:.06em;color:var(--steel);white-space:nowrap}
@@ -4529,7 +4538,7 @@ window.DEVLOG=(function(){
       <div class="hc-right">
         <!-- #hdrmsg(sep28) — ✉ MESSAGES rides the header beside the ⚓: one tap to the DMs page from any
              tab. The badge counts unread wires + friend requests waiting; hidden when there's nothing. -->
-        <button class="hdr-seal hdr-msg" id="hcmsg" type="button" title="Messages &amp; friends" aria-label="Messages and friends" style="display:none">✉<i id="hcMsgN" style="display:none"></i></button>
+        <button class="hdr-msg" id="hcmsg" type="button" title="Messages &amp; friends" aria-label="New messages and friend requests" style="display:none"><span class="ic">✉</span><i id="hcMsgN"></i></button>
         <button class="hdr-seal" id="hcrest" type="button" title="Your account — profile, 6-month rule &amp; log out" aria-label="Account, profile and log out">⚓</button>
       </div>
     </div>
@@ -27887,8 +27896,10 @@ function dmBadges(){
   const d=document.getElementById('dmPillDot');if(d)d.style.display=n>0?'':'none';
   /* #hdrmsg — the header ✉: shown once signed in, badge = unread wires + requests waiting */
   const b=document.getElementById('hcmsg'), c=document.getElementById('hcMsgN');
-  if(b)b.style.display=(window.SB&&window.__shkUid)?'':'none';
-  if(c){ c.textContent=n>99?'99+':String(n); c.style.display=n>0?'':'none'; }
+  const show=!!(window.SB&&window.__shkUid)&&n>0;   /* an alert: only there when something waits */
+  if(b)b.style.display=show?'':'none';
+  if(c)c.textContent=n>99?'99+':String(n);
+  if(b)b.title=n?(un?un+' unread':'')+(un&&rq?' · ':'')+(rq?rq+' friend request'+(rq==1?'':'s'):''):'';
 }
 window.dmBadges=dmBadges;
 (function(){ const b=document.getElementById('hcmsg'); if(b)b.addEventListener('click',function(){
