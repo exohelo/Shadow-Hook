@@ -1940,7 +1940,13 @@ html.daylight .btn{box-shadow:inset 0 1px 0 rgba(255,255,255,.5)}
   padding:7px 12px 8px}   /* #hdr2 — the only row now; the row-divider border is gone */
 .hc-left{display:flex;align-items:center;gap:8px;min-width:0;flex:1 1 0}
 /* #106 — matching right column so the clock sits truly centered */
-.hc-right{flex:1 1 0;min-width:0;display:flex;justify-content:flex-end}
+.hc-right{flex:1 1 0;min-width:0;display:flex;justify-content:flex-end;gap:7px}
+/* #hdrmsg(sep28) — the ✉ beside the ⚓, and its badge */
+.hdr-msg{font-size:17px}
+.hdr-msg::after{content:none}
+.hdr-msg i{position:absolute;top:-6px;right:-6px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:var(--ember);color:#fff;font:700 10.5px/17px 'Inter',system-ui,sans-serif;font-style:normal;text-align:center;box-shadow:0 0 0 2px var(--void),0 0 8px rgba(224,73,46,.7)}
+.hdr-msg.ring{animation:hdrMsgRing .6s ease-out}
+@keyframes hdrMsgRing{0%{transform:scale(1)}30%{transform:scale(1.18) rotate(-8deg)}60%{transform:scale(1.05) rotate(6deg)}100%{transform:scale(1)}}
 /* #hdr2 — .sixchip retired with the header pill; .six-days now reads in the profile sheet */
 .six-days{font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:8.5px;letter-spacing:.06em;color:var(--steel);white-space:nowrap}
 .six-days.hot{color:#f2a184;text-shadow:0 0 8px rgba(224,73,46,.4)}
@@ -4521,6 +4527,9 @@ window.DEVLOG=(function(){
       </div>
       <!-- #hdr2 — the ⚓ seal takes the right column: profile, the 6-mo pill & log out live behind it -->
       <div class="hc-right">
+        <!-- #hdrmsg(sep28) — ✉ MESSAGES rides the header beside the ⚓: one tap to the DMs page from any
+             tab. The badge counts unread wires + friend requests waiting; hidden when there's nothing. -->
+        <button class="hdr-seal hdr-msg" id="hcmsg" type="button" title="Messages &amp; friends" aria-label="Messages and friends" style="display:none">✉<i id="hcMsgN" style="display:none"></i></button>
         <button class="hdr-seal" id="hcrest" type="button" title="Your account — profile, 6-month rule &amp; log out" aria-label="Account, profile and log out">⚓</button>
       </div>
     </div>
@@ -6253,6 +6262,20 @@ html.daylight .hm-lm .lk-g,html.daylight .hm-lm .lk-w{fill:#dfeaf7}
       <div id="dmGate" class="card" style="display:none">
         <div class="card-b"><p class="sub" style="text-align:center;padding:6px 0">🗝 Verify your card at the gate and sign in — wires ride your Brotherhood account so they follow you to every device.</p></div>
       </div>
+      <!-- #friends2(sep28) — FRIENDS, their own card: requests waiting, your friends, and where each
+           one is working today if they share their docket (docket_shares — run DOCKET-SHARES.sql once). -->
+      <div class="card" id="dmFriendsCard">
+        <div class="card-h">Friends <span class="tag" id="dmFriendsN">none yet</span></div>
+        <div class="card-b">
+          <div id="dmReqWrap" style="display:none"><div class="alt" style="font-weight:700;margin:0 0 2px">⚓ Friend requests <span class="pill" id="dmReqN" style="margin-left:4px;color:var(--ember);border-color:rgba(224,73,46,.5)">0</span></div><div id="dmReqList"></div></div>
+          <div class="alt" style="font-weight:700;margin:10px 0 2px">Your friends</div>
+          <div id="dmFriendList"></div>
+          <div class="alrow" style="border-top:1px solid var(--line-soft);margin-top:10px;padding-top:10px"><div class="alm">
+              <div class="alt">📍 Share today's docket</div>
+              <div class="als" id="dkShareNote">Friends see which dock, ship and shift you logged today. Nobody else. Off = they see nothing.</div>
+            </div><button class="alsw" id="dkShareSw" type="button" role="switch" aria-label="Share today's docket with friends"><i></i></button></div>
+        </div>
+      </div>
       <div class="card">
         <div class="card-h">Messages <span class="tag">closed wires · free to talk</span></div>
         <div class="card-b" id="dmInbox"><p class="sub">Opening the book…</p></div>
@@ -7706,10 +7729,8 @@ html.daylight .hm-lm .lk-g,html.daylight .hm-lm .lk-w{fill:#dfeaf7}
             <div class="alt">🕶 Appear offline</div>
             <div class="als">You vanish from ONLINE and room counts. You still see everyone, and wires still reach you.</div>
           </div><button class="alsw" id="ghostSw" type="button" role="switch" aria-label="Appear offline"><i></i></button></div>
-        <div class="alt" style="font-weight:700;margin-top:10px">Friend requests</div>
-        <div id="dmReqList"></div>
-        <div class="alt" style="font-weight:700;margin-top:12px">Your friends</div>
-        <div id="dmFriendList"></div>
+        <!-- #friends2(sep28) — Friend requests + Your friends moved to the ✉ DMs page (their own card) -->
+        <p class="sub" style="margin:10px 0 0">⚓ Friend requests and your friends list live on the <b style="color:var(--bone)">✉ Messages</b> page — tap the ✉ up top.</p>
       </div>
 
       <!-- #alerts(aug10) — the bells, one per kind -->
@@ -27861,7 +27882,17 @@ function dmSeenMap(){try{return JSON.parse(localStorage.getItem(K('dmseen'))||'{
 function dmMarkSeen(uid){try{const s=dmSeenMap();s[uid]=new Date().toISOString();localStorage.setItem(K('dmseen'),JSON.stringify(s));}catch(e){} dmBadges();}
 function dmUnread(uid){const t=DM.threads[uid];if(!t)return 0;const seen=dmSeenMap()[uid]||'';return t.msgs.filter(m=>!m.mine&&String(m.at)>String(seen)).length;}
 function dmTotalUnread(){return Object.keys(DM.threads).reduce((a,u)=>a+dmUnread(u),0);}
-function dmBadges(){const d=document.getElementById('dmPillDot');if(d)d.style.display=dmTotalUnread()>0?'':'none';}
+function dmBadges(){
+  const un=dmTotalUnread(), rq=Object.keys(DM.reqIn||{}).length, n=un+rq;
+  const d=document.getElementById('dmPillDot');if(d)d.style.display=n>0?'':'none';
+  /* #hdrmsg — the header ✉: shown once signed in, badge = unread wires + requests waiting */
+  const b=document.getElementById('hcmsg'), c=document.getElementById('hcMsgN');
+  if(b)b.style.display=(window.SB&&window.__shkUid)?'':'none';
+  if(c){ c.textContent=n>99?'99+':String(n); c.style.display=n>0?'':'none'; }
+}
+window.dmBadges=dmBadges;
+(function(){ const b=document.getElementById('hcmsg'); if(b)b.addEventListener('click',function(){
+  try{gotoTab('order');}catch(e){} try{setHallView('msg');}catch(e){} window.scrollTo(0,0); }); })();
 function dmPeerName(uid){
   const t=DM.threads[uid]; if(t&&t.h)return t.h;
   if(DM.friends[uid])return DM.friends[uid];
@@ -27935,6 +27966,8 @@ async function dmLoad(){
   }catch(e){DM._privSaved=false;}
   DM.ok=true;
   dmRenderAll();
+  try{dkShareLoad();}catch(e){}   /* #dkshare — where your friends are today */
+  try{dkShareSync(false);}catch(e){}
 }
 function dmSub(){
   if(!window.SB||!window.__shkUid||DM.chan)return;
@@ -27945,6 +27978,14 @@ function dmSub(){
       /* #wipe — a burned wire vanishes on the other phone too (a DELETE carries only the id) */
       .on('postgres_changes',{event:'DELETE',schema:'public',table:'dm_messages'},
         p=>{try{if(p&&p.old&&p.old.id)dmApplyDelete(p.old.id);}catch(e){}})
+      /* #friends2 — a request landing rings the bell and bumps the badge at once */
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'friend_requests',filter:'to_id=eq.'+window.__shkUid},
+        p=>{try{ const r=p&&p.new; if(!r)return; DM.reqIn[r.from_id]=r.from_handle||'a casual'; dmRenderAll();
+          const b=document.getElementById('hcmsg'); if(b){b.classList.remove('ring'); void b.offsetWidth; b.classList.add('ring');}
+          if(typeof alertFire==='function')alertFire('dm',{title:'⚓ Friend request',body:String(r.from_handle||'a casual')+' wants to be friends',tag:'shadowhook-fr-'+r.from_id}); }catch(e){}})
+      .on('postgres_changes',{event:'DELETE',schema:'public',table:'friend_requests'},p=>{try{dmLoad();}catch(e){}})
+      .on('postgres_changes',{event:'*',schema:'public',table:'friends'},p=>{try{dmLoad();}catch(e){}})
+      .on('postgres_changes',{event:'*',schema:'public',table:'docket_shares'},p=>{try{dkShareLoad();}catch(e){}})
       .subscribe();
   }catch(e){}
 }
@@ -28575,19 +28616,89 @@ function dmProfileRefresh(){
       note.style.color='var(--warn)';
     }
   }
-  const rq=box.querySelector('#dmReqList'), rIds=Object.keys(DM.reqIn);
-  if(rq)rq.innerHTML=rIds.length?rIds.map(u=>'<div style="display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid var(--line-soft)">'
-    +_dmAv(DM.reqIn[u])+'<span style="flex:1;min-width:0;font-family:\'Inter\',system-ui,-apple-system,\'Segoe UI\',Roboto,sans-serif;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(DM.reqIn[u])+'</span>'
-    +'<button class="pill" style="cursor:pointer;color:var(--ok);border-color:rgba(127,174,106,.5);background:none" onclick="dmAccept(\''+jsq(u)+'\')">✓ accept</button>'
-    +'<button class="pill" style="cursor:pointer;background:none" onclick="dmDecline(\''+jsq(u)+'\')">✕</button></div>').join('')
-    :'<p class="sub" style="margin:2px 0 0">None waiting.</p>';
-  const fl=box.querySelector('#dmFriendList'), fIds=Object.keys(DM.friends);
-  if(fl)fl.innerHTML=fIds.length?fIds.map(u=>'<div style="display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid var(--line-soft)">'
-    +_dmAv(DM.friends[u])+'<span style="flex:1;min-width:0;font-family:\'Inter\',system-ui,-apple-system,\'Segoe UI\',Roboto,sans-serif;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(DM.friends[u])+'</span>'
-    +'<button class="pill" style="cursor:pointer;color:var(--copper-hi);border-color:rgba(238,180,107,.4);background:none" onclick="openDmThread(\''+jsq(u)+'\',\''+jsq(DM.friends[u])+'\')">💬</button>'
-    +'<button class="pill" style="cursor:pointer;background:none" onclick="dmUnfriend(\''+jsq(u)+'\')">✕</button></div>').join('')
-    :'<p class="sub" style="margin:2px 0 0">No friends yet — ⚓ Add friend on a casual’s card.</p>';
+  try{dmFriendsPaint();}catch(e){}
 }
+/* ═══ #friends2(sep28) — THE FRIENDS CARD on the DMs page: requests, friends, where they work ═══ */
+function dmFriendsPaint(){
+  const rIds=Object.keys(DM.reqIn||{}), rq=document.getElementById('dmReqList');
+  const wrap=document.getElementById('dmReqWrap'), rn=document.getElementById('dmReqN');
+  if(wrap)wrap.style.display=rIds.length?'':'none'; if(rn)rn.textContent=rIds.length;
+  if(rq)rq.innerHTML=rIds.map(u=>'<div style="display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid var(--line-soft)">'
+    +_dmAv(DM.reqIn[u],u)+'<span style="flex:1;min-width:0;font-family:\'Inter\',system-ui,-apple-system,\'Segoe UI\',Roboto,sans-serif;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(DM.reqIn[u])+'<span class="sub" style="display:block;font-size:11px">wants to be friends</span></span>'
+    +'<button class="pill" style="cursor:pointer;color:var(--ok);border-color:rgba(127,174,106,.5);background:none" onclick="dmAccept(\''+jsq(u)+'\')">✓ accept</button>'
+    +'<button class="pill" style="cursor:pointer;background:none" onclick="dmDecline(\''+jsq(u)+'\')">✕</button></div>').join('');
+  const fl=document.getElementById('dmFriendList'), fIds=Object.keys(DM.friends||{}).sort((a,b)=>String(DM.friends[a]).localeCompare(String(DM.friends[b])));
+  const fn=document.getElementById('dmFriendsN'); if(fn)fn.textContent=fIds.length?fIds.length+(fIds.length===1?' friend':' friends'):'none yet';
+  const on={}; ((typeof FLOOR!=='undefined'&&FLOOR.roster)||[]).forEach(p=>{ if(p.uid)on[p.uid]=1; });
+  const today=(typeof todayISO==='function')?todayISO():'';
+  if(fl)fl.innerHTML=fIds.length?fIds.map(u=>{
+    const sh=(DM.shares||{})[u];
+    const at=(sh&&sh.date===today)?('📍 at <b style="color:var(--bone)">'+esc(sh.terminal||'a dock')+'</b>'+(sh.ship&&sh.ship!=='—'?' · '+esc(sh.ship):'')+(sh.shift?' · '+esc(sh.shift):''))
+      :(on[u]?'<span style="color:var(--ok)">● on now</span>':'');
+    return '<div style="display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid var(--line-soft)">'
+    +_dmAv(DM.friends[u],u)+'<span style="flex:1;min-width:0;font-family:\'Inter\',system-ui,-apple-system,\'Segoe UI\',Roboto,sans-serif;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(DM.friends[u])+(at?'<span class="sub" style="display:block;font-size:11px;white-space:normal;line-height:1.35">'+at+'</span>':'')+'</span>'
+    +'<button class="pill" style="cursor:pointer;color:var(--copper-hi);border-color:rgba(238,180,107,.4);background:none" onclick="openDmThread(\''+jsq(u)+'\',\''+jsq(DM.friends[u])+'\')">💬</button>'
+    +'<button class="pill" style="cursor:pointer;background:none" onclick="dmUnfriend(\''+jsq(u)+'\')">✕</button></div>';}).join('')
+    :'<p class="sub" style="margin:2px 0 0">No friends yet — ⚓ Add friend on a casual’s card (Members, below).</p>';
+  try{dkSharePaint();}catch(e){}
+}
+window.dmFriendsPaint=dmFriendsPaint;
+
+/* ═══ #dkshare(sep28) — SHARE TODAY'S DOCKET WITH FRIENDS ═══
+   One row per casual in docket_shares (run DOCKET-SHARES.sql once): today's dock, ship and
+   shift, written by this phone whenever the switch is ON and a docket dated today exists;
+   the row is deleted when the switch goes OFF. RLS: you write your own row, you READ only
+   rows of casuals you're friends with. Off by default — location is the casual's to give. */
+DM.shares={};
+function dkShareOn(){ try{return localStorage.getItem(K('dkshare'))==='1';}catch(e){return false;} }
+function dkShareToday(){
+  const t=(typeof todayISO==='function')?todayISO():'';
+  const all=(typeof DOCKETS!=='undefined'&&Array.isArray(DOCKETS))?DOCKETS:[];
+  const mine=all.filter(j=>j&&j.date===t); if(!mine.length)return null;
+  const j=mine[mine.length-1];
+  return {date:t,terminal:String(j.terminal||'').trim(),ship:String(j.ship||'').trim(),shift:String(j.shift||'').trim()};
+}
+let _dkShareSig='';
+async function dkShareSync(force){
+  if(!(window.SB&&window.__shkUid))return;
+  const on=dkShareOn(), me=window.__shkUid;
+  const row=on?dkShareToday():null;
+  const sig=row?JSON.stringify(row):'off';
+  if(!force&&sig===_dkShareSig)return; _dkShareSig=sig;
+  try{
+    if(row){ const r=await window.SB.from('docket_shares').upsert(Object.assign({user_id:me,handle:(typeof chatMyHandle==='function'?chatMyHandle():'a casual'),updated_at:new Date().toISOString()},row),{onConflict:'user_id'}); if(r&&r.error)throw r.error; }
+    else { const r=await window.SB.from('docket_shares').delete().eq('user_id',me); if(r&&r.error)throw r.error; }
+  }catch(e){ _dkShareSig=''; if(!/does not exist|schema cache|42P01/i.test(String(e&&e.message)))console.warn('[dkshare]',e&&e.message); }
+}
+async function dkShareLoad(){
+  if(!(window.SB&&window.__shkUid))return;
+  const ids=Object.keys(DM.friends||{}); if(!ids.length){DM.shares={}; try{dmFriendsPaint();}catch(e){} return;}
+  try{
+    const t=(typeof todayISO==='function')?todayISO():'';
+    const r=await window.SB.from('docket_shares').select('*').in('user_id',ids).eq('date',t);
+    if(r&&!r.error&&Array.isArray(r.data)){ DM.shares={}; r.data.forEach(x=>{DM.shares[x.user_id]=x;}); try{dmFriendsPaint();}catch(e){} }
+  }catch(e){}
+}
+window.dkShareLoad=dkShareLoad; window.dkShareSync=dkShareSync;
+function dkSharePaint(){
+  const sw=document.getElementById('dkShareSw'), n=document.getElementById('dkShareNote'); if(!sw)return;
+  const on=dkShareOn(); sw.classList.toggle('on',on); sw.setAttribute('aria-checked',on?'true':'false');
+  if(n){ const row=on?dkShareToday():null;
+    n.textContent=!on?'Friends see which dock, ship and shift you logged today. Nobody else. Off = they see nothing.'
+      :row?('Sharing now: '+(row.terminal||'your dock')+(row.ship&&row.ship!=='—'?' · '+row.ship:'')+(row.shift?' · '+row.shift:'')+' — your friends can see it today.')
+      :'On — nothing to share yet. Log today\'s docket and your friends see where you are.'; }
+}
+(function(){ const sw=document.getElementById('dkShareSw'); if(!sw)return;
+  sw.addEventListener('click',function(){
+    if(!(window.SB&&window.__shkUid)){ try{toast('Sign in first — sharing rides your account');}catch(e){} return; }
+    const on=!dkShareOn(); try{localStorage.setItem(K('dkshare'),on?'1':'0');}catch(e){}
+    dkSharePaint(); dkShareSync(true); try{toast(on?'📍 Friends can see today\'s docket':'📍 Docket sharing off');}catch(e){}
+  }); })();
+/* the row follows the log: every harbor-board repaint (seal, 60 s tick, tab open) re-checks it */
+function _dkShareHook(){ const orig=window.renderHarborBoard; if(typeof orig!=='function'||orig._dkshare)return;
+  const w=function(){ try{orig.apply(this,arguments);}catch(e){} try{dkShareSync(false);}catch(e){} }; w._dkshare=1; window.renderHarborBoard=w; }
+window.addEventListener('load',_dkShareHook); setTimeout(_dkShareHook,0);   /* the board's painter is defined further down the file */
+
 /* #dmpriv2(aug15) — THE SWITCH THAT WOULDN'T SAVE.
    The old version fired an UPDATE and trusted it. Two of the four ways this
    breaks are SILENT — PostgREST answers 204 with no error when the write
@@ -29014,7 +29125,7 @@ function boardPostHTML(s,i,step){
     +'<div class="bp-foot">'
       +'<button type="button" class="bp-like'+(liked?' on':'')+'" data-blike="'+esc(String(s.id))+'"><span class="ic">'+(liked?'❤':'🤍')+'</span><span class="n">'+(n?n.toLocaleString():'')+'</span></button>'
       +'<button type="button" data-bcm="'+esc(String(s.id))+'"><span class="ic">💬</span><span class="n" data-bcmn="'+esc(String(s.id))+'"></span></button>'
-      +'<button type="button" data-bshare="'+esc(String(s.url||''))+'"><span class="ic">⤴</span><span class="n">share</span></button>'
+      /* #noshare(sep28) — the ⤴ share button came off the post, by request: like + comment only */
     +'</div>'
   +'</div>';
 }
@@ -44472,6 +44583,7 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
     await probe('dm_messages','run DM-SETUP.sql (dmDiag() digs deeper)');
     await probe('friends','run DM-SETUP.sql');
     await probe('friend_requests','run DM-SETUP.sql');
+    await probe('docket_shares','run DOCKET-SHARES.sql');   /* #dkshare */
     /* the door beacon, WRITE-tested with the same idempotent ping the app sends —
        a refusal here is exactly why the traffic undercounts */
     try{const day=todayISO(), dev=(function(){try{return localStorage.getItem('shadowhook_dev')||'diag'}catch(e){return 'diag'}})();
@@ -49125,8 +49237,11 @@ window.HARBOR_LORE={"ports":{"LA":{"name":"Port of Los Angeles","kicker":"San Pe
       +'<div class="kmsec-b"><div class="sub" style="margin:-2px 0 8px;font-size:11px;line-height:1.6">Run a raffle for Port Bucks. One raffle shows on the banner at a time — the newest live one. '
       +'<b>Duplicate</b> an old raffle to start the next one with the same settings; swap the photo and title and the banner rebuilds itself.</div>'
       +'<div id="kmRfl" class="sub" style="line-height:1.6;margin-bottom:14px">—</div></div>';
-    const desk=$('kmSecDesk');
-    if(desk&&desk.parentNode)desk.parentNode.insertBefore(sec,desk); else kmSheet.querySelector('.sheet-card').appendChild(sec);
+    /* #rflmove(sep28) — the raffle desk sits BELOW the switches (its OFF/ON lives there) and the
+       PUSH, not at the top of the Command Center */
+    const after=$('kmSecBulletin')||$('kmSecSwitches'), desk=$('kmSecDesk');
+    if(after&&after.parentNode)after.parentNode.insertBefore(sec,after.nextSibling);
+    else if(desk&&desk.parentNode)desk.parentNode.insertBefore(sec,desk); else kmSheet.querySelector('.sheet-card').appendChild(sec);
   }
   let KR=[], ED=null;
   const FIELDS=['title','kicker','tag_title','tag_line','headline','prize','blurb','image_url','banner_url','theme','ticket_price','bundle_qty','bundle_price','max_per_member','opens_at','closes_at'];
