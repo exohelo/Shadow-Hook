@@ -27021,32 +27021,56 @@ function bannerChooser(){
   const d=sh.querySelector('#bnDrop'); if(d)d.addEventListener('click',bannerRemove);
   sh.querySelector('#bnNo').addEventListener('click',()=>sh.classList.remove('on'));
 }
-function wideFrom(src,W,H,ox){   /* fill a W×H frame, never stretched; ox 0..1 slides the crop */
+/* #bnpan(sep28) — the crop is a VIEW: v={cx,cy,z} — the picture's centre point (0..1 of its
+   width/height) and a zoom over "just covers the frame". Drag moves it, two fingers pinch it,
+   a mouse wheel zooms it. Never stretched, never shows past the photo's edge. */
+function wideFrom(src,W,H,v){
   const w=src.width||src.naturalWidth, h=src.height||src.naturalHeight;
-  const k=Math.max(W/w,H/h), sw=W/k, sh=H/k;
+  v=v||{cx:.5,cy:.5,z:1};
+  const k=Math.max(W/w,H/h)*Math.max(1,v.z||1), sw=W/k, sh=H/k;
+  let sx=v.cx*w-sw/2, sy=v.cy*h-sh/2;
+  sx=Math.max(0,Math.min(w-sw,sx)); sy=Math.max(0,Math.min(h-sh,sy));
   const c=document.createElement('canvas'); c.width=W; c.height=H; const g=c.getContext('2d'); g.imageSmoothingQuality='high';
-  const sx=(w-sw)*(ox==null?.5:ox), sy=(h-sh)*.5;
   g.drawImage(src,sx,sy,sw,sh,0,0,W,H); return c;
+}
+function clampView(src,W,H,v){   /* keep the centre where the frame can still sit inside the photo */
+  const w=src.width||src.naturalWidth, h=src.height||src.naturalHeight;
+  v.z=Math.max(1,Math.min(6,v.z));
+  const k=Math.max(W/w,H/h)*v.z, hw=(W/k)/2/w, hh=(H/k)/2/h;
+  v.cx=Math.max(hw,Math.min(1-hw,v.cx)); v.cy=Math.max(hh,Math.min(1-hh,v.cy)); return v;
 }
 async function bannerCompose(file){
   let src; try{ src=await decodePicture(file); }catch(e){ toast('Couldn’t read that picture — try a JPG or PNG'); return; }
-  const sh=document.getElementById('bnSheet'); let ox=.5;
+  const sh=document.getElementById('bnSheet'); const V={cx:.5,cy:.5,z:1};
   sh.innerHTML='<div class="sheet-card" style="text-align:left">'
     +'<div class="big" style="font-size:20px;letter-spacing:.06em;text-align:center">YOUR BANNER</div>'
-    +'<canvas id="bnPrev" width="600" height="200" style="display:block;width:100%;aspect-ratio:3/1;border-radius:12px;margin:10px 0 10px;border:1px solid var(--line)"></canvas>'
-    +'<div class="sub" style="text-align:center;margin-bottom:6px">Slide to pick which part shows</div>'
-    +'<input type="range" id="bnSlide" min="0" max="100" value="50" style="width:100%;margin:0 0 12px">'
+    +'<canvas id="bnPrev" width="600" height="200" style="display:block;width:100%;aspect-ratio:3/1;border-radius:12px;margin:10px 0 8px;border:1px solid var(--line);touch-action:none;cursor:grab"></canvas>'
+    +'<div class="sub" style="text-align:center;margin-bottom:12px">Drag to move · pinch (or scroll) to zoom</div>'
     +'<button class="btn" id="bnUse" type="button">✓ USE THIS BANNER</button>'
     +'<button class="btn-ghost" id="bnNo2" type="button" style="width:100%;margin-top:10px;border:0;color:#586067">Never mind</button></div>';
-  const cv=sh.querySelector('#bnPrev'), paint=()=>{ try{ cv.getContext('2d').drawImage(wideFrom(src,600,200,ox),0,0); }catch(e){} };
+  const cv=sh.querySelector('#bnPrev'), paint=()=>{ try{ clampView(src,600,200,V); cv.getContext('2d').drawImage(wideFrom(src,600,200,V),0,0); }catch(e){} };
   paint();
-  sh.querySelector('#bnSlide').addEventListener('input',e=>{ ox=(+e.target.value||0)/100; paint(); });
+  /* drag · pinch · wheel */
+  const P=new Map(); let last=null;
+  const iw=()=>src.width||src.naturalWidth, ih=()=>src.height||src.naturalHeight;
+  const kNow=()=>Math.max(600/iw(),200/ih())*V.z*(cv.clientWidth/600);   /* screen px per photo px */
+  const spread=()=>{ const a=[...P.values()]; return a.length<2?0:Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y); };
+  const mid=()=>{ const a=[...P.values()]; return a.length<2?a[0]:{x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2}; };
+  cv.addEventListener('pointerdown',e=>{ cv.setPointerCapture(e.pointerId); P.set(e.pointerId,{x:e.clientX,y:e.clientY}); last={m:mid(),d:spread()}; cv.style.cursor='grabbing'; });
+  cv.addEventListener('pointermove',e=>{ if(!P.has(e.pointerId))return; P.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    const m=mid(), d=spread(), k=kNow();
+    if(last&&last.m){ V.cx-=(m.x-last.m.x)/k/iw(); V.cy-=(m.y-last.m.y)/k/ih(); }
+    if(last&&last.d&&d)V.z*=d/last.d;
+    last={m:m,d:d}; paint(); });
+  const up=e=>{ P.delete(e.pointerId); last={m:P.size?mid():null,d:spread()}; if(!P.size)cv.style.cursor='grab'; };
+  cv.addEventListener('pointerup',up); cv.addEventListener('pointercancel',up);
+  cv.addEventListener('wheel',e=>{ e.preventDefault(); V.z*=e.deltaY<0?1.1:1/1.1; paint(); },{passive:false});
   sh.querySelector('#bnNo2').addEventListener('click',()=>sh.classList.remove('on'));
   sh.querySelector('#bnUse').addEventListener('click',async()=>{
     const b=sh.querySelector('#bnUse'); b.disabled=true; b.textContent='SETTING…';
     try{
       if(!(window.SB&&window.__shkUid))throw new Error('Sign in to set a banner');
-      const blob=await canvasBlob(wideFrom(src,1200,400,ox),.84);
+      const blob=await canvasBlob(wideFrom(src,1200,400,clampView(src,1200,400,V)),.84);
       const old=myBanner(), path='banners/'+window.__shkUid+'-'+Date.now().toString(36)+'.jpg';
       const up=await window.SB.storage.from('chat-media').upload(path,blob,{contentType:'image/jpeg',upsert:false,cacheControl:'31536000'}); if(up.error)throw up.error;
       const url=window.SB.storage.from('chat-media').getPublicUrl(path).data.publicUrl;
