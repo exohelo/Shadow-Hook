@@ -8,7 +8,8 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='sep28carriage';   /* sep 28 (3rd) — OCTOBER GETS A REAL SOUNDTRACK: the 🔊 plays "The Skeletons' Midnight Carriage" through a hidden YouTube player, looped; the wind-and-organ synth only steps in if YouTube can't load */
+window.SHK_BUILD='sep28carriage2';   /* sep 28 (4th) — THE CARRIAGE SENDS ITS PAPERS: the hidden player is our own iframe with a referrer + origin (YouTube won't play for a page that sends none), and a failed load now says so instead of silently falling back */
+/* was: sep28carriage */   /* sep 28 (3rd) — OCTOBER GETS A REAL SOUNDTRACK: the 🔊 plays "The Skeletons' Midnight Carriage" through a hidden YouTube player, looped; the wind-and-organ synth only steps in if YouTube can't load */
 /* was: sep28float */   /* sep 28 (2nd) — THE PILLS FLOAT: the solid shelf behind the ⬡ pill and ☾ goes clear, with a soft blur behind each so they stay readable over the page */
 /* was: sep28pillglass */   /* sep 28 — THE PILLS GO GLASS AGAIN: the ⬡ PORT BUCKS pill and ☾ button drop the #pillsolid base and show their see-through gradients; the hang-band shelf still keeps the page from showing through */
 /* was: sep26read */   /* sep 26 — THE HALL'S WEEKDAY BEATS ITS DATE: a hall-line reading is keyed to the weekday the hall said, nearest the call, not the numeric date the announcer misread (#hallday). TWO-PASS READER: the frame-cropped slip is read at 1400 px first and only re-read at 2200 when fields are missing; at 2200 a slip that fills the frame lost its ship line and read 8:00AM as 3:00AM (#twopass). The wire hero says CYCLE only at 85%+, not 50% (#cyclehero). */
@@ -41791,14 +41792,19 @@ html.daylight .sn-bolt{display:none}
     yt='loading';
     var box=document.createElement('div'); box.id='hwYtBox'; box.setAttribute('aria-hidden','true');
     box.style.cssText='position:fixed;left:-400px;top:0;width:200px;height:200px;opacity:0;pointer-events:none;overflow:hidden;z-index:-1';
-    var host=document.createElement('div'); host.id='hwYtHost'; box.appendChild(host); document.body.appendChild(box);
+    /* #hwyt2 — our own iframe, so it carries a referrer: YouTube refuses to play for a page that
+       sends none (Error 152/153 — file:// pages, no-referrer policies). origin= lets the API talk back. */
+    var web=/^https?:$/.test(location.protocol);
+    var host=document.createElement('iframe'); host.id='hwYtHost'; host.width=200; host.height=200; host.title='Halloween music';
+    host.setAttribute('allow','autoplay; encrypted-media'); host.setAttribute('referrerpolicy','strict-origin-when-cross-origin');
+    host.src='https://www.youtube.com/embed/'+HW_YT_ID+'?enablejsapi=1&autoplay=0&controls=0&loop=1&playlist='+HW_YT_ID+'&playsinline=1&rel=0&disablekb=1&fs=0&iv_load_policy=3'+(web?'&origin='+encodeURIComponent(location.origin):'');
+    box.appendChild(host); document.body.appendChild(box);
     function make(){ try{
-      yt=new YT.Player('hwYtHost',{width:200,height:200,videoId:HW_YT_ID,
-        playerVars:{autoplay:0,controls:0,loop:1,playlist:HW_YT_ID,playsinline:1,rel:0,modestbranding:1,disablekb:1,fs:0,iv_load_policy:3},
+      yt=new YT.Player('hwYtHost',{
         events:{
           onReady:function(){ ytReady=true; try{yt.setVolume(YT_VOL); yt.unMute();}catch(e){} if(running&&!muted&&ytWant){ try{yt.playVideo()}catch(e){} } },
           onStateChange:function(ev){ if(ev.data===1){ clearTimeout(ytGuard); if(synthOn)stopSynth(); } if(ev.data===1&&(!running||muted)){ try{yt.pauseVideo()}catch(e){} } paint(); },
-          onError:function(){ ytGiveUp(); }
+          onError:function(ev){ try{console.warn('[hwyt] YouTube error',ev&&ev.data,'— playing the backup synth')}catch(e){} ytGiveUp(); if(running&&!muted){ try{toast('🎃 Couldn\'t load the music — playing the harbor sound')}catch(e){} } }
         }});
     }catch(e){ ytGiveUp(); } }
     if(window.YT&&window.YT.Player){ make(); return; }
