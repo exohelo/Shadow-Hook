@@ -2611,6 +2611,19 @@ html.daylight .pdp-sizes button.on{background:#fdf3e3}
 /* #aboutyou(sep28) */
 .ab-lbl{display:block;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--bone);margin:8px 0 5px}
 #aboutBox .field{margin:0}
+.ab-me{display:flex;align-items:center;gap:14px;margin:8px 0 6px}
+.ab-pic{flex:none;position:relative;width:84px;height:84px;border-radius:50%;padding:0;cursor:pointer;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;background:var(--well);border:2px solid rgba(238,180,107,.55);box-shadow:0 0 14px rgba(238,180,107,.2)}
+.ab-pic img{width:100%;height:100%;object-fit:cover;display:block}
+.ab-pic.empty{border:2px dashed rgba(238,180,107,.7);background:rgba(238,180,107,.06);flex-direction:column;gap:3px;color:var(--copper-hi);
+  font:700 9.5px/1.15 'Inter',system-ui,sans-serif;letter-spacing:.1em;text-align:center;animation:abPicNudge 3s ease-in-out infinite}
+.ab-pic.empty .pl{font-size:24px;line-height:1;font-weight:400}
+.ab-pic:not(.empty)::after{content:"📷";position:absolute;right:2px;bottom:2px;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;background:var(--copper-hi);box-shadow:0 0 0 2px var(--void)}
+@keyframes abPicNudge{0%,100%{box-shadow:0 0 0 rgba(238,180,107,0)}50%{box-shadow:0 0 16px rgba(238,180,107,.45)}}
+@media (prefers-reduced-motion:reduce){.ab-pic.empty{animation:none}}
+.ab-id{flex:1;min-width:0}
+.ab-handle{font-family:'Anton',sans-serif;font-size:22px;letter-spacing:.03em;color:var(--bone);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:8px}
+.ab-id #pfRename{width:100%;padding:9px 10px;font-size:11.5px}
 #aboutBox input[type=date]{color-scheme:dark}
 html.daylight #aboutBox input[type=date]{color-scheme:light}
 /* #bday(sep28) — the Birthday Spotlight on the Hall */
@@ -7720,10 +7733,18 @@ html.daylight .hm-lm .lk-g,html.daylight .hm-lm .lk-w{fill:#dfeaf7}
            Rides the profiles row — run PROFILE-SETUP.sql once. Hidden until signed in. -->
       <div class="albox" id="aboutBox" style="display:none">
         <h4>🪪 About you</h4>
-        <p class="alnote">Three things the Order asks for. Only the birthday ever shows to other casuals, and only if you let it.</p>
-        <label class="ab-lbl" for="abEmail">✉ Email</label>
+        <!-- #aboutpic(sep28) — your picture and your handle lead the card: an empty picture shows as a
+             dashed "add photo" slot so it asks to be filled. Tap → the same chooser as the ⚓ seal. -->
+        <div class="ab-me">
+          <button type="button" class="ab-pic" id="abPic" aria-label="Your picture — tap to add or change"></button>
+          <div class="ab-id">
+            <div class="ab-handle" id="abHandle">—</div>
+            <button class="btn-line gold" id="pfRename" type="button">✎ Change Handle</button>
+          </div>
+        </div>
+        <label class="ab-lbl" for="abEmail">✉ Contact email</label>
         <input class="field" id="abEmail" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com" spellcheck="false">
-        <div class="als" style="margin:4px 0 10px">So we can reach you when you've been off the app a few days, and where gear from the Armory ships.</div>
+        <div style="height:10px"></div>
         <label class="ab-lbl" for="abBday">🎂 Birthday</label>
         <input class="field" id="abBday" type="date">
         <div class="alrow" style="border-top:0;padding:6px 0 10px"><div class="alm">
@@ -7736,7 +7757,6 @@ html.daylight .hm-lm .lk-g,html.daylight .hm-lm .lk-w{fill:#dfeaf7}
           <button type="button" data-g="f">SISTER</button>
           <button type="button" data-g="">RATHER NOT SAY</button>
         </div>
-        <div class="als" style="margin:-4px 0 10px">For gear sizing and the look of the app. Never shown to anyone.</div>
         <button class="btn" id="abSave" type="button" style="width:100%">SAVE</button>
         <p class="sub" id="abNote" style="margin:8px 0 0;text-align:center"></p>
       </div>
@@ -7847,7 +7867,6 @@ html.daylight .hm-lm .lk-g,html.daylight .hm-lm .lk-w{fill:#dfeaf7}
       </div>
 
       <div class="prof-actions">
-        <button class="btn-line gold" id="pfRename" type="button">✎ Change Handle</button>
         <button class="btn-logout" id="pfLogout" type="button">⎋ Log Out</button>
         <button class="btn-line" id="pfCommand" type="button" style="display:none;flex-basis:100%;border-color:rgba(224,73,46,.55);color:var(--ember)">☠ COMMAND CENTER</button>
       </div>
@@ -26917,7 +26936,11 @@ async function avatarRemove(){
     toast(avatarFailMsg(e,'remove'));
   }
 }
-function profileSealPaint(){ const el=document.getElementById('pfSeal'); if(!el)return; const u=myAvatar(); el.innerHTML=u?'<img class="avimg" src="'+esc(u)+'" alt="">':'⚓'; el.classList.toggle('has',!!u); }
+function profileSealPaint(){ const u=myAvatar();
+  const el=document.getElementById('pfSeal'); if(el){ el.innerHTML=u?'<img class="avimg" src="'+esc(u)+'" alt="">':'⚓'; el.classList.toggle('has',!!u); }
+  /* #aboutpic — the About-you picture: the photo, or an ADD PHOTO slot that asks to be filled */
+  const ab=document.getElementById('abPic'); if(ab){ ab.classList.toggle('empty',!u); ab.innerHTML=u?'<img src="'+esc(u)+'" alt="">':'<span class="pl">＋</span>ADD<br>PHOTO'; }
+}
 function avatarChooser(){
   if(typeof guestWall==='function'&&guestWall())return;
   let sh=document.getElementById('avSheet');
@@ -26943,7 +26966,7 @@ function avatarChooser(){
   sh.querySelector('#avNo').addEventListener('click',()=>sh.classList.remove('on'));
   sh.classList.add('on');
 }
-(function(){ const b=document.getElementById('pfSeal'); if(b)b.addEventListener('click',()=>{ try{avatarChooser();}catch(e){} }); try{profileSealPaint();}catch(e){} })();
+(function(){ ['pfSeal','abPic'].forEach(id=>{ const b=document.getElementById(id); if(b)b.addEventListener('click',()=>{ try{avatarChooser();}catch(e){} }); }); try{profileSealPaint();}catch(e){} })();
 
 function storiesFeed(){
   const svr=ALL_STORIES.map(s=>({id:s.id,by:s.by_handle||'a casual',by_id:s.by_id,owner:s.owner||'',url:s.url,note:s.note||'',plat:s.platform||'',ts:s.created_at?new Date(s.created_at).getTime():0,mine:(s.by_id&&s.by_id===ACCT_ID)}));
@@ -28899,6 +28922,7 @@ window.dmDiag=dmDiag;
     const signed=!!(window.SB&&window.__shkUid); box.style.display=signed?'':'none'; if(!signed)return;
     if($('abEmail')&&document.activeElement!==$('abEmail'))$('abEmail').value=AB.email||'';
     if($('abBday')&&document.activeElement!==$('abBday'))$('abBday').value=AB.birthday||'';
+    try{ const h=$('abHandle'), src=$('pfHandle'); if(h&&src)h.textContent=(src.textContent||'—'); profileSealPaint(); }catch(e){}
     const sw=$('abBdayPub'); if(sw){ sw.classList.toggle('on',!!AB.bday_public); sw.setAttribute('aria-checked',AB.bday_public?'true':'false'); }
     const g=$('abGender'); if(g)g.querySelectorAll('button').forEach(b=>b.classList.toggle('on',(b.dataset.g||'')===(AB.gender||'')));
     try{ document.documentElement.classList.toggle('who-m',AB.gender==='m'); document.documentElement.classList.toggle('who-f',AB.gender==='f'); }catch(e){}   /* a hook for themes: html.who-m / html.who-f */
