@@ -1160,6 +1160,17 @@ html.daylight .badge.earned{background:#fff;border-width:2px}
 .bpost{position:relative;display:flex;flex-direction:column;gap:9px;padding:12px 13px;margin:0 0 10px;border-radius:15px;cursor:pointer;
   background:linear-gradient(180deg,rgba(34,27,19,.5),rgba(13,11,9,.34));border:1px solid var(--line-soft)}
 .bpost.mine{border-color:rgba(238,180,107,.24)}
+/* #upbar(sep28) — a post on its way up: its own card at the top of the board, with a real % */
+.bpost.bup{cursor:default;border-color:rgba(238,180,107,.34)}
+.bup-media{position:relative;border-radius:12px;overflow:hidden;background:#0a0b0d;max-height:220px}
+.bup-media img,.bup-media video{display:block;width:100%;max-height:220px;object-fit:cover;opacity:.55;filter:saturate(.8)}
+.bup-pct{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:800 30px/1 'Inter',system-ui,sans-serif;color:#fff;text-shadow:0 2px 10px rgba(0,0,0,.7);letter-spacing:.02em}
+.bup-bar{height:6px;border-radius:99px;background:rgba(255,255,255,.1);overflow:hidden}
+.bup-bar i{display:block;height:100%;width:0;border-radius:99px;background:linear-gradient(90deg,var(--copper-hi,#EEB46B),#ffd9a3);transition:width .25s ease}
+.bpost.bup.err .bup-bar i{background:#c0584a}
+.bup-st{font-size:11.5px;color:var(--steel)}
+.bup-act{display:flex;gap:8px}
+.bup-act button{flex:1;padding:8px;border-radius:10px;border:1px solid rgba(238,180,107,.35);background:transparent;color:var(--copper-hi,#EEB46B);font-weight:700;font-size:12px;cursor:pointer}
 .bpost .bp-head{display:flex;align-items:center;gap:9px}
 .bpost .bp-av{flex:none;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:17px;background:radial-gradient(circle at 34% 26%,rgba(238,180,107,.32),rgba(11,13,15,.6));border:1px solid rgba(238,180,107,.4)}
 .bpost .bp-who{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
@@ -6918,7 +6929,10 @@ html.daylight .hm-lm .lk-g,html.daylight .hm-lm .lk-w{fill:#dfeaf7}
     </div>
   </div>
   <!-- #stories2 — story creation rides the phone's own camera / gallery -->
-  <input type="file" id="storyShoot" accept="image/*,video/*" capture="environment" hidden>
+  <!-- #camopen(sep28) — one type per camera input: Android Chrome drops `capture` (and opens the
+       file picker) when accept mixes image/* and video/*, so the 📷 never reached the camera -->
+  <input type="file" id="storyShoot" accept="image/*" capture="environment" hidden>
+  <input type="file" id="storyShootVid" accept="video/*" capture="environment" hidden>
   <input type="file" id="storyPick" accept="image/*,video/*" hidden>
 
   <div class="roomscreen" id="roomView">
@@ -26177,7 +26191,7 @@ function storyCreateChooser(){
     +'<button class="btn-ghost" id="sgNo" type="button" style="width:100%;margin-top:10px;border:0;color:#586067">Never mind</button></div>';
   sh.querySelector('#sgNo').addEventListener('click',()=>sh.classList.remove('on'));
   sh.querySelector('#sgSay').addEventListener('click',()=>{sh.classList.remove('on');try{newTextPostFlow()}catch(e){}});   /* #social2 */
-  sh.querySelector('#sgShoot').addEventListener('click',()=>{sh.classList.remove('on');const i=document.getElementById('storyShoot');if(i){i.value='';i.click();}});
+  sh.querySelector('#sgShoot').addEventListener('click',()=>{sh.classList.remove('on');storyShootChooser();});   /* #camopen */
   sh.querySelector('#sgPick').addEventListener('click',()=>{sh.classList.remove('on');const i=document.getElementById('storyPick');if(i){i.value='';i.click();}});
   sh.querySelector('#sgLink').addEventListener('click',()=>{sh.classList.remove('on');try{newStoryFlow()}catch(e){}});
   sh.classList.add('on');
@@ -26188,6 +26202,16 @@ function storyCompose(file){
   if(!file)return;
   /* #cliprule(sep04) — a clip on the wall is cut to ten seconds and re-encoded first */
   if(file.type&&file.type.startsWith('video')&&!CLIP_PASSED.has(file)){ clipGate(file,storyCompose); return; }
+  /* #upbar(sep28) — a photo goes through the room's #chatpic fitter first: EXIF-upright,
+     HEIC → JPEG, 1600 px. A 6 MB phone shot becomes ~300 KB, so it goes up in a second or
+     two instead of a long silent wait — and what the preview shows is what actually posts. */
+  if(!(file.type&&file.type.startsWith('video'))&&!STY_FIT.has(file)){
+    chatFitImage(file,'image').then(f=>{ try{STY_FIT.add(f);}catch(e){} storyCompose(f); }).catch(e=>{
+      const heic=/hei[cf]/i.test(String(file.type||'')+String(file.name||''));
+      toast(heic?'This browser can’t read HEIC photos — on iPhone set Camera → Formats → Most Compatible':'Couldn’t read that picture — try a JPG or PNG');
+    });
+    return;
+  }
   _styFile=file;_styKind=(file.type&&file.type.startsWith('video'))?'vid':'img';   /* #video2 — clips post again */
   _styTxtY=0.42;
   if(_styBlobUrl){try{URL.revokeObjectURL(_styBlobUrl)}catch(e){}}
@@ -26268,26 +26292,16 @@ async function postMediaStory(){
     }
   };
   if(window.SB&&window.__shkUid){
-    try{
-      const ext=((file.name||'').split('.').pop()||(_styKind==='vid'?'mp4':'jpg')).toLowerCase().replace(/[^a-z0-9]/g,'')||'bin';
-      const path='stories/'+chatUUID()+'.'+ext;
-      const up=await window.SB.storage.from('chat-media').upload(path,typedUploadBody(file,ext,_styKind),{contentType:mediaMime(file,ext,_styKind),cacheControl:'31536000'});   // #vidmime2 — Blob carries the real type · #bucketpath — fresh uuid, no upsert
-      if(up.error)throw up.error;
-      const pub=window.SB.storage.from('chat-media').getPublicUrl(path);
-      const url=pub&&pub.data&&pub.data.publicUrl; if(!url)throw new Error('no public url');
-      const r=await window.SB.from('stories').insert({owner:window.__shkUid,by_id:ACCT_ID,by_handle:chatMyHandle(),url:url,platform:plat,note:note});   // #stories3 — plain insert; no SELECT-policy trap
-      if(r.error)throw r.error;
-      ALL_STORIES.unshift({id:'srv'+Date.now(),owner:window.__shkUid,by_id:ACCT_ID,by_handle:chatMyHandle(),url:url,platform:plat,note:note,created_at:new Date().toISOString()});
-      if(_styKind==='vid')try{makeVideoThumb(_styBlobUrl,url)}catch(e){}   // #stories6b — poster from the fresh blob, keyed to the public URL
-      try{tallyAdd('story');unlockBadge(bixLate("Storyteller"))}catch(e){}   /* #marks2 */
-      if(sh)sh.classList.remove('on');
-      renderSocialFeed();
-      try{sbLoadStories(true);}catch(e){}   // true-up with the server's real row/id
-      try{unlockBadge(bixLate("Town Crier"))}catch(e){}
-      toast((_styKind==='vid'?'🎬':'📸')+' Posted — the board sees it');
-    }catch(e){
-      await keepLocal(storyFailMsg(e));   // the shot is NOT lost — parked + will migrate
-    }
+    /* #upbar(sep28) — THE WAIT YOU COULD SEE. The sheet used to sit on "POSTING…" with no
+       number, and closing it looked like it killed the post. Now the sheet closes the moment
+       you tap POST IT; the post rides up in the background as its own card at the top of the
+       board with a real % and MB count. Photos are parked on the phone FIRST (storyq), so if
+       the app is closed mid-upload the shot rides up on the next open instead of vanishing. */
+    const kind=_styKind, blobUrl=_styBlobUrl;
+    _styFile=null; _styBlobUrl=null;   // the next post gets its own blob; this one belongs to the upload now
+    if(sh)sh.classList.remove('on');
+    if(btn){btn.disabled=false;btn.textContent='📣 POST IT';}
+    storyUploadRun({file:file,kind:kind,blobUrl:blobUrl,note:note,plat:plat});
     return;
   }
   await keepLocal();
@@ -26297,7 +26311,152 @@ async function postMediaStory(){
   const a=document.getElementById('storyShoot'),b=document.getElementById('storyPick');
   if(a)a.addEventListener('change',go);
   if(b)b.addEventListener('change',go);
+  const v=document.getElementById('storyShootVid'); if(v)v.addEventListener('change',go);   /* #camopen */
 })();
+/* ═══ #camopen(sep28) — 📷 OPENS THE CAMERA ═══
+   One tap for a photo, one for a clip, each wired to an input that asks for ONE type,
+   which is the only form every phone honours `capture` on. */
+function storyShootChooser(){
+  let sh=document.getElementById('storyCamSheet');
+  if(!sh){sh=document.createElement('div');sh.className='sheet';sh.id='storyCamSheet';document.body.appendChild(sh);
+    sh.addEventListener('click',e=>{if(e.target===sh)sh.classList.remove('on')});}
+  sh.innerHTML='<div class="sheet-card" style="text-align:left">'
+    +'<div class="big" style="font-size:20px;letter-spacing:.06em;text-align:center">SHOOT IT</div>'
+    +'<button class="btn" id="scPhoto" type="button" style="margin-top:12px">📸 Take a photo</button>'
+    +'<button class="btn-line gold" id="scClip" type="button" style="width:100%;margin-top:10px">🎬 Record a clip · 10 s</button>'
+    +'<button class="btn-ghost" id="scNo" type="button" style="width:100%;margin-top:10px;border:0;color:#586067">Never mind</button></div>';
+  const fire=id=>{ sh.classList.remove('on'); const i=document.getElementById(id); if(i){i.value='';i.click();} };
+  sh.querySelector('#scPhoto').addEventListener('click',()=>fire('storyShoot'));
+  sh.querySelector('#scClip').addEventListener('click',()=>fire('storyShootVid'));
+  sh.querySelector('#scNo').addEventListener('click',()=>sh.classList.remove('on'));
+  sh.classList.add('on');
+}
+window.storyShootChooser=storyShootChooser;
+/* ═══ #upbar(sep28) — POSTS ON THEIR WAY UP ═══ */
+const STY_FIT=(typeof WeakSet==='function')?new WeakSet():{has:function(){return false},add:function(){}};
+let STORY_UPLOADS=[];   // {id,kind,blobUrl,handle,loaded,total,phase,msg,err,job}
+function upMB(n){ return (n/1048576).toFixed(n<1048576?2:1); }
+function upStatus(u){
+  if(u.err)return u.msg||'Didn’t make it';
+  if(u.phase==='prep')return 'Getting it ready…';
+  if(u.phase==='save')return 'Pinning it to the board…';
+  if(u.phase==='retry')return u.msg||'The wire dropped — trying again…';
+  if(u.total)return 'Uploading · '+upMB(u.loaded)+' of '+upMB(u.total)+' MB';
+  return 'Uploading…';
+}
+function upPct(u){ if(u.phase==='save')return 100; return u.total?Math.min(99,Math.round(u.loaded/u.total*100)):0; }
+function storyUploadsHTML(){
+  return STORY_UPLOADS.map(u=>{
+    const pct=upPct(u);
+    return '<div class="bpost bup mine'+(u.err?' err':'')+'" data-upid="'+esc(u.id)+'">'
+      +'<div class="bp-head">'+avSlot('bp-av',window.__shkUid,'🎭')+'<div class="bp-who"><b>'+esc(u.handle||'you')+'</b><span class="bup-st">'+esc(upStatus(u))+'</span></div></div>'
+      +(u.blobUrl?'<div class="bup-media">'+(u.kind==='vid'?'<video src="'+esc(u.blobUrl)+'" muted playsinline></video>':'<img src="'+esc(u.blobUrl)+'" alt="">')
+        +'<div class="bup-pct">'+(u.err?'⚠':pct+'%')+'</div></div>':'')
+      +'<div class="bup-bar"><i style="width:'+(u.err?100:pct)+'%"></i></div>'
+      +(u.err?'<div class="bup-act"><button type="button" data-upretry="'+esc(u.id)+'">↻ Try again</button><button type="button" data-updrop="'+esc(u.id)+'">✕ Drop it</button></div>':'')
+    +'</div>';
+  }).join('');
+}
+function upPaint(u){   // cheap in-place update — no full board re-render per progress tick
+  const el=document.querySelector('[data-upid="'+(window.CSS&&CSS.escape?CSS.escape(u.id):u.id)+'"]'); if(!el){ return; }
+  const pct=upPct(u);
+  const st=el.querySelector('.bup-st'); if(st)st.textContent=upStatus(u);
+  const pc=el.querySelector('.bup-pct'); if(pc)pc.textContent=u.err?'⚠':pct+'%';
+  const bar=el.querySelector('.bup-bar i'); if(bar)bar.style.width=(u.err?100:pct)+'%';
+}
+document.addEventListener('click',e=>{
+  const r=e.target.closest&&e.target.closest('[data-upretry]'), d=e.target.closest&&e.target.closest('[data-updrop]');
+  if(r){ e.stopPropagation(); const u=STORY_UPLOADS.find(x=>x.id===r.getAttribute('data-upretry')); if(u){ STORY_UPLOADS=STORY_UPLOADS.filter(x=>x!==u); storyUploadRun(u.job); } }
+  if(d){ e.stopPropagation(); const u=STORY_UPLOADS.find(x=>x.id===d.getAttribute('data-updrop')); if(u){ STORY_UPLOADS=STORY_UPLOADS.filter(x=>x!==u); storyQDrop(u.qid); renderSocialFeed(); } }
+},true);
+window.addEventListener('beforeunload',e=>{ if(STORY_UPLOADS.some(u=>!u.err)){ e.preventDefault(); e.returnValue=''; } });
+/* the phone-side parking lot: a photo is written here BEFORE it goes up, cleared once it lands */
+function storyQ(){ try{return JSON.parse(localStorage.getItem(K('storyq'))||'[]')||[];}catch(e){return [];} }
+function storyQSet(q){ try{localStorage.setItem(K('storyq'),JSON.stringify(q));}catch(e){} }
+function storyQDrop(qid){ if(!qid)return; storyQSet(storyQ().filter(x=>x.id!==qid)); }
+(function(){   // a post left mid-upload by a closed app joins the held stories and rides up on its own
+  const q=storyQ(); if(!q.length)return;
+  q.forEach(s=>{ if(!MY_LOCAL_STORIES.some(x=>x.id===s.id))MY_LOCAL_STORIES.unshift(s); });
+  try{localStorage.setItem(K('mystories'),JSON.stringify(MY_LOCAL_STORIES.filter(s=>!/^blob:/.test(String(s.url||'')))));}catch(e){}
+  storyQSet([]);
+})();
+/* supabase-js gives no upload progress, so this talks to the storage door directly with
+   XHR (the one browser API that reports bytes sent). Same bucket, same path, same auth. */
+async function sbUploadProgress(bucket,path,body,mime,onProg){
+  let tok=window.SUPABASE_ANON_KEY;
+  try{ const s=await window.SB.auth.getSession(); if(s&&s.data&&s.data.session&&s.data.session.access_token)tok=s.data.session.access_token; }catch(e){}
+  return new Promise((res,rej)=>{
+    const x=new XMLHttpRequest();
+    x.open('POST',String(window.SUPABASE_URL).replace(/\/$/,'')+'/storage/v1/object/'+bucket+'/'+path.split('/').map(encodeURIComponent).join('/'));
+    x.setRequestHeader('Authorization','Bearer '+tok);
+    x.setRequestHeader('apikey',window.SUPABASE_ANON_KEY);
+    x.setRequestHeader('Content-Type',mime);
+    x.setRequestHeader('cache-control','max-age=31536000');
+    x.setRequestHeader('x-upsert','false');
+    x.upload.onprogress=e=>{ if(e.lengthComputable)onProg(e.loaded,e.total); };
+    x.onload=()=>{ if(x.status>=200&&x.status<300)return res();
+      let m=x.responseText||''; try{const j=JSON.parse(m); m=j.message||j.error||m;}catch(_){}
+      rej(Object.assign(new Error(m||('HTTP '+x.status)),{status:x.status,statusCode:String(x.status)})); };
+    x.onerror=()=>rej(Object.assign(new Error('Failed to fetch'),{net:true}));
+    x.onabort=()=>rej(Object.assign(new Error('Failed to fetch'),{net:true}));
+    x.send(body);
+  });
+}
+async function storyUploadRun(job){
+  const file=job.file, kind=job.kind;
+  const u={id:'up'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),kind:kind,blobUrl:job.blobUrl,
+           handle:chatMyHandle(),loaded:0,total:file.size||0,phase:'prep',job:job,qid:job.qid||''};
+  STORY_UPLOADS.unshift(u); renderSocialFeed();
+  if(!job.toasted){ job.toasted=true; toast('📣 Posting — keep scrolling, it goes up in the background'); }
+  /* park the photo on the phone first — survives the app being closed mid-upload */
+  if(kind==='img'&&!job.qid){
+    try{ const durl=await shrinkImage(file,1080,.72);
+      job.qid=u.qid='loc'+Date.now();
+      const q=storyQ(); q.unshift({id:job.qid,by_handle:u.handle,by_id:ACCT_ID,url:durl,platform:job.plat,note:job.note,created_at:new Date().toISOString(),local:true}); storyQSet(q);
+    }catch(e){}
+  }
+  const ext=((file.name||'').split('.').pop()||(kind==='vid'?'mp4':'jpg')).toLowerCase().replace(/[^a-z0-9]/g,'')||'bin';
+  const mime=mediaMime(file,ext,kind);
+  let url='', lastErr=null;
+  u.phase='up'; upPaint(u);
+  for(let attempt=0;attempt<3&&!url;attempt++){
+    const path='stories/'+chatUUID()+'.'+ext;
+    try{
+      await sbUploadProgress('chat-media',path,typedUploadBody(file,ext,kind),mime,(l,t)=>{ u.loaded=l; u.total=t; u.phase='up'; upPaint(u); });
+      const pub=window.SB.storage.from('chat-media').getPublicUrl(path);
+      url=(pub&&pub.data&&pub.data.publicUrl)||''; if(!url)throw new Error('no public url');
+    }catch(e){
+      lastErr=e;
+      const net=e&&(e.net||/failed to fetch|network|load failed/i.test(String(e.message||'')));
+      if(!net||attempt===2)break;
+      u.phase='retry'; u.msg='The wire dropped — trying again ('+(attempt+2)+' of 3)…'; u.loaded=0; upPaint(u);
+      await new Promise(r=>setTimeout(r,1500*(attempt+1)));
+    }
+  }
+  if(url){
+    u.phase='save'; upPaint(u);
+    try{
+      const r=await window.SB.from('stories').insert({owner:window.__shkUid,by_id:ACCT_ID,by_handle:u.handle,url:url,platform:job.plat,note:job.note});
+      if(r.error)throw r.error;
+      storyQDrop(u.qid);
+      STORY_UPLOADS=STORY_UPLOADS.filter(x=>x!==u);
+      ALL_STORIES.unshift({id:'srv'+Date.now(),owner:window.__shkUid,by_id:ACCT_ID,by_handle:u.handle,url:url,platform:job.plat,note:job.note,created_at:new Date().toISOString()});
+      if(kind==='vid')try{makeVideoThumb(job.blobUrl,url)}catch(e){}
+      try{tallyAdd('story');unlockBadge(bixLate("Storyteller"))}catch(e){}
+      renderSocialFeed();
+      try{sbLoadStories(true);}catch(e){}
+      try{unlockBadge(bixLate("Town Crier"))}catch(e){}
+      toast((kind==='vid'?'🎬':'📸')+' Posted — the board sees it');
+      return;
+    }catch(e){ lastErr=e; }
+  }
+  /* it didn't make it — say why, keep the card with Try again / Drop it. A parked photo
+     also rides up on its own next time the app opens. */
+  u.err=true; u.msg=storyFailMsg(lastErr).replace(/ ?Saved on this phone for now\.?| ?— saved on this phone, it rides up when the wire answers\.?/,'');
+  try{ if(typeof shkAlert==='function')shkAlert('story:upload',String((lastErr&&(lastErr.message||lastErr.status))||lastErr||''),''); }catch(_){}
+  renderSocialFeed();
+  toast('⚠ '+u.msg+' — tap Try again');
+}
 async function deleteStory(id){
   if(String(id).indexOf('loc')===0){
     MY_LOCAL_STORIES=MY_LOCAL_STORIES.filter(s=>s.id!==id);
@@ -28685,6 +28844,7 @@ function boardSectionHTML(step){
     +'<button type="button" class="bc-ic" data-bnew="pick" aria-label="From your gallery">🖼</button>'
     +'<button type="button" class="bc-ic" data-bnew="link" aria-label="Paste a link">🔗</button>'
   +'</div>';
+  try{ html+=storyUploadsHTML(); }catch(e){}   /* #upbar — posts on their way up */
   if(!posts.length){
     html+='<div class="bpost empty"><div class="bp-empty-ic">📣</div><b>THE BOARD’S BLANK</b><span>news, a clip, a photo, or just something to say — the first post is yours</span></div>';
   }else posts.forEach((s,i)=>{ html+=boardPostHTML(s,i,step); });
@@ -28696,7 +28856,8 @@ function bindBoard(host){
     try{
       if(k==='txt')newTextPostFlow();
       else if(k==='link')newStoryFlow();
-      else{ if(typeof guestWall==='function'&&guestWall())return; const i=document.getElementById(k==='shoot'?'storyShoot':'storyPick'); if(i){i.value='';i.click();} }
+      else if(k==='shoot'){ if(typeof guestWall==='function'&&guestWall())return; storyShootChooser(); }   /* #camopen */
+      else{ if(typeof guestWall==='function'&&guestWall())return; const i=document.getElementById('storyPick'); if(i){i.value='';i.click();} }
     }catch(err){} }));
   host.querySelectorAll('.bpost[data-bi]').forEach(el=>el.addEventListener('click',e=>{
     if(e.target.closest('button'))return;
