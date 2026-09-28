@@ -8,7 +8,8 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='sep28carriage2';   /* sep 28 (4th) — THE CARRIAGE SENDS ITS PAPERS: the hidden player is our own iframe with a referrer + origin (YouTube won't play for a page that sends none), and a failed load now says so instead of silently falling back */
+window.SHK_BUILD='sep28carriage3';   /* sep 28 (5th) — THE CARRIAGE LEAVES AT 4:00: the Halloween music starts four minutes into the video, and loops back to 4:00 instead of the top */
+/* was: sep28carriage2 */   /* sep 28 (4th) — THE CARRIAGE SENDS ITS PAPERS: the hidden player is our own iframe with a referrer + origin (YouTube won't play for a page that sends none), and a failed load now says so instead of silently falling back */
 /* was: sep28carriage */   /* sep 28 (3rd) — OCTOBER GETS A REAL SOUNDTRACK: the 🔊 plays "The Skeletons' Midnight Carriage" through a hidden YouTube player, looped; the wind-and-organ synth only steps in if YouTube can't load */
 /* was: sep28float */   /* sep 28 (2nd) — THE PILLS FLOAT: the solid shelf behind the ⬡ pill and ☾ goes clear, with a soft blur behind each so they stay readable over the page */
 /* was: sep28pillglass */   /* sep 28 — THE PILLS GO GLASS AGAIN: the ⬡ PORT BUCKS pill and ☾ button drop the #pillsolid base and show their see-through gradients; the hang-band shelf still keeps the page from showing through */
@@ -41748,7 +41749,7 @@ html.daylight .sn-bolt{display:none}
    remembered on the phone (shadowhook_hwmusic). Pauses when the app goes to the background,
    returns when it comes back. Off with the rest of the show under setDecor('off'). */
 (function(){try{
-  var KEY='shadowhook_hwmusic', FILE='hw-ambience.mp3', LEVEL=.35, HW_YT_ID='VUW0mIRdrM8', YT_VOL=40;
+  var KEY='shadowhook_hwmusic', FILE='hw-ambience.mp3', LEVEL=.35, HW_YT_ID='VUW0mIRdrM8', YT_VOL=40, YT_START=240;   /* #hwyt3 — the music starts 4:00 in, and every loop comes back to 4:00 */
   var yt=null, ytReady=false, ytFail=false, ytWant=false, ytGuard=null, synthOn=false;
   var muted=false; try{ muted=localStorage.getItem(KEY)==='off'; }catch(e){}
   var ac=null, master=null, nodes=[], timers=[], file=null, fileOk=null, running=false, btn=null;
@@ -41797,13 +41798,15 @@ html.daylight .sn-bolt{display:none}
     var web=/^https?:$/.test(location.protocol);
     var host=document.createElement('iframe'); host.id='hwYtHost'; host.width=200; host.height=200; host.title='Halloween music';
     host.setAttribute('allow','autoplay; encrypted-media'); host.setAttribute('referrerpolicy','strict-origin-when-cross-origin');
-    host.src='https://www.youtube.com/embed/'+HW_YT_ID+'?enablejsapi=1&autoplay=0&controls=0&loop=1&playlist='+HW_YT_ID+'&playsinline=1&rel=0&disablekb=1&fs=0&iv_load_policy=3'+(web?'&origin='+encodeURIComponent(location.origin):'');
+    host.src='https://www.youtube.com/embed/'+HW_YT_ID+'?enablejsapi=1&autoplay=0&controls=0&start='+YT_START+'&playsinline=1&rel=0&disablekb=1&fs=0&iv_load_policy=3'+(web?'&origin='+encodeURIComponent(location.origin):'');
     box.appendChild(host); document.body.appendChild(box);
     function make(){ try{
       yt=new YT.Player('hwYtHost',{
         events:{
           onReady:function(){ ytReady=true; try{yt.setVolume(YT_VOL); yt.unMute();}catch(e){} if(running&&!muted&&ytWant){ try{yt.playVideo()}catch(e){} } },
-          onStateChange:function(ev){ if(ev.data===1){ clearTimeout(ytGuard); if(synthOn)stopSynth(); } if(ev.data===1&&(!running||muted)){ try{yt.pauseVideo()}catch(e){} } paint(); },
+          onStateChange:function(ev){ if(ev.data===0){ try{ yt.seekTo(YT_START,true); if(running&&!muted)yt.playVideo(); }catch(e){} return; }   /* ended → back to 4:00, not the top */
+            if(ev.data===1){ try{ if(yt.getCurrentTime()<YT_START-2)yt.seekTo(YT_START,true); }catch(e){} }
+            if(ev.data===1){ clearTimeout(ytGuard); if(synthOn)stopSynth(); } if(ev.data===1&&(!running||muted)){ try{yt.pauseVideo()}catch(e){} } paint(); },
           onError:function(ev){ try{console.warn('[hwyt] YouTube error',ev&&ev.data,'— playing the backup synth')}catch(e){} ytGiveUp(); if(running&&!muted){ try{toast('🎃 Couldn\'t load the music — playing the harbor sound')}catch(e){} } }
         }});
     }catch(e){ ytGiveUp(); } }
