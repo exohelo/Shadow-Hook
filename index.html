@@ -2608,6 +2608,20 @@ html.daylight .pdp-sizes button.on{background:#fdf3e3}
   text-transform:uppercase;color:var(--copper)}
 .albox .alnote{font-size:11.5px;line-height:1.5;color:var(--steel);margin:0 0 9px}
 .alrow{display:flex;align-items:flex-start;gap:11px;padding:9px 0;border-top:1px solid var(--line-soft)}
+/* #aboutyou(sep28) */
+.ab-lbl{display:block;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--bone);margin:8px 0 5px}
+#aboutBox .field{margin:0}
+#aboutBox input[type=date]{color-scheme:dark}
+html.daylight #aboutBox input[type=date]{color-scheme:light}
+/* #bday(sep28) — the Birthday Spotlight on the Hall */
+.bday-spot{margin:0 0 12px;padding:12px 13px;border:1px solid rgba(238,180,107,.45);border-radius:14px;background:linear-gradient(160deg,rgba(238,180,107,.14),rgba(20,14,10,.4))}
+.bday-spot .bs-h{display:flex;align-items:center;gap:8px;font-family:'Inter',system-ui,sans-serif;font-size:11px;font-weight:700;letter-spacing:.14em;color:var(--copper-hi);margin-bottom:8px}
+.bday-spot .bs-h .n{margin-left:auto;font-weight:500;letter-spacing:.04em;color:var(--steel)}
+.bday-spot .bs-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--line-soft);cursor:pointer}
+.bday-spot .bs-row:first-of-type{border-top:0}
+.bday-spot .bs-row b{flex:1;min-width:0;font-family:'Inter',system-ui,sans-serif;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bday-spot .bs-row .pill{flex:none;color:var(--copper-hi);border-color:rgba(238,180,107,.4)}
+.bday-spot.me{border-color:rgba(238,180,107,.8);box-shadow:0 0 18px rgba(238,180,107,.3)}
 .alrow:first-of-type{border-top:0}
 .alrow .alm{flex:1;min-width:0}
 .alrow .alt{font-size:13.5px;color:var(--bone);line-height:1.3}
@@ -6156,6 +6170,7 @@ html.daylight .hm-lm .lk-g,html.daylight .hm-lm .lk-w{fill:#dfeaf7}
          fullscreen #socialHub overlay; it renders inline on the tab now. -->
     <div id="hallView" style="display:none"><!-- #soc1 — hidden until the Hall pill is tapped -->
       <div class="hall-stats" id="hubStats"></div>
+      <div id="bdaySpot" style="display:none"></div><!-- #bday — birthdays today, painted by bdayPaint() -->
       <div id="socialFeed"></div>
       <!-- #sharecut(aug31) — the SPREAD THE WORD card is off the Hall, by request; it lives on
            the profile now (#shareBox). The share roads are wired by data-share, so nothing else moves. -->
@@ -7700,6 +7715,32 @@ html.daylight .hm-lm .lk-g,html.daylight .hm-lm .lk-w{fill:#dfeaf7}
         <span id="pfSync">Saved on this device</span>
       </div>
 
+      <!-- ═══ #aboutyou(sep28) — ABOUT YOU: email (alerts when you've been away, and shipping),
+           birthday (the Hall's Birthday Spotlight), and who you are (gear sizing + themes).
+           Rides the profiles row — run PROFILE-SETUP.sql once. Hidden until signed in. -->
+      <div class="albox" id="aboutBox" style="display:none">
+        <h4>🪪 About you</h4>
+        <p class="alnote">Three things the Order asks for. Only the birthday ever shows to other casuals, and only if you let it.</p>
+        <label class="ab-lbl" for="abEmail">✉ Email</label>
+        <input class="field" id="abEmail" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com" spellcheck="false">
+        <div class="als" style="margin:4px 0 10px">So we can reach you when you've been off the app a few days, and where gear from the Armory ships.</div>
+        <label class="ab-lbl" for="abBday">🎂 Birthday</label>
+        <input class="field" id="abBday" type="date">
+        <div class="alrow" style="border-top:0;padding:6px 0 10px"><div class="alm">
+            <div class="alt">Show me on the Birthday Spotlight</div>
+            <div class="als">On your day, the Hall lists you so the crew can wish you well. Year never shows.</div>
+          </div><button class="alsw" id="abBdayPub" type="button" role="switch" aria-label="Show my birthday on the spotlight"><i></i></button></div>
+        <div class="ab-lbl">⚓ You are</div>
+        <div class="lbseg" id="abGender">
+          <button type="button" data-g="m">BROTHER</button>
+          <button type="button" data-g="f">SISTER</button>
+          <button type="button" data-g="">RATHER NOT SAY</button>
+        </div>
+        <div class="als" style="margin:-4px 0 10px">For gear sizing and the look of the app. Never shown to anyone.</div>
+        <button class="btn" id="abSave" type="button" style="width:100%">SAVE</button>
+        <p class="sub" id="abNote" style="margin:8px 0 0;text-align:center"></p>
+      </div>
+
       <!-- #pfcut(aug31) — the "Backup & restore this phone" row (#recoverbtn/#recmin) is pulled
            off the profile, by request. The recover road itself (#recover in the URL) still
            answers for anyone who has the link. -->
@@ -7707,19 +7748,6 @@ html.daylight .hm-lm .lk-g,html.daylight .hm-lm .lk-w{fill:#dfeaf7}
       <!-- ═══ #dm(aug13) — DIRECT MESSAGES: privacy lives HERE, with identity (approved
            off the v2 sample). Who can reach you, the requests waiting, the friends who
            always can. Hidden until a signed-in session — wires ride the account. -->
-      <!-- #sharepf(aug31) — SPREAD THE WORD on the profile, by request. The same four roads
-           as the card on the Social tab; both copies share one set of bindings (data-share). -->
-      <div class="albox" id="shareBox">
-        <h4>📣 Spread the Word</h4>
-        <p class="alnote">Know a casual still walking in blind? Mark them. Every casual makes the board smarter — and your first share pays <b style="color:var(--copper-hi)">+25 ⬡</b>.</p>
-        <button class="btn" data-share="btn" type="button" style="width:100%">⚓ Share the Order</button>
-        <div style="display:flex;gap:8px;margin-top:9px">
-          <a class="btn-line" data-share="sms" href="#" style="flex:1;padding:11px 4px;font-size:11.5px;letter-spacing:.06em;white-space:nowrap">💬 Text</a>
-          <a class="btn-line" data-share="mail" href="#" style="flex:1;padding:11px 4px;font-size:11.5px;letter-spacing:.06em;white-space:nowrap">✉ Email</a>
-          <button class="btn-line" data-share="copy" type="button" style="flex:1;padding:11px 4px;font-size:11.5px;letter-spacing:.06em;white-space:nowrap">⧉ Copy Link</button>
-        </div>
-      </div>
-
       <div class="albox" id="dmPrivBox" style="display:none">
         <h4>✉ Direct Messages</h4>
         <p class="alnote">Who can open a wire with you. Friends are the standing exception.</p>
@@ -7777,6 +7805,19 @@ html.daylight .hm-lm .lk-g,html.daylight .hm-lm .lk-w{fill:#dfeaf7}
             <button class="fsz-btn" data-fsz="md" type="button" aria-label="Medium text">A</button>
             <button class="fsz-btn" data-fsz="lg" type="button" aria-label="Large text">A</button>
           </div></div>
+      </div>
+
+      <!-- #sharepf(aug31) — SPREAD THE WORD on the profile, by request. The same four roads
+           as the card on the Social tab; both copies share one set of bindings (data-share). -->
+      <div class="albox" id="shareBox">
+        <h4>📣 Spread the Word</h4>
+        <p class="alnote">Know a casual still walking in blind? Mark them. Every casual makes the board smarter — and your first share pays <b style="color:var(--copper-hi)">+25 ⬡</b>.</p>
+        <button class="btn" data-share="btn" type="button" style="width:100%">⚓ Share the Order</button>
+        <div style="display:flex;gap:8px;margin-top:9px">
+          <a class="btn-line" data-share="sms" href="#" style="flex:1;padding:11px 4px;font-size:11.5px;letter-spacing:.06em;white-space:nowrap">💬 Text</a>
+          <a class="btn-line" data-share="mail" href="#" style="flex:1;padding:11px 4px;font-size:11.5px;letter-spacing:.06em;white-space:nowrap">✉ Email</a>
+          <button class="btn-line" data-share="copy" type="button" style="flex:1;padding:11px 4px;font-size:11.5px;letter-spacing:.06em;white-space:nowrap">⧉ Copy Link</button>
+        </div>
       </div>
 
       <!-- #burn(aug29) — YOUR DATA, YOUR CALL: the hub for erasing yourself, row by row or all at once -->
@@ -10325,7 +10366,7 @@ function gotoTab(name){
      gotoTab() callers land on stale screens) */
   if(name==='mayday'&&!alertsLoaded){alertsLoaded=true;loadAlerts()}
   if(name==='order'){try{renderHallStats();}catch(e){} try{socPullSoon();}catch(e){} try{updateRace();}catch(e){}
-    try{renderSocialFeed();}catch(e){} try{sbLoadStories();}catch(e){}}   // #hall — the Hall IS the tab now: fresh feed + stories + standings
+    try{renderSocialFeed();}catch(e){} try{sbLoadStories();}catch(e){} try{if(window.bdayPaint)bdayPaint();}catch(e){}}   // #hall — the Hall IS the tab now: fresh feed + stories + standings
   if(name==='ports'){try{if(window.shkChunk)shkChunk.now('maps');}catch(e){} try{renderHarborBoard();}catch(e){}
     /* #flyto(sep27) — checked in today? the map glides in on your dock */
     try{ const _b=document.getElementById('harborBoard'), _g=_b&&_b.classList.contains('checked-in')?_b.getAttribute('data-goto'):null;
@@ -28843,6 +28884,94 @@ window.dmDiag=dmDiag;
   setTimeout(()=>{try{if(window.__shkUid&&!DM.ok){dmLoad();dmSub();}}catch(e){}},9000);
 })();
 
+/* ═══════════ #aboutyou(sep28) — ABOUT YOU: email · birthday · who you are ═══════════
+   Three columns on profiles (contact_email — the till already writes it — plus birthday,
+   bday_public, gender: PROFILE-SETUP.sql). Cached on the phone so the card paints before the
+   wire answers. Only bday_public birthdays ever leave the row, through the birthdays_today
+   view; the email and gender are the casual's alone. */
+(function(){
+  const $=id=>document.getElementById(id);
+  const AB={email:'',birthday:'',bday_public:true,gender:'',ok:false};
+  try{ Object.assign(AB,JSON.parse(localStorage.getItem(K('about'))||'{}')); }catch(e){}
+  function cache(){ try{localStorage.setItem(K('about'),JSON.stringify({email:AB.email,birthday:AB.birthday,bday_public:AB.bday_public,gender:AB.gender}));}catch(e){} }
+  function paint(){
+    const box=$('aboutBox'); if(!box)return;
+    const signed=!!(window.SB&&window.__shkUid); box.style.display=signed?'':'none'; if(!signed)return;
+    if($('abEmail')&&document.activeElement!==$('abEmail'))$('abEmail').value=AB.email||'';
+    if($('abBday')&&document.activeElement!==$('abBday'))$('abBday').value=AB.birthday||'';
+    const sw=$('abBdayPub'); if(sw){ sw.classList.toggle('on',!!AB.bday_public); sw.setAttribute('aria-checked',AB.bday_public?'true':'false'); }
+    const g=$('abGender'); if(g)g.querySelectorAll('button').forEach(b=>b.classList.toggle('on',(b.dataset.g||'')===(AB.gender||'')));
+    try{ document.documentElement.classList.toggle('who-m',AB.gender==='m'); document.documentElement.classList.toggle('who-f',AB.gender==='f'); }catch(e){}   /* a hook for themes: html.who-m / html.who-f */
+  }
+  window.aboutPaint=paint;
+  async function load(){
+    if(!(window.SB&&window.__shkUid))return paint();
+    try{
+      const r=await window.SB.from('profiles').select('contact_email,birthday,bday_public,gender').eq('id',window.__shkUid).maybeSingle();
+      if(r&&r.error){ if(/column|schema cache/i.test(String(r.error.message)))note('⚠ Run PROFILE-SETUP.sql in Supabase — these fields aren’t on the wire yet.','var(--warn)'); return paint(); }
+      if(r&&r.data){ AB.email=r.data.contact_email||''; AB.birthday=r.data.birthday||''; AB.bday_public=r.data.bday_public!==false; AB.gender=r.data.gender||''; AB.ok=true; cache(); }
+    }catch(e){}
+    paint();
+  }
+  window.aboutLoad=load;
+  function note(t,c){ const n=$('abNote'); if(n){ n.textContent=t||''; n.style.color=c||''; } }
+  async function save(){
+    if(!(window.SB&&window.__shkUid)){ note('Sign in first.','var(--warn)'); return; }
+    const email=String(($('abEmail')||{}).value||'').trim(), bday=String(($('abBday')||{}).value||'').trim();
+    if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ note('That email doesn’t look right.','var(--warn)'); return; }
+    if(bday&&!/^\d{4}-\d{2}-\d{2}$/.test(bday)){ note('Pick a full date for the birthday.','var(--warn)'); return; }
+    const row={contact_email:email||null,birthday:bday||null,bday_public:!!AB.bday_public,gender:AB.gender||null};
+    const b=$('abSave'); if(b){b.disabled=true;b.textContent='SAVING…';}
+    try{
+      const r=await window.SB.from('profiles').update(row).eq('id',window.__shkUid).select('id');
+      if(r&&r.error)throw r.error;
+      if(!r.data||!r.data.length)throw new Error('the server kept the old row — is your profile row yours to edit?');
+      AB.email=email; AB.birthday=bday; AB.ok=true; cache(); note('✓ Saved.','var(--ok)'); try{toast('🪪 Saved');}catch(e){}
+      try{ if(window.bdayPaint)bdayPaint(); }catch(e){}
+    }catch(e){
+      const m=String((e&&e.message)||e);
+      note(/column|schema cache/i.test(m)?'⚠ Run PROFILE-SETUP.sql in Supabase first — the wire doesn’t have these fields yet.':'✗ '+m,'var(--warn)');
+    }
+    if(b){b.disabled=false;b.textContent='SAVE';}
+  }
+  (function bind(){
+    const b=$('abSave'); if(b)b.addEventListener('click',save);
+    const sw=$('abBdayPub'); if(sw)sw.addEventListener('click',()=>{ AB.bday_public=!AB.bday_public; paint(); });
+    const g=$('abGender'); if(g)g.addEventListener('click',e=>{ const x=e.target.closest('button'); if(!x)return; AB.gender=x.dataset.g||''; paint(); });
+  })();
+  function hook(){ const o=window.openProfileSheet; if(typeof o!=='function'||o._about)return;
+    const w=function(){ const r=o.apply(this,arguments); try{ paint(); load(); }catch(e){} return r; }; w._about=1; window.openProfileSheet=w; }
+  window.addEventListener('load',hook); setTimeout(hook,0);   /* openProfileSheet is defined further down the file */
+  paint();
+})();
+
+/* ═══════════ #bday(sep28) — THE BIRTHDAY SPOTLIGHT on the Hall ═══════════
+   birthdays_today (PROFILE-SETUP.sql): every casual whose birthday is today and who left
+   the spotlight on — id, handle, picture. Tap a name → their card → 💬 wish them well. */
+(function(){
+  let LAST=null, DAY='';
+  window.bdayPaint=async function(){
+    const host=document.getElementById('bdaySpot'); if(!host)return;
+    if(!(window.SB&&window.__shkUid)){ host.style.display='none'; return; }
+    const today=(typeof todayISO==='function')?todayISO():new Date().toISOString().slice(0,10);
+    if(DAY!==today||!LAST){
+      try{ const r=await window.SB.from('birthdays_today').select('*'); if(r&&!r.error)LAST=r.data||[]; else LAST=[]; }catch(e){ LAST=[]; }
+      DAY=today;
+    }
+    const rows=LAST.filter(x=>x&&x.handle);
+    if(!rows.length){ host.style.display='none'; host.innerHTML=''; return; }
+    const me=rows.some(x=>x.id===window.__shkUid);
+    host.className='bday-spot'+(me?' me':''); host.style.display='';
+    host.innerHTML='<div class="bs-h">🎂 BIRTHDAY SPOTLIGHT<span class="n">'+(me?'that’s you, casual — happy birthday!':rows.length+' today · tap to wish them well')+'</span></div>'
+      +rows.map(x=>'<div class="bs-row" role="button" onclick="'+(x.id===window.__shkUid?'':'openDmCard(\''+jsq(x.id)+'\',\''+jsq(x.handle)+'\')')+'">'
+        +(typeof _dmAv==='function'?_dmAv(x.handle,x.id):'')+'<b>'+esc(x.handle)+(x.id===window.__shkUid?' <span class="sub">(you)</span>':'')+'</b>'
+        +(x.id===window.__shkUid?'':'<span class="pill">🎉 wish</span>')+'</div>').join('');
+    /* one toast on your own day, once */
+    try{ if(me&&localStorage.getItem(K('bdaytoast'))!==today){ localStorage.setItem(K('bdaytoast'),today); toast('🎂 Happy birthday from the Order!'); } }catch(e){}
+  };
+  window.bdayRefresh=function(){ LAST=null; return window.bdayPaint(); };
+})();
+
 /* ═══ #social2(aug31) — THE SOCIAL TAB, REDRAWN ═══
    The page used to be one long scroll: a stories reel, Trending, every room,
    every gathering, every clan. It reads in three bands now:
@@ -42293,6 +42422,7 @@ window.SEASON_STORY={
     <div style="display:flex;gap:8px;margin-top:8px">
       <button class="btn-ghost" id="kmRefresh" type="button" style="flex:1">↻ Re-pull all wires</button>
       <button class="btn-ghost" id="kmDevLog" type="button" style="flex:1">⚙ Dev Log</button>
+      <button class="btn-ghost" id="kmWires" type="button" style="flex:1" title="Every table and view the app leans on — and which .sql heals a missing one">🔌 Check the wires</button>
       <button class="btn-ghost" id="kmClose" type="button" style="flex:1">Close</button>
     </div>
   </div>
@@ -44555,7 +44685,7 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
        kmDiag()
      One row per wire the Command Center and the app lean on, with the exact
      error and which .sql heals it. Reads only — it changes nothing. */
-  window.kmDiag=async function(){
+  window.kmDiag=async function(quiet){
     const out=[];
     const add=(part,ok,note)=>{out.push({wire:part,state:ok?'OK':'✗',note:note||''});};
     if(!window.SB){add('supabase client',false,'window.SB is not there');console.table(out);return out;}
@@ -44596,6 +44726,9 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
     await probe('friends','run DM-SETUP.sql');
     await probe('friend_requests','run DM-SETUP.sql');
     await probe('docket_shares','run DOCKET-SHARES.sql');   /* #dkshare */
+    await probe('profiles','run PROFILE-SETUP.sql (email · birthday · who you are)','id,contact_email,birthday,bday_public,gender');   /* #aboutyou */
+    await probe('birthdays_today','run PROFILE-SETUP.sql (the Birthday Spotlight view)');   /* #bday */
+    await probe('raffles','run RAFFLE.sql');   /* #raffle */
     /* the door beacon, WRITE-tested with the same idempotent ping the app sends —
        a refusal here is exactly why the traffic undercounts */
     try{const day=todayISO(), dev=(function(){try{return localStorage.getItem('shadowhook_dev')||'diag'}catch(e){return 'diag'}})();
@@ -44617,9 +44750,29 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
     }catch(e){add('rpc km_book_scan',false,String((e&&e.message)||e));}
     try{console.table(out);}catch(e){}
     const bad=out.filter(x=>x.state==='✗');
-    try{toast(bad.length?('✗ '+bad.length+' wire(s) down — see the console'):'⚓ every wire answers');}catch(e){}
+    try{toast(bad.length?('✗ '+bad.length+' wire(s) down'+(quiet?'':' — see the console')):'⚓ every wire answers');}catch(e){}
     return out;
   };
+  /* #wirecheck(sep28) — THE SAME CHECK AS A SHEET, no console needed: Command Center → Tools →
+     🔌 Check the wires. Missing pieces lead, each with the .sql that fixes it. */
+  const wb=$('kmWires');
+  if(wb)wb.addEventListener('click',async function(){
+    let sh=document.getElementById('kmWireSheet');
+    if(!sh){ sh=document.createElement('div'); sh.className='sheet'; sh.id='kmWireSheet'; sh.style.zIndex='99'; document.body.appendChild(sh);
+      sh.addEventListener('click',e=>{ if(e.target===sh)sh.classList.remove('on'); }); }
+    sh.innerHTML='<div class="sheet-card" style="text-align:left"><div class="sheet-title">🔌 THE WIRES</div><p class="sub" style="text-align:center">Checking every table and view the app leans on…</p></div>';
+    sh.classList.add('on');
+    let out=[]; try{ out=await window.kmDiag(true); }catch(e){ out=[{wire:'kmDiag',state:'✗',note:String(e&&e.message||e)}]; }
+    const bad=out.filter(x=>x.state==='✗'), ok=out.filter(x=>x.state!=='✗');
+    const sqls={}; bad.forEach(x=>{ const m=/run ([A-Za-z0-9_-]+\.sql)/.exec(x.note||''); if(m)sqls[m[1]]=(sqls[m[1]]||0)+1; });
+    const row=x=>'<div style="display:flex;gap:9px;padding:7px 0;border-bottom:1px solid var(--line-soft);font-size:12px;line-height:1.45"><span style="flex:none;width:16px;color:'+(x.state==='✗'?'var(--ember)':'var(--ok)')+'">'+(x.state==='✗'?'✗':'✓')+'</span><span style="flex:1;min-width:0"><b>'+esc(x.wire)+'</b><span class="sub" style="display:block;white-space:normal">'+esc(x.note||'')+'</span></span></div>';
+    sh.querySelector('.sheet-card').innerHTML='<div class="sheet-title">🔌 THE WIRES</div>'
+      +(bad.length?'<div class="sub" style="border:1px solid rgba(224,73,46,.5);border-radius:10px;padding:9px 11px;margin-bottom:10px;color:var(--warn)"><b>'+bad.length+' down.</b> Run these once in Supabase → SQL editor: <b style="color:var(--bone)">'+Object.keys(sqls).map(esc).join(' · ')+'</b>'+(Object.keys(sqls).length?'':' (see each row)')+'</div>'
+                 :'<div class="sub" style="border:1px solid rgba(127,174,106,.5);border-radius:10px;padding:9px 11px;margin-bottom:10px;color:var(--ok)">⚓ Every wire answers — nothing to run.</div>')
+      +(bad.length?'<div class="sub" style="font-weight:700;margin:6px 0 2px;color:var(--ember)">DOWN</div>'+bad.map(row).join(''):'')
+      +'<div class="sub" style="font-weight:700;margin:12px 0 2px">ANSWERING · '+ok.length+'</div>'+ok.map(row).join('')
+      +'<button class="btn-ghost" type="button" style="width:100%;margin-top:12px" onclick="document.getElementById(\'kmWireSheet\').classList.remove(\'on\')">Close</button>';
+  });
 
   /* ═══════════ #amb — CROWN REQUESTS (Keymaster side) ═══════════
      Applications from the BECOME AN AMBASSADOR poster land in amb_applications
