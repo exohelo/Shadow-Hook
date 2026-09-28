@@ -1622,6 +1622,16 @@ textarea.field{resize:vertical;min-height:110px;line-height:1.45}
    3-character sliver. Wrap it, drop flex:1 so buttons size to their label, and
    tighten the type — every other .race-board-tabs row (2–3 buttons) is untouched. */
 #kmSeason{flex-wrap:wrap;gap:7px}
+/* #fleet(sep28) — the push check */
+.km-fleet{margin:12px 0 2px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--well);font-size:12px;line-height:1.5}
+.km-fleet .fh{display:flex;align-items:center;gap:6px;font-weight:700;letter-spacing:.12em;font-size:10.5px;color:var(--steel)}
+.km-fleet .fh b{margin-left:auto;letter-spacing:.04em;font-size:11px;color:var(--bone)}
+.km-fleet .fr{display:flex;justify-content:space-between;gap:8px;margin-top:6px}
+.km-fleet .fr span{color:var(--steel)}
+.km-fleet .ok{color:var(--ok)} .km-fleet .wait{color:var(--copper-hi)} .km-fleet .bad{color:var(--ember)}
+.km-fleet .fbar{display:flex;height:6px;border-radius:3px;overflow:hidden;margin-top:4px;background:rgba(255,255,255,.08)}
+.km-fleet .fbar i{display:block;height:100%}
+.km-fleet .ffoot{margin-top:8px;font-size:11px;color:var(--steel)}
 #kmSeason button{flex:0 1 auto;font-size:10px;letter-spacing:.06em;padding:9px 11px}
 #kmSeason button::after{margin-left:5px}
 .race-board-tabs button{flex:1;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:11.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--steel);background:var(--well);border:1px solid var(--line-soft);border-radius:11px;padding:13px 8px;cursor:pointer;transition:.15s}
@@ -4569,6 +4579,12 @@ window.DEVLOG=(function(){
   #rflHost:not(:empty){margin-top:44px}
   #bankStrip.promo ~ * #rflHost:not(:empty){margin-top:10px}
   #rflHost:empty{display:none}
+  /* #haunt-all(sep28) — shrunk to its tag in the header, the host holds only the goo layer: no room, no clearance */
+  #rflHost.bare{margin:0!important;height:0}
+  /* #haunt-all — raised: the stage already starts below the floating ⬡ PORT BUCKS pill, so the old
+     44px clearance left a dead band under it. Whichever poster leads now sits ~12px under the pill. */
+  #rflHost:not(:empty):not(.bare){margin-top:0px!important}
+  #rflHost.bare + #snBanner,.stage > #snBanner:first-child{margin-top:-12px!important}
   .rfl-bn{--rim:#4de2ff;--acc:#ff3d8b;--sub:#b9a6ff;--bg1:#170b2e;--bg2:#06141d;
     position:relative;container-type:inline-size;display:grid;grid-template-columns:minmax(0,1fr) 42%;align-items:center;min-height:156px;
     padding:14px 12px 14px 16px;border:1px solid color-mix(in srgb,var(--rim) 55%,transparent);border-radius:16px;overflow:hidden;cursor:pointer;
@@ -25828,12 +25844,13 @@ function floorJoin(){
           /* #floorwho(aug13) — the roster keeps WHO, not just how many: the handle
              rides the presence meta now. A casual on an older build has no `h` in
              their meta — they show masked until their next update. */
-          roster.push({uid:String(k),h:nameless?'':hh,nameless:nameless,room:r?String(r):null,me:!!(window.__shkUid&&k===window.__shkUid)});   /* #dm — the uid rides so a roster row can open a wire */
+          roster.push({uid:String(k),h:nameless?'':hh,nameless:nameless,room:r?String(r):null,me:!!(window.__shkUid&&k===window.__shkUid),sn:m.sn==null?null:String(m.sn),rf:m.rf==null?null:+m.rf});   /* #fleet — what this phone is wearing */   /* #dm — the uid rides so a roster row can open a wire */
         });
         roster.sort(function(a,b){return (a.room?0:1)-(b.room?0:1)||(a.nameless?1:0)-(b.nameless?1:0)||a.h.localeCompare(b.h);});
         FLOOR.by=by; FLOOR.total=total; FLOOR.roster=roster; FLOOR.ok=true;
         _flRepaint();
         try{ if(typeof _floorSheetRepaint==='function')_floorSheetRepaint(); }catch(e){}
+        try{ if(typeof window.kmFleetPaint==='function')window.kmFleetPaint(); }catch(e){}   /* #fleet */
       }catch(e){}
     });
     ch.subscribe(function(s){
@@ -25857,6 +25874,12 @@ function _flMeta(room){
   let h=null; try{ const a=loadAcct(); if(a&&a.handle)h=String(a.handle).trim(); }catch(e){}
   if(h==='—'||h==='a casual')h=null;
   const m={room:dmGhost()?null:(room||null),h:h};
+  /* #fleet(sep28) — THE PHONE SAYS WHAT IT'S WEARING. The season it actually shows (sn: an id, or
+     'none') and whether the raffle is on (rf) ride the presence meta, so the Command Center can
+     count the open phones that obey the last push. An older build sends neither — it counts as
+     "older build" until it updates. */
+  try{ m.sn=(typeof window.seasonNow==='function'&&window.seasonNow())||'none'; }catch(e){}
+  try{ if(typeof window.rflIsOn==='function')m.rf=window.rflIsOn()?1:0; }catch(e){}
   if(dmGhost())m.ghost=1;
   if(!h||!window.__shkUid)m.anon=1;
   return m;
@@ -40760,6 +40783,7 @@ apply(true);   /* #perf(aug24) — boot pass: set the class, skip the resize sto
     window._seasonFlag=v;
     try{localStorage.setItem('shadowhook_season_km',v)}catch(e){}
     applySeason();
+    try{ if(window.floorTrack)window.floorTrack((typeof CURRENT_ROOM!=='undefined'&&CURRENT_ROOM)||null); }catch(e){}   /* #fleet — tell the floor what this phone wears now */
   };
   applySeason();
   setInterval(applySeason,3600000);
@@ -41390,7 +41414,7 @@ window.SEASON_DECOR={
               fog:{color:'rgba(157,78,221,.2)',opacity:1},
               fog2:{color:'rgba(182,255,61,.07)',opacity:1},                   /* #haunt — the green layer under the purple */
               /* #haunt — no props: the 🎃/💀 floor corners came out by request (sat over the cards and read as stickers); the 🕸 went earlier — every card wears a web now */
-              banner:{art:'haunted',pal:'haunt',title:'HAUNTED HARBOR',day:'HAPPY HALLOWEEN',to:[10,31],sub:'THE ARMORY · SAN PEDRO BAY',home:'#armoryHead'}   /* #haunt-store — the card heads the Armory, not the home stage; no fold: it is the store's sign */ },
+              banner:{art:'haunted',pal:'haunt',title:'HAUNTED HARBOR',day:'HAPPY HALLOWEEN',to:[10,31],sub:'SAN PEDRO BAY',fold:true}   /* #haunt-all(sep28) — back on the home stage, so it heads EVERY tab (was #armoryHead, the store only); fold:true gives it the strip the raffle folds it to while the raffle is open */ },
   thanksgiving:{ fall:{n:12,glyph:'🍂',size:[14,24],dur:[11,20],opacity:.5},
                  props:[['🦃','l',38,.5],['🌽','r',30,.4]] },
   valentine:{ fall:{n:14,glyph:'❤',size:[12,20],dur:[10,19],opacity:.45},
@@ -42130,6 +42154,8 @@ window.SEASON_STORY={
     <div class="sub" style="margin:10px 0 2px">The Raffle — every phone</div>
     <div class="race-board-tabs" id="kmRaffle"><button data-v="off">OFF</button><button data-v="on">ON</button></div>
     <div class="sub" id="kmRaffleNote" style="margin:2px 0 0;font-size:11px">OFF hides every trace of the raffle on every phone. Set the raffle up under The Raffle, flip this ON, then PUSH.</div>
+    <!-- #fleet(sep28) — THE CHECK: did the push land? What the server holds, and what every open phone is wearing -->
+    <div id="kmFleet" class="km-fleet"></div>
 
     </div></details>
     <details class="kmsec" id="kmSecBulletin" open>
@@ -42887,6 +42913,7 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
     seg($('kmRain'),f.rain||'auto');seg($('kmStop'),f.stopwork||'auto');seg($('kmSix'),(f.six_rule===false)?'off':'on');
     seg($('kmSeason'),f.season||'auto');
     seg($('kmRaffle'),f.raffle||'off');   /* #rfl-switch */
+    try{ window.kmFleetPaint(); }catch(e){}   /* #fleet */
     if($('kmBull'))$('kmBull').value=f.bulletin||'';
     /* #desk — a deputy key wears its note, and the bots (a token on this phone) are the crown's alone */
     try{ const dep=kmIsDeputy(); const dn=$('kmDeputyNote'); if(dn)dn.style.display=dep?'':'none';
@@ -42954,6 +42981,49 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
     }catch(e){ if(!e.quiet)msg.textContent='✗ '+e.message; }
     mint.disabled=false;mint.textContent=dep?'🗝 ASK THE KEYMASTER TO MINT IT':'⬡ APPLY TO THEIR STACK';
   });
+  /* ═══ #fleet(sep28) — THE PUSH CHECK ═══
+     Two answers, both live: (1) SERVER — the km_flags row read back from the database, so
+     "pushed" means the server holds it, not that the button was pressed; (2) OPEN PHONES —
+     every phone in the app right now says in its presence meta which season it wears and
+     whether the raffle is on; they're counted against what the server's word should make them
+     wear. A closed phone isn't counted: it picks the word up the moment it opens (and caches
+     it for pre-paint). Appear-offline phones aren't counted either. */
+  const SEASON_TAG=id=>{ if(!id||id==='none')return 'no theme'; const s=(window.SEASONS||[]).find(x=>x.id===id); return s?s.tag:String(id).toUpperCase(); };
+  function wearFor(flag){   /* what a phone SHOULD wear under this word — the same rule as seasonNow() */
+    flag=flag||'auto'; if(flag==='off')return 'none';
+    const L=window.SEASONS||[]; if(L.some(x=>x.id===flag))return flag;
+    const n=new Date(), md=(n.getMonth()+1)*100+n.getDate();
+    for(const s of L){ const a=s.from[0]*100+s.from[1], b=s.to[0]*100+s.to[1]; if(a<=b?(md>=a&&md<=b):(md>=a||md<=b))return s.id; }
+    return 'none';
+  }
+  window.kmFleetPaint=function(){
+    const el=$('kmFleet'); if(!el)return;
+    const f=window.KM_FLAGS||null;
+    const when=f&&f.updated_at?new Date(f.updated_at).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'';
+    const wantS=wearFor(f&&f.season), wantR=f&&String(f.raffle||'off')==='on'?1:0;
+    let h='<div class="fh">📡 DID IT LAND?</div>';
+    h+='<div class="fr"><span>Server holds</span><b>'+(f?esc(SEASON_TAG(wantS))+(f.season&&f.season!=='auto'?'':' <span style="font-weight:400;color:var(--steel)">(auto)</span>')+' · raffle '+(wantR?'ON':'OFF'):'<span class="wait">not read yet</span>')+'</b></div>';
+    if(when)h+='<div class="fr"><span>Last push</span><b>'+esc(when)+'</b></div>';
+    const R=(typeof FLOOR!=='undefined'&&FLOOR&&FLOOR.ok)?FLOOR.roster||[]:null;
+    if(!R){ h+='<div class="ffoot">Waiting for the live floor… (needs the connection)</div>'; el.innerHTML=h; return; }
+    let okS=0,offS=0,oldS=0, okR=0,offR=0,oldR=0; const late=[];
+    R.forEach(p=>{
+      if(p.sn==null)oldS++; else if(p.sn===wantS)okS++; else { offS++; if(!p.nameless)late.push(p.h); }
+      if(p.rf==null)oldR++; else if(p.rf===wantR)okR++; else offR++;
+    });
+    const n=R.length, bar=(a,b,c)=>'<div class="fbar">'+(a?'<i style="width:'+(a/n*100)+'%;background:var(--ok)"></i>':'')+(b?'<i style="width:'+(b/n*100)+'%;background:var(--ember)"></i>':'')+(c?'<i style="width:'+(c/n*100)+'%;background:var(--steel)"></i>':'')+'</div>';
+    h+='<div class="fh" style="margin-top:10px">OPEN RIGHT NOW <b>'+n+' phone'+(n==1?'':'s')+'</b></div>';
+    h+='<div class="fr"><span>Wearing '+esc(SEASON_TAG(wantS))+'</span><b class="'+(okS===n?'ok':'wait')+'">'+okS+' / '+n+'</b></div>'+bar(okS,offS,oldS);
+    h+='<div class="fr"><span>Raffle '+(wantR?'ON':'OFF')+'</span><b class="'+(okR===n?'ok':'wait')+'">'+okR+' / '+n+'</b></div>'+bar(okR,offR,oldR);
+    const notes=[];
+    if(offS)notes.push('<span class="bad">'+offS+' still on the old theme</span>'+(late.length?' ('+late.slice(0,4).map(esc).join(', ')+(late.length>4?'…':'')+')':'')+' — usually a few seconds; if it sticks, they’re offline or need to reopen');
+    if(oldS||oldR)notes.push(Math.max(oldS,oldR)+' on an older build (can’t report — they still obey the push)');
+    if(!offS&&!offR&&!oldS&&!oldR&&n)notes.push('<span class="ok">✓ Every open phone matches the server.</span>');
+    notes.push('Closed phones pick it up the moment they open.');
+    h+='<div class="ffoot">'+notes.join('<br>')+'</div>';
+    el.innerHTML=h;
+  };
+
   /* #desk — THE PUSH, one function: the switches + bulletin land on km_flags */
   async function kmFlagsPush(row){
     row=Object.assign({},row,{id:1,updated_at:new Date().toISOString()});
@@ -42973,8 +43043,14 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
        briefly yank the phone back to the PREVIOUS season, which reads as a failed
        push. (Skipped when the column doesn't exist yet: seasonNote says so.) */
     try{ if(!seasonNote){ window.KM_FLAGS=window.KM_FLAGS||{}; window.KM_FLAGS.season=row.season||'auto'; } }catch(e){}
-    try{ const n=$('kmSeasonNote'); if(n){ n.textContent='Pushed — every phone wears this now.'; n.style.color='var(--ok)'; } }catch(e){}
-    try{sbLoadKmFlags();}catch(e){}
+    /* #fleet — read it back: "pushed" now means the SERVER holds it */
+    try{ await sbLoadKmFlags(); }catch(e){}
+    try{ const n=$('kmSeasonNote'), sv=(window.KM_FLAGS||{}).season||'auto';
+      if(n){ const ok=seasonNote?false:(sv===(row.season||'auto'));
+        n.textContent=ok?'✓ Server confirms: '+SEASON_TAG(wearFor(sv))+(sv==='auto'?' (auto by date)':'')+' — open phones switch within seconds. Watch the check below.':'✗ The server didn’t take the season — it still says “'+sv+'”.';
+        n.style.color=ok?'var(--ok)':'var(--ember)'; } }catch(e){}
+    try{ if(window.floorTrack)window.floorTrack((typeof CURRENT_ROOM!=='undefined'&&CURRENT_ROOM)||null); }catch(e){}
+    try{ window.kmFleetPaint(); }catch(e){}
     return seasonNote;
   }
   const push=$('kmPush');
@@ -48768,6 +48844,7 @@ window.HARBOR_LORE={"ports":{"LA":{"name":"Port of Los Angeles","kicker":"San Pe
     if(!R){host.innerHTML='';document.documentElement.classList.remove('rfl-full');tagPaint(false);return;}
     const full=!minned(), tag=!full&&R.theme==='spooky';
     host.innerHTML=(full?bannerHTML(R,ST):tag?'':railHTML(R,ST))+'<div class="rfl-fx" id="rflFx"></div>';
+    host.classList.toggle('bare',!full&&tag);   /* #haunt-all */
     tagPaint(tag);
     /* the raffle is the call to action, the holiday card is decoration: raffle first, and only
        one of them open at a time (the folded one keeps its strip, one tap to swap) */
@@ -48897,6 +48974,7 @@ window.HARBOR_LORE={"ports":{"LA":{"name":"Port of Los Angeles","kicker":"San Pe
     const on=String(v||'off').toLowerCase()==='on';
     try{localStorage.setItem('shadowhook_rfl_on',on?'1':'0');}catch(e){}
     if(on===RFL_ON)return; RFL_ON=on;
+    try{ if(window.floorTrack)window.floorTrack((typeof CURRENT_ROOM!=='undefined'&&CURRENT_ROOM)||null); }catch(e){}   /* #fleet */
     if(!on){ R=null; paint(); const ov=$('rflReveal'); if(ov)ov.remove(); const sh=$('rflSheet'); if(sh)sh.classList.remove('on'); }
     else load();
     try{ kmSwitchNote(); }catch(e){}
@@ -49093,10 +49171,10 @@ window.HARBOR_LORE={"ports":{"LA":{"name":"Port of Los Angeles","kicker":"San Pe
     out.innerHTML='<div class="rfl-ed">'
       +'<div style="display:flex;align-items:center;gap:8px"><button class="btn-ghost" id="kmRflBack" type="button" style="padding:6px 10px">‹ All raffles</button><span class="rfl-st '+st+'">'+st+'</span></div>'
       +'<div class="rfl-prev" id="kmRflPrev"></div>'
-      +f('title','Prize name (the sheet, the book, the winner line)','OOCL 40FT CONTAINER')
+      +f('title','Prize name (the sheet, the book, the winner line)','1:50 MINIATURE 40FT CONTAINER')
       +f('kicker','Raffle name (the top line — Spooky look)','Nightmare on Chassis Street')
       +f('headline','Banner headline (Spooky look — empty = prize name)','WIN THE BOX!')
-      +f('prize','Line under the headline (put " - " before the second part to light it up)','Win A OOCL 40FT Container - First container you’ll park on the first try.')
+      +f('prize','Line under the headline (put " - " before the second part to light it up)','Win A 1:50 Miniature 40FT Container - First container you’ll park on the first try.')
       +f('tag_title','Ticket screen callout — big line','Trick or Chassis')
       +f('tag_line','Ticket screen callout — small line ({price} fills in the ticket price)','Just {price} ⬡ and a shot at the box.')
       +'<span class="lbl">Details (shown in the ticket sheet)</span><textarea class="field" data-f="blurb" rows="3" style="resize:vertical"'+(locked?' disabled':'')+'>'+E(ED.blurb||'')+'</textarea>'
