@@ -8,7 +8,9 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='sep28pillglass';   /* sep 28 — THE PILLS GO GLASS AGAIN: the ⬡ PORT BUCKS pill and ☾ button drop the #pillsolid base and show their see-through gradients; the hang-band shelf still keeps the page from showing through */
+window.SHK_BUILD='sep28carriage';   /* sep 28 (3rd) — OCTOBER GETS A REAL SOUNDTRACK: the 🔊 plays "The Skeletons' Midnight Carriage" through a hidden YouTube player, looped; the wind-and-organ synth only steps in if YouTube can't load */
+/* was: sep28float */   /* sep 28 (2nd) — THE PILLS FLOAT: the solid shelf behind the ⬡ pill and ☾ goes clear, with a soft blur behind each so they stay readable over the page */
+/* was: sep28pillglass */   /* sep 28 — THE PILLS GO GLASS AGAIN: the ⬡ PORT BUCKS pill and ☾ button drop the #pillsolid base and show their see-through gradients; the hang-band shelf still keeps the page from showing through */
 /* was: sep26read */   /* sep 26 — THE HALL'S WEEKDAY BEATS ITS DATE: a hall-line reading is keyed to the weekday the hall said, nearest the call, not the numeric date the announcer misread (#hallday). TWO-PASS READER: the frame-cropped slip is read at 1400 px first and only re-read at 2200 when fields are missing; at 2200 a slip that fills the frame lost its ship line and read 8:00AM as 3:00AM (#twopass). The wire hero says CYCLE only at 85%+, not 50% (#cyclehero). */
 /* was: sep24clock */   /* sep 24 (2nd) — THE SLIP'S CLOCK DECIDES: a docket moves the live board only when the slip itself printed today's date and an AM/PM start on the side of the running board (AM → DAY, PM → NIGHT). A date or shift the app filled in, guessed, or the form defaulted never counts (#slipclock). */
 /* was: sep24read */   /* sep 24 — NO SLIP, NO SWIPE: a docket typed by hand seals for the record at 0 ⬡ and never moves the live board; only a scanned slip (read clean, or shot then fixed) does (#slipfirst). The reader: shots cut to the guide frame (#framecrop), 2200 px to Tesseract (#inkup), ship names snapped to every sheet + registry hull through the OCR swap table (#shipsnap). */
@@ -4674,6 +4676,10 @@ window.DEVLOG=(function(){
       html.rfl-tag2 .hang-band{--hangH:58px}
       html.rfl-tag3 .hang-band{--hangH:70px}
       #bankStrip.promo ~ .hang-band{display:none}
+      /* #floatpills(sep28) — the shelf goes clear: the ⬡ pill and ☾ float over the page again.
+         A soft blur behind them keeps them readable when a title or card scrolls underneath. */
+      html .hang-band{background:transparent!important}
+      #bankStrip:not(.promo),.dayBtn{-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
       /* and the header itself goes opaque — the blur let the page's titles show through it */
       .topbar{background:#0b0d0f!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
       html.arcade .topbar{background:#08060f!important}
@@ -41725,6 +41731,11 @@ html.daylight .sn-bolt{display:none}
   },{passive:true});
 }catch(e){ try{console.warn('[hwsound]',e)}catch(_){} }})();
 
+/* ═══ #hwyt(sep28) — THE MUSIC IS A PLAYLIST NOW ═══
+   The synth read as bad weather. October's sound is now "The Skeletons' Midnight Carriage"
+   (Magical Moments, YouTube VUW0mIRdrM8) played through a hidden YouTube player, looped.
+   The synth below stays as the understudy: if YouTube can't load (offline, blocked, the
+   owner turns off embedding) the old wind-and-organ takes over. Change the song: HW_YT_ID. */
 /* ═══ #hwmusic(sep28) — THE HAUNTED HARBOR HAS A SOUND ═══
    All October, in the background, quiet: wind off the water, a low organ drone, a bell
    somewhere down the pier every so often, a creak, a far-off howl. Synthesised live with
@@ -41736,7 +41747,8 @@ html.daylight .sn-bolt{display:none}
    remembered on the phone (shadowhook_hwmusic). Pauses when the app goes to the background,
    returns when it comes back. Off with the rest of the show under setDecor('off'). */
 (function(){try{
-  var KEY='shadowhook_hwmusic', FILE='hw-ambience.mp3', LEVEL=.35;
+  var KEY='shadowhook_hwmusic', FILE='hw-ambience.mp3', LEVEL=.35, HW_YT_ID='VUW0mIRdrM8', YT_VOL=40;
+  var yt=null, ytReady=false, ytFail=false, ytWant=false, ytGuard=null, synthOn=false;
   var muted=false; try{ muted=localStorage.getItem(KEY)==='off'; }catch(e){}
   var ac=null, master=null, nodes=[], timers=[], file=null, fileOk=null, running=false, btn=null;
   /* #hwmusic3 — from the very first screen: the loading crest, the gate, the app */
@@ -41773,6 +41785,34 @@ html.daylight .sn-bolt{display:none}
   function schedule(){ timers.forEach(clearTimeout); timers=[];
     var pick=[bell,howl,creak,creak];
     (function loop(){ timers.push(setTimeout(function(){ if(!running)return; try{ pick[Math.floor(Math.random()*pick.length)](); }catch(e){} loop(); },9000+Math.random()*16000)); })(); }
+  /* ── #hwyt — the YouTube player ── */
+  function ytLoad(){
+    if(yt||ytFail)return;
+    yt='loading';
+    var box=document.createElement('div'); box.id='hwYtBox'; box.setAttribute('aria-hidden','true');
+    box.style.cssText='position:fixed;left:-400px;top:0;width:200px;height:200px;opacity:0;pointer-events:none;overflow:hidden;z-index:-1';
+    var host=document.createElement('div'); host.id='hwYtHost'; box.appendChild(host); document.body.appendChild(box);
+    function make(){ try{
+      yt=new YT.Player('hwYtHost',{width:200,height:200,videoId:HW_YT_ID,
+        playerVars:{autoplay:0,controls:0,loop:1,playlist:HW_YT_ID,playsinline:1,rel:0,modestbranding:1,disablekb:1,fs:0,iv_load_policy:3},
+        events:{
+          onReady:function(){ ytReady=true; try{yt.setVolume(YT_VOL); yt.unMute();}catch(e){} if(running&&!muted&&ytWant){ try{yt.playVideo()}catch(e){} } },
+          onStateChange:function(ev){ if(ev.data===1){ clearTimeout(ytGuard); if(synthOn)stopSynth(); } if(ev.data===1&&(!running||muted)){ try{yt.pauseVideo()}catch(e){} } paint(); },
+          onError:function(){ ytGiveUp(); }
+        }});
+    }catch(e){ ytGiveUp(); } }
+    if(window.YT&&window.YT.Player){ make(); return; }
+    var prev=window.onYouTubeIframeAPIReady; window.onYouTubeIframeAPIReady=function(){ try{prev&&prev()}catch(e){} make(); };
+    var sc=document.createElement('script'); sc.src='https://www.youtube.com/iframe_api'; sc.async=true; sc.onerror=ytGiveUp; document.head.appendChild(sc);
+  }
+  function ytGiveUp(){ ytFail=true; ytReady=false; clearTimeout(ytGuard); if(running&&!muted&&!synthOn)startSynthSafe(); }
+  function ytPlaying(){ try{ return ytReady&&yt.getPlayerState()===1; }catch(e){ return false; } }
+  function startSynthSafe(){
+    var AC=window.AudioContext||window.webkitAudioContext; if(!AC)return;
+    if(!ac){ ac=new AC(); master=ac.createGain(); master.gain.value=LEVEL; var lp=ac.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=1400; master.connect(lp); lp.connect(ac.destination); }
+    if(ac.state==='suspended')ac.resume().catch(function(){});
+    synthOn=true; startSynth();
+  }
   /* ── the file, if there is one ── */
   function tryFile(){
     if(fileOk!==null)return fileOk?file:null;
@@ -41782,31 +41822,33 @@ html.daylight .sn-bolt{display:none}
       file.addEventListener('error',function(){ fileOk=false; file=null; }); file.load(); }catch(e){ file=null; }
     return null;
   }
-  function stopSynth(){ nodes.forEach(function(n){ try{n.stop()}catch(e){} }); nodes=[]; timers.forEach(clearTimeout); timers=[]; }
+  function stopSynth(){ synthOn=false; nodes.forEach(function(n){ try{n.stop()}catch(e){} }); nodes=[]; timers.forEach(clearTimeout); timers=[]; }
   function start(){
     if(running||muted||!allowed())return;
     running=true; paint(); bootHint(false);
-    if(fileOk&&file){ file.play().catch(function(){}); return; }
-    var AC=window.AudioContext||window.webkitAudioContext; if(!AC){ running=false; return; }
-    if(!ac){ ac=new AC(); master=ac.createGain(); master.gain.value=LEVEL; var lp=ac.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=1400; master.connect(lp); lp.connect(ac.destination); }
-    if(ac.state==='suspended')ac.resume().catch(function(){});
-    startSynth();
+    if(!ytFail){   /* #hwyt — the playlist first; the synth only if YouTube hasn't answered in 8s */
+      ytWant=true; ytLoad();
+      if(ytReady){ try{ yt.setVolume(YT_VOL); yt.unMute(); yt.playVideo(); }catch(e){} }
+      clearTimeout(ytGuard); ytGuard=setTimeout(function(){ if(running&&!muted&&!ytReady&&!synthOn){ ytFail=true; startSynthSafe(); } },8000);   /* ready-but-paused = the browser wants a tap, not a fallback */
+      return;
+    }
+    startSynthSafe();
   }
-  function stop(){ if(!running)return; running=false; stopSynth(); if(file){ try{file.pause()}catch(e){} } if(ac){ try{ac.suspend()}catch(e){} } paint(); }
+  function stop(){ if(!running)return; running=false; ytWant=false; clearTimeout(ytGuard); if(ytReady){ try{yt.pauseVideo()}catch(e){} } stopSynth(); if(ac){ try{ac.suspend()}catch(e){} } paint(); }
   function paint(){
     var on=season(); if(!btn&&!on)return;
     if(!btn){ btn=document.createElement('button'); btn.id='hwMusicBtn'; btn.type='button'; btn.setAttribute('aria-label','Halloween sound');
       var db=document.getElementById('dayBtn'); if(db&&db.parentNode)db.parentNode.insertBefore(btn,db.nextSibling); else document.body.appendChild(btn);   /* #hwmusic2 — hangs right under the ☀/☾ */
       btn.addEventListener('click',function(e){ e.stopPropagation(); muted=!muted; try{ muted?localStorage.setItem(KEY,'off'):localStorage.removeItem(KEY); }catch(x){}
         if(muted)stop(); else start(); paint(); try{toast(muted?'🔇 Harbor sound off':'🔊 Harbor sound on');}catch(x){} }); }
-    btn.style.display=on?'':'none'; document.documentElement.classList.toggle('hw-music',on); btn.textContent=muted?'🔇':'🔊'; btn.classList.toggle('on',!muted&&running); btn.title=muted?'Sound is off — tap for the haunted harbor':'Haunted harbor sound — tap to mute';
+    btn.style.display=on?'':'none'; document.documentElement.classList.toggle('hw-music',on); btn.textContent=muted?'🔇':'🔊'; btn.classList.toggle('on',!muted&&running); btn.title=muted?'Music is off — tap for the Midnight Carriage':'The Skeletons\' Midnight Carriage — tap to mute';
   }
   window.hwMusic={start:start,stop:stop,mute:function(v){ muted=v!==false; try{ muted?localStorage.setItem(KEY,'off'):localStorage.removeItem(KEY); }catch(e){} muted?stop():start(); paint(); }};
-  document.addEventListener('pointerdown',function(e){ if(btn&&btn.contains(e.target))return; if(!running)start(); },{passive:true});
+  document.addEventListener('pointerdown',function(e){ if(btn&&btn.contains(e.target))return; if(!running)start(); else if(!muted&&ytReady&&!ytPlaying()){ try{ yt.unMute(); yt.playVideo(); }catch(x){} } },{passive:true});   /* #hwyt — a blocked autoplay gets its tap */
   document.addEventListener('visibilitychange',function(){ if(document.hidden)stop(); });
-  window.addEventListener('shk:entered',function(){ paint(); tryFile(); });
+  window.addEventListener('shk:entered',function(){ paint(); if(season())ytLoad(); });
   setInterval(function(){ paint(); if(running&&!allowed())stop(); },2500);
-  paint(); if(season())tryFile();
+  paint(); if(season())ytLoad();
   /* #hwmusic3 — TRY TO OPEN WITH THE LOADING SCREEN. Browsers decide: an installed app on
      Android/desktop Chrome that the member uses often is usually allowed to start sound on its
      own; iPhone never is. So: ask quietly now; if the phone says no, the crest shows a small
