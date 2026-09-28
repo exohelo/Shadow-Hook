@@ -41803,6 +41803,11 @@ window.SEASON_STORY={
     <div class="race-board-tabs" id="kmSeason"><button data-v="auto">AUTO — BY DATE</button><button data-v="off">OFF</button></div>
     <!-- #seasons2 — says plainly that tapping is a preview, not a broadcast -->
     <div class="sub" id="kmSeasonNote" style="margin:2px 0 0;font-size:11px">Tap a season to preview it on this phone — PUSH sends it to every phone.</div>
+    <!-- #rfl-switch — THE RAFFLE, every phone. OFF: no banner, no tag, no ticket sheet, no draw reveal
+         anywhere, whatever state the raffle row is in. ON: a LIVE raffle shows; drafts still don't. -->
+    <div class="sub" style="margin:10px 0 2px">The Raffle — every phone</div>
+    <div class="race-board-tabs" id="kmRaffle"><button data-v="off">OFF</button><button data-v="on">ON</button></div>
+    <div class="sub" id="kmRaffleNote" style="margin:2px 0 0;font-size:11px">OFF hides every trace of the raffle on every phone. Set the raffle up under The Raffle, flip this ON, then PUSH.</div>
 
     </div></details>
     <details class="kmsec" id="kmSecBulletin" open>
@@ -42366,6 +42371,7 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
       try{if(typeof setStopWork==='function')setStopWork(r.data.stopwork==='on'?true:(r.data.stopwork==='off'?false:null));}catch(e){}
       try{if(typeof applySixRule==='function')applySixRule(r.data.six_rule!==false);}catch(e){}
       try{if(typeof setSeasonFlag==='function')setSeasonFlag(r.data.season||'auto');}catch(e){}   /* #seasons — the Keymaster's season word */
+      try{if(typeof window.rflSetFlag==='function')window.rflSetFlag(r.data.raffle);}catch(e){}   /* #rfl-switch — the raffle's master switch */
       try{renderBulletin(r.data.bulletin||'');}catch(e){}
       try{ /* #bank — a promotion takes the strip: full rail + the promo word; quiet times keep the floating pill */
         const ps=document.getElementById('bankStripMsg'), st2=document.getElementById('bankStrip');
@@ -42558,6 +42564,7 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
     const f=window.KM_FLAGS||{};
     seg($('kmRain'),f.rain||'auto');seg($('kmStop'),f.stopwork||'auto');seg($('kmSix'),(f.six_rule===false)?'off':'on');
     seg($('kmSeason'),f.season||'auto');
+    seg($('kmRaffle'),f.raffle||'off');   /* #rfl-switch */
     if($('kmBull'))$('kmBull').value=f.bulletin||'';
     /* #desk — a deputy key wears its note, and the bots (a token on this phone) are the crown's alone */
     try{ const dep=kmIsDeputy(); const dn=$('kmDeputyNote'); if(dn)dn.style.display=dep?'':'none';
@@ -42654,9 +42661,9 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
     if(!window.SB){msg.textContent='> backend off';return;}
     const dep=kmIsDeputy();
     const row={rain:segVal($('kmRain'),'auto'),stopwork:segVal($('kmStop'),'auto'),
-               six_rule:segVal($('kmSix'),'on')!=='off',season:segVal($('kmSeason'),'auto'),
+               six_rule:segVal($('kmSix'),'on')!=='off',season:segVal($('kmSeason'),'auto'),raffle:segVal($('kmRaffle'),'off'),
                bulletin:($('kmBull').value||'').trim()};
-    const why=dep?kmWhy('this push — switches: rain '+row.rain+' · stop-work '+row.stopwork+' · six-month '+(row.six_rule?'on':'off')+' · season '+row.season+(row.bulletin?' · bulletin: “'+row.bulletin.slice(0,60)+'”':'')):'';
+    const why=dep?kmWhy('this push — switches: rain '+row.rain+' · stop-work '+row.stopwork+' · six-month '+(row.six_rule?'on':'off')+' · season '+row.season+' · raffle '+row.raffle+(row.bulletin?' · bulletin: “'+row.bulletin.slice(0,60)+'”':'')):'';
     if(dep&&!why){msg.textContent='> a reason — it rides to the Keymaster with the push';return;}
     push.disabled=true;push.textContent=dep?'SENDING IT UP…':'PUSHING…';
     try{
@@ -48560,9 +48567,24 @@ window.HARBOR_LORE={"ports":{"LA":{"name":"Port of Los Angeles","kicker":"San Pe
     setTimeout(()=>{ if(!$('rflReveal'))rflReveal(R,ST.mine|0); },1400);
   }
 
+  /* ── THE MASTER SWITCH — km_flags.raffle, set in Command Center → The Switches and PUSHed.
+     OFF (the default): nothing raffle-related shows on any phone. Cached so the phone knows
+     the last word before the network answers. ── */
+  let RFL_ON=false; try{RFL_ON=localStorage.getItem('shadowhook_rfl_on')==='1';}catch(e){}
+  window.rflSetFlag=function(v){
+    const on=String(v||'off').toLowerCase()==='on';
+    try{localStorage.setItem('shadowhook_rfl_on',on?'1':'0');}catch(e){}
+    if(on===RFL_ON)return; RFL_ON=on;
+    if(!on){ R=null; paint(); const ov=$('rflReveal'); if(ov)ov.remove(); const sh=$('rflSheet'); if(sh)sh.classList.remove('on'); }
+    else load();
+    try{ kmSwitchNote(); }catch(e){}
+  };
+  window.rflIsOn=()=>RFL_ON;
+
   /* ── LOAD — the featured raffle: a live/closed one first, else a fresh winner ── */
   async function load(){
     if(!window.SB)return;
+    if(!RFL_ON){ R=null; paint(); return; }
     try{
       const r=await window.SB.from('raffles').select('*').in('status',['live','closed','drawn','draft']).order('created_at',{ascending:false}).limit(12);
       if(r.error)throw r.error;
@@ -48720,14 +48742,20 @@ window.HARBOR_LORE={"ports":{"LA":{"name":"Port of Los Angeles","kicker":"San Pe
     try{
       const r=await window.SB.from('raffles').select('*').order('created_at',{ascending:false}).limit(30);
       if(r.error)throw r.error; KR=r.data||[];
+      setTimeout(kmSwitchNote,0);
       const n=KR.filter(x=>x.status==='live'||x.status==='closed').length;
       const pill=$('kmRflN'); if(pill){pill.style.display=n?'':'none';pill.textContent=n;}
-      out.innerHTML='<button class="btn-line gold" id="kmRflNew" type="button" style="width:100%;padding:10px;margin-bottom:6px">＋ NEW RAFFLE</button>'
+      out.innerHTML='<div id="kmRflSwitch"></div><button class="btn-line gold" id="kmRflNew" type="button" style="width:100%;padding:10px;margin-bottom:6px">＋ NEW RAFFLE</button>'
         +(KR.length?KR.map(x=>'<div class="rfl-km-row"><span class="rfl-st '+x.status+'">'+x.status+'</span><span class="t">'+E(x.title)
           +(x.winner_handle?' · 🏆 '+E(x.winner_handle):'')+'</span>'
           +'<button class="btn-ghost" data-ed="'+x.id+'" type="button">Open</button><button class="btn-ghost" data-dup="'+x.id+'" type="button">Duplicate</button></div>').join('')
           :'<div style="color:var(--steel);margin-top:6px">No raffles yet.</div>');
     }catch(e){ out.innerHTML='<span style="color:var(--ember)">✗ '+E(e.message||e)+(/relation|does not exist/.test(e.message||'')?' — run RAFFLE.sql once':'')+'</span>'; }
+  }
+  function kmSwitchNote(){
+    const el=$('kmRflSwitch'); if(!el)return;
+    el.innerHTML=RFL_ON?'<div class="sub" style="margin:0 0 8px;padding:8px 10px;border-radius:10px;border:1px solid rgba(127,174,106,.5);color:#9ccb86">● THE SWITCH IS ON — a live raffle shows on every phone.</div>'
+      :'<div class="sub" style="margin:0 0 8px;padding:8px 10px;border-radius:10px;border:1px solid var(--line);color:var(--steel)">○ THE SWITCH IS OFF — nothing raffle shows on any phone, even a live one. Flip it under <b style="color:var(--bone)">The Switches</b> and PUSH.</div>';
   }
   if($('kmRfl'))$('kmRfl').addEventListener('click',e=>{
     const b=e.target.closest('button'); if(!b)return;
