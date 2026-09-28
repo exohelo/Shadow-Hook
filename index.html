@@ -1160,6 +1160,39 @@ html.daylight .badge.earned{background:#fff;border-width:2px}
 .bpost{position:relative;display:flex;flex-direction:column;gap:9px;padding:12px 13px;margin:0 0 10px;border-radius:15px;cursor:pointer;
   background:linear-gradient(180deg,rgba(34,27,19,.5),rgba(13,11,9,.34));border:1px solid var(--line-soft)}
 .bpost.mine{border-color:rgba(238,180,107,.24)}
+/* #music(sep28) — a song on a post: the picker, the composer chip, the board line, the reel chip */
+#musicSheet{z-index:96}
+#musicSheet .sheet-card{display:flex;flex-direction:column;max-height:calc(86vh - var(--kb,0px));max-height:calc(86dvh - var(--kb,0px));text-align:left}
+.ms-q{width:100%;margin:10px 0 8px}
+.ms-chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;scrollbar-width:none}
+.ms-chips::-webkit-scrollbar{display:none}
+.ms-chips button{flex:none;padding:6px 11px;border-radius:99px;border:1px solid rgba(238,180,107,.35);background:transparent;color:var(--copper-hi,#EEB46B);font-size:12px;font-weight:700;cursor:pointer}
+.ms-list{flex:1;min-height:120px;overflow-y:auto;-webkit-overflow-scrolling:touch;margin-top:6px}
+.ms-row{display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--line-soft);cursor:pointer}
+.ms-row:active{background:rgba(238,180,107,.1)}
+.ms-row img{flex:none;width:46px;height:46px;border-radius:8px;object-fit:cover;background:#111}
+.ms-row .ms-t{flex:1;min-width:0}
+.ms-row .ms-t b{display:block;font-size:13.5px;color:var(--bone);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ms-row .ms-t span{display:block;font-size:11.5px;color:var(--steel);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ms-row .ms-e{font-size:9px;font-weight:800;padding:1px 4px;border-radius:3px;background:var(--steel);color:#111;margin-left:4px;vertical-align:1px}
+.ms-play{flex:none;width:38px;height:38px;border-radius:50%;border:1px solid rgba(238,180,107,.45);background:transparent;color:var(--copper-hi,#EEB46B);font-size:14px;cursor:pointer}
+.ms-empty{padding:26px 8px;text-align:center;color:var(--steel);font-size:12.5px}
+.ms-credit{font-size:10px;color:var(--steel);text-align:center;margin-top:8px}
+.ms-slot{margin:0 0 14px}
+.ms-add{width:100%;padding:11px;border-radius:12px;border:1px dashed rgba(238,180,107,.45);background:transparent;color:var(--copper-hi,#EEB46B);font-weight:700;font-size:13px;cursor:pointer}
+.ms-chip{display:flex;align-items:center;gap:10px;padding:8px;border-radius:12px;border:1px solid rgba(238,180,107,.4);background:rgba(238,180,107,.08)}
+.ms-chip img{width:40px;height:40px;border-radius:7px;object-fit:cover}
+.ms-chip .ms-t{flex:1;min-width:0}
+.ms-chip .ms-t b{display:block;font-size:13px;color:var(--bone);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ms-chip .ms-t span{display:block;font-size:11px;color:var(--steel);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ms-chip button{flex:none;width:34px;height:34px;border-radius:50%;border:1px solid rgba(238,180,107,.4);background:transparent;color:var(--copper-hi,#EEB46B);cursor:pointer}
+.bpost .bp-music{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--steel);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bpost .bp-music b{color:var(--bone);font-weight:600;overflow:hidden;text-overflow:ellipsis}
+.sv-cap .sv-music{display:inline-flex;align-items:center;gap:7px;max-width:100%;margin-top:7px;padding:5px 10px;border-radius:99px;background:rgba(0,0,0,.38);color:#fff;font-size:12px;pointer-events:auto}
+.sv-cap .sv-music .nt{display:inline-block;animation:msSpin 3s linear infinite}
+.sv-cap .sv-music .tt{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.sv-cap .sv-music a{color:rgba(255,255,255,.7);font-size:10.5px;text-decoration:none;white-space:nowrap}
+@keyframes msSpin{to{transform:rotate(360deg)}}
 /* #upbar(sep28) — a post on its way up: its own card at the top of the board, with a real % */
 .bpost.bup{cursor:default;border-color:rgba(238,180,107,.34)}
 .bup-media{position:relative;border-radius:12px;overflow:hidden;background:#0a0b0d;max-height:220px}
@@ -26228,9 +26261,12 @@ function storyCompose(file){
         +'<div class="sty-txthint" id="styTxtHint">✍ type below · drag the words to place them</div></div>'
     +'<span class="lbl">Add text on the '+(_styKind==='vid'?'video':'photo')+' (optional)</span>'
     +'<input class="field" id="styCap" placeholder="type words to lay over the clip" maxlength="120" style="margin-bottom:14px">'
+    +'<div class="ms-slot" id="styMusicSlot"></div>'   /* #music */
     +'<button class="btn" id="styPost" type="button">📣 POST IT</button>'
     +'<button class="btn-ghost" id="styNo" type="button" style="width:100%;margin-top:10px;border:0;color:#586067">Never mind</button></div>';
-  sh.querySelector('#styNo').addEventListener('click',()=>sh.classList.remove('on'));
+  sh.querySelector('#styNo').addEventListener('click',()=>{sh.classList.remove('on');msStop();});
+  _styMusic=null; msSlotPaint();   /* #music — every new post starts without a song */
+  if(!sh._msB){ sh._msB=1; sh.addEventListener('click',e=>{ if(e.target===sh)msStop(); }); }
   sh.querySelector('#styPost').addEventListener('click',postMediaStory);
   /* #vidtext — live overlay: type to lay words on the clip, drag them up/down to place. */
   (function(){
@@ -26265,7 +26301,11 @@ function shrinkImage(file,maxW,q){   // offline fallback: a story-sized JPEG tha
 async function postMediaStory(){
   const sh=document.getElementById('storySheet');
   const _txt=((sh&&sh.querySelector('#styCap'))?sh.querySelector('#styCap').value:'').trim().slice(0,120);
-  const note=_txt?JSON.stringify({t:_txt,y:+(_styTxtY||0.42).toFixed(3)}):'';   // #vidtext — on-clip text saved as {t,y}; empty when none
+  /* #music — the note is JSON {t,y,m}: words on the clip and/or the song (stories_note_len caps it at 1000) */
+  const _no={}; if(_txt){_no.t=_txt;_no.y=+(_styTxtY||0.42).toFixed(3);}
+  if(_styMusic){ _no.m=Object.assign({},_styMusic); if(JSON.stringify(_no).length>1000)delete _no.m.u; if(JSON.stringify(_no).length>1000)delete _no.m.art; }
+  const note=Object.keys(_no).length?JSON.stringify(_no):'';
+  msStop(); _styMusic=null;   // #vidtext — on-clip text saved as {t,y}; empty when none
   const file=_styFile; if(!file)return;
   /* #rates2 — stories cost 1 ⬡, same as a message. Charged up front like every
      chat spend; the ONLY failure that refunds is "couldn't read the file" (nothing
@@ -26332,6 +26372,120 @@ function storyShootChooser(){
   sh.classList.add('on');
 }
 window.storyShootChooser=storyShootChooser;
+/* ═══ #music(sep28) — A SONG ON THE POST ═══
+   Search is Apple's public iTunes Search API (no key, no account): every hit carries a
+   30-second preview, the artwork and a link back to the track. The song rides the post's
+   note as m:{id,n,a,art,p,u}; the reel plays the preview looped while that post is in
+   view and quiets the clip under it. Apple's terms want previews tied back to the track,
+   so the reel chip keeps the "Apple Music ↗" credit. JSONP, because the search door
+   doesn't promise CORS headers. */
+let _styMusic=null, _msAudio=null, _svMusic=null;
+const MS_GENRES=['Top hits','Hip-Hop','R&B','Country','Rock','Latin','Oldies','Reggae','Gospel'];
+function storyMusic(note){
+  try{ const t=String(note||''); if(t.charAt(0)!=='{')return null; const o=JSON.parse(t), m=o&&o.m;
+    if(m&&typeof m.p==='string'&&/^https:\/\//.test(m.p))return {n:String(m.n||'a song'),a:String(m.a||''),art:String(m.art||''),p:m.p,u:String(m.u||'')}; }catch(e){}
+  return null;
+}
+function storyNoteMeta(note){
+  try{ const t=String(note||''); if(t.charAt(0)!=='{')return false; const o=JSON.parse(t); return !!(o&&typeof o==='object'&&('t' in o||'m' in o)); }catch(e){ return false; }
+}
+function musicPick(r){
+  return {id:r.trackId,n:String(r.trackName||'').slice(0,60),a:String(r.artistName||'').slice(0,50),
+          art:String(r.artworkUrl100||'').replace('100x100bb','200x200bb'),p:String(r.previewUrl||''),u:String(r.trackViewUrl||'').split('?')[0]};
+}
+function itunesSearch(term){
+  return new Promise((res,rej)=>{
+    const cb='__itcb'+Date.now().toString(36)+Math.floor(Math.random()*1e6);
+    const sc=document.createElement('script');
+    let t=null;
+    const done=()=>{ clearTimeout(t); try{delete window[cb];}catch(e){window[cb]=undefined;} try{sc.remove();}catch(e){} };
+    t=setTimeout(()=>{ done(); rej(new Error('timeout')); },10000);
+    window[cb]=d=>{ done(); res(((d&&d.results)||[]).filter(r=>r&&r.previewUrl&&r.kind==='song')); };
+    sc.onerror=()=>{ done(); rej(new Error('blocked')); };
+    sc.src='https://itunes.apple.com/search?media=music&entity=song&limit=30&term='+encodeURIComponent(term)+'&callback='+cb;
+    document.head.appendChild(sc);
+  });
+}
+function msAudio(){ if(!_msAudio){ _msAudio=new Audio(); _msAudio.loop=true; _msAudio.preload='none'; } return _msAudio; }
+function msStop(){ try{ if(_msAudio&&!_msAudio.paused)_msAudio.pause(); }catch(e){} document.querySelectorAll('[data-msplay].on').forEach(b=>{b.classList.remove('on');b.textContent='▶';}); }
+function msToggle(url,btn){
+  const a=msAudio();
+  if(a.src===url&&!a.paused){ msStop(); return; }
+  msStop(); try{ if(a.src!==url)a.src=url; a.currentTime=0; }catch(e){}
+  a.play().then(()=>{ if(btn){btn.classList.add('on');btn.textContent='❚❚';} }).catch(()=>{ toast('Couldn’t play that preview'); });
+}
+function msSlotPaint(){
+  const slot=document.getElementById('styMusicSlot'); if(!slot)return;
+  const m=_styMusic;
+  if(!m){ slot.innerHTML='<button type="button" class="ms-add" id="msAdd">🎵 Add a song</button>';
+    slot.querySelector('#msAdd').addEventListener('click',openMusicPicker); return; }
+  slot.innerHTML='<div class="ms-chip">'+(m.art?'<img src="'+esc(m.art)+'" alt="">':'')
+    +'<div class="ms-t"><b>🎵 '+esc(m.n)+'</b><span>'+esc(m.a)+' · 30-second preview</span></div>'
+    +'<button type="button" data-msplay="1" aria-label="Play the song">▶</button>'
+    +'<button type="button" id="msSwap" aria-label="Change the song">↻</button>'
+    +'<button type="button" id="msOff" aria-label="Take the song off">✕</button></div>';
+  const pb=slot.querySelector('[data-msplay]');
+  pb.addEventListener('click',()=>msToggle(m.p,pb));
+  slot.querySelector('#msSwap').addEventListener('click',openMusicPicker);
+  slot.querySelector('#msOff').addEventListener('click',()=>{ msStop(); _styMusic=null; msSlotPaint(); });
+}
+function openMusicPicker(){
+  msStop();
+  let sh=document.getElementById('musicSheet');
+  if(!sh){ sh=document.createElement('div'); sh.className='sheet'; sh.id='musicSheet'; document.body.appendChild(sh);
+    sh.addEventListener('click',e=>{ if(e.target===sh){ sh.classList.remove('on'); msStop(); } }); }
+  sh.innerHTML='<div class="sheet-card">'
+    +'<div class="big" style="font-size:20px;letter-spacing:.06em;text-align:center">ADD A SONG</div>'
+    +'<input class="field ms-q" id="msQ" type="search" placeholder="Search a song or an artist" autocomplete="off" enterkeyhint="search">'
+    +'<div class="ms-chips">'+MS_GENRES.map(g=>'<button type="button" data-msg="'+esc(g)+'">'+esc(g)+'</button>').join('')+'</div>'
+    +'<div class="ms-list" id="msList"><div class="ms-empty">Search for a song, or tap a style above.<br>Tap ▶ to hear it, tap the row to use it.</div></div>'
+    +'<div class="ms-credit">30-second previews from Apple Music</div>'
+    +'<button class="btn-ghost" id="msNo" type="button" style="width:100%;margin-top:8px;border:0;color:#586067">Never mind</button></div>';
+  const q=sh.querySelector('#msQ'), list=sh.querySelector('#msList');
+  let seq=0, tmr=null;
+  const run=async term=>{
+    term=String(term||'').trim(); if(!term)return;
+    const my=++seq; list.innerHTML='<div class="ms-empty">Looking…</div>';
+    let rows=[];
+    try{ rows=await itunesSearch(term); }
+    catch(e){ if(my===seq)list.innerHTML='<div class="ms-empty">Couldn’t reach the music search — check your connection and try again.</div>'; return; }
+    if(my!==seq)return;
+    if(!rows.length){ list.innerHTML='<div class="ms-empty">Nothing for “'+esc(term)+'” — try another spelling.</div>'; return; }
+    const picks=rows.map(musicPick);
+    list.innerHTML=picks.map((m,ix)=>'<div class="ms-row" data-msi="'+ix+'">'
+      +'<img src="'+esc(m.art)+'" alt="" loading="lazy">'
+      +'<div class="ms-t"><b>'+esc(m.n)+(rows[ix].trackExplicitness==='explicit'?'<span class="ms-e">E</span>':'')+'</b><span>'+esc(m.a)+'</span></div>'
+      +'<button type="button" class="ms-play" data-msplay="'+ix+'" aria-label="Hear it">▶</button></div>').join('');
+    list.querySelectorAll('.ms-row').forEach(row=>row.addEventListener('click',e=>{
+      const m=picks[+row.getAttribute('data-msi')];
+      const pb=e.target.closest('[data-msplay]');
+      if(pb){ e.stopPropagation(); msToggle(m.p,pb); return; }
+      _styMusic=m; sh.classList.remove('on'); msSlotPaint();
+      const cb=document.querySelector('#styMusicSlot [data-msplay]'); msToggle(m.p,cb);   /* hear what you picked */
+      try{ if(navigator.vibrate)navigator.vibrate(10); }catch(_){}
+    }));
+  };
+  q.addEventListener('input',()=>{ clearTimeout(tmr); tmr=setTimeout(()=>run(q.value),380); });
+  q.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); clearTimeout(tmr); run(q.value); try{q.blur();}catch(_){} } });
+  sh.querySelectorAll('[data-msg]').forEach(b=>b.addEventListener('click',()=>{ q.value=b.getAttribute('data-msg'); run(q.value); }));
+  sh.querySelector('#msNo').addEventListener('click',()=>{ sh.classList.remove('on'); msStop(); });
+  sh.classList.add('on');
+  setTimeout(()=>{ try{q.focus();}catch(e){} },60);
+}
+window.openMusicPicker=openMusicPicker;
+/* the reel: one audio element for every song, so a swipe to the next post keeps the
+   browser's permission to play sound */
+function svPgMusic(v){ const pg=v&&v.closest&&v.closest('.sv-page'); return !!(pg&&pg.getAttribute('data-music')==='1'); }
+function svMusicSync(i){
+  const view=document.getElementById('storyViewer');
+  const s=_svList&&_svList[i], m=s&&storyMusic(s.note);
+  if(!_svMusic){ _svMusic=new Audio(); _svMusic.loop=true; _svMusic.preload='auto'; }
+  const a=_svMusic;
+  if(!m||!_svSound||!view||!view.classList.contains('on')){ try{ if(!a.paused)a.pause(); }catch(e){} return; }
+  try{ msStop(); }catch(e){}
+  if(a.getAttribute('data-src')!==m.p){ a.setAttribute('data-src',m.p); a.src=m.p; try{a.currentTime=0;}catch(e){} }
+  if(a.paused){ const pr=a.play(); if(pr&&pr.catch)pr.catch(()=>{}); }
+}
 /* ═══ #upbar(sep28) — POSTS ON THEIR WAY UP ═══ */
 const STY_FIT=(typeof WeakSet==='function')?new WeakSet():{has:function(){return false},add:function(){}};
 let STORY_UPLOADS=[];   // {id,kind,blobUrl,handle,loaded,total,phase,msg,err,job}
@@ -26803,12 +26957,13 @@ function svPageHTML(s,i){
   if(k==='img'||k==='vid'){
     const poster=_thumbCache()[String(s.url)]||'';
     const ov=storyOverlay(s.note);                       // #vidtext — text the poster laid on the clip
-    const capTxt=ov?'':(s.note||'');                     // overlay rides on the media; a plain note stays a caption
+    const capTxt=ov?'':(storyNoteMeta(s.note)?'':(s.note||''));   /* #music */
+    const mu=storyMusic(s.note);                     // overlay rides on the media; a plain note stays a caption
     const overHTML=ov?'<div class="sv-txt" style="top:'+(ov.y*100).toFixed(1)+'%">'+esc(ov.t).replace(/\n/g,'<br>')+'</div>':'';
     const media=(k==='vid')   /* #video2 — the clip itself; svUpdateIx plays the one in view */
       ?'<video class="sv-mediafull" src="'+u+'" playsinline loop muted preload="metadata"'+(poster?' poster="'+esc(poster)+'"':'')+'></video>'
       :'<img class="sv-mediafull" src="'+u+'" alt="">';
-    return '<div class="sv-page" data-si="'+i+'" style="--pc:#EEB46B">'
+    return '<div class="sv-page" data-si="'+i+'" style="--pc:#EEB46B"'+(mu?' data-music="1"':'')+'>'
       +media+overHTML+'<div class="sv-shade top"></div><div class="sv-shade"></div><div class="sv-burst">❤</div>'
       +'<div class="sv-rail">'+avSlot('sv-av',s.owner,'🎭')+likeBtn+cmBtn
         +'<button data-share="'+(s.local?'__APP__':u)+'"><span class="ic">⤴</span>Share</button>'
@@ -26816,6 +26971,7 @@ function svPageHTML(s,i){
       +'</div>'
       +'<div class="sv-cap"><div class="sv-h">🎭 '+esc(s.by)+'</div>'
         +(capTxt&&capTxt.trim()?'<div class="sv-note">'+esc(capTxt)+'</div>':'')
+        +(mu?'<div class="sv-music"><span class="nt">♫</span><span class="tt">'+esc(mu.n)+' · '+esc(mu.a)+'</span>'+(mu.u&&/^https:\/\//.test(mu.u)?'<a href="'+esc(mu.u)+'" target="_blank" rel="noopener">Apple Music ↗</a>':'')+'</div>':'')
         +'<div class="sv-t">'+(s.srcLine?esc(s.srcLine):((k==='vid'?'🎬':'📸')+' from a casual\'s camera'))+' · '+agoShort(s.ts)+'</div></div>'
       +hint
     +'</div>';
@@ -26920,6 +27076,7 @@ function openStoryViewer(startIdx,list){
    phone or switching apps all hush every player explicitly. Coming back to a
    still-open viewer re-mounts the story you were on. */
 function svHush(){
+  try{ if(_svMusic&&!_svMusic.paused)_svMusic.pause(); }catch(e){}   /* #music */
   document.querySelectorAll('#svTrack video').forEach(v=>{try{if(!v.paused)v.pause();}catch(e){}});
   document.querySelectorAll('iframe.sv-embed').forEach(f=>{try{if(f.dataset.on==='1'){f.dataset.on='0';f.src='about:blank';}}catch(e){}});
 }
@@ -27027,8 +27184,9 @@ function svSoundSet(on){
   _svSound=!!on;try{localStorage.setItem('shadowhook_svsound',_svSound?'1':'0');}catch(e){}
   svSoundIcon();
   const v=svCurrentVideo();
-  if(v){try{v.muted=!_svSound;if(v.paused){const p=v.play();if(p&&p.catch)p.catch(function(){});}}catch(e){}}
+  if(v){try{v.muted=!_svSound||svPgMusic(v);if(v.paused){const p=v.play();if(p&&p.catch)p.catch(function(){});}}catch(e){}}
   try{svEmbedSound(svCurrentEmbed(),_svSound);}catch(e){}   // #sndfix — YT obeys the same switch
+  try{ const tr=document.getElementById('svTrack'); if(tr)svMusicSync(Math.round(tr.scrollTop/Math.max(1,tr.clientHeight))); }catch(e){}   /* #music */
   try{toast(_svSound?'🔊 Sound on':'🔇 Muted');}catch(e){}
 }
 function svUpdateIx(){
@@ -27048,15 +27206,15 @@ function svUpdateIx(){
             if(pg2&&+pg2.getAttribute('data-si')===cur)svNext();
           }catch(e){}});}
         if(v.paused){
-          v.muted=!_svSound;                                   // #stories8 — try it WITH sound
+          v.muted=!_svSound||svPgMusic(v);                                   // #stories8 — try it WITH sound
           const pr=v.play();
           if(pr&&pr.catch)pr.catch(function(){try{v.muted=true;v.play().catch(function(){});}catch(e){}});   // vetoed → muted, never stalled
-        }else if(v.muted&&_svSound){v.muted=false;}            // already rolling silently → give it its voice
+        }else if(v.muted&&_svSound&&!svPgMusic(v)){v.muted=false;}            // already rolling silently → give it its voice
         if(v.readyState<2&&!v._svRetry){v._svRetry=1;   // #stories6b — the clip wasn't loaded yet: play the MOMENT it can
           v.addEventListener('canplay',function(){try{
             const cur=Math.round(track.scrollTop/Math.max(1,track.clientHeight));
             const pg2=v.closest('.sv-page');
-            if(pg2&&+pg2.getAttribute('data-si')===cur&&v.paused){v.muted=!_svSound;v.play().catch(function(){try{v.muted=true;v.play().catch(function(){});}catch(e){}});}
+            if(pg2&&+pg2.getAttribute('data-si')===cur&&v.paused){v.muted=!_svSound||svPgMusic(v);v.play().catch(function(){try{v.muted=true;v.play().catch(function(){});}catch(e){}});}
           }catch(e){}});}
       } else if(!v.paused)v.pause();
     }catch(e){}
@@ -27070,6 +27228,7 @@ function svUpdateIx(){
       else if(!on&&f.dataset.on==='1'){f.dataset.on='0';f.src='about:blank';}
     }catch(e){}
   });
+  try{ svMusicSync(i); }catch(e){}   /* #music — the song follows the story in view */
   /* #stories5 — the talk follows the story in view */
   try{
     const v=document.getElementById('storyViewer');
@@ -27112,7 +27271,7 @@ function svBind(track){
   track.ontouchend=function(){try{
     const v=svCurrentVideo();
     if(!v)return;
-    if(v.paused){v.muted=!_svSound;const p=v.play();if(p&&p.catch)p.catch(function(){try{v.muted=true;v.play().catch(function(){});}catch(e){}});}
+    if(v.paused){v.muted=!_svSound||svPgMusic(v);const p=v.play();if(p&&p.catch)p.catch(function(){try{v.muted=true;v.play().catch(function(){});}catch(e){}});}
     else if(v.muted&&_svSound)v.muted=false;   // #stories8 — the touch IS the gesture: sound comes alive
   }catch(e){}};
   track.onclick=async e=>{
@@ -28806,13 +28965,15 @@ function boardPostHTML(s,i,step){
     body='<div class="bp-txt">'+esc(String(s.note||'')).replace(/\n/g,'<br>')+'</div>';
   }else if(k==='img'||k==='vid'){
     const th=storyThumb(s);
-    const cap=ov?ov.t:(s.note||'');
+    const cap=ov?ov.t:(storyNoteMeta(s.note)?'':(s.note||''));   /* #music — a song-only note is not a caption */
+    const mu=storyMusic(s.note);
     body=(cap&&cap.trim()?'<div class="bp-say">'+esc(cap)+'</div>':'')
       +'<div class="bp-media">'
         +(k==='vid'
           ?((th&&th.img)?('<img src="'+esc(String(th.img))+'" alt=""><div class="bp-play">▶</div>'):('<video src="'+esc(String(s.url))+'" muted playsinline preload="metadata"></video><div class="bp-play">▶</div>'))   /* #video2 */
           :'<img src="'+esc(String(s.url))+'" alt="" loading="lazy">')
       +'</div>';
+    if(mu)body+='<div class="bp-music">🎵 <b>'+esc(mu.n)+'</b> · '+esc(mu.a)+'</div>';   /* #music */
     if(k==='vid'&&!(th&&th.img))try{makeVideoThumb(s.url)}catch(e){}
   }else{
     const th=storyThumb(s); if(!th)try{fetchThumb(s.url)}catch(e){}
