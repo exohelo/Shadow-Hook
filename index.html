@@ -5214,6 +5214,9 @@ html.daylight{--hm-water:#dbe4f3;--hm-grid:rgba(40,60,120,.07);--hm-land:#f4f0e6
 .hm-LA{fill:var(--hm-la);stroke:var(--hm-la-line)}
 .hm-LB{fill:var(--hm-lb);stroke:var(--hm-lb-line)}
 .hm-dock.on{stroke-width:2.6;filter:url(#hmGlow)}
+/* #flyto — the checked-in dock's outline breathes twice when the map lands on it */
+@keyframes hmDockPulse{0%{stroke-width:2.6;stroke-opacity:1}40%{stroke-width:7;stroke-opacity:.55}100%{stroke-width:2.6;stroke-opacity:1}}
+.hm-dock.hm-pulse{animation:hmDockPulse 1.2s ease-out 2;vector-effect:non-scaling-stroke}
 .hm-LA.on{fill:rgba(77,226,255,.42);stroke:var(--hm-la-hi)}
 .hm-LB.on{fill:rgba(255,77,210,.4);stroke:var(--hm-lb-hi)}
 .hm-dock:focus-visible{stroke-width:2.6}
@@ -9777,7 +9780,10 @@ function gotoTab(name){
   if(name==='mayday'&&!alertsLoaded){alertsLoaded=true;loadAlerts()}
   if(name==='order'){try{renderHallStats();}catch(e){} try{socPullSoon();}catch(e){} try{updateRace();}catch(e){}
     try{renderSocialFeed();}catch(e){} try{sbLoadStories();}catch(e){}}   // #hall — the Hall IS the tab now: fresh feed + stories + standings
-  if(name==='ports'){try{if(window.shkChunk)shkChunk.now('maps');}catch(e){} try{renderHarborBoard();}catch(e){}}   /* #lazy — the vault comes up with the tab */
+  if(name==='ports'){try{if(window.shkChunk)shkChunk.now('maps');}catch(e){} try{renderHarborBoard();}catch(e){}
+    /* #flyto(sep27) — checked in today? the map glides in on your dock */
+    try{ const _b=document.getElementById('harborBoard'), _g=_b&&_b.classList.contains('checked-in')?_b.getAttribute('data-goto'):null;
+      if(_g&&/^\d+$/.test(_g)){ let _n=0; const _try=()=>{ if(window.harborFlyTo&&harborFlyTo(+_g))return; if(++_n<8)setTimeout(_try,300); }; setTimeout(_try,380); } }catch(e){}}   /* #lazy — the vault comes up with the tab */
   if(name==='board'){try{openPendingSheet();}catch(e){}}   // #93 — the Wire opens with the pending dispatch sheet showing
   if(name==='armory'){try{ if(typeof sbFreshProducts==='function')sbFreshProducts(); if(typeof shopKmNote==='function')shopKmNote(); if(typeof wantLoad==='function')wantLoad(); }catch(e){}}   // #waitlist(sep19) — and your own 🔔 list, so the button knows you and a landed drop can say so   // #freshshelf(sep19) — the Armory was the one tab with no hook here: its shelf was read once at boot, so new postings never showed in an app that was already open
 }
@@ -46595,6 +46601,30 @@ window.HARBOR_LORE={"ports":{"LA":{"name":"Port of Los Angeles","kicker":"San Pe
   wrap.addEventListener('touchstart',function(e){ if(e.touches.length>1&&e.cancelable)e.preventDefault(); },{passive:false});
   wrap.addEventListener('touchmove',function(e){ if((e.touches.length>1||wrap.classList.contains('zoomed'))&&e.cancelable)e.preventDefault(); },{passive:false});
   window.closeHarborView=closeView; window.harborViewOpen=function(){ return open; };
+  /* #flyto(sep27) — YOUR DOCK, LIT AND FLOWN TO. Opening the Ports tab with today's docket logged:
+     the map starts on the whole bay, then glides in on the dock you're checked in at and pulses
+     its outline twice. Once per dock per session, so a casual who pans away isn't yanked back. */
+  window.harborFlyTo=function(idx,force){
+    try{
+      var t=TERMINALS[idx]; if(!t)return false; var dk=dockElOf(t); if(!dk)return false;
+      var vw=vp.clientWidth, vh=vp.clientHeight; if(!vw||!vh)return false;
+      var key=t.operator+'|'+t.berths; if(!force&&window._hmFlown===key)return true; window._hmFlown=key;
+      var bb; try{ bb=dk.getBBox(); }catch(e){ return false; } if(!bb||!bb.width)return false;
+      var reduce=false; try{ reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(e){}
+      /* the dock fills about 40% of the box — never past 5× the fit, never under 1.5× */
+      var ns=Math.min(vw*0.42/bb.width, vh*0.42/bb.height); ns=Math.max(S.min*1.5,Math.min(S.max,S.min*5,ns));
+      var cx=bb.x+bb.width/2, cy=bb.y+bb.height/2;
+      select(dk);
+      svg.style.transition=''; fit();                                   /* start on the whole bay */
+      var go=function(){
+        S.s=ns; S.x=vw/2-cx*ns; S.y=vh/2-cy*ns; clampT();
+        svg.style.transition=reduce?'':'transform 1.15s cubic-bezier(.22,.61,.36,1)'; apply();
+        setTimeout(function(){ svg.style.transition=''; dk.classList.add('hm-pulse'); setTimeout(function(){ dk.classList.remove('hm-pulse'); },2600); },reduce?0:1180);
+      };
+      if(reduce)go(); else requestAnimationFrame(function(){ requestAnimationFrame(go); });
+      return true;
+    }catch(e){ return false; }
+  };
   try{ document.getElementById('hmFood').addEventListener('click',function(){ if(typeof window.openFoodList==='function')window.openFoodList(); }); }catch(e){}
   vp.addEventListener('pointerdown',function(e){ if(!open)return; try{ vp.setPointerCapture(e.pointerId); }catch(x){}
     if(!pts.size)measure(); var p=pt(e); pts.set(e.pointerId,p);
