@@ -2099,6 +2099,24 @@ html.daylight .port-console .pc-ic{color:var(--copper);filter:none}
 .hb-stop.live{color:var(--ok);text-shadow:0 0 22px rgba(127,174,106,.45);font-size:clamp(26px,9vw,40px)}
 .hb-stop.live.sm{font-size:clamp(22px,7vw,30px)}
 .hb-status{position:relative;z-index:1;display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px;padding-top:11px;border-top:1px solid var(--line-soft)}
+/* #mydock(sep27) — the checked-in board carries the dock */
+.hb-dock-hero{text-align:left;cursor:pointer;padding:2px 0 0}
+.hb-dock-k{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--copper-hi)}
+.hb-dock-k .hb-stoplbl{margin-left:auto;letter-spacing:.18em}
+.hb-dock-n{font-family:'Anton',sans-serif;font-size:clamp(30px,9vw,40px);line-height:1;margin:6px 0 8px;color:var(--ok);text-shadow:0 0 22px rgba(127,174,106,.4)}
+.hb-dock-n small{font-size:.55em;color:var(--steel);text-shadow:none;font-family:'Barlow Condensed',sans-serif;font-weight:600}
+.hb-dock-b{font-family:'Inter',system-ui,sans-serif;font-size:13px;color:var(--bone)}
+.hb-dock-b b,.hb-dock-b a{color:var(--copper-hi);font-weight:600;text-decoration:none}
+.hb-dock-b i{color:var(--steel);font-style:normal;margin:0 3px}
+.hb-dock{position:relative;z-index:1;margin-top:8px;text-align:left}
+.hb-dock .card-h{padding-left:0;padding-right:0}
+.hb-dock .hd-gates{margin-top:0}
+.hb-dock .hd-gates .gaterow:last-child{border-bottom:0}
+.hb-dock .hd-board .card-h:first-child{border-top:1px solid var(--line-soft)}
+.hb-dock .card-b{padding-left:0;padding-right:0}
+.hb-food{font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:11px;letter-spacing:.12em;color:var(--copper-hi);background:var(--plate-2);border:1px solid rgba(238,180,107,.45);border-radius:99px;padding:5px 11px;cursor:pointer;white-space:nowrap}
+.hb-logged .hb-full{display:inline-block;margin-top:3px;color:var(--copper-hi);text-decoration:none;font-weight:600;letter-spacing:.06em}
+html.daylight .hb-dock-n{text-shadow:none}
 .hb-live{font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:10px;letter-spacing:.12em;color:var(--steel);display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--line);border-radius:99px;white-space:nowrap}
 .hb-live.on{color:var(--ok);border-color:rgba(127,174,106,.5);background:rgba(127,174,106,.08);box-shadow:0 0 12px rgba(127,174,106,.18)}
 .hb-logged{font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:10px;letter-spacing:.05em;color:var(--steel);margin-left:auto;text-align:right}
@@ -31808,36 +31826,59 @@ window.renderHarborBoard=function(){
     const _stage=board.querySelector('.hb-stage');
     let _status=board.querySelector('.hb-status');
     if(!_status){ _status=document.createElement('div'); _status.className='hb-status'; const _m=board.querySelector('.hb-meters'); if(_m&&_m.parentNode) _m.parentNode.insertBefore(_status,_m.nextSibling); else board.appendChild(_status); }
+    try{ const _sl=board.querySelectorAll('.hb-top .wire-slot')[1]; if(_sl)_sl.textContent=(_live&&_term)?'My Dock':'San Pedro Bay'; }catch(e){}   /* #mydock — the header says whose board this is */
     if(_stage){
       if(_live && _term){
         /* #coscosplit(sep11) — was the operator code alone, and gotoTerminal opened the
            FIRST card with that code: every SSA docket that wasn't Matson opened Matson.
            Point at the row itself. */
         board.classList.add('checked-in'); board.setAttribute('data-goto',String(TERMINALS.indexOf(_term)>-1?TERMINALS.indexOf(_term):_term.operator));
-        const _ship=(_live.ship&&_live.ship!=='—')?(' · '+esc(_live.ship)):'';
-        _stage.innerHTML='<div class="hb-stoplbl live">✓ CHECKED IN · TODAY</div>'
-          +'<div class="hb-stop live">'+esc(_term.aka||_term.operator)+'</div>'
-          +'<div class="hb-moves">Berth <b>'+esc(_term.berths)+'</b>'+_ship+' — tap to open your gate ›</div>';
+        /* #mydock(sep27) — the board IS the dock now: the top of the dock profile (port · pier, name,
+           berths, phone, gates, tonight's board) lives here, the full profile a tap away. The
+           profile sheet itself is untouched. */
+        const _ship=(_live.ship&&_live.ship!=='—')?esc(_live.ship):'';
+        const _yard=/satellite/i.test(_term.aka||'')||!/^(LA|TI|LB)\b/.test(String(_term.berths||''));
+        const _port=/^LB\b/.test(_term.berths)?'Port of Long Beach':/^(LA|TI)\b/.test(_term.berths)?'Port of Los Angeles':'San Pedro Bay';
+        let _pier=''; try{ const dk=document.querySelector('.hm-dock[data-op="'+_term.operator+'"][data-berths="'+_term.berths+'"]'); if(dk)_pier=(dk.getAttribute('aria-label')||'').split(' — ')[0]; }catch(e){}
+        const _kick=_yard?'Satellite yard':(_port+(_pier?' · '+_pier:''));
+        const _nm=_yard?_term.operator:esc(_term.aka||_term.operator)+(_term.aka&&_term.operator&&_term.aka!==_term.operator?' <small>· '+esc(_term.operator)+'</small>':'');
+        _stage.innerHTML='<div class="hb-dock-hero" role="button" tabindex="0" aria-label="Open the full dock profile">'
+          +'<div class="hb-dock-k"><span>'+esc(_kick)+'</span><span class="hb-stoplbl live">✓ CHECKED IN · TODAY</span></div>'
+          +'<div class="hb-dock-n">'+_nm+'</div>'
+          +'<div class="hb-dock-b">'+(!_yard?'⚓ Berths <b>'+esc(_term.berths)+'</b>':'')
+          +(_term.security?' <i>·</i> <a href="tel:'+String(_term.security).replace(/\D/g,'')+'">☎ '+esc(_term.security)+'</a>':'')
+          +(_ship?' <i>·</i> Your ship <b>'+_ship+'</b>':'')+'</div></div>';
+        try{
+          let _dock=board.querySelector('.hb-dock');
+          if(!_dock){ _dock=document.createElement('div'); _dock.className='hb-dock'; const _m=board.querySelector('.hb-meters'); if(_m&&_m.parentNode)_m.parentNode.insertBefore(_dock,_m.nextSibling); else board.appendChild(_dock); }
+          const P=(typeof dockCardParts==='function')?dockCardParts(_term):null;
+          _dock.innerHTML=P?((P.gates||P.checks?'<div class="card-h">Gates <span class="tag">➤ GO opens directions</span></div><div class="hd-gates">'+P.gates+P.checks+'</div>':'')+'<div class="hd-board">'+(P.intel||'')+'</div>'):'';
+          _dock.style.display=_dock.innerHTML?'':'none';
+        }catch(e){}
       } else if(_live){
         board.classList.add('checked-in'); board.removeAttribute('data-goto');
+        try{ const _d=board.querySelector('.hb-dock'); if(_d){_d.innerHTML=''; _d.style.display='none';} }catch(e){}
         const _ship=(_live.ship&&_live.ship!=='—')?(' · '+esc(_live.ship)):'';
         _stage.innerHTML='<div class="hb-stoplbl live">✓ CHECKED IN · TODAY</div>'
           +'<div class="hb-stop live sm">'+esc(_live.terminal||'YOUR DOCK')+'</div>'
           +'<div class="hb-moves">Logged today'+_ship+' — search your berth below to find the gate</div>';
       } else {
         board.classList.remove('checked-in'); board.removeAttribute('data-goto');
+        try{ const _d=board.querySelector('.hb-dock'); if(_d){_d.innerHTML=''; _d.style.display='none';} }catch(e){}
         _stage.innerHTML='<div class="hb-stoplbl">CHECK IN AT</div>'
           +'<div class="hb-stop">YOUR GATE</div>'
           +'<div class="hb-moves">match the <b>berth</b> on your docket — find your dock, hit the right gate</div>';
       }
     }
     if(_status){
+      /* #mydock — 🍔 FOOD rides here now (it left the harbor card's header for the date + weather) */
+      const _food='<button type="button" class="hb-food" aria-label="Food trucks and restaurants" onclick="if(window.openFoodList)openFoodList()">🍔 FOOD</button>';
       if(_live){
-        _status.innerHTML='<span class="hb-live on">● ON THE CLOCK</span><span class="hb-logged">'+_total+' docket'+(_total!==1?'s':'')+' logged</span>';
+        _status.innerHTML='<span class="hb-live on">● ON THE CLOCK</span>'+_food+'<span class="hb-logged">'+_total+' docket'+(_total!==1?'s':'')+' logged'+(_term?'<br><a class="hb-full" href="#">Full profile ›</a>':'')+'</span>';
       } else if(_total){
-        _status.innerHTML='<span class="hb-live">○ not checked in today</span><span class="hb-logged">'+_total+' docket'+(_total!==1?'s':'')+' logged'+((_last&&_last.date)?(' · last '+_sd(_last.date)):'')+'</span>';
+        _status.innerHTML='<span class="hb-live">○ not checked in today</span>'+_food+'<span class="hb-logged">'+_total+' docket'+(_total!==1?'s':'')+' logged'+((_last&&_last.date)?(' · last '+_sd(_last.date)):'')+'</span>';
       } else {
-        _status.innerHTML='<span class="hb-live">○ no dockets yet</span><span class="hb-logged">log today’s dock work to light your gate</span>';
+        _status.innerHTML='<span class="hb-live">○ no dockets yet</span>'+_food+'<span class="hb-logged">log today’s dock work to light your gate</span>';
       }
     }
   }catch(e){}
@@ -31857,7 +31898,10 @@ window.gotoTerminal=function(op){
   }catch(e){}
 };
 (function(){var b=document.getElementById('harborBoard'); if(b&&!b._gateTap){b._gateTap=1;
-  b.addEventListener('click',function(){ if(b.classList.contains('checked-in')){var op=b.getAttribute('data-goto'); if(op&&typeof gotoTerminal==='function')gotoTerminal(op);} });}})();
+  b.addEventListener('click',function(e){ if(!b.classList.contains('checked-in'))return;
+    var t=e.target; var hit=t&&t.closest&&t.closest('.hb-dock-hero,.hb-full,.hb-stage');
+    if(!hit)return; if(t.closest('a[href^="tel:"]'))return; if(t.closest('.hb-full'))e.preventDefault();
+    var op=b.getAttribute('data-goto'); if(op&&typeof gotoTerminal==='function')gotoTerminal(op); });}})();
 /* #90 — left open across midnight (or noon)? re-label the boards so "tonight" /
    "this morning" stays honest without a manual refresh. Cheap 60s check. */
 (function(){let _lastWhen=boardWhen();setInterval(function(){const w=boardWhen();if(w!==_lastWhen){_lastWhen=w;try{renderRecentBoards();}catch(e){}try{const s=document.getElementById('portSearch');renderPorts(s?s.value:"");}catch(e){}try{renderHarborBoard();}catch(e){}}},60000);})();
