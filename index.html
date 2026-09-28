@@ -9790,6 +9790,29 @@ function gotoTab(name){
 /* #gateonly(aug31) — the gate and the tab bar are opposites: while the gate is up the
    bar is gone, and it appears the moment a casual is through. One switch, called from
    both doors, and it reads the gate itself so a path that forgets still lands right. */
+/* ═══ #awake(sep28) — THE SCREEN STAYS UP WHILE YOU READ ═══
+   The phone dims and sleeps on its own clock, which is fine for a glance and maddening for a
+   read of the wire. So while the app is open and you've touched it in the last 10 minutes, it
+   holds a screen wake lock; 10 minutes of stillness and it lets go, so a phone left face-up on
+   the dash still sleeps. Any touch, scroll or key starts the 10 minutes over. Coming back to
+   the app (it was in the background, the phone was locked) takes the lock again. Phones that
+   don't offer the lock (old iOS) just behave as before. */
+(function(){
+  var HOLD=10*60*1000, lock=null, timer=null, asking=false;
+  var can=function(){ return !!(navigator.wakeLock&&navigator.wakeLock.request); };
+  async function take(){
+    if(!can()||lock||asking||document.visibilityState!=='visible')return;
+    asking=true;
+    try{ lock=await navigator.wakeLock.request('screen'); lock.addEventListener('release',function(){ lock=null; }); }catch(e){ lock=null; }
+    asking=false;
+  }
+  function drop(){ if(lock){ try{ lock.release(); }catch(e){} lock=null; } }
+  function poke(){ if(!can())return; if(timer)clearTimeout(timer); timer=setTimeout(drop,HOLD); if(!lock)take(); }
+  ['pointerdown','touchstart','keydown','scroll','wheel'].forEach(function(ev){ window.addEventListener(ev,poke,{passive:true,capture:true}); });
+  document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='visible')poke(); else drop(); });
+  window.shkAwake={take:poke,drop:drop,held:function(){ return !!lock; }};
+  poke();
+})();
 function atGate(on){
   try{ if(on===undefined){ const g=document.getElementById('gatePage'); on=!!(g&&getComputedStyle(g).display!=='none'); }
     document.documentElement.classList.toggle('at-gate',!!on); }catch(e){}
