@@ -48569,8 +48569,10 @@ window.HARBOR_LORE={"ports":{"LA":{"name":"Port of Los Angeles","kicker":"San Pe
       const rows=r.data||[];
       let pick=rows.find(x=>x.status==='live'&&phase(x)!=='closed')||rows.find(x=>x.status==='live'||x.status==='closed');
       if(!pick)pick=rows.find(x=>x.status==='drawn'&&x.drawn_at&&(Date.now()-new Date(x.drawn_at))<WINNER_DAYS*864e5);
-      /* a key sees the newest draft on the banner (members never do — RLS hides drafts) so it can be demoed before it goes live */
-      if(!pick&&window.__isKM)pick=rows.find(x=>x.status==='draft');
+      /* a DRAFT never shows on anyone's banner — members can't even read them (RLS) — unless THIS
+         phone asked for a preview from the Command Center (👁 button; off by default, per phone) */
+      let pv=''; try{pv=localStorage.getItem('shadowhook_rfl_preview')||'';}catch(e){}
+      if(!pick&&pv&&window.__isKM)pick=rows.find(x=>x.status==='draft'&&x.id===pv);
       R=pick||null;
       if(R)await loadState();
       paint();
@@ -48758,6 +48760,7 @@ window.HARBOR_LORE={"ports":{"LA":{"name":"Port of Los Angeles","kicker":"San Pe
       +'<input type="file" id="kmRflFile" accept="image/*" style="display:none">'
       +'<div class="acts">'
       +(locked?'':'<button class="btn-line gold" type="button" data-act="save">💾 Save'+(st==='draft'?' draft':'')+'</button>')
+      +(st==='draft'&&!isNew?'<button class="btn-line" type="button" data-act="preview">'+(_pvOn(ED.id)?'👁 Hide the preview on this phone':'👁 Preview on this phone only')+'</button>':'')
       +(st==='draft'?'<button class="btn-line" type="button" data-act="live" style="border-color:#7fae6a;color:#7fae6a">▶ Save &amp; go live</button>':'')
       +(st==='live'?'<button class="btn-line" type="button" data-act="closed">⏸ Close sales</button>':'')
       +(st==='closed'?'<button class="btn-line" type="button" data-act="live">▶ Reopen sales</button>':'')
@@ -48821,6 +48824,10 @@ window.HARBOR_LORE={"ports":{"LA":{"name":"Port of Los Angeles","kicker":"San Pe
         if(!btn.classList.contains('arm')){ btn.dataset.lbl=btn.innerHTML; btn.classList.add('arm'); btn.innerHTML='Tap again — this is final';
           setTimeout(()=>{ if(btn.isConnected){btn.classList.remove('arm');btn.innerHTML=btn.dataset.lbl;} },4000); return; }
       }
+      if(a==='preview'){
+        try{ if(_pvOn(ED.id))localStorage.removeItem('shadowhook_rfl_preview'); else localStorage.setItem('shadowhook_rfl_preview',ED.id); }catch(e){}
+        kmEdit(); load(); done(_pvOn(ED.id)?'👁 Showing on this phone only — members and other keys see nothing':'Preview off'); return;
+      }
       if(a==='draw'){
         msg.textContent='drawing…';
         const r=await window.SB.rpc('raffle_draw',{p_raffle:ED.id}); if(r.error)throw r.error;
@@ -48852,10 +48859,12 @@ window.HARBOR_LORE={"ports":{"LA":{"name":"Port of Los Angeles","kicker":"San Pe
       else r=await window.SB.from('raffles').insert(row).select().single();
       if(r.error)throw r.error;
       ED=Object.assign({},r.data); kmEdit();
+      if(a==='live'){ try{localStorage.removeItem('shadowhook_rfl_preview');}catch(e){} }
       done(a==='live'?'▶ Live — the banner is on every phone':a==='closed'?'⏸ Sales closed — draw when ready':'✓ Saved');
       load();
     }catch(e){ fail(e); }
   }
+  function _pvOn(id){ try{return localStorage.getItem('shadowhook_rfl_preview')===id;}catch(e){return false;} }
   function confirmNoPhoto(btn){
     if(btn.dataset.np)return true; btn.dataset.np='1'; const m=$('kmRflMsg'); m.style.color='var(--warn)'; m.textContent='No prize photo — tap again to go live anyway.'; return false;
   }
