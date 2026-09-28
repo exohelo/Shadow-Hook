@@ -29068,13 +29068,16 @@ window.dmDiag=dmDiag;
 (function(){
   const $=id=>document.getElementById(id);
   const AB={email:'',birthday:'',bday_public:true,gender:'',ok:false};
+  const DIRTY={email:false,bday:false};
   try{ Object.assign(AB,JSON.parse(localStorage.getItem(K('about'))||'{}')); }catch(e){}
   function cache(){ try{localStorage.setItem(K('about'),JSON.stringify({email:AB.email,birthday:AB.birthday,bday_public:AB.bday_public,gender:AB.gender}));}catch(e){} }
   function paint(){
     const box=$('aboutBox'); if(!box)return;
     const signed=!!(window.SB&&window.__shkUid); box.style.display=signed?'':'none'; if(!signed)return;
-    if($('abEmail')&&document.activeElement!==$('abEmail'))$('abEmail').value=AB.email||'';
-    if($('abBday')&&document.activeElement!==$('abBday'))$('abBday').value=AB.birthday||'';
+    /* #abdirty(sep28) — a field you've typed in is YOURS until you save: repaints (tapping
+       Brother/Sister, the spotlight switch, the wire answering) never write over it */
+    if($('abEmail')&&!DIRTY.email)$('abEmail').value=AB.email||'';
+    if($('abBday')&&!DIRTY.bday)$('abBday').value=AB.birthday||'';
     try{ const h=$('abHandle'), src=$('pfHandle'); if(h&&src)h.textContent=(src.textContent||'—'); profileSealPaint(); }catch(e){}
     const sw=$('abBdayPub'); if(sw){ sw.classList.toggle('on',!!AB.bday_public); sw.setAttribute('aria-checked',AB.bday_public?'true':'false'); }
     const g=$('abGender'); if(g)g.querySelectorAll('button').forEach(b=>b.classList.toggle('on',(b.dataset.g||'')===(AB.gender||'')));
@@ -29109,7 +29112,7 @@ window.dmDiag=dmDiag;
       const r=await window.SB.from('profiles').update(row).eq('id',window.__shkUid).select('id');
       if(r&&r.error)throw r.error;
       if(!r.data||!r.data.length)throw new Error('the server kept the old row — is your profile row yours to edit?');
-      AB.email=email; AB.birthday=bday; AB.ok=true; cache(); note('✓ Saved.','var(--ok)'); try{toast('🪪 Saved');}catch(e){}
+      AB.email=email; AB.birthday=bday; AB.ok=true; DIRTY.email=DIRTY.bday=false; cache(); note('✓ Saved.','var(--ok)'); try{toast('🪪 Saved');}catch(e){}
       try{ if(window.bdayPaint)bdayPaint(); }catch(e){}
     }catch(e){
       const m=String((e&&e.message)||e);
@@ -29119,6 +29122,8 @@ window.dmDiag=dmDiag;
   }
   (function bind(){
     const b=$('abSave'); if(b)b.addEventListener('click',save);
+    const em=$('abEmail'); if(em)em.addEventListener('input',()=>{ DIRTY.email=true; });
+    const bd=$('abBday'); if(bd){ bd.addEventListener('input',()=>{ DIRTY.bday=true; }); bd.addEventListener('change',()=>{ DIRTY.bday=true; }); }
     const sw=$('abBdayPub'); if(sw)sw.addEventListener('click',()=>{ AB.bday_public=!AB.bday_public; paint(); });
     const g=$('abGender'); if(g)g.addEventListener('click',e=>{ const x=e.target.closest('button'); if(!x)return; AB.gender=x.dataset.g||''; paint(); });
   })();
