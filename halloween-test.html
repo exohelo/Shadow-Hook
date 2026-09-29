@@ -22,7 +22,9 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='sep28quiet3';   /* sep 28 (35th) — the "board reaches your card … for a job in hand" line under You on this board is gone by request */
+window.SHK_BUILD='sep28badbulb2';   /* sep 28 (37th) — THE SAME BAD BULBS: one or two letters keep failing 3–6 times before another starts going */
+/* was: sep28badbulb */   /* sep 28 (36th) — ONE LETTER'S BULB IS GOING: every few seconds a random letter of the page title stutters out and back, like a failing neon tube */
+/* was: sep28quiet3 */   /* sep 28 (35th) — the "board reaches your card … for a job in hand" line under You on this board is gone by request */
 /* was: sep28fitwidth */   /* sep 28 (34th) — THE LAYOUT NEVER GETS SQUEEZED: on narrow phones the whole app scales down to keep a 380px-wide layout instead of wrapping and cutting labels */
 /* was: sep28hilltuck */   /* sep 28 (33rd) — THE HILLS TUCK INTO THE BAND: each hill starts behind the slime band so it always joins it with no gap */
 /* was: sep28shiprow2 */   /* sep 28 (32nd) — SHIPS ON DECK back to one line per ship, without the casual count: berth · full name · FINISH */
@@ -50526,6 +50528,59 @@ window.HARBOR_LORE={"ports":{"LA":{"name":"Port of Los Angeles","kicker":"San Pe
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot); else boot();
 }catch(e){ try{console.warn('[textfloor]',e)}catch(_){} }})();
+</script>
+<style>
+/* #badbulb(sep28) — ONE LETTER'S BULB IS GOING. On top of the whole-title flicker, every so often a
+   single letter of the title on screen stutters out — a few ragged blinks, a dead moment, back on —
+   like one tube in the sign failing. A different letter each time. Halloween only; off for reduced motion. */
+.screen-title .bb{display:inline-block}
+.screen-title .bb.out{animation:bbFail var(--bbd,1.1s) steps(1,end) 1}
+@keyframes bbFail{
+  0%{opacity:1}6%{opacity:.08}10%{opacity:.9}15%{opacity:.1}19%{opacity:.6}24%{opacity:.05}
+  62%{opacity:.05}66%{opacity:.7}70%{opacity:.15}76%{opacity:1}100%{opacity:1}}
+html.daylight .screen-title .bb.out{animation:none}
+@media (prefers-reduced-motion:reduce){.screen-title .bb.out{animation:none}}
+</style>
+<script>
+(function(){ try{
+  function on(){ var h=document.documentElement; return h.classList.contains('season-halloween')&&!h.classList.contains('daylight')&&!document.hidden; }
+  /* split a title into one span per letter — only when it's plain text, and again if code rewrites it */
+  function split(t){
+    if(t.querySelector('.bb'))return true;
+    if(t.children.length)return false;          /* has its own markup: leave it alone */
+    var s=t.textContent; if(!s||!s.trim())return false;
+    t.setAttribute('aria-label',s);
+    t.innerHTML=Array.prototype.map.call(s,function(c){ return c===' '?' ':'<span class="bb" aria-hidden="true">'+c.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</span>'; }).join('');
+    return true;
+  }
+  /* #badbulb2 — the SAME one or two bulbs keep failing: a bad pair is chosen, it acts up 3–6 times,
+     then the sign "gets fixed" and another letter (or two) starts going. A new title starts fresh. */
+  var bad=[], left=0, forTitle=null, lastSet='';
+  function pickBad(L){
+    var n=(L.length>3&&Math.random()<.4)?2:1, idx=[], tries=0;
+    while(idx.length<n&&tries++<20){ var k=Math.floor(Math.random()*L.length); if(idx.indexOf(k)<0)idx.push(k); }
+    var key=idx.sort().join(','); if(key===lastSet&&L.length>2)return pickBad(L); lastSet=key;
+    bad=idx; left=3+Math.floor(Math.random()*4);
+  }
+  function fail(b,delay){ setTimeout(function(){ try{
+      b.style.setProperty('--bbd',(0.8+Math.random()*1.1).toFixed(2)+'s');
+      b.classList.remove('out'); void b.offsetWidth; b.classList.add('out');
+      b.addEventListener('animationend',function(){ b.classList.remove('out'); },{once:true});
+    }catch(e){} },delay||0); }
+  function blink(){
+    try{
+      if(!on()||matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+      var t=document.querySelector('.screen.on .screen-title'); if(!t||!split(t))return;
+      var L=t.querySelectorAll('.bb'); if(L.length<2)return;
+      if(forTitle!==t||left<=0||!bad.length||bad.some(function(k){return k>=L.length;})){ forTitle=t; pickBad(L); }
+      left--;
+      /* a pair doesn't always fail together: sometimes one, sometimes both, a beat apart */
+      if(bad.length===2&&Math.random()<.45){ fail(L[bad[Math.random()<.5?0:1]]); }
+      else bad.forEach(function(k,i){ fail(L[k], i*(120+Math.random()*380)); });
+    }catch(e){}
+  }
+  (function loop(){ setTimeout(function(){ blink(); loop(); }, 2500+Math.random()*4500); })();
+}catch(e){} })();
 </script>
 </body>
 </html>
