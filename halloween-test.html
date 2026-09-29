@@ -17355,7 +17355,7 @@ function renderRaceBoards(me){
   /* #racelive — a card riding a live book (published off its own phone) wears a dot;
      everything else is the posting, as before */
   const liveDot='<span class="rlive" title="hours riding live off this casual’s own sealed dockets">●</span>';
-  const cardTx=x=>x[0]+(x[2]?' '+liveDot:'');
+  const cardTx=x=>x[0];   /* #nodot(sep29) — the green ● read as "online"; it only ever meant "live hours", so it's gone */
   /* 🌍 global — the standings as they stand now, with me inserted at my lane */
   let out='';
   const others=(me&&me.others)||RACE_NOW;
@@ -32123,24 +32123,41 @@ window.renameFlow=function(){
          Signed in → the server takes the name first; a taken name or a dropped wire
          refunds and changes nothing. No backend → the old device-only behaviour. */
       const back=why=>{ if(!free)try{addCredits(RENAME_COST,'refund',true);}catch(_){} toast(why); };
+      const old=(cur||'').trim();
       if(window.SB&&window.__shkUid){
+        /* #renameall(sep29) — ONE server call renames you everywhere: your profile row AND every
+           row that wrote your name down (chat, DMs, friends, boards, drops, rooms, clans,
+           stories, raffles, reviews…). rename_handle() checks the name is free first. */
         try{
-          const pat=h.replace(/[\\%_]/g,'\\$&');   // _ is a LIKE wildcard — match it literally
-          const q=await window.SB.from('profiles').select('id').ilike('handle',pat).neq('id',window.__shkUid).limit(1);
-          if(!q.error&&q.data&&q.data.length)return back("⚓ "+h+" is already taken — pick another");
-          const r=await window.SB.from('profiles').update({handle:h}).eq('id',window.__shkUid).select('handle');
-          if(r.error){ return back(r.error.code==='23505'?"⚓ "+h+" is already taken — pick another":"Couldn’t reach the desk — your name and bucks are unchanged"); }
-          if(!r.data||!r.data.length)return back("The desk didn’t take it — sign in again and retry");
+          const r=await window.SB.rpc('rename_handle',{p_new:h});
+          if(r.error){
+            const c=r.error.code, m=String(r.error.message||'');
+            return back(c==='23505'||/taken/i.test(m)?"⚓ "+h+" is already taken — pick another"
+              :c==='22023'?"3–20 characters — letters, numbers, _ or - only"
+              :"Couldn’t reach the desk — your name and bucks are unchanged");
+          }
         }catch(e){ return back("Couldn’t reach the desk — your name and bucks are unchanged"); }
       }
       document.getElementById('meHandle').textContent=h;
       const a=loadAcct()||{};a.handle=h;saveAcct(a);
+      /* this phone's saved copies (members list, boards, chat, rooms…) carry the old name too */
+      if(old&&old!==h){ try{
+        /* only NAME fields ("handle", "by_handle", "h", "who"…) — never a blanket swap: a handle
+           like UTR or ITS would otherwise rewrite job codes and terminals inside the docket log */
+        const oq=old.replace(/[.*+?^\${}()|[\]\\]/g,'\\$&');
+        const re=new RegExp('("(?:[A-Za-z_]*_handle|handle|h|who)"\\s*:\\s*)"'+oq+'"','g');
+        for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(!k||k.indexOf('shadowhook')!==0||k==='shadowhook_account'||/_dockets_|_jobcat_|_hoursbase_/.test(k))continue;
+          const val=localStorage.getItem(k); if(val==null||val.indexOf(old)<0)continue;
+          const nv=val.replace(re,'$1"'+h+'"'); if(nv!==val)localStorage.setItem(k,nv); }
+      }catch(e){} }
       try{ const pf=document.getElementById('pfHandle'); if(pf)pf.textContent='@'+h;
            const ab=document.getElementById('abHandle'); if(ab)ab.textContent='@'+h; }catch(e){}
       if(!free)try{armoryBuyMark()}catch(e){}   // #fix2 — a paid rename is a purchase
       /* #floorwho2 — the ONLINE roster hears the new name the moment it's taken */
       try{floorTrack((typeof CURRENT_ROOM!=='undefined'&&CURRENT_ROOM)||null);}catch(e){}
       toast("⚓ The Order knows you as "+h+" now");
+      /* every screen redraws from the renamed records — the simplest way to leave no old name behind */
+      setTimeout(()=>{ try{ location.reload(); }catch(e){} },2500);
     }});
 };
 (function(){
