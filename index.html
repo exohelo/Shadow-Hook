@@ -8,7 +8,9 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='sep28membercard';   /* sep 28 (43rd) — THE CARD TELLS THE STORY: founding member (first 20), weekly streak, top 3 marks + their whole wall, seasons worked, friends in common, last seen (hideable), report & block; five Halloween marks; handle letters skip symbols */
+window.SHK_BUILD='sep29mutefade';   /* sep 29 — the 🔊/🔇 stays while music plays; muted, it fades away after a few seconds (and briefly returns on each open) */
+/* was: sep29mutefloat */   /* sep 29 — the Halloween 🔊/🔇 floats bottom-right above the tab bar */
+/* was: sep28membercard */   /* sep 28 (43rd) — THE CARD TELLS THE STORY: founding member (first 20), weekly streak, top 3 marks + their whole wall, seasons worked, friends in common, last seen (hideable), report & block; five Halloween marks; handle letters skip symbols */
 /* was: sep28cardtitle */   /* sep 28 (42nd) — MEMBER CARDS NAME YOUR STANDING: "Member of The Order" (+ ring), a gold SHADOW COUNCIL title with ring and sheen, the Keymaster's crown; you can open your own card */
 /* was: sep28armtop */   /* sep 28 (41st) — THE ARMORY OPENS CLEAN: the crest/name/creed header and the Become an Ambassador poster are gone */
 /* was: sep28clawing2 */   /* sep 28 (40th) — the hands reaching down from the TOP of the docket camera move too */
@@ -4385,7 +4387,12 @@ html.season-halloween.daylight .nav button.on .ico,html.season-halloween.dayligh
 /* #hwmusic(sep28) — the 🔊/🔇 pill, bottom-right above the tab bar, October only */
 /* #hwmusic2 — sits in the hang-row right beside the ☀/☾ day button, same size; the ⬡ pill
    steps one button to the left to make room (only while the button is showing) */
-html.hw-music #bankStrip:not(.promo){right:84px;max-width:calc(100% - 97px)}
+/* #mutefloat(sep29) — the 🔊/🔇 floats bottom-right, just above the tab bar's slime; the Port Bucks pill keeps its old spot */
+#hwMusicBtn{position:fixed!important;top:auto!important;left:auto!important;right:14px!important;bottom:calc(var(--nvH,64px) + 26px)!important;
+  width:40px!important;height:40px!important;font-size:18px!important;z-index:45!important;box-shadow:0 4px 14px rgba(0,0,0,.55),0 0 12px rgba(182,255,61,.35)!important}
+html.at-gate #hwMusicBtn,html.so-open #hwMusicBtn{display:none!important}
+#hwMusicBtn{transition:opacity .9s ease,transform .9s ease}
+#hwMusicBtn.gone{opacity:0!important;transform:scale(.7);pointer-events:none!important}
 #hwMusicBtn{position:absolute;right:47px;top:calc(100% + 7px);width:27px;height:27px;border-radius:50%;padding:0;z-index:30;
   border:1px solid rgba(182,255,61,.5);background:linear-gradient(184deg,rgba(43,0,80,.92),rgba(18,0,42,.92));color:#fff;font-size:12px;line-height:1;
   display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 0 10px rgba(182,255,61,.2)}
@@ -42379,10 +42386,16 @@ html[data-tab]:not([data-tab="dockets"]) #snBanner{display:none!important}
   function paint(){
     var on=season(); if(!btn&&!on)return;
     if(!btn){ btn=document.createElement('button'); btn.id='hwMusicBtn'; btn.type='button'; btn.setAttribute('aria-label','Halloween sound');
-      var db=document.getElementById('dayBtn'); if(db&&db.parentNode)db.parentNode.insertBefore(btn,db.nextSibling); else document.body.appendChild(btn);   /* #hwmusic2 — hangs right under the ☀/☾ */
-      btn.addEventListener('click',function(e){ e.stopPropagation(); muted=!muted; try{ muted?localStorage.setItem(KEY,'off'):localStorage.removeItem(KEY); }catch(x){}
+      document.body.appendChild(btn);   /* #mutefloat(sep29) — floats bottom-right over the tab bar now (it hung under the ☀/☾ before) */   /* #hwmusic2 — hangs right under the ☀/☾ */
+      btn.addEventListener('click',function(e){ e.stopPropagation(); if(btn.classList.contains('gone'))return; muted=!muted; try{ muted?localStorage.setItem(KEY,'off'):localStorage.removeItem(KEY); }catch(x){}
         if(muted)stop(); else start(); paint(); try{toast(muted?'🔇 Harbor sound off':'🔊 Harbor sound on');}catch(x){} }); }
-    btn.style.display=on?'':'none'; document.documentElement.classList.toggle('hw-music',on); btn.textContent=muted?'🔇':'🔊'; btn.classList.toggle('on',!muted&&running); btn.title=muted?'Music is off — tap for the Midnight Carriage':'The Skeletons\' Midnight Carriage — tap to mute';
+    btn.style.display=on?'':'none'; document.documentElement.classList.toggle('hw-music',on);
+    /* #mutefade(sep29) — playing: the button stays. Muted: it lingers a few seconds (6 on a fresh open,
+       4 after a tap), then fades away. Reopening the app remembers the choice and brings it back for a moment. */
+    if(!muted){ clearTimeout(btn._fade); btn.classList.remove('gone'); btn._fadeFor=null; }
+    else if(btn._fadeFor!=='muted'){ btn._fadeFor='muted'; btn.classList.remove('gone'); clearTimeout(btn._fade);
+      btn._fade=setTimeout(function(){ if(muted)btn.classList.add('gone'); }, btn._opened?4000:6000); }
+    btn._opened=true; btn.textContent=muted?'🔇':'🔊'; btn.classList.toggle('on',!muted&&running); btn.title=muted?'Music is off — tap for the Midnight Carriage':'The Skeletons\' Midnight Carriage — tap to mute';
   }
   window.hwMusic={start:start,stop:stop,mute:function(v){ muted=v!==false; try{ muted?localStorage.setItem(KEY,'off'):localStorage.removeItem(KEY); }catch(e){} muted?stop():start(); paint(); }};
   document.addEventListener('pointerdown',function(e){ if(btn&&btn.contains(e.target))return; if(!running)start(); else if(!muted&&ytReady&&!ytPlaying()){ try{ yt.unMute(); yt.playVideo(); }catch(x){} } },{passive:true});   /* #hwyt — a blocked autoplay gets its tap */
