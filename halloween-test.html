@@ -22,7 +22,8 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='sep28shuffle';   /* sep 28 (7th) — THE CARRIAGE PICKS UP ANYWHERE: every open drops the Halloween music in at a random spot past 4:00, so members don't hear the same opening each time */
+window.SHK_BUILD='sep28warm';   /* sep 28 (8th) — THE MUSIC IS WAITING AT THE DOOR: the random spot is picked and buffered silently as the app opens, so a tap brings the sound in at once instead of ~1.5s later */
+/* was: sep28shuffle */   /* sep 28 (7th) — THE CARRIAGE PICKS UP ANYWHERE: every open drops the Halloween music in at a random spot past 4:00, so members don't hear the same opening each time */
 /* was: sep28berth */   /* sep 28 (6th) — ENTER PUTS THE KEYBOARD AWAY: in FIND YOUR BERTH the phone's Search key closes the keyboard so the matching dock is in view */
 /* was: sep28carriage3 */   /* sep 28 (5th) — THE CARRIAGE LEAVES AT 4:00: the Halloween music starts four minutes into the video, and loops back to 4:00 instead of the top */
 /* was: sep28carriage2 */   /* sep 28 (4th) — THE CARRIAGE SENDS ITS PAPERS: the hidden player is our own iframe with a referrer + origin (YouTube won't play for a page that sends none), and a failed load now says so instead of silently falling back */
@@ -41781,7 +41782,7 @@ html.daylight .sn-bolt{display:none}
    remembered on the phone (shadowhook_hwmusic). Pauses when the app goes to the background,
    returns when it comes back. Off with the rest of the show under setDecor('off'). */
 (function(){try{
-  var KEY='shadowhook_hwmusic', FILE='hw-ambience.mp3', LEVEL=.35, HW_YT_ID='VUW0mIRdrM8', YT_VOL=40, YT_START=240, ytSeeded=false;   /* #hwyt3 — never before 4:00; every loop comes back to 4:00. #hwyt4 — each open drops in at a random spot past that */
+  var KEY='shadowhook_hwmusic', FILE='hw-ambience.mp3', LEVEL=.35, HW_YT_ID='VUW0mIRdrM8', YT_VOL=40, YT_START=240, ytSeeded=false, ytPre=false, HW_YT_DUR=11274;   /* #hwyt3 — never before 4:00; every loop comes back to 4:00. #hwyt4 — each open drops in at a random spot past that */
   var yt=null, ytReady=false, ytFail=false, ytWant=false, ytGuard=null, synthOn=false;
   var muted=false; try{ muted=localStorage.getItem(KEY)==='off'; }catch(e){}
   var ac=null, master=null, nodes=[], timers=[], file=null, fileOk=null, running=false, btn=null;
@@ -41835,11 +41836,18 @@ html.daylight .sn-bolt{display:none}
     function make(){ try{
       yt=new YT.Player('hwYtHost',{
         events:{
-          onReady:function(){ ytReady=true; try{yt.setVolume(YT_VOL); yt.unMute();}catch(e){} if(running&&!muted&&ytWant){ try{yt.playVideo()}catch(e){} } },
+          onReady:function(){ ytReady=true; try{ yt.setVolume(YT_VOL); }catch(e){}
+            /* #hwyt5 — WARM THE CARRIAGE BEFORE THE TAP. Pick this open's random spot now, seek there
+               muted (browsers allow silent playback without a tap), and pause the moment it's rolling —
+               the audio is buffered and waiting, so the member's tap only has to turn the sound on.
+               If the tap already came, the same hop plays straight through and unmutes on arrival. */
+            if(!muted){ try{ var dur=yt.getDuration()||HW_YT_DUR, hi=dur-120, at=hi>YT_START+60?YT_START+Math.random()*(hi-YT_START):YT_START;
+              ytSeeded=true; ytPre=true; yt.mute(); yt.seekTo(Math.floor(at),true); }catch(e){ ytPre=false; } }
+          },
           onStateChange:function(ev){ if(ev.data===0){ try{ yt.seekTo(YT_START,true); if(running&&!muted)yt.playVideo(); }catch(e){} return; }   /* ended → back to 4:00, not the top */
-            if(ev.data===1&&!ytSeeded){ ytSeeded=true; try{   /* #hwyt4 — first play of this open: jump to a random spot between 4:00 and ~2 min before the end, sound held back for the hop */
-              var dur=yt.getDuration()||0, hi=dur-120, at=hi>YT_START+60?YT_START+Math.random()*(hi-YT_START):YT_START;
-              yt.mute(); yt.seekTo(Math.floor(at),true); setTimeout(function(){ try{ if(!muted)yt.unMute(); }catch(e){} },450);
+            if(ev.data===1&&ytPre){ ytPre=false; if(running&&!muted&&ytWant){ try{ yt.unMute(); yt.setVolume(YT_VOL); }catch(e){} } else { try{ yt.pauseVideo(); }catch(e){} return; } }
+            if(ev.data===1&&!ytSeeded){ ytSeeded=true; try{   /* #hwyt4 — a player that skipped the warm-up still drops in at a random spot */
+              var dur=yt.getDuration()||HW_YT_DUR, hi=dur-120, at=hi>YT_START+60?YT_START+Math.random()*(hi-YT_START):YT_START; yt.seekTo(Math.floor(at),true);
             }catch(e){} }
             else if(ev.data===1){ try{ if(yt.getCurrentTime()<YT_START-2)yt.seekTo(YT_START,true); }catch(e){} }
             if(ev.data===1){ clearTimeout(ytGuard); if(synthOn)stopSynth(); } if(ev.data===1&&(!running||muted)){ try{yt.pauseVideo()}catch(e){} } paint(); },
@@ -41873,7 +41881,7 @@ html.daylight .sn-bolt{display:none}
     running=true; paint(); bootHint(false);
     if(!ytFail){   /* #hwyt — the playlist first; the synth only if YouTube hasn't answered in 8s */
       ytWant=true; ytLoad();
-      if(ytReady){ try{ yt.setVolume(YT_VOL); yt.unMute(); yt.playVideo(); }catch(e){} }
+      if(ytReady){ try{ yt.setVolume(YT_VOL); if(!ytPre)yt.unMute(); yt.playVideo(); }catch(e){} }   /* mid-warm-up: the arrival unmutes it */
       clearTimeout(ytGuard); ytGuard=setTimeout(function(){ if(running&&!muted&&!ytReady&&!synthOn){ ytFail=true; startSynthSafe(); } },8000);   /* ready-but-paused = the browser wants a tap, not a fallback */
       return;
     }
