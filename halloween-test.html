@@ -32115,10 +32115,28 @@ window.renameFlow=function(){
       if(h===cur.toUpperCase())return "That's already your name, brother";
       return null;
     },
-    onPaid:v=>{
+    onPaid:async v=>{
       const h=v.h.trim().toUpperCase().replace(/\s+/g,"_");
+      /* #renamefix(sep29) — the desk only ever renamed THIS phone: the new name went to the
+         header and localStorage but never to profiles.handle, so the next sign-in/refresh
+         read the old name back off the server (sbLoadProfileEx) and put it right back.
+         Signed in → the server takes the name first; a taken name or a dropped wire
+         refunds and changes nothing. No backend → the old device-only behaviour. */
+      const back=why=>{ if(!free)try{addCredits(RENAME_COST,'refund',true);}catch(_){} toast(why); };
+      if(window.SB&&window.__shkUid){
+        try{
+          const pat=h.replace(/[\\%_]/g,'\\$&');   // _ is a LIKE wildcard — match it literally
+          const q=await window.SB.from('profiles').select('id').ilike('handle',pat).neq('id',window.__shkUid).limit(1);
+          if(!q.error&&q.data&&q.data.length)return back("⚓ "+h+" is already taken — pick another");
+          const r=await window.SB.from('profiles').update({handle:h}).eq('id',window.__shkUid).select('handle');
+          if(r.error){ return back(r.error.code==='23505'?"⚓ "+h+" is already taken — pick another":"Couldn’t reach the desk — your name and bucks are unchanged"); }
+          if(!r.data||!r.data.length)return back("The desk didn’t take it — sign in again and retry");
+        }catch(e){ return back("Couldn’t reach the desk — your name and bucks are unchanged"); }
+      }
       document.getElementById('meHandle').textContent=h;
       const a=loadAcct()||{};a.handle=h;saveAcct(a);
+      try{ const pf=document.getElementById('pfHandle'); if(pf)pf.textContent='@'+h;
+           const ab=document.getElementById('abHandle'); if(ab)ab.textContent='@'+h; }catch(e){}
       if(!free)try{armoryBuyMark()}catch(e){}   // #fix2 — a paid rename is a purchase
       /* #floorwho2 — the ONLINE roster hears the new name the moment it's taken */
       try{floorTrack((typeof CURRENT_ROOM!=='undefined'&&CURRENT_ROOM)||null);}catch(e){}
