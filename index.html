@@ -4500,9 +4500,16 @@ html.season-halloween .nav-in::before{rotate:var(--gooTilt);translate:calc(var(-
    while it hangs (one body), and only after the pinch does its own lean (rotate:) carry it away. Idle hills
    drag too. --gooDrag lags --gooTilt by its own slower spring, so the goo answers a second after the pool. */
 @property --hsx{syntax:'<number>';inherits:false;initial-value:.9}
-@property --hsy{syntax:'<number>';inherits:false;initial-value:.3}
+@property --hsy{syntax:'<number>';inherits:false;initial-value:.45}
+@property --att{syntax:'<number>';inherits:false;initial-value:1}
 html.season-halloween .sn-hill{transform:skewX(calc(var(--gooDrag,0deg) * -3)) scale(var(--hsx),var(--hsy))!important}
-html.season-halloween .sn-drop{rotate:calc(var(--gooTilt) * .45);translate:calc(var(--gooDragPx,0px) * var(--hang,0) * var(--hsy,.3) / .84) 0}   /* #goodrag2 — shear at the drop's CURRENT depth: --hsy is the hill's live scale, .84 its value at the pinch */   /* #dropsoft(sep28): was 2.5× — by request, just a lean */
+@supports not (background: paint(x)){ /* no @property (Safari < 16.4): hills keep their keyframe transform, no shear; the drop hangs straight */
+  html.season-halloween .sn-hill{transform:none!important;animation-name:snHillOld}
+  html.season-halloween .sn-drop{translate:0 0}
+}
+@keyframes snHillOld{0%{transform:scale(.9,.45)}30%{transform:scale(1,.7)}56%{transform:scale(.84,1)}57%{transform:scale(.95,.62)}70%,100%{transform:scale(.9,.45)}}
+html.season-halloween .sn-drop{rotate:calc(var(--gooTilt) * .45);translate:calc(var(--gooDragPx,0px) * var(--hang,0) * var(--hsy,.45) / .84 * var(--att,1)) calc(var(--tipY) * var(--att,1))}
+.sn-drop{translate:0 calc(var(--tipY) * var(--att,1))}   /* #goodrag2 — shear at the drop's CURRENT depth: --hsy is the hill's live scale, .84 its value at the pinch */   /* #dropsoft(sep28): was 2.5× — by request, just a lean */
 @media (prefers-reduced-motion:reduce){html.season-halloween .nav::before,html.season-halloween .nav::after,html.season-halloween .nav-in::before{animation:none}}
 html.season-halloween .nav button{color:#1d3a02;text-shadow:0 1px 0 rgba(234,255,184,.5)}
 html.season-halloween .nav button .ico{filter:none}
@@ -42256,7 +42263,7 @@ html.daylight .sn-decor{opacity:.5}
    so it always leaves from a real drip, never from thin air. Outer <i> carries the
    bead → stretch → fall → splat on one timeline (transform/opacity only); the <b>
    inside is the teardrop, point up. */
-.sn-drop{left:calc(var(--x) + var(--gooFlowT,0px));top:calc(var(--tbH,0px) + var(--ty));width:calc(9px * var(--s,1));height:calc(9px * var(--s,1));margin-left:calc(-4.5px * var(--s,1));   /* #gooflyer — sized by the hill it hangs from */
+.sn-drop{--tipY:calc((var(--hd,0px) + var(--bh,0px) + 42px) * var(--hsy,.45) - 22px - var(--ty) - 3px);left:calc(var(--x) + var(--gooFlowT,0px));top:calc(var(--tbH,0px) + var(--ty));width:calc(9px * var(--s,1));height:calc(9px * var(--s,1));margin-left:calc(-4.5px * var(--s,1));   /* #gooflyer — sized by the hill it hangs from */
   transform-origin:50% 0;opacity:0;animation:snDrop var(--d) linear var(--dl) infinite,snHsy var(--d) linear var(--dl) infinite}
 /* #gooey(sep28) — a fat, glossy drop: lime body, darker belly, a hard white glint */
 .sn-drop > b{position:absolute;inset:0;border-radius:0 50% 50% 50%;transform:rotate(45deg);
@@ -42268,20 +42275,24 @@ html.daylight .sn-decor{opacity:.5}
   background:linear-gradient(180deg,#9be82a,var(--c) 60%,#c8ff66);transform-origin:50% 100%;opacity:0;
   animation:snNeck var(--d) linear var(--dl) infinite}
 @keyframes snDrop{
-  0%{transform:translate3d(0,-2px,0) scale(.3);opacity:0}
+  0%{transform:scale(.3);opacity:0;--att:1}
   6%{opacity:var(--o)}
-  22%{transform:translate3d(0,calc(var(--bh) * .12),0) scale(.8,.85)}
-  36%{transform:translate3d(0,calc(var(--bh) * .38),0) scale(.98,1.02)}
-  46%{transform:translate3d(0,calc(var(--bh) * .7),0) scale(1,1.08)}
-  53%{transform:translate3d(0,calc(var(--bh) * .96),0) scale(.98,1.14)}
-  56%{transform:translate3d(0,calc(var(--bh) * 1.04),0) scale(.94,1.2);animation-timing-function:cubic-bezier(.5,0,1,.55)}
-  56.1%{translate:0 0}
-  60%{transform:translate3d(0,calc(var(--bh) * 1.04 + 14px),0) scale(1.12,.9)}
-  65%{transform:translate3d(0,calc(var(--bh) * 1.04 + 40px),0) scale(.94,1.08)}
-  70%{transform:translate3d(0,calc(var(--bh) * 1.04 + 78px),0) scale(1.05,.97)}
-  92%{transform:translate3d(0,var(--fall),0) scale(1,1.02);opacity:var(--o)}
-  95%{transform:translate3d(0,var(--fall),0) scale(3.2,.4)}
-  100%{transform:translate3d(0,var(--fall),0) scale(4.2,.25);opacity:0}
+  22%{transform:scale(.8,.85)}
+  36%{transform:scale(.98,1.02)}
+  46%{transform:scale(1,1.08)}
+  53%{transform:scale(.98,1.14)}
+  56%{transform:translate3d(0,0,0) scale(.94,1.2);--att:1;animation-timing-function:cubic-bezier(.5,0,1,.55)}
+  56.1%{--att:0;transform:translate3d(0,calc(var(--bh) + 15px),0) scale(.94,1.2)}
+  57%{transform:translate3d(0,calc(var(--bh) + 29px),0) scale(1.12,.9)}
+  58%{transform:translate3d(0,calc(var(--bh) + 55px),0) scale(.94,1.08)}
+  59%{transform:translate3d(0,calc(var(--bh) + 93px),0) scale(1.05,.97)}
+  62%{transform:translate3d(0,var(--fall),0) scale(1,1.02);opacity:var(--o)}
+  62.6%{transform:translate3d(0,var(--fall),0) scale(3.2,.4)}
+  63.5%{transform:translate3d(0,var(--fall),0) scale(4.2,.25);opacity:0}
+  100%{transform:translate3d(0,var(--fall),0) scale(4.2,.25);opacity:0;--att:0}
+}
+}
+}
 }
 }
 @keyframes snNeck{0%,30%{opacity:0;transform:scale(1,0)}36%{opacity:1;transform:scale(1,.2)}46%{transform:scale(.9,.55)}52%{transform:scale(.75,.8)}55.5%{opacity:1;transform:scale(.4,.95)}56%,100%{opacity:0;transform:scale(.3,1)}}
@@ -42333,44 +42344,35 @@ html.daylight .sn-decor{opacity:.5}
    own spot, its own width and depth, and the drop develops from its lowest point. A hill that feeds a drop
    runs on the drop's clock (swell → hold while the neck stretches → drain and settle after the pinch);
    an IDLE hill just swells and settles, so the lip is always changing shape in different places. */
-.sn-hill{left:calc(var(--x) + var(--gooFlowT,0px));top:calc(var(--tbH,0px) - 6px);width:var(--hw);height:calc((var(--hd) + var(--bh,0px)) + 26px);margin-left:calc(var(--hw) / -2);   /* the top 10px sit behind the lip */
-  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40' preserveAspectRatio='none'%3E%3Cdefs%3E%3CradialGradient id='g' cx='.4' cy='.45' r='.75'%3E%3Cstop offset='0' stop-color='%23c8ff66'/%3E%3Cstop offset='.5' stop-color='%23b6ff3d'/%3E%3Cstop offset='.85' stop-color='%238fdc1f'/%3E%3Cstop offset='1' stop-color='%23579c12'/%3E%3C/radialGradient%3E%3ClinearGradient id='t' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%2376c41c'/%3E%3Cstop offset='.5' stop-color='%23a6f032' stop-opacity='.35'/%3E%3Cstop offset='1' stop-color='%23b6ff3d' stop-opacity='0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M-2 -2H42V12C34 12 30 16 27 21C25 25 23.5 29 22 32C21.5 35 21 40 20 40C19 40 18.5 35 18 32C16.5 29 15 25 13 21C10 16 6 12 -2 12Z' fill='url%28%23g%29'/%3E%3Cpath d='M-2 -2H42V12C34 12 30 16 27 21L20 22L13 21C10 16 6 12 -2 12Z' fill='url%28%23t%29'/%3E%3Cpath d='M12 16C13.5 19 15 23 17 27' fill='none' stroke='%23f6ffe0' stroke-opacity='.55' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E") center top/100% 100% no-repeat;transform-origin:50% 0;transform:scale(1,.02);
+.sn-hill{left:calc(var(--x) + var(--gooFlowT,0px));top:calc(var(--tbH,0px) - 22px);width:var(--hw);height:calc((var(--hd) + var(--bh,0px)) + 42px);margin-left:calc(var(--hw) / -2);   /* the top 10px sit behind the lip */
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40' preserveAspectRatio='none'%3E%3Cdefs%3E%3CradialGradient id='g' cx='.5' cy='.35' r='.8'%3E%3Cstop offset='0' stop-color='%23b6ff3d'/%3E%3Cstop offset='.55' stop-color='%23a6f032'/%3E%3Cstop offset='.85' stop-color='%238fdc1f'/%3E%3Cstop offset='1' stop-color='%236aae16'/%3E%3C/radialGradient%3E%3ClinearGradient id='t' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%2376c41c'/%3E%3Cstop offset='.5' stop-color='%23a6f032' stop-opacity='.35'/%3E%3Cstop offset='1' stop-color='%23b6ff3d' stop-opacity='0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M-2 -2H42V16C36 17 31 20 27 24C25 27 23.5 30 22 33C21.5 36 21 40 20 40C19 40 18.5 36 18 33C16.5 30 15 27 13 24C9 20 4 17 -2 16Z' fill='url%28%23g%29'/%3E%3Cpath d='M-2 -2H42V16C36 17 31 20 27 24L20 25L13 24C9 20 4 17 -2 16Z' fill='url%28%23t%29'/%3E%3Cpath d='M12 16C13.5 19 15 23 17 27' fill='none' stroke='%23f6ffe0' stroke-opacity='.55' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E") center top/100% 100% no-repeat;transform-origin:50% 0;transform:scale(1,.02);
   filter:drop-shadow(0 2px 2px rgba(20,40,4,.45)) drop-shadow(0 0 3px rgba(182,255,61,.35));animation:snHill var(--d) linear var(--dl) infinite}
 .sn-hill{margin-top:calc(var(--gooBreath,0) * 1px)}
 .sn-hill.idle{animation-name:snHillIdle;animation-timing-function:ease-in-out}
 @keyframes snHill{
-  0%{--hsx:.9;--hsy:.3}
-  12%{--hsx:.95;--hsy:.2}
-  30%{--hsx:1;--hsy:.42}
-  46%{--hsx:.96;--hsy:.7}
-  53%{--hsx:.9;--hsy:.92}
+  0%{--hsx:.9;--hsy:.45}
+  14%{--hsx:.95;--hsy:.55}
+  30%{--hsx:1;--hsy:.7}
+  46%{--hsx:.96;--hsy:.86}
+  53%{--hsx:.9;--hsy:.95}
   56%{--hsx:.84;--hsy:1}
-  58%{--hsx:.95;--hsy:.5}
-  62%{--hsx:1.02;--hsy:.62}
-  66%{--hsx:.97;--hsy:.3}
-  72%,100%{--hsx:.9;--hsy:.3}
-@keyframes snHsy{
-  0%{--hsy:.3}
-  12%{--hsy:.2}
-  30%{--hsy:.42}
-  46%{--hsy:.7}
-  53%{--hsy:.92}
-  56%{--hsy:1}
-  58%{--hsy:.5}
-  62%{--hsy:.62}
-  66%{--hsy:.3}
-  72%,100%{--hsy:.3}
+  57%{--hsx:.95;--hsy:.62}
+  59%{--hsx:1.02;--hsy:.7}
+  62%{--hsx:.97;--hsy:.55}
+  70%,100%{--hsx:.9;--hsy:.45}
+}
+@keyframes snHsy{0%{--hsy:.45}14%{--hsy:.55}30%{--hsy:.7}46%{--hsy:.86}53%{--hsy:.95}56%,99.9%{--hsy:1}100%{--hsy:.45}}
 }
 }
-@keyframes snHillIdle{0%{--hsx:.9;--hsy:.3}38%{--hsx:1;--hsy:.55}58%{--hsx:.97;--hsy:.5}84%,100%{--hsx:.9;--hsy:.3}}
+@keyframes snHillIdle{0%{--hsx:.9;--hsy:.45}38%{--hsx:1;--hsy:.7}58%{--hsx:.97;--hsy:.66}84%,100%{--hsx:.9;--hsy:.45}}
 @media (prefers-reduced-motion:reduce){.sn-hill{display:none}}
 /* #gooflyer2(sep30) — SATELLITE BEADS. A snapped thread recoils and breaks into a couple of tiny beads that
    trail the drop down. Two per drop, different sizes, born at the pinch point the instant the thread lets go. */
-.sn-sat{left:calc(var(--x) + var(--gooFlowT,0px));top:calc(var(--tbH,0px) + var(--ty) + var(--bh) * .55);width:var(--sz);height:var(--sz);margin-left:calc(var(--sz) / -2);border-radius:50%;
+.sn-sat{left:calc(var(--x) + var(--gooFlowT,0px));top:calc(var(--tbH,0px) + var(--hd,0px) + var(--bh,0px) + 16px);width:var(--sz);height:var(--sz);margin-left:calc(var(--sz) / -2);border-radius:50%;
   background:radial-gradient(circle at 35% 35%,#f6ffe0 0 18%,#c8ff66 45%,#8fdc1f 100%);box-shadow:0 0 4px rgba(182,255,61,.6);opacity:0;
   animation:snSat var(--d) linear var(--dl) infinite}
-@keyframes snSat{0%,56%{opacity:0;transform:translate3d(0,0,0) scale(.4)}58%{opacity:1;transform:translate3d(0,-3px,0) scale(1)}
-  92%{opacity:1;transform:translate3d(var(--sx),calc(var(--fall) - var(--bh) * .55),0) scale(.9)}94%{opacity:0;transform:translate3d(var(--sx),calc(var(--fall) - var(--bh) * .55),0) scale(2,.3)}100%{opacity:0}}
+@keyframes snSat{0%,56%{opacity:0;transform:translate3d(0,0,0) scale(.4)}56.4%{opacity:1;transform:translate3d(0,-3px,0) scale(1)}
+  62.4%{opacity:1;transform:translate3d(var(--sx),calc(var(--fall) - var(--bh) * .55),0) scale(.9)}63%{opacity:0;transform:translate3d(var(--sx),calc(var(--fall) - var(--bh) * .55),0) scale(2,.3)}100%{opacity:0}}
 @media (prefers-reduced-motion:reduce){.sn-bump,.sn-sat{display:none}}
 /* ── #haunt2 — the scene layer: fixed behind the app (z 0, .stage is 1) ─── */
 .sn-scene{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
@@ -42667,7 +42669,7 @@ html[data-tab]:not([data-tab="dockets"]) #snBanner{display:none!important}
     nav.style.setProperty('--gooSlide',(-cur*3).toFixed(1)+'px');   /* toward the low side */
     nav.style.setProperty('--gooTan',Math.tan(cur*Math.PI/180).toFixed(4));   /* #levelsplash — the surface's slope, for the drops */
     /* #goodrag — a second, slower spring: the hanging goo trails the pool */
-    dvel=(dvel+(cur-dcur)*.02)*.9; dcur+=dvel;
+    dvel=(dvel+(cur-dcur)*.01)*.93; dcur+=dvel;
     nav.style.setProperty('--gooDrag',dcur.toFixed(2)+'deg');
     nav.style.setProperty('--gooDragPx',(Math.tan(-dcur*3*Math.PI/180)*30).toFixed(1)+'px');   /* skewX(-3·drag) at a 30px hang: the tip's shift, same sign as the hill */   /* the shear at a 30px hang, as px */
     if(Math.abs(cur-dcur)>.02||Math.abs(dvel)>.02){ if(!raf)raf=requestAnimationFrame(step); }
@@ -42700,14 +42702,14 @@ html[data-tab]:not([data-tab="dockets"]) #snBanner{display:none!important}
     fraf=0; if(!allowed()){ flast=0; return; }
     if(!nav)nav=document.documentElement;
     var dt=flast?Math.min(.05,(ts-flast)/1000):0; flast=ts;
-    var v=-cur*10;                                      /* px/s toward the low side; cur is ±6° at most */
+    var v=-cur*5;                                      /* px/s toward the low side; cur is ±6° at most */
     fx=((fx+v*dt)%180+180)%180; fb=((fb+v*.6*dt)%240+240)%240; ft=((ft+v*.5*dt)%390+390)%390;
     var t=ts/1000, lvl=1-Math.min(1,Math.abs(cur)/1.5);   /* the idle slosh, gone by a 1.5° lean */
-    var sx=Math.sin(t*2*Math.PI/7)*9*lvl, sb=-Math.sin(t*2*Math.PI/9+1)*6*lvl, st=Math.sin(t*2*Math.PI/8+.6)*7*lvl;
+    var sx=Math.sin(t*2*Math.PI/14)*9*lvl, sb=-Math.sin(t*2*Math.PI/18+1)*6*lvl, st=Math.sin(t*2*Math.PI/16+.6)*7*lvl;
     nav.style.setProperty('--gooFlow',(fx-90+sx).toFixed(1)+'px');
     nav.style.setProperty('--gooFlowB',(fb-120+sb).toFixed(1)+'px');
     nav.style.setProperty('--gooFlowT',(ft+st).toFixed(1)+'px');
-    nav.style.setProperty('--gooBreath',(1.3+1.3*Math.sin(t*2*Math.PI/6.5)).toFixed(2));   /* the lip breathes 0–2.6px; hills ride it */
+    nav.style.setProperty('--gooBreath',(1.3+1.3*Math.sin(t*2*Math.PI/13)).toFixed(2));   /* the lip breathes 0–2.6px; hills ride it */
     /* the pieces hanging off the lip ride --gooFlowT too; one that has drifted past a screen edge is
        re-seated one screen-width back on the other side, so the lip never runs empty on one end */
     if(!flow._n||(ts-flow._n)>400){ flow._n=ts; var vw=window.innerWidth||390, off=ft+st;
@@ -43155,10 +43157,10 @@ window.SEASON_DECOR={
          lights:['#ff6b6b','#7ce0a0','#ffd53d','#4de2ff'],
          props:[['🎄','l',44,.55],['🎄','r',34,.4]] },
   halloween:{ fly:{n:4,glyph:'🦇',size:[20,30],dur:[15,26],opacity:.5},
-              drip:{n:7,color:'#b6ff3d',dur:[6,10],opacity:.9},                /* #slime — n is the Oct-31 count; see #hwramp for the day-by-day ramp */
+              drip:{n:7,color:'#b6ff3d',dur:[18,30],opacity:.9},                /* #slime — n is the Oct-31 count; see #hwramp for the day-by-day ramp. #gooslow(sep30): 18–30 s a cycle; the fall itself stays quick */
               scene:'lake',   /* #hwlake(sep29) — the painted lake (was 'haunt': the vector moon + harbor silhouette) */
               day:{ fly:{n:8,glyph:'🦇',size:[18,32],dur:[11,22],opacity:.6},   /* #haunt2 — Oct 31 only: twice the sky, and lightning */
-                    drip:{n:12,color:'#b6ff3d',dur:[5,9],opacity:.95}, bolt:true },
+                    drip:{n:12,color:'#b6ff3d',dur:[14,24],opacity:.95}, bolt:true },
               fog:{color:'rgba(157,78,221,.2)',opacity:1},
               fog2:{color:'rgba(182,255,61,.07)',opacity:1},                   /* #haunt — the green layer under the purple */
               /* #haunt — no props: the 🎃/💀 floor corners came out by request (sat over the cards and read as stickers); the 🕸 went earlier — every card wears a web now */
@@ -43255,16 +43257,16 @@ window.SEASON_DECOR={
            one barely swells and sheds a bead. Width sets depth, and depth sets the drop. */
         var hw=rnd(34,84), hd=Math.min(26,hw*rnd(.28,.42)), sc=.7+(hd-8)/20*1.3, bw=hw*.34, bh=rnd(16,34), ty=hd+2;   /* hill → depth → drop: a wide deep hill grows a fat drop */
         L.appendChild(el('hill','--x:'+x.toFixed(1)+'px;--hw:'+hw.toFixed(1)+'px;--hd:'+hd.toFixed(1)+'px;--bh:'+bh.toFixed(1)+'px;--d:'+d+'s;--dl:-'+dl+'s'));   /* #gooflyer2 — drop size first; the neck is as thick as the drop is big, the thread as long as the sag */   /* a sag never deeper than 30px — it hangs over the page, never over a whole line */
-        L.appendChild(el('drop','--x:'+x.toFixed(1)+'px;--ty:'+ty.toFixed(1)+'px;--bh:'+bh.toFixed(1)+'px;--s:'+sc.toFixed(2)+';--hang:'+((hd+bh)/30).toFixed(2)+';--c:'+dp.color+';'
+        L.appendChild(el('drop','--x:'+x.toFixed(1)+'px;--ty:'+ty.toFixed(1)+'px;--hd:'+hd.toFixed(1)+'px;--bh:'+bh.toFixed(1)+'px;--s:'+sc.toFixed(2)+';--hang:'+((hd+bh)/30).toFixed(2)+';--c:'+dp.color+';'
           +'--d:'+d+'s;--dl:-'+dl+'s;--o:'+dp.opacity+';'
           +'--fall:calc(var(--land,80vh) - var(--tbH,0px) - var(--ty) - 4px + (var(--x) - var(--cx,200px) - var(--gooSlide,0px)) * var(--gooTan,0))','<b></b>'));
-        for(var si=0;si<2;si++){ L.appendChild(el('sat','--x:'+(x+rnd(-1.5,1.5)).toFixed(1)+'px;--ty:'+ty.toFixed(1)+'px;--bh:'+bh.toFixed(1)+'px;--sz:'+(2+si*1.4+sc).toFixed(1)+'px;--sx:'+rnd(-3,3).toFixed(1)+'px;'
+        for(var si=0;si<2;si++){ L.appendChild(el('sat','--x:'+(x+rnd(-1.5,1.5)).toFixed(1)+'px;--ty:'+ty.toFixed(1)+'px;--hd:'+hd.toFixed(1)+'px;--bh:'+bh.toFixed(1)+'px;--sz:'+(2+si*1.4+sc).toFixed(1)+'px;--sx:'+rnd(-3,3).toFixed(1)+'px;'
           +'--d:'+d+'s;--dl:'+(-parseFloat(dl)-si*0.06*parseFloat(d)).toFixed(2)+'s;'
           +'--fall:calc(var(--land,80vh) - var(--tbH,0px) - var(--ty) - 4px + (var(--x) - var(--cx,200px) - var(--gooSlide,0px)) * var(--gooTan,0))')); }   /* #goonav · #levelsplash */
       }
       /* #gooflyer4 — idle hills: the lip keeps changing shape between drops */
       for(var hi=0;hi<Math.max(2,Math.round(dn*.6));hi++){ var hx=xs[(dn+hi)%xs.length]+rnd(-6,6), ihw=rnd(30,74);
-        L.appendChild(el('hill idle','--x:'+hx.toFixed(1)+'px;--hw:'+ihw.toFixed(1)+'px;--hd:'+Math.min(18,ihw*rnd(.22,.36)).toFixed(1)+'px;--bh:0px;--d:'+rnd(7,15).toFixed(1)+'s;--dl:-'+rnd(0,15).toFixed(1)+'s')); }
+        L.appendChild(el('hill idle','--x:'+hx.toFixed(1)+'px;--hw:'+ihw.toFixed(1)+'px;--hd:'+Math.min(18,ihw*rnd(.22,.36)).toFixed(1)+'px;--bh:0px;--d:'+rnd(16,30).toFixed(1)+'s;--dl:-'+rnd(0,30).toFixed(1)+'s')); }
       /* the landing line in the layer's own units: the app zoom (--appfs) scales this layer too,
          so 100vh overshoots the bar and the splat happened out of sight, behind it */
       var land=function(){ try{ var z=parseFloat(getComputedStyle(document.body).zoom)||1, top=window.innerHeight-64;
@@ -43281,7 +43283,7 @@ window.SEASON_DECOR={
          mark (the splat frame), so the ring and beads came half a second to a second late and
          read as a second, separate event. Now each landing is timed from the loop start to the
          92% frame, and the first landing after load is computed from the drop's phase. */
-      var IMPACT=.92;
+      var IMPACT=.62;   /* #gooslow — the fall ends at 62% of the (long) loop */
       function splashAt(d){
         try{ if(document.hidden||!d.isConnected)return;
           if(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches)return;
