@@ -5206,6 +5206,13 @@ window.DEVLOG=(function(){
   #rflFlyer .rfl-msg:empty{display:none}
   #rflFlyer .rfl-fly-more{background:none;border:0;color:var(--steel);font:600 11.5px/1 'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;letter-spacing:.1em;text-transform:uppercase;padding:6px 6px 2px;cursor:pointer;white-space:nowrap}
   #rflFlyer.t-spooky .rfl-fly-more{color:#c9a8ff}
+  #rflFlyer .rfl-fly-odds{font-size:12px;color:var(--steel)}
+  #rflFlyer .rfl-fly-odds b{color:var(--bone)}
+  #rflFlyer .rfl-fly-win{text-align:center;padding:10px 12px;border-radius:14px;border:1px solid rgba(255,160,77,.5);background:linear-gradient(180deg,rgba(255,122,26,.18),rgba(12,8,20,.7))}
+  #rflFlyer .rfl-fly-win .k{font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:10.5px;letter-spacing:.2em;color:#ffb060}
+  #rflFlyer .rfl-fly-win .h{font-family:'Anton',sans-serif;font-size:30px;letter-spacing:.04em;color:#fff;margin:4px 0 2px;word-break:break-all}
+  #rflFlyer.t-spooky .rfl-fly-win .h{color:#b6ff3d;text-shadow:2px 2px 0 #5a0fa0}
+  #rflFlyer .rfl-fly-win .s{font-size:12.5px;color:var(--steel);line-height:1.5}
   #rflFlyer.t-spooky .rfl-fly-go{background:#b6ff3d;border-color:#b6ff3d;color:#1a0633;box-shadow:0 4px 0 #5a9a12,0 0 18px rgba(182,255,61,.5)}
   #rflFlyer .rfl-fly-x{position:absolute;top:calc(env(safe-area-inset-top,0px) + 20px);right:22px;z-index:2;width:34px;height:34px;border-radius:50%;border:1px solid rgba(255,255,255,.35);background:rgba(0,0,0,.55);color:#fff;font-size:15px;cursor:pointer}
   html.daylight #rflFlyer{background:rgba(240,235,250,.94)}
@@ -51141,7 +51148,7 @@ window.HARBOR_LORE={"ports":{"LA":{"name":"Port of Los Angeles","kicker":"San Pe
      ticket button pinned under it. Opens off the compact banner; the ticket sheet links back to it.
      It is a .sheet, so the phone's Back button closes it like any other. ═══ */
   window.rflFlyer=function(){
-    if(!R)return; const src=safeUrl(R.flyer_url); if(!src){ rflOpen(); return; }
+    if(!R)return; const src=safeUrl(R.flyer_url); if(!src){ sheetOpen(); return; }
     let sh=$('rflFlyer');
     if(!sh){ sh=document.createElement('div'); sh.className='sheet'; sh.id='rflFlyer'; sh.setAttribute('role','dialog'); sh.setAttribute('aria-modal','true'); sh.setAttribute('aria-label','The raffle flyer');
       /* #flybuy(oct1) — TICKETS ARE BOUGHT RIGHT HERE. The bar under the poster used to be one button
@@ -51183,13 +51190,15 @@ window.HARBOR_LORE={"ports":{"LA":{"name":"Port of Los Angeles","kicker":"San Pe
         if(b<R.ticket_price)h+='<p class="sub rfl-fly-note">You need '+num(R.ticket_price-b)+' more ⬡ for a ticket — seal dockets, call the board, log the drops.</p>';
       }
       if(R.closes_at)h='<div class="rfl-fly-clock" id="rflFClock">🎃 THE DRAW IN <b>'+(clock(R.closes_at)||'—')+'</b><small>'+E(when(R.closes_at))+'</small></div>'+h;   /* #drawclock */
-      h+='<div class="rfl-msg sub" id="rflFMsg"></div>'
-        +'<button class="rfl-fly-more" type="button" id="rflFMore">Odds &amp; how the draw works ▸</button>';
+      h+='<div class="rfl-msg sub" id="rflFMsg"></div>';
+      if(ST.mine&&ST.total){ const odds=Math.round((ST.mine||0)/ST.total*1000)/10; h+='<p class="sub rfl-fly-note rfl-fly-odds">Your odds right now: <b>'+ST.mine+' in '+num(ST.total)+'</b> ('+odds+'%) · one ticket is drawn at random on the server</p>'; }
     }else if(ph==='drawn'){
-      h+='<button class="btn rfl-fly-go" type="button" id="rflFOpen">🏆 SEE THE DRAW ▸</button>';
+      /* #oneflyer — the winner lives on the flyer too */
+      h+='<div class="rfl-fly-win"><div class="k">🏆 THE WINNER</div><div class="h">'+E(R.winner_handle||'—')+'</div>'
+        +'<div class="s">ticket #'+num(R.winner_ticket)+' of '+num(R.total_at_draw)+' · drawn '+E(when(R.drawn_at))+'</div>'
+        +(ST.mine?'<div class="s">You held '+ST.mine+' ticket'+(ST.mine==1?'':'s')+'. Thanks for riding with the Order.</div>':'')+'</div>';
     }else{
-      h+='<p class="sub rfl-fly-note">'+(ph==='soon'?'Tickets go on sale '+E(when(R.opens_at)):ph==='cancelled'?'This raffle was called off — every ticket was refunded.':'🎃 Sales are closed — the draw is next. The winner is named right here.')+'</p>'
-        +'<button class="rfl-fly-more" type="button" id="rflFOpen">See the raffle ▸</button>';
+      h+='<p class="sub rfl-fly-note">'+(ph==='soon'?'Tickets go on sale '+E(when(R.opens_at)):ph==='cancelled'?'This raffle was called off — every ticket was refunded.':'🎃 Sales are closed — the draw is next. The winner is named right here.')+'</p>';
     }
     box.innerHTML=h;
     const on=(id,f)=>{const el=box.querySelector('#'+id);if(el)el.addEventListener('click',f);};
@@ -51198,11 +51207,16 @@ window.HARBOR_LORE={"ports":{"LA":{"name":"Port of Los Angeles","kicker":"San Pe
     on('rflFBuy',e=>armThenBuy(e.currentTarget,false));
     on('rflFBundle',e=>armThenBuy(e.currentTarget,true));
     on('rflFSign',()=>{ sh.classList.remove('on'); try{ if(typeof goGateForHandle==='function')goGateForHandle(); }catch(e){} });
-    const toSheet=()=>{ sh.classList.remove('on'); setTimeout(()=>{ try{rflOpen();}catch(e){} },120); };
-    on('rflFMore',toSheet); on('rflFOpen',toSheet);
     clockArm();   /* #drawclock — ticks while the flyer is open, stops itself when it isn't */
   }
+  /* #oneflyer(oct1) — ONE WINDOW. Every road into the raffle lands on the full-page flyer (the banner tap,
+     the rail, the winner reveal's button, the Command Center's preview). The ticket sheet below is kept only
+     as the fallback for a raffle that has no flyer artwork; this raffle never shows it. */
   window.rflOpen=async function(){
+    if(R&&safeUrl(R.flyer_url)){ rflFlyer(); return; }
+    return sheetOpen();
+  };
+  async function sheetOpen(){
     if(!R)return; qty=1; const sh=sheet(); sh.classList.add('on'); sheetPaint();
     try{ if(window.bannerAway)window.bannerAway(true); }catch(e){}   /* #bannerfade — the raffle opened: the holiday card steps aside for today */
     try{ if(typeof sbRefreshBucks==='function')sbRefreshBucks(); }catch(e){}
