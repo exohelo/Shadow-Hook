@@ -8,7 +8,8 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct1privorder';   /* oct 1 (7th) — PRIVACY SETTINGS IN ORDER: who can see today's docket moves up under who can DM you, so the two EVERYONE · FRIENDS · NOBODY pickers sit together and the switches follow (#privorder). */
+window.SHK_BUILD='oct1cardpull';   /* oct 1 (8th) — THE MEMBER CARD PULLS DOWN TO CLOSE: drag the small profile popup down from its top (finger or mouse) and it drops away, the #profpull feel; a grabber pill sits on the banner; taps on its buttons are untouched (#cardpull). */
+/* was: oct1privorder */   /* oct 1 (7th) — PRIVACY SETTINGS IN ORDER: who can see today's docket moves up under who can DM you, so the two EVERYONE · FRIENDS · NOBODY pickers sit together and the switches follow (#privorder). */
 /* was: oct1dmback */   /* oct 1 (6th) — SWIPE A DIRECT MESSAGE AWAY: a sideways drag from anywhere in an open DM goes back to the list, the wire following your thumb like a product page (#dmswipe); and the phone's own edge-swipe Back can no longer walk past the app's Back guard and close the whole app — the guard re-plants its sentinel on your next tap, so Back from a DM always lands on the list (#backfresh). */
 /* was: oct1names */   /* oct 1 (5th) — A FREEZE REPORT NAMES THE FUNCTION: on Chrome the report carries the long frame's own attribution — the function's name and its character position in this file — and on every browser the timer callbacks that ran long (name, or the first words of the code); a long task that belonged to an iframe (the hidden YouTube player) says so (#names). The Halloween music's YouTube player is no longer loaded for a member who has the sound muted (#ytmuted). */
 /* was: oct1docket */   /* oct 1 (4th) — SHARE TODAY'S DOCKET HAS THREE SETTINGS, like Direct Messages: EVERYONE (any signed-in member can see which dock, ship and shift you logged today), FRIENDS, or NOBODY. The server keeps the rule (docket_shares.audience); a shared docket shows on the member's card and beside their name on the Members roster, not only in the friends list (#dkshare3) */
@@ -2863,6 +2864,10 @@ html.daylight .pdp-sizes button.on{background:#fdf3e3}
 .prof-head.pf-over .prof-seal{width:64px;height:64px;border-radius:16px;box-shadow:0 0 0 3px var(--plate-3),0 6px 18px rgba(0,0,0,.4)}
 .pf-cam{display:none}
 .dmc-cover{height:104px;margin:-22px -20px 0;border-radius:22px 22px 0 0}
+/* #cardpull(oct1) — the member card pulls down to close: a grabber pill rides the top of the banner */
+#dmCardSheet .sheet-card{position:relative;will-change:transform}
+.dmc-grab{position:absolute;left:50%;top:8px;width:44px;height:5px;margin-left:-22px;border-radius:3px;background:rgba(255,255,255,.55);box-shadow:0 1px 3px rgba(0,0,0,.45);z-index:3;pointer-events:none}
+@media (hover:hover){#dmCardSheet .sheet-card{cursor:grab}#dmCardSheet .sheet-card.drag{cursor:grabbing}#dmCardSheet .sheet-card button,#dmCardSheet .sheet-card a{cursor:pointer}}
 .rd .dmc-cover{margin:-16px -16px 0;border-radius:20px 20px 0 0}
 .dmc-head{display:flex;align-items:flex-start;gap:12px;margin:-30px 0 10px;position:relative;z-index:1}
 /* #membercard(sep28) — the facts on a member's card */
@@ -29397,6 +29402,62 @@ window.mcReport=function(uid,name){
   });
   sh.classList.add('on');
 };
+/* ═══ #cardpull(oct1) — PULL THE MEMBER CARD DOWN TO CLOSE IT ═══
+   The #profpull feel, for the small popup cards: a finger (or a mouse, held and dragged)
+   pulled DOWN from the card's top follows one-to-one; let go past ~a quarter of the card,
+   or flick it, and the card drops away. Anything less snaps home. Nothing engages until
+   a decisive downward move, so taps on DM / ADD FRIEND / Report are untouched, and a
+   drag that started a real move never also fires the button it began on. The card is
+   re-drawn on every open (innerHTML), so the hands live on the SHEET and find the card
+   each time. */
+function cardPullArm(sh){
+  if(!sh||sh._pullArmed)return; sh._pullArmed=1;
+  const EASE='transform .22s cubic-bezier(.4,0,.2,1)';
+  let g=null, eatClick=false;
+  const cardOf=n=>{ try{ const c=n&&n.closest&&n.closest('.sheet-card'); return (c&&sh.contains(c))?c:null; }catch(e){ return null; } };
+  function start(x,y,target){
+    const card=cardOf(target); if(!card){ g=null; return; }
+    if(target.closest&&target.closest('input,textarea,select,[contenteditable="true"]')){ g=null; return; }
+    g={card,x0:x,y0:y,dy:0,t0:Date.now(),live:false,armed:card.scrollTop<=0,H:card.clientHeight||400};
+  }
+  function move(x,y,ev){
+    if(!g)return;
+    const dy=y-g.y0, dx=x-g.x0; g.dy=dy;
+    if(!g.live){
+      if(Math.abs(dy)<9&&Math.abs(dx)<9)return;
+      if(!g.armed||dy<=0||Math.abs(dx)>Math.abs(dy)){ g=null; return; }   // scrolling, sideways, or not at the top
+      g.live=true; g.card.classList.add('drag'); g.card.style.transition='none';
+    }
+    g.card.style.transform='translateY('+Math.max(0,dy)+'px)';
+    if(ev&&ev.cancelable)ev.preventDefault();
+  }
+  function end(){
+    if(!g)return; const tr=g; g=null;
+    if(!tr.live)return;
+    eatClick=true; setTimeout(()=>{eatClick=false;},350);
+    const far=Math.max(0,tr.dy), flick=far/Math.max(1,Date.now()-tr.t0)>0.5, card=tr.card;
+    card.classList.remove('drag');
+    if(far>Math.max(120,tr.H*0.25)||(flick&&far>60)){
+      card.style.transition=EASE; card.style.transform='translateY('+(tr.H*1.1)+'px)';
+      setTimeout(()=>{ sh.classList.remove('on'); setTimeout(()=>{card.style.transition='';card.style.transform='';},260); },180);
+    }else{
+      card.style.transition=EASE; card.style.transform='';
+      setTimeout(()=>{card.style.transition='';},260);
+    }
+  }
+  /* finger */
+  sh.addEventListener('touchstart',e=>{ if(e.touches.length!==1){g=null;return;} const t=e.touches[0]; start(t.clientX,t.clientY,e.target); },{passive:true});
+  sh.addEventListener('touchmove',e=>{ if(!g)return; if(e.touches.length!==1){ if(g.live){g.dy=0;end();} g=null; return; } const t=e.touches[0]; move(t.clientX,t.clientY,e); },{passive:false});
+  sh.addEventListener('touchend',end,{passive:true});
+  sh.addEventListener('touchcancel',()=>{ if(g){ g.dy=0; end(); } },{passive:true});
+  /* mouse — the desktop app gets the same pull */
+  sh.addEventListener('mousedown',e=>{ if(e.button!==0)return; start(e.clientX,e.clientY,e.target); });
+  window.addEventListener('mousemove',e=>{ if(g)move(e.clientX,e.clientY,null); });
+  window.addEventListener('mouseup',()=>end());
+  sh.addEventListener('dragstart',e=>{ if(cardOf(e.target))e.preventDefault(); });   // a picture on the card must not start a native drag
+  /* a pull that moved the card never also presses the button it started on */
+  sh.addEventListener('click',e=>{ if(eatClick){ e.stopPropagation(); e.preventDefault(); eatClick=false; } },true);
+}
 /* ---- the member card: DM or friend, gated honestly ---- */
 async function openDmCard(uid,h){
   if(!uid)return;
@@ -29406,6 +29467,7 @@ async function openDmCard(uid,h){
     sh=document.createElement('div');sh.className='sheet';sh.id='dmCardSheet';sh.style.zIndex='95';
     document.body.appendChild(sh);
     sh.addEventListener('click',e=>{if(e.target===sh)sh.classList.remove('on')});
+    try{ cardPullArm(sh); }catch(e){}   /* #cardpull */
   }
   const name=h||dmPeerName(uid);
   let cov=BANNERS[uid]||'';   /* #banner — their banner across the top of the card */
@@ -29422,6 +29484,7 @@ async function openDmCard(uid,h){
   const online=((typeof FLOOR!=='undefined'&&FLOOR.roster)||[]).some(p=>p.uid===uid);
   const status=[DM.friends[uid]?'⚓ friend':'', online?'<span style="color:var(--ok)">● online now</span>':'', since?'since '+esc(since):''].filter(Boolean).join(' · ');
   const draw=(inner)=>{sh.innerHTML='<div class="sheet-card dmc'+(seat?' dmc-seat dmc-'+seat:'')+'" style="text-align:left">'
+    +'<i class="dmc-grab" aria-hidden="true"></i>'   /* #cardpull */
     +'<div class="dmc-cover cover-art'+(cov?' has':'')+'"'+(cov?' style="background-image:url(&quot;'+esc(cov)+'&quot;)"':'')+'></div>'
     +'<div class="dmc-head">'+_dmAv(name,uid).replace('32px','64px').replace('32px','64px').replace('font-size:14px','font-size:26px').replace('<span','<span class="dmc-av"')
     +'<div style="min-width:0;padding-bottom:4px"><b>'+esc(name)+'</b>'+title+(status?'<div class="sub">'+status+'</div>':'')+'</div></div>'
