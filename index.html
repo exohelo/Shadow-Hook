@@ -189,6 +189,25 @@ window.SEASONS=[
   {id:'thanksgiving', tag:'🦃 THANKSGIVING', from:[11,22], to:[11,28]},  /* 4th Thu Nov · burnt orange & harvest */
   {id:'xmas',         tag:'🎄 XMAS',         from:[12,18], to:[12,26]}   /* pine, snow & harbor lights */
 ];
+/* ═══ #notios(oct1) — ONE ANSWER TO "IS THIS AN iPHONE / iPAD?" ═══
+   A Galaxy S24 Ultra (SM-S928U) was handed the iPhone install gate. Five places asked the question
+   five ways, and the iPad test was navigator.platform==='MacIntel' + a touchscreen — the iPadOS
+   desktop-mode trick — which never looked at the user agent. An Android browser asking for the
+   desktop site can report exactly that, and it was read as an iPad. Now one rule, used everywhere:
+     · any Chromium browser (navigator.userAgentData — Safari/iOS WebKit has none) is not Apple mobile,
+       unless its own platform hint literally says iOS/iPadOS;
+     · any Android / Samsung / Linux / Windows / ChromeOS / Kindle token in the user agent is not Apple;
+     · the iPad desktop-mode test also needs 'Macintosh' in the user agent, as real iPads send. */
+window.shkIsIPad=function(){ try{ var ua=navigator.userAgent||'', d=navigator.userAgentData;
+  if(d&&!/^(iOS|iPadOS)$/i.test(d.platform||''))return false;
+  if(/Android|SamsungBrowser|Linux|CrOS|Windows|Silk|Kindle/i.test(ua))return false;
+  return /iPad/.test(ua)||(/Macintosh/.test(ua)&&navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+}catch(e){ return false; } };
+window.shkIsIOS=function(){ try{ var ua=navigator.userAgent||'', d=navigator.userAgentData;
+  if(d&&!/^(iOS|iPadOS)$/i.test(d.platform||''))return false;
+  if(/Android|SamsungBrowser|Linux|CrOS|Windows|Silk|Kindle/i.test(ua))return false;
+  return /iPhone|iPod/.test(ua)||window.shkIsIPad();
+}catch(e){ return false; } };
 window._seasonFlag='auto';   /* the Keymaster's word — km_flags.season, cached from the last pull */
 try{window._seasonFlag=localStorage.getItem('shadowhook_season_km')||'auto'}catch(e){}
 window.seasonNow=function(){
@@ -4744,8 +4763,8 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
    wrapped in try, and it waits for the boot loader to leave before it speaks. */
 (function(){try{
   var ua=navigator.userAgent||'';
-  var isiPad=/iPad/.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
-  var isiOS=/iPhone|iPod/.test(ua)||isiPad;
+  var isiPad=window.shkIsIPad();   /* #notios */
+  var isiOS=window.shkIsIOS();
   if(!isiOS)return;
   var standalone=false; try{standalone=navigator.standalone===true||['standalone','fullscreen','minimal-ui'].some(function(m){return matchMedia('(display-mode: '+m+')').matches})}catch(e){}   /* #installedmode — any installed mode, not just standalone */
   if(standalone){ try{localStorage.setItem('shadowhook_installed','1')}catch(e){} return; }
@@ -16861,7 +16880,7 @@ window.addEventListener('appinstalled',()=>{deferredInstall=null;setInstalled(tr
 /* #installafter — the invite is armed by ENTRY, not by the page load. */
 (function(){
   const ua=navigator.userAgent;
-  const isiOS=/iPhone|iPad|iPod/.test(ua)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+  const isiOS=window.shkIsIOS();   /* #notios */
   if(isStandalone())return;
   /* #installedmode — a browser-tab open while the icon still sits on the phone used to
      CLEAR the installed flag here and announce "the app came off your phone". It hadn't.
@@ -26570,7 +26589,7 @@ function openTickets(u){ var url=ticketUrl(u); if(!url){ toast('That ticket link
 window.openTickets=openTickets; window.ticketUrl=ticketUrl;
 function openDirections(place){
   var q=String(place||'').trim(); if(!q){ toast('No place on this one to point at'); return; }
-  var ios=/iPad|iPhone|iPod/.test(navigator.userAgent||'')||((navigator.platform==='MacIntel')&&navigator.maxTouchPoints>1);
+  var ios=window.shkIsIOS();   /* #notios — a Samsung was being sent to Apple Maps too */
   var url=ios?('https://maps.apple.com/?q='+encodeURIComponent(q))
              :('https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(q));
   try{ var w=window.open(url,'_blank','noopener'); if(!w)location.href=url; }catch(e){ try{location.href=url;}catch(_){} }
@@ -31453,7 +31472,7 @@ function clipAsFile(blob,name,type){
    the platform's own setting, and never assert a cause we haven't checked. */
 function clipPlatform(){
   const ua=String(navigator.userAgent||'');
-  if(/iPhone|iPad|iPod/i.test(ua)||(/Macintosh/.test(ua)&&navigator.maxTouchPoints>1))return 'ios';
+  if(window.shkIsIOS())return 'ios';   /* #notios */
   if(/Android/i.test(ua))return 'android';
   return 'other';
 }
@@ -48779,7 +48798,7 @@ html.arcade .arc-aurora i{mix-blend-mode:normal;
   var ua=navigator.userAgent||'';
   function uaShort(){
     try{
-      var os=/iPhone|iPod/.test(ua)?'iPhone':(/iPad/.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1))?'iPad':/Android/.test(ua)?'Android':/Windows/.test(ua)?'Windows':/Mac OS/.test(ua)?'Mac':/CrOS/.test(ua)?'ChromeOS':/Linux/.test(ua)?'Linux':'?';
+      var os=window.shkIsIOS()?(window.shkIsIPad()?'iPad':'iPhone'):/Android/.test(ua)?'Android':/Windows/.test(ua)?'Windows':/Mac OS/.test(ua)?'Mac':/CrOS/.test(ua)?'ChromeOS':/Linux/.test(ua)?'Linux':'?';
       var b='', toks=['EdgiOS','EdgA','Edg','CriOS','FxiOS','SamsungBrowser','OPR','Firefox','Chrome','Version'];
       for(var i=0;i<toks.length;i++){ var m=ua.match(new RegExp(toks[i]+'\\/(\\d+)')); if(m){ b=(toks[i]==='Version'?'Safari':toks[i])+'/'+m[1]; break; } }
       if(!b&&/Safari/.test(ua))b='Safari';
