@@ -8,7 +8,8 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct1docket';   /* oct 1 (4th) — SHARE TODAY'S DOCKET HAS THREE SETTINGS, like Direct Messages: EVERYONE (any signed-in member can see which dock, ship and shift you logged today), FRIENDS, or NOBODY. The server keeps the rule (docket_shares.audience); a shared docket shows on the member's card and beside their name on the Members roster, not only in the friends list (#dkshare3) */
+window.SHK_BUILD='oct1names';   /* oct 1 (5th) — A FREEZE REPORT NAMES THE FUNCTION: on Chrome the report carries the long frame's own attribution — the function's name and its character position in this file — and on every browser the timer callbacks that ran long (name, or the first words of the code); a long task that belonged to an iframe (the hidden YouTube player) says so (#names). The Halloween music's YouTube player is no longer loaded for a member who has the sound muted (#ytmuted). */
+/* was: oct1docket */   /* oct 1 (4th) — SHARE TODAY'S DOCKET HAS THREE SETTINGS, like Direct Messages: EVERYONE (any signed-in member can see which dock, ship and shift you logged today), FRIENDS, or NOBODY. The server keeps the rule (docket_shares.audience); a shared docket shows on the member's card and beside their name on the Members roster, not only in the friends list (#dkshare3) */
 /* was: oct1privacy */   /* oct 1 (3rd) — LAST SEEN IS A PRIVACY SETTING: "Show when I was last on" moves from About you to Privacy settings, beside Appear offline; About you is renamed About me; and the switch now shows what the profile really says — it was read before the session came back, so it always came up ON, even for a member who had hidden it (#lastseen). And the DM "wire" talk says Direct Messages now — privacy, alerts, the DM page, the burn sheet, every toast (#dmwords) */
 /* was: oct1waitlist */   /* oct 1 (2nd) — THE WAITING LIST HEARS EVERY PHONE: a 🔔 request saved only on a member's phone (signed out, or tapped before the list existed) now goes up to the Order's list the next time the app reads it, dated when it was asked (#wantsync); the Keymaster's own phone-only taps stay off it */
 /* was: oct1shutter */   /* oct 1 — THE SHUTTER STOPS FREEZING THE PHONE: the docket camera asks for a 12-megapixel still instead of the sensor's biggest, and cuts it to the frame at the reader's size in one decode; the season's motion holds still while the camera is up and the shot develops (#camstall). Freeze reports keep their animation names and a long task's attribution (480 characters for a freeze), say if the Halloween music was playing, note window blur/focus and screen turns, and a pop-up left open is no longer called a freeze. Also first shipped under this stamp (sep 30 – oct 1, they went out still marked sep29cardday): goo drips, clerk slip as proof, marks queue, the midnight Halloween flip, the raffle switch, buying off the flyer + the draw countdown, GIFs on the wall, the pumpkin lantern, no bar under titles, the raffle banner folding itself, the 3D price sticker, a Samsung no longer taken for an iPhone */
@@ -110,6 +111,25 @@ window.shkCrumb=(function(){
     }catch(e){ return ''; }
   };
   add.all=function(){ return ring.slice(); };
+  /* #names(oct1) — WHICH CALLBACK RAN LONG. setTimeout / setInterval / requestAnimationFrame callbacks are
+     timed; one that holds the thread 250 ms or more is noted with its name (or, for a nameless function,
+     the first words of its code — enough to find it in this file) and how long it ran. Read back only by
+     the freeze report. Same callback, same arguments, same `this`, same timer id; a string callback or a
+     non-function passes through untouched. */
+  var slow=[], SLOW_MS=250;
+  function fp(fn){ try{ var n=fn.name&&fn.name!=='anonymous'?fn.name:''; if(n)return n; var src=Function.prototype.toString.call(fn).replace(/\s+/g,' ').replace(/^(async\s+)?(function\s*\([^)]*\)\s*\{\s*|\([^)]*\)\s*=>\s*\{?\s*)/,'').slice(0,44); return '~'+src; }catch(e){ return '?'; } }
+  function timed(fn,kind){ return function(){ var t=mono(); try{ return fn.apply(this,arguments); } finally{ var d=mono()-t; if(d>=SLOW_MS){ slow.push({t:t,d:d,s:kind+' '+fp(fn)}); if(slow.length>12)slow.shift(); } } }; }
+  add.slow=function(from,to){ try{ return slow.filter(function(x){ return x.t<=to&&x.t+x.d>=from; }).sort(function(a,b){ return b.d-a.d; }).slice(0,3).map(function(x){ return x.s+' '+Math.round(x.d)+'ms'; }).join(', '); }catch(e){ return ''; } };
+  /* Chrome names the scripts of a long frame itself (long-animation-frame, below in the freeze block) — and a
+     wrapped callback would hide that attribution (measured: the frame's scripts came back empty). So the timing
+     wrappers go on only where the browser can't name a script: Safari, Firefox, older Chrome. */
+  var hasLoaf=false; try{ hasLoaf=!window.__fzForceTimers&&!!(window.PerformanceObserver&&PerformanceObserver.supportedEntryTypes&&PerformanceObserver.supportedEntryTypes.indexOf('long-animation-frame')>=0); }catch(e){}
+  if(!hasLoaf)try{
+    var _st=window.setTimeout, _si=window.setInterval, _raf=window.requestAnimationFrame;
+    window.setTimeout=function(fn){ if(typeof fn==='function'){ arguments[0]=timed(fn,'timer'); } return _st.apply(window,arguments); };
+    window.setInterval=function(fn){ if(typeof fn==='function'){ arguments[0]=timed(fn,'interval'); } return _si.apply(window,arguments); };
+    if(_raf)window.requestAnimationFrame=function(fn){ return _raf.call(window,typeof fn==='function'?timed(fn,'frame'):fn); };
+  }catch(e){}
   try{
     document.addEventListener('visibilitychange',function(){ add('vis '+(document.hidden?'off':'on')); },true);
     ['pageshow','pagehide','online','offline','resume','freeze'].forEach(function(n){ (n==='resume'||n==='freeze'?document:window).addEventListener(n,function(){ add(n); },true); });
@@ -43241,9 +43261,12 @@ html[data-tab]:not([data-tab="dockets"]) #snBanner{display:none!important}
     start:start,stop:stop,mute:function(v){ muted=v!==false; try{ muted?localStorage.setItem(KEY,'off'):localStorage.removeItem(KEY); }catch(e){} muted?stop():start(); paint(); }};
   document.addEventListener('pointerdown',function(e){ if(btn&&btn.contains(e.target))return; if(!running)start(); else if(!muted&&ytReady&&!ytPlaying()){ try{ yt.unMute(); yt.playVideo(); }catch(x){} } },{passive:true});   /* #hwyt — a blocked autoplay gets its tap */
   document.addEventListener('visibilitychange',function(){ if(document.hidden)stop(); });
-  window.addEventListener('shk:entered',function(){ paint(); if(season())ytLoad(); });
+  /* #ytmuted(oct1) — the player is loaded for a member who has the sound ON (or never touched it); a muted
+     member's phone never carries YouTube's scripts, which on a phone run on the same thread as the app.
+     Un-muting (start) loads it then, as it always did. */
+  window.addEventListener('shk:entered',function(){ paint(); if(season()&&!muted)ytLoad(); });
   setInterval(function(){ paint(); if(running&&!allowed())stop(); },2500);
-  paint(); if(season())ytLoad();
+  paint(); if(season()&&!muted)ytLoad();
   /* #hwmusic3 — TRY TO OPEN WITH THE LOADING SCREEN. Browsers decide: an installed app on
      Android/desktop Chrome that the member uses often is usually allowed to start sound on its
      own; iPhone never is. So: ask quietly now; if the phone says no, the crest shows a small
@@ -46101,7 +46124,7 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
   ];
   window.shkAlert=function(where,err,src){
     try{
-      const cap=(where==='freeze')?480:300;   /* #camstall — a freeze report carries its suspects, its trail AND its roll-call */
+      const cap=(where==='freeze')?560:300;   /* #camstall — a freeze report carries its suspects, its trail, who ran AND its roll-call */
       const msg=String((err&&err.message)||err||'?').slice(0,cap);
       const at=String(src||(err&&err.fileName)||'');
       if(_NOISE.some(function(rx){return rx.test(msg)||rx.test(at);})){
@@ -49007,6 +49030,23 @@ html.arcade .arc-aurora i{mix-blend-mode:normal;
     w.__fz=true; window[k]=w; }catch(e){} });
   ['visibilitychange','pageshow','pagehide','freeze','resume'].forEach(function(n){ document.addEventListener(n,function(){ lastEvt=Date.now(); last=Date.now(); lastMono=mono(); },true); });
   ['focus','blur','pageshow','pagehide'].forEach(function(n){ window.addEventListener(n,function(){ lastEvt=Date.now(); last=Date.now(); lastMono=mono(); },true); });
+  /* #names(oct1) — THE FRAME SAYS WHOSE SCRIPT IT WAS. Chrome's long-animation-frame entries carry, per script,
+     the function's name and its character position in this file. The last few long frames are kept; a long
+     task's report takes the scripts of the frame(s) it overlapped, biggest first: 'scripts: paint@2134567
+     2410ms (interval)'. A script with no name is named by what invoked it (a timer, a promise, an event). */
+  var frames=[];
+  try{
+    if(window.PerformanceObserver && PerformanceObserver.supportedEntryTypes && PerformanceObserver.supportedEntryTypes.indexOf('long-animation-frame')>=0){
+      new PerformanceObserver(function(list){ list.getEntries().forEach(function(en){
+        if(en.duration<200)return;
+        var sc=[]; try{ sc=(en.scripts||[]).map(function(s){ var nm=s.sourceFunctionName||'', inv=String(s.invoker||'').replace(/^Window\./,''), pos=(s.sourceCharPosition>=0)?s.sourceCharPosition:-1;
+            return {ms:Math.round(s.duration||0), s:(nm||inv||s.invokerType||'?')+(pos>=0?'@'+pos:'')+(nm&&inv?' ('+inv+')':'')}; }).sort(function(a,b){ return b.ms-a.ms; }).slice(0,3); }catch(x){}
+        frames.push({a:en.startTime,b:en.startTime+en.duration,sc:sc}); if(frames.length>8)frames.shift();
+      }); }).observe({type:'long-animation-frame',buffered:false});
+    }
+  }catch(e){}
+  function scriptsIn(a,b){ try{ var out=[]; frames.forEach(function(f){ if(f.a<=b&&f.b>=a)f.sc.forEach(function(s){ out.push(s); }); });
+    out.sort(function(x,y){ return y.ms-x.ms; }); var seen={}; return out.filter(function(s){ if(seen[s.s])return false; seen[s.s]=1; return true; }).slice(0,3).map(function(s){ return s.s+' '+s.ms+'ms'; }).join(', '); }catch(e){ return ''; } }
   var hasLT=false;
   try{
     if(!window.__fzTimerOnly && window.PerformanceObserver && PerformanceObserver.supportedEntryTypes && PerformanceObserver.supportedEntryTypes.indexOf('longtask')>=0){
@@ -49014,7 +49054,7 @@ html.arcade .arc-aurora i{mix-blend-mode:normal;
       new PerformanceObserver(function(list){ list.getEntries().forEach(function(en){
         if(en.duration>=2000&&!inModal(en.startTime,en.startTime+en.duration)){ var at=''; try{ var a=en.attribution&&en.attribution[0]; at=a?[a.containerType,a.containerName||a.containerSrc].filter(Boolean).join(' '):''; }catch(x){}
           if(at==='window')at='';   /* #crumbs — every task is "window" unless an iframe ran it; the word bought nothing and cost the tail of the report */
-          file(en.duration,'long task',at,en.startTime); }
+          setTimeout(function(){ file(en.duration,'long task',at,en.startTime); },1200); }   /* #names — a beat, so the frame's attribution has landed */
       }); }).observe({type:'longtask',buffered:false});
     }
   }catch(e){}
@@ -49035,14 +49075,17 @@ html.arcade .arc-aurora i{mix-blend-mode:normal;
          mid-name ("…94 animations (42×", "…67 animations (18×") — the suspects, the trail, the build and the
          phone filled error_log's 300 characters, and a long task's own attribution, behind the names, never
          made it at all. A freeze
-         report now gets 480 (shkAlert allows that for 'freeze' alone); the roll-call, the GIFs, the music
+         report now gets 560 (shkAlert allows that for 'freeze' alone); the roll-call, the GIFs, the music
          and the attribution are laid down FIRST, and the trail takes whatever room is left — never less
          than 48, so a boot report with four fetches in `after:` still says what the app was doing. */
-      var CAP=480;
+      var CAP=560;
+      /* #names — who: the frame's scripts (Chrome), the timer callbacks that ran long (every browser), the iframe */
+      try{ var who=[], sc=(startAt>0)?scriptsIn(startAt-50,startAt+(ms||0)+50):'', sl=(window.shkCrumb&&shkCrumb.slow&&startAt>0)?shkCrumb.slow(startAt-200,startAt+(ms||0)+200):'';
+        if(sc)who.push('scripts: '+sc); if(sl)who.push('slow: '+sl); if(extra)who.push(extra); extra=who.join(' · '); }catch(e){}
       var mus=''; try{ var mst=window.hwMusic&&hwMusic.state&&hwMusic.state(); if(mst)mus=' · music '+mst; }catch(e){}
       var head=what+' '+(ms/1000).toFixed(1)+'s on '+(scr||'?')+open+loader+' · after: '+(suspects(startAt)||'?');
       var tail=' · '+buildTag()+' · '+Math.round((Date.now()-T0)/1000)+'s after boot · '+(standalone?'home-screen':'browser tab')+' · '+uaShort()+' · '+dom+' nodes · '+anims+' animations'
-        +(names?' ('+names+')':'')+(gifs?' · '+gifs+' gifs in view':'')+mus+(extra?' · '+extra:'');
+        +(extra?' · '+extra:'')+(names?' ('+names+')':'')+(gifs?' · '+gifs+' gifs in view':'')+mus;   /* #names — who comes before the roll-call: the names are the part to lose */
       var did=''; try{ if(window.shkCrumb&&shkCrumb.since&&startAt>0)did=shkCrumb.since(startAt-8000,startAt+(ms||0),startAt,8,Math.max(48,CAP-head.length-tail.length-8)); }catch(e){}
       var msg=head+' · did: '+(did||'nothing noted')+tail;
       try{ if(typeof window.shkAlert==='function')window.shkAlert('freeze',msg); }catch(e){}
