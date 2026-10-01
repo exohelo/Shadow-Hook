@@ -8,7 +8,9 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='sep29cardday';   /* sep 29 — member card readable in daylight: the gold/orange pieces get dark ink on light fills */
+window.SHK_BUILD='oct1waitlist';   /* oct 1 (2nd) — THE WAITING LIST HEARS EVERY PHONE: a 🔔 request saved only on a member's phone (signed out, or tapped before the list existed) now goes up to the Order's list the next time the app reads it, dated when it was asked (#wantsync); the Keymaster's own phone-only taps stay off it */
+/* was: oct1shutter */   /* oct 1 — THE SHUTTER STOPS FREEZING THE PHONE: the docket camera asks for a 12-megapixel still instead of the sensor's biggest, and cuts it to the frame at the reader's size in one decode; the season's motion holds still while the camera is up and the shot develops (#camstall). Freeze reports keep their animation names and a long task's attribution (480 characters for a freeze), say if the Halloween music was playing, note window blur/focus and screen turns, and a pop-up left open is no longer called a freeze. Also first shipped under this stamp (sep 30 – oct 1, they went out still marked sep29cardday): goo drips, clerk slip as proof, marks queue, the midnight Halloween flip, the raffle switch, buying off the flyer + the draw countdown, GIFs on the wall, the pumpkin lantern, no bar under titles, the raffle banner folding itself, the 3D price sticker, a Samsung no longer taken for an iPhone */
+/* was: sep29cardday */   /* sep 29 — member card readable in daylight: the gold/orange pieces get dark ink on light fills */
 /* was: sep29selfbanner */   /* sep 29 — your own card shows your banner straight away */
 /* was: sep29avgmath */   /* sep 29 — THE ARROW MATCHES THE AVERAGE: ▲/▼ under each board is now current minus the week's average */
 /* was: sep29rangequiet */   /* sep 29 — no range bar under every board; a board only flags when it's at/near its high or low; the all-boards range stays */
@@ -116,6 +118,12 @@ window.shkCrumb=(function(){
       if(b&&(!el||b.contains(el)===false&&el.contains(b))){ w=b.getAttribute('data-scr')||b.getAttribute('data-tab')||''; add('tap '+(b.id?'#'+b.id:(b.tagName||'?').toLowerCase()+(w?' '+w:(b.className&&typeof b.className==='string'&&b.className.split(' ')[0]?' .'+b.className.split(' ')[0]:'')))); }
       else add('tap '+(el&&el.id?'#'+el.id:(t.tagName||'?').toLowerCase())); }catch(x){} },true);
     if(navigator.serviceWorker)navigator.serviceWorker.addEventListener('controllerchange',function(){ add('sw swap'); });
+    /* #camstall(oct1) — what the PHONE did: the app losing and getting back focus (a call, a system sheet,
+       control centre) and a turn of the phone (the whole app re-lays itself out). Only the window's own
+       focus — an input taking focus is not news. */
+    window.addEventListener('blur',function(e){ if(e.target===window)add('win blur'); });
+    window.addEventListener('focus',function(e){ if(e.target===window)add('win focus'); });
+    var rzT=0; window.addEventListener('resize',function(){ clearTimeout(rzT); rzT=setTimeout(function(){ add('resize '+innerWidth+'x'+innerHeight); },300); });
   }catch(e){}
   return add;
 })();
@@ -22507,6 +22515,7 @@ async function wantLoad(force){
     var m=Object.create(null);
     (r.data||[]).forEach(function(x){ if(x&&x.product_id!=null)m[wantKey(x.product_id,x.color,x.size)]=x; });
     WANT.mine=m; WANT.uid=uid; WANT.table=true;
+    try{ await wantSyncUp(uid); }catch(e2){}   /* #wantsync — what this phone holds and the list doesn't, goes up */
   }catch(e){
     if(wantNoTable(e))WANT.table=false;   /* the file hasn't been run — fall back to this phone, quietly */
     WANT.mine=Object.create(null);
@@ -22516,6 +22525,45 @@ async function wantLoad(force){
   try{ if(document.getElementById('gearNotify'))paintGear(); }catch(e){}
 }
 window.wantLoad=wantLoad;
+/* ═══ #wantsync(oct1) — A NAME SAVED ON THE PHONE REACHES THE LIST ═══
+   THE REPORT (the Keymaster, oct 1): "some of our waiting list are not showing up." Nineteen 🔔 requests
+   sat in members' phones — shadowhook_wantlist_<card>, mirrored to user_kv — and never in
+   product_interest, the list the Dock Office reads. All of them were tapped Jul 27 – Sep 19, while the
+   button still wrote to a table that didn't exist (see #waitlist above), so each one landed in the phone's
+   own copy and nowhere else. And a member who asks while signed out is still told "Saved on this phone —
+   claim your card and the Order hears it too" — which nothing ever made true.
+   The ten MEMBERS' requests were put on the list on oct 1, with their original dates (the Keymaster's own
+   nine test taps were left off — his call). From here, whenever this phone reads its rows (the Armory
+   opening, or one quiet look shortly after boot when the phone holds any names), every request on the
+   phone's list that the Order's list doesn't have goes up, dated when it was asked, so the first to ask
+   still reads first. A duplicate is the unique index doing its job. Keymaster-level accounts are skipped —
+   their phone-only taps were tests — and nothing goes up until the profile has said which kind this is. */
+async function wantSyncUp(uid){
+  if(!window.SB||!uid||WANT.table!==true)return 0;
+  if(typeof window.__isKM!=='boolean'||window.__isKM)return 0;      /* profile not in yet, or a Keymaster-level account */
+  if(WANT.syncing)return 0;
+  var loc=wantLocal(), n=0;
+  var keys=Object.keys(loc).filter(function(k){ return !!k.split('|')[0] && !WANT.mine[k]; });
+  if(!keys.length)return 0;
+  WANT.syncing=true;
+  try{ for(var i=0;i<keys.length&&i<40;i++){
+    var b=keys[i].split('|'), at=+loc[keys[i]];
+    var row={owner:uid,product_id:b[0],color:b[1]||'',size:b[2]||'',
+             by_id:(typeof ACCT_ID==='string'?ACCT_ID:''),
+             by_handle:(typeof chatMyHandle==='function'?chatMyHandle():'')};
+    if(at>1.5e12&&at<=Date.now()+864e5)row.created_at=new Date(at).toISOString();   /* the day they asked, not today */
+    var r=await window.SB.from('product_interest').insert(row);
+    if(r.error&&!/23505|duplicate key/i.test(String(r.error.message||r.error.code||''))){ try{ console.warn('[wantsync]',r.error.message||r.error); }catch(x){} break; }
+    WANT.mine[keys[i]]=row; n++;
+  } }finally{ WANT.syncing=false; }
+  if(n){ try{ shkCrumb('wantsync '+n); }catch(e){} }
+  return n;
+}
+window.wantSyncUp=wantSyncUp;
+/* the quiet look: a member who asked while signed out and never opens the Armory again still reaches the list */
+(function(){ function look(){ try{ var uid=window.__shkUid; if(!window.SB||!uid)return; if(!Object.keys(wantLocal()).length)return;
+    if(WANT.table===true&&WANT.uid===uid&&!WANT.asking)wantSyncUp(uid); else wantLoad(); }catch(e){} }
+  setTimeout(look,15000); setTimeout(look,60000); })();
 /* the tap. On the list already → come off it. Otherwise → on it. Either way the
    member is told what actually happened, including when it only reached this phone. */
 async function gearNotify(p,c){
@@ -32655,6 +32703,14 @@ window.scanCardCamOrFile=scanCardCamOrFile;
    goes to the background — nothing ever played it again), and folds up with a toast if
    the track ends (a call, another app taking the camera) instead of sitting black. */
 let camStream=null,camShooting=false,camWatchdog=null,camMeter=null,camOpening=false,camGen=0,camVis=null;
+/* #camstall(oct1) — html.shk-hold: the viewfinder is up, or the shot it took is developing. The season's
+   motion holds still meanwhile (the CSS sits by .sn-pause): the goo drips animate height and top, so they
+   run on the page's own thread — the same thread that decodes the photo. A timer lets go on its own, so a
+   hold can never outlive what it was for. */
+let _holdT=null;
+function shkHold(on,ms){ try{ clearTimeout(_holdT); _holdT=null; document.documentElement.classList.toggle('shk-hold',!!on);
+  if(on)_holdT=setTimeout(function(){ shkHold(false); },ms||120000); }catch(e){} }
+window.shkHold=shkHold;
 function killDocketCam(){
   camGen++; camOpening=false;                    /* #camlock — anything still waking belongs to a closed viewfinder now */
   if(camMeter){clearInterval(camMeter);camMeter=null;}
@@ -32663,6 +32719,7 @@ function killDocketCam(){
   if(camStream){try{camStream.getTracks().forEach(t=>t.stop())}catch(e){} camStream=null;}
   camShooting=false;
   document.querySelectorAll('#camScan').forEach(o=>{try{o.remove()}catch(e){}});   /* #camlock — every one, not just the first */
+  shkHold(false);   /* #camstall */
 }
 /* #shotcoach — openDocketCam is the docket face of openScanCam: same camera, same
    fallback to the phone's camera app, plus the live guide for the slip. */
@@ -32715,6 +32772,7 @@ async function openScanCam(opts){
       +'<button id="camGo" aria-label="capture" style="width:68px;height:68px;border-radius:50%;cursor:pointer;border:4px solid var(--copper-hi);background:rgba(238,180,107,.22);box-shadow:0 0 24px rgba(238,180,107,.35)"></button>'
     +'</div>';
   document.body.appendChild(o);
+  shkHold(true);   /* #camstall — the camera gets the phone: the season's motion holds still under it */
   /* #camhaunt — cut the clear window out of the fog: an SVG mask the size of the overlay, opaque
      everywhere except the guide frame (feathered, so the fog thins into the edge, never a hard box).
      Re-cut when the phone turns. */
@@ -32817,11 +32875,10 @@ async function openScanCam(opts){
     let blob=null;
     try{
       const ic=new ImageCapture(camStream.getVideoTracks()[0]);
-      /* ask the sensor for its biggest still; odd phones reject the size ask,
-         so retry plain — still a true photo capture, not a preview grab */
+      /* #camstall — a 12-megapixel-class still, not the sensor's biggest (camStillAsk, by frameCrop);
+         odd phones reject the size ask, so retry plain — still a true photo capture, not a preview grab */
       let settings=null;
-      try{const cap=await ic.getPhotoCapabilities();
-        if(cap&&cap.imageWidth&&cap.imageWidth.max)settings={imageWidth:cap.imageWidth.max};}catch(e){}
+      try{ settings=camStillAsk(await ic.getPhotoCapabilities()); }catch(e){}
       try{blob=await ic.takePhoto(settings||{});}
       catch(e){try{blob=await ic.takePhoto();}catch(e2){}}
     }catch(e){}
@@ -32833,6 +32890,8 @@ async function openScanCam(opts){
     }
     killDocketCam();
     if(!blob)return fallback();
+    shkHold(true,8000);   /* #camstall — the viewfinder's gone; the shot develops with the motion held */
+    try{ shkCrumb('photo '+(blob.size/1048576).toFixed(1)+'MB'); }catch(e){}
     try{ const cut=await frameCrop(blob,fz); if(cut)blob=cut; }catch(e){}   /* #framecrop */
     onShot(new File([blob],(KIND==='card'?'card':'docket')+'.jpg',{type:blob.type||'image/jpeg'}));
   });
@@ -32847,22 +32906,69 @@ window.openScanCam=openScanCam;
    a 7% margin all round for a slip that pokes over the line, before it goes anywhere.
    Fails open: if the still's shape doesn't match the preview's (some phones shoot 4:3
    stills off a 16:9 preview, or hand back a turned image) the whole photo goes, as before. */
+/* ═══ #camstall(oct1) — THE SHUTTER FROZE THE PHONE FOR 10.7 SECONDS ═══
+   THE ALARMS, oct 1 07:40 — an iPhone on the home screen: "main thread stalled 10.7s on #scr-dockets ·
+   did: tap #scanBtn -6.9s, tap #camGo -2.3s". The trail stops at the shutter, and the reader's own first
+   crumb ('scan shot', loadShot) never made it inside the stall — so all 10.7 s sat between the shutter and
+   the reader: the photo itself, and #framecrop cutting it.
+   The shutter asked the sensor for its BIGGEST still (imageWidth: max). On a 48-megapixel iPhone that is
+   8064×6048, and Safari does the decode, the crop and the JPEG encode on the page's own thread: ~190 MB of
+   pixels decoded, a crop canvas past iOS's canvas ceiling, a 0.93 encode of it — all to hand the reader a
+   picture it shrinks to OCR_SIDE (2200) on the long side the moment it gets it. NOW:
+     · camStillAsk — the still is asked at the 12-megapixel class (4032 across). A slip that fills the
+       frame still gets ~3000 px, more than the reader keeps. A phone whose biggest still is already
+       ≤ 4096 (most Androids) asks exactly what it asked before; the height rides along with the width
+       so a phone with a 16:9 size near that width can't hand back a picture cropped off the preview.
+     · frameCrop reads the still's size off its HEADER (an <img> on an object URL loads without decoding
+       a pixel), then decodes it ONCE, already shrunk so the frame comes out at OCR_SIDE — asked for a
+       smaller bitmap, Safari can decode a big JPEG at ½ or ¼ scale, and Chrome does it off the page's
+       thread — and draws the crop at that size. A ~2200 px JPEG goes on, not a full-sensor one.
+     · crumbs 'photo N.NMB' and 'crop WxH' — if the shutter ever stalls again, the report names the step.
+   Fails open exactly as before: no frame, a still that isn't the preview's shape (or an engine that turns
+   it differently than its header said), or a frame that is the whole picture → the whole photo goes on,
+   and loadShot shrinks it in its own single decode. */
+function camStillAsk(cap){
+  try{
+    const W=cap&&cap.imageWidth, H=cap&&cap.imageHeight; if(!(W&&W.max>0))return null;
+    if(Math.max(W.max,(H&&H.max)||0)<=4096)return {imageWidth:W.max};   /* 12 MP or under already: the old ask, unchanged */
+    const ar=(H&&H.max>0)?H.max/W.max:.75;                                /* the still's height per unit of width (4:3 → .75) */
+    const snap=(v,R)=>{ const lo=R.min||1, st=R.step>1?R.step:1; v=Math.round(Math.max(lo,Math.min(R.max,v))/st)*st;
+      while(v>R.max&&v-st>=lo)v-=st; while(v<lo&&v+st<=R.max)v+=st; return v; };
+    const w=snap(ar>1?4032/ar:4032,W), o={imageWidth:w};
+    if(H&&H.max>0)o.imageHeight=snap(w*ar,H);
+    return o;
+  }catch(e){ return null; }
+}
 async function frameCrop(blob,fz){
   if(!fz||!window.createImageBitmap)return null;
+  let W=0,H=0,url='';
+  try{ url=URL.createObjectURL(blob);
+    const im=await new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=()=>rej(new Error('unreadable shot')); i.src=url; });
+    W=im.naturalWidth||im.width; H=im.naturalHeight||im.height;               /* upright, off the header alone */
+  }catch(e){} finally{ try{ if(url)URL.revokeObjectURL(url); }catch(e){} }
+  if(!(W>0&&H>0))return null;
+  if(Math.abs(W/H-fz.a)/fz.a>0.05)return null;                 /* not the same picture the preview showed — don't guess */
+  const m=0.07;
+  const x0=Math.max(0,fz.x-m*fz.w), y0=Math.max(0,fz.y-m*fz.h);
+  const x1=Math.min(1,fz.x+fz.w*(1+m)), y1=Math.min(1,fz.y+fz.h*(1+m));
+  if(x1-x0>0.92&&y1-y0>0.92)return null;                       /* the frame is the whole picture — nothing to cut */
+  if((x1-x0)*W<400||(y1-y0)*H<300)return null;
+  /* ONE decode, already at the size the reader keeps: the crop's long side lands on OCR_SIDE */
+  const s=Math.min(1,OCR_SIDE/Math.max((x1-x0)*W,(y1-y0)*H));
+  const o={imageOrientation:'from-image',resizeQuality:'high'};
+  if(s<1){ if(W>=H)o.resizeWidth=Math.max(1,Math.round(W*s)); else o.resizeHeight=Math.max(1,Math.round(H*s)); }   /* one side pinned — never a distortion */
   let bm=null;
-  try{ bm=await createImageBitmap(blob,{imageOrientation:'from-image'}); }catch(e){ try{ bm=await createImageBitmap(blob); }catch(e2){ return null; } }
+  try{ bm=await createImageBitmap(blob,o); }catch(e){ try{ bm=await createImageBitmap(blob); }catch(e2){ return null; } }
   try{
-    const W=bm.width,H=bm.height; if(!(W>0&&H>0))return null;
-    if(Math.abs(W/H-fz.a)/fz.a>0.05)return null;               /* not the same picture the preview showed — don't guess */
-    const m=0.07;
-    const x0=Math.max(0,fz.x-m*fz.w), y0=Math.max(0,fz.y-m*fz.h);
-    const x1=Math.min(1,fz.x+fz.w*(1+m)), y1=Math.min(1,fz.y+fz.h*(1+m));
-    if(x1-x0>0.92&&y1-y0>0.92)return null;                     /* the frame is the whole picture — nothing to cut */
-    const sx=Math.round(x0*W), sy=Math.round(y0*H), sw=Math.round((x1-x0)*W), sh=Math.round((y1-y0)*H);
-    if(sw<400||sh<300)return null;
-    const c=document.createElement('canvas'); c.width=sw; c.height=sh;
-    c.getContext('2d').drawImage(bm,sx,sy,sw,sh,0,0,sw,sh);
-    return await new Promise(r=>{ try{ c.toBlob(b=>r(b||null),'image/jpeg',0.93); }catch(e){ r(null); } });
+    const bw=bm.width,bh=bm.height; if(!(bw>0&&bh>0))return null;
+    if(Math.abs(bw/bh-fz.a)/fz.a>0.05)return null;               /* the engine turned it unlike its header — the whole photo, as before */
+    const sx=Math.round(x0*bw), sy=Math.round(y0*bh), sw=Math.max(1,Math.round((x1-x0)*bw)), sh=Math.max(1,Math.round((y1-y0)*bh));
+    const k=Math.min(1,OCR_SIDE/Math.max(sw,sh));                /* an engine that ignored the resize: the draw shrinks it */
+    const c=document.createElement('canvas'); c.width=Math.max(1,Math.round(sw*k)); c.height=Math.max(1,Math.round(sh*k));
+    const g=c.getContext('2d'); g.imageSmoothingEnabled=true; g.imageSmoothingQuality='high';
+    g.drawImage(bm,sx,sy,sw,sh,0,0,c.width,c.height);
+    try{ shkCrumb('crop '+c.width+'x'+c.height); }catch(e){}
+    return await new Promise(r=>{ try{ c.toBlob(b=>r(b||null),'image/jpeg',0.92); }catch(e){ r(null); } });
   }finally{ try{ bm.close(); }catch(e){} }
 }
 document.getElementById('scanBtn').addEventListener('click',()=>{
@@ -33922,6 +34028,7 @@ async function readDocketShot(f,label){
   await shotYield();   /* #scanfix — the sheet and its status line paint before the decode starts */
   let shot=null;
   try{shot=await loadShot(f);}catch(err){shot=null;}
+  try{ shkHold(false); }catch(e){}   /* #camstall — developed: the season moves again */
   if(scanAborted)return null;
   const thumb=shot?shot.thumb:null;
   const myId=(typeof ACCT_ID==="string"&&/^[A-Z]\d{2,5}$/.test(ACCT_ID))?ACCT_ID:null;
@@ -42501,6 +42608,8 @@ html:not(.season-halloween) #gooSplash{display:none}
 .sn-decor *{position:absolute;pointer-events:none}
 html.daylight .sn-decor{opacity:.5}
 .sn-pause .sn-decor *{animation-play-state:paused!important}
+/* #camstall(oct1) — the viewfinder is up / the shot it took is developing (shkHold): the season holds still */
+html.shk-hold .sn-decor *,html.shk-hold .sn-scene *{animation-play-state:paused!important}
 
 /* ── falling: snow, hearts, clover, leaves ─────────────────────────────── */
 .sn-fall{top:0;left:var(--x);font-size:calc(var(--s) * 1px);line-height:1;
@@ -43076,7 +43185,11 @@ html[data-tab]:not([data-tab="dockets"]) #snBanner{display:none!important}
       btn._fade=setTimeout(function(){ if(muted)btn.classList.add('gone'); }, btn._opened?4000:6000); }
     btn._opened=true; btn.textContent=muted?'🔇':'🔊'; btn.classList.toggle('on',!muted&&running); btn.title=muted?'Music is off — tap for the Midnight Carriage':'The Skeletons\' Midnight Carriage — tap to mute';
   }
-  window.hwMusic={start:start,stop:stop,mute:function(v){ muted=v!==false; try{ muted?localStorage.setItem(KEY,'off'):localStorage.removeItem(KEY); }catch(e){} muted?stop():start(); paint(); }};
+  /* #camstall — state() for the freeze report: 'yt' (the hidden YouTube player is playing — its scripts share
+     this page's thread on an iPhone), 'synth', 'file', 'loading', 'off' (muted), '' (not running / not the season) */
+  window.hwMusic={state:function(){ try{ if(!season())return ''; if(muted)return 'off'; if(!running)return '';
+      return ytPlaying()?'yt':synthOn?'synth':(file&&fileOk&&!file.paused)?'file':'loading'; }catch(e){ return ''; } },
+    start:start,stop:stop,mute:function(v){ muted=v!==false; try{ muted?localStorage.setItem(KEY,'off'):localStorage.removeItem(KEY); }catch(e){} muted?stop():start(); paint(); }};
   document.addEventListener('pointerdown',function(e){ if(btn&&btn.contains(e.target))return; if(!running)start(); else if(!muted&&ytReady&&!ytPlaying()){ try{ yt.unMute(); yt.playVideo(); }catch(x){} } },{passive:true});   /* #hwyt — a blocked autoplay gets its tap */
   document.addEventListener('visibilitychange',function(){ if(document.hidden)stop(); });
   window.addEventListener('shk:entered',function(){ paint(); if(season())ytLoad(); });
@@ -45939,7 +46052,8 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
   ];
   window.shkAlert=function(where,err,src){
     try{
-      const msg=String((err&&err.message)||err||'?').slice(0,300);
+      const cap=(where==='freeze')?480:300;   /* #camstall — a freeze report carries its suspects, its trail AND its roll-call */
+      const msg=String((err&&err.message)||err||'?').slice(0,cap);
       const at=String(src||(err&&err.fileName)||'');
       if(_NOISE.some(function(rx){return rx.test(msg)||rx.test(at);})){
         try{DEVLOG.err('[not ours] '+msg,at);}catch(_){}   /* still visible in the black box */
@@ -45950,7 +46064,7 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
       const acct=(typeof loadAcct==='function'?(loadAcct()||{}):{});
       /* #alarmwhere — carry the file:line. "Cannot set properties of null" tells
          the Keymaster nothing on its own; with the line it's a five-minute fix. */
-      const full=(at?(msg+'  @ '+at.replace(/^.*\//,'')):msg).slice(0,300);
+      const full=(at?(msg+'  @ '+at.replace(/^.*\//,'')):msg).slice(0,cap);
       window.SB.from('error_log').insert({where_at:where,message:full,handle:((acct.handle||'').toUpperCase())||null,page:location.pathname}).then(()=>{},()=>{});
     }catch(e){}
   };
@@ -48829,6 +48943,19 @@ html.arcade .arc-aurora i{mix-blend-mode:normal;
   }
   var standalone=false; try{ standalone=(typeof isStandalone==='function')?isStandalone():(matchMedia('(display-mode: standalone)').matches||navigator.standalone===true); }catch(e){}   /* #installedmode */
   var mono=function(){ try{ return performance.now(); }catch(e){ return Date.now(); } };
+  /* #camstall(oct1) — A POP-UP IS NOT A FREEZE. alert / confirm / prompt hold the page's thread until
+     they're answered; on an iPhone the time a member spent reading one came back as "main thread
+     stalled". alert() already opens the app's own card (non-blocking), but confirm() and prompt() are still
+     the browser's — log out, strike a review, take a post down, the Keymaster's bans. Each one now leaves a
+     crumb and its span; the timer restarts when it closes, and a long task that held one is skipped. */
+  var modals=[];
+  function inModal(a,b){ for(var i=0;i<modals.length;i++){ if(modals[i][0]<=b&&modals[i][1]>=a)return true; } return false; }
+  ['alert','confirm','prompt'].forEach(function(k){ try{ var f=window[k];
+    if(typeof f!=='function'||f.__fz||!/\[native code\]/.test(Function.prototype.toString.call(f)))return;   /* only the browser's own: alert() is already the app's non-blocking card (shAlert) */
+    var w=function(){ var s=mono(); try{ if(window.shkCrumb)shkCrumb(k); }catch(x){}
+      try{ return f.apply(window,arguments); }
+      finally{ var e2=mono(); modals.push([s,e2]); if(modals.length>8)modals.shift(); last=Date.now(); lastMono=e2; } };   /* the clock restarts — a freeze right after still counts */
+    w.__fz=true; window[k]=w; }catch(e){} });
   ['visibilitychange','pageshow','pagehide','freeze','resume'].forEach(function(n){ document.addEventListener(n,function(){ lastEvt=Date.now(); last=Date.now(); lastMono=mono(); },true); });
   ['focus','blur','pageshow','pagehide'].forEach(function(n){ window.addEventListener(n,function(){ lastEvt=Date.now(); last=Date.now(); lastMono=mono(); },true); });
   var hasLT=false;
@@ -48836,7 +48963,7 @@ html.arcade .arc-aurora i{mix-blend-mode:normal;
     if(!window.__fzTimerOnly && window.PerformanceObserver && PerformanceObserver.supportedEntryTypes && PerformanceObserver.supportedEntryTypes.indexOf('longtask')>=0){
       hasLT=true;
       new PerformanceObserver(function(list){ list.getEntries().forEach(function(en){
-        if(en.duration>=2000){ var at=''; try{ var a=en.attribution&&en.attribution[0]; at=a?[a.containerType,a.containerName||a.containerSrc].filter(Boolean).join(' '):''; }catch(x){}
+        if(en.duration>=2000&&!inModal(en.startTime,en.startTime+en.duration)){ var at=''; try{ var a=en.attribution&&en.attribution[0]; at=a?[a.containerType,a.containerName||a.containerSrc].filter(Boolean).join(' '):''; }catch(x){}
           if(at==='window')at='';   /* #crumbs — every task is "window" unless an iframe ran it; the word bought nothing and cost the tail of the report */
           file(en.duration,'long task',at,en.startTime); }
       }); }).observe({type:'longtask',buffered:false});
@@ -48854,16 +48981,21 @@ html.arcade .arc-aurora i{mix-blend-mode:normal;
         names=Object.keys(by).sort(function(a,b){ return by[b]-by[a]; }).slice(0,6).map(function(n){ return by[n]+'×'+n; }).join(' '); }catch(e){}
       var gifs=0; try{ gifs=[].filter.call(document.images,function(i){ var r=i.getBoundingClientRect(); return /\.gif(\?|$)/i.test(i.currentSrc||i.src||'')&&r.bottom>0&&r.top<innerHeight; }).length; }catch(e){}
       var dom=0; try{ dom=document.getElementsByTagName('*').length; }catch(e){}
-      /* the suspects, the build and the phone come first; the animation roll-call last,
-         so error_log's 300-char cut can only ever trim the names */
-      /* #crumbs — the trail: the 8 s before the task began, and everything inside it. It takes
-         the room left between the suspects and the phone line — error_log keeps 300 characters,
-         and the roll-call's names were always the part to give — but never less than 48, so a
-         boot report with four fetches in `after:` still says what the app was doing. */
+      /* #crumbs — the trail: the 8 s before the task began, and everything inside it.
+         #camstall(oct1) — THE ROLL-CALL WAS THE PART CUT. Two of the three sep 30 – oct 1 alarms stopped
+         mid-name ("…94 animations (42×", "…67 animations (18×") — the suspects, the trail, the build and the
+         phone filled error_log's 300 characters, and a long task's own attribution, behind the names, never
+         made it at all. A freeze
+         report now gets 480 (shkAlert allows that for 'freeze' alone); the roll-call, the GIFs, the music
+         and the attribution are laid down FIRST, and the trail takes whatever room is left — never less
+         than 48, so a boot report with four fetches in `after:` still says what the app was doing. */
+      var CAP=480;
+      var mus=''; try{ var mst=window.hwMusic&&hwMusic.state&&hwMusic.state(); if(mst)mus=' · music '+mst; }catch(e){}
       var head=what+' '+(ms/1000).toFixed(1)+'s on '+(scr||'?')+open+loader+' · after: '+(suspects(startAt)||'?');
-      var tail=' · '+buildTag()+' · '+Math.round((Date.now()-T0)/1000)+'s after boot · '+(standalone?'home-screen':'browser tab')+' · '+uaShort()+' · '+dom+' nodes · '+anims+' animations';
-      var did=''; try{ if(window.shkCrumb&&shkCrumb.since&&startAt>0)did=shkCrumb.since(startAt-8000,startAt+(ms||0),startAt,6,Math.max(48,300-head.length-tail.length-8)); }catch(e){}
-      var msg=head+' · did: '+(did||'nothing noted')+tail+(names?' ('+names+')':'')+(gifs?' · '+gifs+' gifs in view':'')+(extra?' · '+extra:'');
+      var tail=' · '+buildTag()+' · '+Math.round((Date.now()-T0)/1000)+'s after boot · '+(standalone?'home-screen':'browser tab')+' · '+uaShort()+' · '+dom+' nodes · '+anims+' animations'
+        +(names?' ('+names+')':'')+(gifs?' · '+gifs+' gifs in view':'')+mus+(extra?' · '+extra:'');
+      var did=''; try{ if(window.shkCrumb&&shkCrumb.since&&startAt>0)did=shkCrumb.since(startAt-8000,startAt+(ms||0),startAt,8,Math.max(48,CAP-head.length-tail.length-8)); }catch(e){}
+      var msg=head+' · did: '+(did||'nothing noted')+tail;
       try{ if(typeof window.shkAlert==='function')window.shkAlert('freeze',msg); }catch(e){}
       try{ console.warn('[freeze]',msg); }catch(e){}
     }catch(e){}
