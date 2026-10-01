@@ -963,6 +963,7 @@ html.daylight .heist{background:rgba(64,54,38,.6)}
 .burst{position:absolute;left:50%;top:34%;pointer-events:none}
 .burst i{position:absolute;width:8px;height:8px;border-radius:2px;opacity:0;animation:fly 1.25s cubic-bezier(.15,.8,.4,1) both}
 @keyframes fly{0%{transform:translate(0,0) rotate(0);opacity:1}100%{transform:translate(var(--dx),var(--dy)) rotate(var(--rr));opacity:0}}
+.bpop-all{display:block;margin:12px auto 0;background:none;border:0;color:var(--steel);font:600 11px/1 'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;letter-spacing:.24em;text-transform:uppercase;padding:8px 14px;cursor:pointer;animation:fadeUp .5s .55s both}   /* #markq — skip the rest of a queue */
 
 /* ---------- board ---------- */
 .slotchips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
@@ -7120,6 +7121,7 @@ html.daylight .hm-lm .lk-g,html.daylight .hm-lm .lk-w{fill:#dfeaf7}
       <div class="bpop-name" id="bpopName">—</div>
       <div class="bpop-sub" id="bpopSub">—</div>
       <button class="btn" id="bpopClaim" style="max-width:220px;margin-top:20px">Claim It</button>
+      <button type="button" class="bpop-all" id="bpopAll" style="display:none">Claim all</button>
     </div>
   </div>
 
@@ -9244,6 +9246,9 @@ function mergeDockets(a,b){
        The honest version of this is a server-side marks_awarded row with a unique
        constraint; this is what can be done inside the client. */
     if(key==='shadowhook_markspaid_'+a) return false;
+    /* #markq(sep30) — the celebration queue is per-PHONE: the phone that earned the mark plays it.
+       Mirrored, a second phone would replay it and the first would replay it again on return. */
+    if(key==='shadowhook_markq_'+a) return false;
     /* #doubleboot(sep3) — THE STAMP THAT RELOADED EVERY OPEN. shadowhook_lastseen_<card>
        is the #idle "did they step away" clock: stamped with Date.now() ~150ms into every
        boot and refreshed every minute while the app is open. It rode this mirror, so on
@@ -23527,6 +23532,7 @@ function _seedMarksPaid(why){
     const pk=K('markspaid');
     if(localStorage.getItem(pk)!==null) return;             // already seeded for this card
     const w=_markIdList(K('badges'));
+    try{ (window.__markqFirst=window.__markqFirst||{})[pk]=true; }catch(e){}   /* #markq — first sight of this card here: silent passes don't celebrate this session */
     if(w){
       localStorage.setItem(pk,JSON.stringify(w));
       try{DEVLOG.data('marks',{ok:true,latest:'paid-marks record seeded from the wall ('+(why||'boot')+') — '+w.length+' mark'+(w.length===1?'':'s')+' carried over as already paid'});}catch(e){}
@@ -23670,6 +23676,7 @@ function bpopShow(icon,name,sub,earnedState,fresh,rar){
   document.getElementById('bpopName').textContent=name;
   document.getElementById('bpopSub').textContent=earnedState?(sub||'It hangs on your wall forever.'):('To earn it: '+(sub||'keep working the docks.'));
   document.getElementById('bpopClaim').textContent=earnedState?(fresh?'Claim It':'Close'):'One Day';
+  try{ const _ba=document.getElementById('bpopAll'); if(_ba)_ba.style.display='none'; }catch(e){}   /* #markq — markQShow turns it on for a queue */
   // restart medal + text animations
   const st=bpop.querySelector('.bpop-stage');st.style.animation='none';void st.offsetWidth;
   ['bpopIcon','bpopKicker','bpopName','bpopSub'].forEach(id=>{const el=document.getElementById(id);const a=el.style.animation;el.style.animation='none';void el.offsetWidth;el.style.animation=a||''});
@@ -23703,7 +23710,7 @@ function chime(){ // little payout arpeggio
 let _marksSilent=false;   // #marksfix(aug13) — true while the load-time catch-up awards a backlog, so it doesn't blast a flurry of popups + chimes
 function unlockBadge(ix){ // fire the casino moment for a genuinely new mark
   if(ix<0||!BADGES[ix]||BADGES[ix][2])return;
-  BADGES[ix][2]=1;renderBadges();if(!_marksSilent)chime();
+  BADGES[ix][2]=1;renderBadges();   /* #markq — the chime rides the moment (markQShow), not the award */
   /* #markspay(aug16) — THE STORED LIST DECIDES WHO GETS PAID, NOT THE FLAG.
      THE BUG: the payout was guarded by the IN-MEMORY flag (line above) while only the
      disk write was deduped against the stored list. Whenever those two came apart —
@@ -23762,6 +23769,7 @@ function unlockBadge(ix){ // fire the casino moment for a genuinely new mark
      first, pay second: a teardown between the two costs one 30 ⬡ award, where the old
      order cost the whole wall. */
   const _paid=_markIdList(_pk);
+  let _fresh=false;   /* #markq — true only when this call wrote the mark into the paid record: proof it is new */
   if(_paid===null && !_MARK_LEDGER_LOST[_pk]){
     _MARK_LEDGER_LOST[_pk]=true;
     try{ DEVLOG.data('marks',{ok:false,latest:'the paid-marks record is unreadable — rebuilding it, and no mark pays ⬡ for the rest of this session'}); }catch(e){}
@@ -23784,6 +23792,7 @@ function unlockBadge(ix){ // fire the casino moment for a genuinely new mark
     /* no durable record of the award = no award. Quota-exceeded and Safari private mode
        land here; holding one payout back beats paying it again on every open forever. */
     if(_wrote){
+      _fresh=true;
       if(typeof addCredits==="function"&&!/Port Bucks|High Roller|True North/.test(BADGES[ix][1])){
         /* #markspay — the mark's NAME rides in the reason. The old line wrote the same
            six words for all 107, so nothing downstream could tell which mark a payout
@@ -23796,7 +23805,11 @@ function unlockBadge(ix){ // fire the casino moment for a genuinely new mark
       try{ DEVLOG.data('marks',{ok:false,latest:'mark "'+parts[0]+'" could not be written to disk — payout held back rather than risk a repeat'}); }catch(e){}
     }
   }
-  if(!_marksSilent)bpopShow(ic,parts[0],parts[1]||'',true,true,BADGES[ix][3]||0);
+  /* #markq(sep30) — QUEUED, NOT FIRED. See the block under this function. A silent pass queues too;
+     only a silent pass on a phone meeting this card for the first time stays quiet. */
+  if(_fresh && !(_marksSilent && window.__markqFirst && window.__markqFirst[_pk])){
+    try{ markQPush(ix); markQDrain(_marksSilent?2500:0); }catch(e){}
+  }
   /* #8 — meta-marks: the wall rewards the wall */
   setTimeout(()=>{const earned=BADGES.filter(b=>b[2]).length;
     if(earned>=50)unlockBadge(bixLate("Full House"));
@@ -23804,6 +23817,92 @@ function unlockBadge(ix){ // fire the casino moment for a genuinely new mark
     if(earned>=BADGES.length-1)unlockBadge(bixLate("The Keymaster's Own"));
   },1200);
 }
+/* ═══ #markq(sep30) — EVERY MARK GETS ITS MOMENT ═══
+   "I got credit but I never got the animation." Three ways a mark paid and never played:
+     · A SILENT PASS. The on-open catch-up (marksCatchUp) and the Keymaster's own pass run
+       checkMarks(true): they paid and lit the wall and showed nothing. Any mark that became
+       earnable while no seal was on screen — a docket that arrived from the cloud, a rule that
+       reads a clock, a seal whose own pass was cut short — was awarded there, in silence.
+     · TWO MARKS OFF ONE SEAL. unlockBadge opened the popup once per mark, synchronously, so
+       each one overwrote the last before it ever painted. Only the LAST mark of a pass showed.
+     · A RELOAD. The seal paid and lit the wall, the page reloaded (a deploy's service worker,
+       the first cloud hydrate), the popup went with it, and the next open found the mark lit.
+   Now every award that PAYS — the paid-marks record is the proof it is new — goes into a queue
+   kept on this phone (never mirrored), and the queue plays one moment at a time whenever the
+   screen is free: the app entered, the page visible, nothing over the middle of the screen.
+   Claim It plays the next; "Claim all" clears the rest. It survives a reload, so a moment cut
+   off comes back on the next open. Display only — nothing here touches the money.
+   Not celebrated: a silent pass on a phone seeing this card for the first time (history being
+   restored onto a new device, not earned — see _seedMarksPaid), and anything already paid. */
+function _markQRead(){ try{ const v=JSON.parse(localStorage.getItem(K('markq'))||'[]'); return Array.isArray(v)?v.filter(function(n){ return Number.isInteger(n)&&n>=0&&n<BADGES.length; }):[]; }catch(e){ return []; } }
+function _markQWrite(q){ try{ if(q&&q.length)localStorage.setItem(K('markq'),JSON.stringify(q)); else localStorage.removeItem(K('markq')); }catch(e){} }
+function markQPush(ix){ const q=_markQRead(); if(q.indexOf(ix)<0){ q.push(ix); _markQWrite(q); } }
+/* is something else holding the screen? Probe the middle: any fixed layer at z 60+ (a sheet, a
+   dialog, a room, the camera, the boot or season splash) owns it. Closed sheets and dialogs are
+   visibility:hidden and pointer-events:none layers are skipped by the hit test, so only what the
+   member can actually see counts. */
+function markQCovered(){
+  try{
+    if(document.hidden) return true;
+    const app=document.getElementById('app'); if(app&&!app.classList.contains('on')) return true;   // still at the gate
+    const W=window.innerWidth||document.documentElement.clientWidth||390, H=window.innerHeight||document.documentElement.clientHeight||700;
+    const pts=[[W/2,H*.5],[W/2,H*.32],[W/2,H*.68]];
+    for(let i=0;i<pts.length;i++){
+      let el=document.elementFromPoint(pts[i][0],pts[i][1]);
+      while(el&&el!==document.body&&el!==document.documentElement){
+        const cs=getComputedStyle(el);
+        if(cs.position==='fixed'&&((+cs.zIndex)||0)>=60) return true;
+        el=el.parentElement;
+      }
+    }
+  }catch(e){}
+  return false;
+}
+let _mqT=null, _mqShowing=-1;
+function markQDrain(delay){
+  clearTimeout(_mqT);
+  _mqT=setTimeout(function tick(){
+    _mqT=null;
+    try{
+      const q=_markQRead(); if(!q.length) return;
+      if(document.hidden) return;                                     /* visibilitychange starts it again */
+      if(bpop.classList.contains('on')||markQCovered()){ _mqT=setTimeout(tick,1200); return; }
+      const ix=q[0];
+      if(!BADGES[ix]||!BADGES[ix][2]){ q.shift(); _markQWrite(q); _mqT=setTimeout(tick,0); return; }   /* no longer lit — nothing to celebrate */
+      markQShow(ix,q.length);
+    }catch(e){}
+  },Math.max(0,delay||0));
+}
+function markQShow(ix,n){
+  const ic=BADGES[ix][0], parts=String(BADGES[ix][1]).split(' · ');
+  _mqShowing=ix;
+  bpopShow(ic,parts[0],parts[1]||'',true,true,BADGES[ix][3]||0);
+  try{ chime(); }catch(e){}
+  const more=n-1, cl=document.getElementById('bpopClaim'), all=document.getElementById('bpopAll');
+  if(cl) cl.textContent=more>0?('Claim It · '+more+' more'):'Claim It';
+  if(all){ all.textContent='Claim all '+n; all.style.display=more>0?'':'none'; }
+}
+window.markQDrain=markQDrain;
+(function(){
+  /* every way the popup closes — Claim It, a tap outside, the phone's Back — drops the class;
+     watch the class, not the buttons, so none of them can skip the bookkeeping */
+  let wasOn=bpop.classList.contains('on');
+  try{
+    new MutationObserver(function(){
+      const on=bpop.classList.contains('on');
+      if(wasOn&&!on){
+        if(_mqShowing>=0){ const q=_markQRead(), k=q.indexOf(_mqShowing); if(k>-1){ q.splice(k,1); _markQWrite(q); } _mqShowing=-1; }
+        if(_markQRead().length) markQDrain(450);
+      }
+      wasOn=on;
+    }).observe(bpop,{attributes:true,attributeFilter:['class']});
+  }catch(e){}
+  const all=document.getElementById('bpopAll');
+  if(all) all.addEventListener('click',function(e){ e.stopPropagation(); _markQWrite([]); _mqShowing=-1; bpop.classList.remove('on'); });
+  document.addEventListener('visibilitychange',function(){ if(!document.hidden&&_markQRead().length) markQDrain(900); });
+  /* a moment a reload cut off plays on the next open (marksCatchUp drains again once the card is known) */
+  setTimeout(function(){ markQDrain(0); },3000);
+})();
 /* #marks2(aug13) — ONE DOOR FOR EVERY ⬡ PURCHASE MARK. Each place that used to fire
    Armory Patron directly (rooms, gatherings, rings, the rename desk) calls this
    instead, so the purchase count and its tier marks can never drift apart. */
@@ -24367,9 +24466,12 @@ function marksCatchUp(){
   if(window.__marksCaughtUp) return 0;
   window.__marksCaughtUp=true;
   let n=0;
+  const _q0=(function(){ try{ return _markQRead().length; }catch(e){ return 0; } })();
   try{ n=checkMarks(true); }catch(e){ return 0; }
+  try{ markQDrain(1500); }catch(e){}   /* #markq — the card is known now: play anything queued (this pass, or cut off last time) */
   if(n>0){
-    try{toast('⚑ '+n+' mark'+(n>1?'s':'')+' caught up — check your wall');}catch(e){}
+    let _queued=false; try{ _queued=_markQRead().length>_q0; }catch(e){}
+    if(!_queued){ try{toast('⚑ '+n+' mark'+(n>1?'s':'')+' caught up — check your wall');}catch(e){} }   /* #markq — a queued mark gets its own moment instead */
     /* the awards went out as apply_bucks calls; re-read the bank once that burst has
        landed so the header ends on the BANK'S total, never this device's guess.
        Scheduled HERE, not at the call site, so no caller can gate it out again. */
@@ -42225,6 +42327,25 @@ apply(true);   /* #perf(aug24) — boot pass: set the class, skip the resize sto
   setInterval(applySeason,3600000);
   document.addEventListener('visibilitychange',function(){if(!document.hidden)applySeason()});
   window.addEventListener('focus',applySeason);
+  /* #midnight(sep30) — THE TURN OF THE DAY, ON THE MINUTE. The hourly re-check is phased off
+     whenever the app happened to open, so a phone left on screen across midnight could wear the
+     old day for up to 59 minutes — on the night a season starts, that is the whole show arriving
+     late. One timer aimed at the next local midnight (+2s, past any clock jitter), re-armed each
+     day: the class turns, the decor observer rebuilds, and the weather layer is told to redraw so
+     anything that reads the calendar (the October ramp, the 31st's hw-day) moves with the date.
+     Timers sleep in the background on a phone — the visibilitychange hook above covers that return. */
+  (function armMidnight(){
+    try{
+      var n=new Date(), m=new Date(n.getFullYear(),n.getMonth(),n.getDate()+1,0,0,2);
+      setTimeout(function(){
+        var before=document.documentElement.className;
+        try{ applySeason(); }catch(e){}
+        /* the class turned → the decor observer already rebuilt; the same season on a new date → redraw it here */
+        if(document.documentElement.className===before){ try{ if(window.decorRefresh)window.decorRefresh(); }catch(e){} }
+        armMidnight();
+      },Math.max(1000,m-n));
+    }catch(e){}
+  })();
 })();
 </script>
 
@@ -43545,6 +43666,7 @@ window.SEASON_DECOR={
     }catch(e){ try{console.warn('[decor]',e)}catch(_){} }
   }
   window.decorPaint=paint;
+  window.decorRefresh=function(){ BUILT=null; FACED='?'; paint(); };   /* #midnight — a new date inside the same season: redraw (the ramp, the 31st) */
   window.setDecor=function(v){ try{ v==='off'?localStorage.setItem('shadowhook_decor','off')
     :localStorage.removeItem('shadowhook_decor'); }catch(e){} FACED='?'; paint();
     return v==='off'?'decor off — colours stay':'decor on'; };
