@@ -5180,6 +5180,26 @@ window.DEVLOG=(function(){
   #rflFlyer.t-spooky .rfl-fly-scroll img{border:2px solid #b6ff3d;box-shadow:0 0 24px rgba(182,255,61,.35),0 20px 50px rgba(0,0,0,.7)}
   #rflFlyer .rfl-fly-bar{flex:0 0 auto;padding:10px 14px calc(env(safe-area-inset-bottom,0px) + 14px);background:linear-gradient(180deg,rgba(5,2,12,0),rgba(5,2,12,.95) 40%)}
   #rflFlyer .rfl-fly-go{width:100%;font-size:14px;letter-spacing:.14em}
+  /* #flybuy(oct1) — the ticket counter under the poster. #flybuy2 — sized up: there is room, so the
+     numbers, the stepper and the buttons wear it (46px rows, 15px type) */
+  #rflFlyer .rfl-fly-bar{padding-top:12px}
+  #rflFlyer .rfl-fly-buy{display:flex;flex-direction:column;gap:10px}
+  #rflFlyer .rfl-fly-stats{display:flex;justify-content:space-between;gap:6px;padding:2px 2px 0;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--steel)}
+  #rflFlyer .rfl-fly-stats span{display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;min-width:0;white-space:nowrap}
+  #rflFlyer .rfl-fly-stats b{font-family:'IBM Plex Mono',monospace;font-size:20px;line-height:1;color:var(--bone)}
+  #rflFlyer.t-spooky .rfl-fly-stats b{color:#b6ff3d;text-shadow:1px 1px 0 #5a0fa0}
+  #rflFlyer .rfl-fly-row{display:flex;gap:10px;align-items:stretch}
+  #rflFlyer .rfl-fly-row .rfl-step{flex:0 0 auto;margin:0;gap:4px}
+  #rflFlyer .rfl-fly-row .rfl-step button{width:46px;height:54px;font-size:26px;border-radius:12px}
+  #rflFlyer .rfl-fly-row .rfl-step .n{min-width:34px;font-size:24px}
+  #rflFlyer .rfl-fly-row .rfl-buy{flex:1;min-width:0;margin:0;font-size:15px;letter-spacing:.12em;padding:0 8px;min-height:54px}
+  #rflFlyer .rfl-fly-bundle{width:100%;margin:0;font-size:14px;letter-spacing:.1em;min-height:48px}
+  #rflFlyer.t-spooky .rfl-fly-bundle{background:#d1600f;border-color:#d1600f;color:#fff;box-shadow:0 3px 0 #7a3305}
+  #rflFlyer .rfl-fly-note{margin:0;text-align:center;font-size:13px;line-height:1.45}
+  #rflFlyer .rfl-msg{margin:0;text-align:center;min-height:0;font-size:13.5px}
+  #rflFlyer .rfl-msg:empty{display:none}
+  #rflFlyer .rfl-fly-more{background:none;border:0;color:var(--steel);font:600 11.5px/1 'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;letter-spacing:.1em;text-transform:uppercase;padding:6px 6px 2px;cursor:pointer;white-space:nowrap}
+  #rflFlyer.t-spooky .rfl-fly-more{color:#c9a8ff}
   #rflFlyer.t-spooky .rfl-fly-go{background:#b6ff3d;border-color:#b6ff3d;color:#1a0633;box-shadow:0 4px 0 #5a9a12,0 0 18px rgba(182,255,61,.5)}
   #rflFlyer .rfl-fly-x{position:absolute;top:calc(env(safe-area-inset-top,0px) + 20px);right:22px;z-index:2;width:34px;height:34px;border-radius:50%;border:1px solid rgba(255,255,255,.35);background:rgba(0,0,0,.55);color:#fff;font-size:15px;cursor:pointer}
   html.daylight #rflFlyer{background:rgba(240,235,250,.94)}
@@ -50933,6 +50953,7 @@ window.HARBOR_LORE={"ports":{"LA":{"name":"Port of Los Angeles","kicker":"San Pe
         sn.addEventListener('click',e=>{ if(e.target.closest('.bn-strip')&&document.documentElement.classList.contains('rfl-full')){ try{localStorage.setItem(LS_MIN,R.id+':'+R.status);}catch(x){} paint(); } },true); }
     }catch(e){}
     if($('rflSheet')&&$('rflSheet').classList.contains('on'))sheetPaint();
+    try{ if(flyOpen())flyPaint(); }catch(e){}   /* #flybuy */
     /* #bannerfade — the raffle opened: the holiday card steps aside for today */
     try{ const rs=$('rflSheet'); if(rs&&!rs._bnWatch){ rs._bnWatch=1; new MutationObserver(()=>{ if(rs.classList.contains('on')&&window.bannerAway)window.bannerAway(true); }).observe(rs,{attributes:true,attributeFilter:['class']}); } }catch(e){}
   }
@@ -51101,18 +51122,62 @@ window.HARBOR_LORE={"ports":{"LA":{"name":"Port of Los Angeles","kicker":"San Pe
     if(!R)return; const src=safeUrl(R.flyer_url); if(!src){ rflOpen(); return; }
     let sh=$('rflFlyer');
     if(!sh){ sh=document.createElement('div'); sh.className='sheet'; sh.id='rflFlyer'; sh.setAttribute('role','dialog'); sh.setAttribute('aria-modal','true'); sh.setAttribute('aria-label','The raffle flyer');
+      /* #flybuy(oct1) — TICKETS ARE BOUGHT RIGHT HERE. The bar under the poster used to be one button
+         that closed the flyer and opened the ticket sheet — a second window for the same thing. The
+         bar IS the ticket counter now: the counts, the stack, the stepper, BUY and the 4-pack, the
+         same two-tap arm and the same raffle_buy call the sheet makes. The sheet survives as a small
+         "odds & how it works" link for the long read. */
       sh.innerHTML='<div class="rfl-fly"><button class="rfl-fly-x" type="button" aria-label="Close the flyer">✕</button><div class="rfl-fly-scroll"><img alt=""></div>'
-        +'<div class="rfl-fly-bar"><button class="btn rfl-fly-go" type="button">🎟 STEP RIGHT UP ▸</button></div></div>';
+        +'<div class="rfl-fly-bar"><div class="rfl-fly-buy" id="rflFlyBuy"></div></div></div>';
       document.body.appendChild(sh);
       sh.addEventListener('click',e=>{ if(e.target===sh)sh.classList.remove('on'); });
-      sh.querySelector('.rfl-fly-x').addEventListener('click',()=>sh.classList.remove('on'));
-      sh.querySelector('.rfl-fly-go').addEventListener('click',()=>{ sh.classList.remove('on'); setTimeout(()=>{ try{rflOpen();}catch(e){} },120); }); }
+      sh.querySelector('.rfl-fly-x').addEventListener('click',()=>sh.classList.remove('on')); }
     const im=sh.querySelector('img'); if(im.getAttribute('src')!==src)im.src=src; im.alt=R.title||'The raffle';
-    const ph=phase(R); sh.querySelector('.rfl-fly-go').textContent=ph==='live'?'🎟 STEP RIGHT UP ▸':ph==='drawn'?'🏆 SEE THE DRAW ▸':'SEE THE RAFFLE ▸';
     sh.classList.toggle('t-spooky',R.theme==='spooky');
+    qty=1; flyPaint();
     sh.querySelector('.rfl-fly-scroll').scrollTop=0; sh.classList.add('on');
     try{ if(window.bannerAway)window.bannerAway(true); }catch(e){}
+    try{ if(typeof sbRefreshBucks==='function')sbRefreshBucks(); }catch(e){}
+    loadState().then(()=>{ try{flyPaint();}catch(e){} });   /* fresh counts the moment the wire answers */
   };
+  function flyOpen(){ return !!($('rflFlyer')&&$('rflFlyer').classList.contains('on')); }
+  /* the counter on the flyer — same facts, same rules as sheetPaint, in one strip */
+  function flyPaint(){
+    const sh=$('rflFlyer'); if(!sh||!R)return; const box=sh.querySelector('#rflFlyBuy'); if(!box)return;
+    const ph=phase(R), signed=!!window.__shkUid, b=bal();
+    const cap=R.max_per_member, room=cap?Math.max(0,cap-(ST.mine||0)):100;
+    qty=Math.max(1,Math.min(qty,Math.max(1,room)));
+    const cost=qty*R.ticket_price, bq=R.bundle_qty, bp=R.bundle_price;
+    let h='';
+    if(ph==='live'){
+      h+='<div class="rfl-fly-stats"><span><b>'+num(ST.total)+'</b>tickets in</span><span><b>'+num(ST.entrants)+'</b>casuals</span><span><b>'+num(ST.mine)+'</b>you hold</span><span><b>'+num(b)+'</b>⬡ stack</span></div>';
+      if(!signed){ h+='<button class="btn rfl-fly-go" type="button" id="rflFSign">🎟 SIGN IN TO BUY TICKETS</button>'; }
+      else if(cap&&room<=0){ h+='<p class="sub rfl-fly-note">You hold the max — '+cap+' tickets. Good luck at the draw.</p>'; }
+      else{
+        h+='<div class="rfl-fly-row"><div class="rfl-step"><button type="button" id="rflFMinus" aria-label="One fewer">−</button><div class="n">'+qty+'</div><button type="button" id="rflFPlus" aria-label="One more">+</button></div>'
+          +'<button class="btn rfl-buy rfl-fly-go" id="rflFBuy" type="button"'+(b<cost?' disabled':'')+'>🎟 BUY '+qty+' TICKET'+(qty>1?'S':'')+' · '+num(cost)+' ⬡</button></div>';
+        if(bq&&bp&&room>=bq){ const save=bq*R.ticket_price-bp;
+          h+='<button class="btn-line gold rfl-buy rfl-fly-bundle" id="rflFBundle" type="button"'+(b<bp?' disabled':'')+'>'+bq+' TICKETS · '+num(bp)+' ⬡'+(save>0?' · SAVE '+num(save):'')+'</button>'; }
+        if(b<R.ticket_price)h+='<p class="sub rfl-fly-note">You need '+num(R.ticket_price-b)+' more ⬡ for a ticket — seal dockets, call the board, log the drops.</p>';
+      }
+      h+='<div class="rfl-msg sub" id="rflFMsg"></div>'
+        +'<button class="rfl-fly-more" type="button" id="rflFMore">Odds &amp; how the draw works ▸</button>';
+    }else if(ph==='drawn'){
+      h+='<button class="btn rfl-fly-go" type="button" id="rflFOpen">🏆 SEE THE DRAW ▸</button>';
+    }else{
+      h+='<p class="sub rfl-fly-note">'+(ph==='soon'?'Tickets go on sale '+E(when(R.opens_at)):ph==='cancelled'?'This raffle was called off — every ticket was refunded.':'Sales are closed — the Keymaster draws soon.')+'</p>'
+        +'<button class="rfl-fly-more" type="button" id="rflFOpen">See the raffle ▸</button>';
+    }
+    box.innerHTML=h;
+    const on=(id,f)=>{const el=box.querySelector('#'+id);if(el)el.addEventListener('click',f);};
+    on('rflFMinus',()=>{qty=Math.max(1,qty-1);flyPaint();});
+    on('rflFPlus',()=>{qty=Math.min(room,qty+1);flyPaint();});
+    on('rflFBuy',e=>armThenBuy(e.currentTarget,false));
+    on('rflFBundle',e=>armThenBuy(e.currentTarget,true));
+    on('rflFSign',()=>{ sh.classList.remove('on'); try{ if(typeof goGateForHandle==='function')goGateForHandle(); }catch(e){} });
+    const toSheet=()=>{ sh.classList.remove('on'); setTimeout(()=>{ try{rflOpen();}catch(e){} },120); };
+    on('rflFMore',toSheet); on('rflFOpen',toSheet);
+  }
   window.rflOpen=async function(){
     if(!R)return; qty=1; const sh=sheet(); sh.classList.add('on'); sheetPaint();
     try{ if(window.bannerAway)window.bannerAway(true); }catch(e){}   /* #bannerfade — the raffle opened: the holiday card steps aside for today */
@@ -51189,20 +51254,21 @@ window.HARBOR_LORE={"ports":{"LA":{"name":"Port of Los Angeles","kicker":"San Pe
     }
     buy(bundle);
   }
+  const msgEl=()=>flyOpen()?$('rflFMsg'):$('rflMsg');   /* #flybuy — whichever counter is open */
   async function buy(bundle){
-    const msg=$('rflMsg'); busy=true; if(msg){msg.style.color='';msg.textContent='writing your ticket…';}
+    const msg=msgEl(); busy=true; if(msg){msg.style.color='';msg.textContent='writing your ticket…';}
     try{
       const r=await window.SB.rpc('raffle_buy',{p_raffle:R.id,p_qty:qty,p_bundle:!!bundle});
       if(r.error)throw r.error;
       const d=r.data||{};
       ST={total:d.total,entrants:d.entrants,mine:d.mine};
       try{ if(typeof d.balance==='number'){ CREDITS=d.balance; try{localStorage.setItem(K('credits'),CREDITS);}catch(e){} renderCredits(); } }catch(e){}
-      qty=1; sheetPaint(); paint();
-      const m=$('rflMsg'); if(m){m.style.color='var(--ok)';m.textContent='✓ '+d.bought+' ticket'+(d.bought==1?'':'s')+' in — you hold '+d.mine+'. Good luck.';}
+      qty=1; sheetPaint(); flyPaint(); paint();
+      const m=msgEl(); if(m){m.style.color='var(--ok)';m.textContent='✓ '+d.bought+' ticket'+(d.bought==1?'':'s')+' in — you hold '+d.mine+'. Good luck.';}
       say('🎟 '+d.bought+' raffle ticket'+(d.bought==1?'':'s')+' · −'+num(d.cost)+' ⬡');
     }catch(e){
       const t=String(e&&e.message||e).replace(/^raffle:\s*/,'');
-      const m=$('rflMsg'); if(m){m.style.color='var(--ember)';m.textContent='✗ '+t;}
+      const m=msgEl(); if(m){m.style.color='var(--ember)';m.textContent='✗ '+t;}
       try{ if(!/cap is|takes \d|not open|closed|not on sale/.test(t)&&window.shkAlert)shkAlert('raffle buy',e); }catch(x){}
       try{ if(typeof sbRefreshBucks==='function')sbRefreshBucks(); }catch(x){}
       await loadState(); paint();
