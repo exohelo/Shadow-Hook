@@ -5138,6 +5138,7 @@ window.DEVLOG=(function(){
      44px clearance left a dead band under it. Whichever poster leads now sits ~12px under the pill. */
   #rflHost:not(:empty):not(.bare){margin-top:0px!important}
   #rflHost.bare + #snBanner,.stage > #snBanner:first-child{margin-top:-12px!important}
+  .rfl-bn.bye{transition:opacity .42s ease,transform .42s ease;opacity:0;transform:translateY(-10px) scale(.98)}   /* #autofold — folding away */
   .rfl-bn{--rim:#4de2ff;--acc:#ff3d8b;--sub:#b9a6ff;--bg1:#170b2e;--bg2:#06141d;
     position:relative;container-type:inline-size;display:grid;grid-template-columns:minmax(0,1fr) 42%;align-items:center;min-height:156px;
     padding:14px 12px 14px 16px;border:1px solid color-mix(in srgb,var(--rim) 55%,transparent);border-radius:16px;overflow:hidden;cursor:pointer;
@@ -50964,6 +50965,39 @@ window.HARBOR_LORE={"ports":{"LA":{"name":"Port of Los Angeles","kicker":"San Pe
     if(TAG_LINES>1)html.classList.add('rfl-tag'+TAG_LINES);
   }
   function minned(){ try{return R&&localStorage.getItem(LS_MIN)===R.id+':'+R.status;}catch(e){return false;} }
+  /* ═══ #autofold(oct1) — THE BANNER FOLDS ITSELF. The full card is a poster; nobody needs it in their face on
+     every open. It counts the seconds it is actually on screen (this tab, page visible, most of it in view),
+     across opens, and once it has had FOLD_AFTER seconds of a member's eyes it fades and tucks itself into the
+     🎃 RAFFLE tag in the header — the same place the ✕ sends it, so the raffle is still one tap away. A member
+     who opens it back up from the tag has said they want it: that raffle is never folded on them again. The
+     count is per raffle AND per status, so the winner card gets its own time on stage. */
+  const FOLD_AFTER=45;
+  let _foldT=null;
+  const foldKey=()=>'shadowhook_rfl_seen_'+R.id+':'+R.status, keepKey=()=>'shadowhook_rfl_keep_'+R.id+':'+R.status;
+  function foldArm(){
+    clearInterval(_foldT); _foldT=null;
+    if(!R||minned())return;
+    try{ if(localStorage.getItem(keepKey()))return; }catch(e){}
+    _foldT=setInterval(()=>{
+      try{
+        if(!R||minned()){ clearInterval(_foldT); _foldT=null; return; }
+        if(document.hidden)return;
+        const bn=document.querySelector('#rflHost .rfl-bn'); if(!bn||!bn.offsetParent)return;         /* another tab is up: no eyes on it */
+        const r=bn.getBoundingClientRect(), vis=Math.min(r.bottom,innerHeight)-Math.max(r.top,0);
+        if(vis<r.height*.5)return;                                                                   /* scrolled mostly off: doesn't count */
+        let n=0; try{ n=(+localStorage.getItem(foldKey())||0)+1; localStorage.setItem(foldKey(),String(n)); }catch(e){ n=FOLD_AFTER; }
+        if(n>=FOLD_AFTER){ clearInterval(_foldT); _foldT=null; fold(bn); }
+      }catch(e){}
+    },1000);
+  }
+  function fold(bn){
+    try{ bn.classList.add('bye'); }catch(e){}
+    setTimeout(()=>{
+      try{ localStorage.setItem(LS_MIN,R.id+':'+R.status); }catch(e){}
+      paint();
+      try{ const t=$('rflTag'); if(t){ t.classList.remove('boo'); void t.offsetWidth; t.classList.add('boo'); } }catch(e){}   /* the tag waves: "over here" */
+    },440);
+  }
   function paint(){
     const host=$('rflHost'); if(!host)return;
     if(!R){host.innerHTML='';document.documentElement.classList.remove('rfl-full');tagPaint(false);return;}
@@ -50983,6 +51017,7 @@ window.HARBOR_LORE={"ports":{"LA":{"name":"Port of Los Angeles","kicker":"San Pe
     }catch(e){}
     if($('rflSheet')&&$('rflSheet').classList.contains('on'))sheetPaint();
     try{ if(flyOpen())flyPaint(); }catch(e){}   /* #flybuy */
+    try{ foldArm(); }catch(e){}   /* #autofold */
     /* #bannerfade — the raffle opened: the holiday card steps aside for today */
     try{ const rs=$('rflSheet'); if(rs&&!rs._bnWatch){ rs._bnWatch=1; new MutationObserver(()=>{ if(rs.classList.contains('on')&&window.bannerAway)window.bannerAway(true); }).observe(rs,{attributes:true,attributeFilter:['class']}); } }catch(e){}
   }
@@ -50992,7 +51027,7 @@ window.HARBOR_LORE={"ports":{"LA":{"name":"Port of Los Angeles","kicker":"San Pe
       const a=e.target.closest('[data-rfl]'); if(!a||!R)return;
       const k=a.dataset.rfl;
       if(k==='min'){e.stopPropagation(); try{localStorage.setItem(LS_MIN,R.id+':'+R.status);}catch(x){} paint(); return;}
-      if(k==='max'){ try{localStorage.removeItem(LS_MIN);}catch(x){} paint(); return;}
+      if(k==='max'){ try{localStorage.removeItem(LS_MIN); localStorage.setItem(keepKey(),'1');}catch(x){} paint(); return;}   /* #autofold — opened on purpose: stays open */
       if(k==='open'){ if(a.classList.contains('img-only')&&safeUrl(R.flyer_url))rflFlyer(); else rflOpen(); }
     });
     host.addEventListener('keydown',e=>{ if((e.key==='Enter'||e.key===' ')&&e.target.matches('[data-rfl="open"]')){e.preventDefault(); if(e.target.classList.contains('img-only')&&safeUrl(R.flyer_url))rflFlyer(); else rflOpen();} });
