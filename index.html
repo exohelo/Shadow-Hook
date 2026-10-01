@@ -6222,7 +6222,7 @@ window.DEVLOG=(function(){
          Missing-terminal word for "LB 204"). No separate door — Log It By Hand, right below,
          is the path. This line just says so before anyone points the camera at one. -->
     <div class="screen-sub" id="clerkNote" style="margin:0 2px 14px;line-height:1.45">
-      Clerk dockets are <b style="color:var(--bone)">handwritten</b> — the reader can’t take them. Log those by hand below.
+      Clerk dockets are <b style="color:var(--bone)">handwritten</b> — the reader can’t take them. Log those by hand below and <b style="color:var(--bone)">attach a shot of the slip</b> so the job pays and moves the board.
     </div>
 
     <!-- #dock2 — LOG IT BY HAND is an OPEN FORM on the page now (no console, no popup).
@@ -6258,9 +6258,26 @@ window.DEVLOG=(function(){
             <button type="button" class="chip" data-fin="late">Finished · stayed late</button>
           </div>
         </div>
+        <!-- #clerkproof(sep30) — ATTACH THE SLIP. Clerk dockets are handwritten, so the reader can't take them
+             (#clerkdocket) — and since #slipfirst a hand-typed docket is record-only. Together those two rules
+             left a clerk job unable to ever pay or move the board. The way through: shoot the slip HERE, no
+             reader — the photo rides the entry as the receipt, vaulted like a scan. With the slip on it the
+             docket pays ⬡ under the normal faucet rules and, for a clerk docket off the dispatch running now,
+             walks the board on the form's own date and start — tagged 'clerk slip' on the tape so the crown
+             can audit the shot in the vault. Printed dockets still go through Scan: the reader's read of the
+             slip's own clock is what proves those. -->
+        <div id="njAttWrap" style="margin-bottom:12px">
+          <input type="file" id="njAttach" accept="image/*" hidden>
+          <button type="button" class="btn-ghost" id="njAttachBtn" style="width:100%">📷 Attach the slip <small style="text-transform:none;letter-spacing:0;opacity:.75">— clerk dockets: shoot it, no reader</small></button>
+          <div id="njAttShow" style="display:none;align-items:center;gap:10px;margin-top:2px">
+            <img id="njAttImg" alt="slip" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--line);flex:none">
+            <div style="flex:1;font-size:11.5px;line-height:1.45;color:var(--bone)">Slip attached — this one counts.<br><span style="color:var(--steel)">It pays ⬡; a clerk docket off the dispatch running now moves the board.</span></div>
+            <button type="button" class="btn-ghost" id="njAttDrop" style="padding:6px 10px;flex:none" aria-label="remove the photo">✕</button>
+          </div>
+        </div>
         <button class="btn" style="width:100%" id="njAdd">Seal it in the log</button>
-        <!-- #slipfirst(sep24) — said before the tap, not after -->
-        <div id="njHandNote" style="margin-top:8px;font-size:11.5px;line-height:1.5;color:var(--steel)">Typed by hand = <b>on the record, 0 ⬡, doesn't move the board.</b> To count it, scan the slip — if the reader gets it wrong, fix it on the form that opens.</div>
+        <!-- #slipfirst(sep24) — said before the tap, not after · #clerkproof — and the two ways to count it -->
+        <div id="njHandNote" style="margin-top:8px;font-size:11.5px;line-height:1.5;color:var(--steel)">Typed by hand = <b>on the record, 0 ⬡, doesn't move the board.</b> To count it: a printed docket — scan it above (fix the form if the reader misreads); a handwritten clerk docket — attach a shot of the slip here.</div>
       </div>
     </div>
     </div>
@@ -12391,6 +12408,21 @@ function slipLiveCheck(j,wk){
     wk=wk||winKey(); if(!wk)return {ok:false,why:null};
     const live=(String(wk).indexOf("_DAY")>0)?"DAY":"NIGHT";
     const s=j&&j.slip, md=function(iso){return String(+iso.slice(5,7))+"/"+String(+iso.slice(8,10));};
+    /* #clerkproof(sep30) — a slip ATTACHED by hand carries no reader read. A clerk docket is handwritten —
+       there is no printed clock to read — so its photo is the receipt and the FORM's own date and start stand
+       in, tagged on the tape so the crown can check the shot against them. A printed docket still has to be
+       scanned: the reader's read of its clock is what proves it. */
+    if(j&&j.att&&!(s&&s.date)){
+      if(!njIsClerkCat(j.category))return {ok:false,why:"a printed docket has to be scanned, so the reader can confirm the date and clock on it"};
+      if(j.date!==todayISO())return {ok:false,why:"the form is dated "+md(j.date)+", not today"};
+      if(!j.start)return {ok:false,why:"no job start on the form, so it can’t tell day from night"};
+      const aside=slipSide(j.start);
+      if(aside!==live){
+        const at=(function(){try{return fmtStartLong(j.start);}catch(e){return j.start;}})();
+        return {ok:false,why:"the form says the job starts "+at+" — "+(aside==="HOOT"?"a hoot owl":("a "+aside+" job"))+", and the "+live+" board is running"};
+      }
+      return {ok:true,why:null,tag:md(j.date)+" "+(function(){try{return fmtStart(j.start);}catch(e){return j.start;}})()};
+    }
     if(!s||!s.date)return {ok:false,why:"the reader couldn’t read the date printed on the slip, so it can’t prove it’s today’s"};
     if(s.date!==todayISO())return {ok:false,why:"the slip is dated "+md(s.date)+", not today"};
     if(!s.start)return {ok:false,why:"the reader couldn’t read the AM/PM start time on the slip, so it can’t tell day from night"};
@@ -20416,7 +20448,7 @@ document.getElementById('strikeEdit').addEventListener('click',e=>{
   njToggleClerk();
   try{ njFinSet(j.finish||''); }catch(e){}   /* #finish */
   window.njEditId=j._id;
-  window.scanThumb=null; // keep the existing photo, don't overwrite
+  window.scanThumb=null; window.njAttached=false; // keep the existing photo, don't overwrite · #clerkproof — a fresh attach may still join it
   const btn=document.getElementById('njAdd'); btn.textContent="Update this entry";
   docketPhotoSrc(j).then(src=>{ try{manualOpen(src||null)}catch(e){} });   /* #dock2 — correction popup; the entry's own slip rides on top · #slipvault — off the phone's store */
 });
@@ -20449,10 +20481,12 @@ function renderJobDatalist(){
 }
 renderJobDatalist();
 /* the clerk-key % selector only makes sense for clerk jobs — toggle it live */
+/* #clerkproof — one answer to "is this a clerk job": the job list's Clerk tier, or a code that starts CLERK */
+function njIsClerkCat(cat){ try{ cat=String(cat||"").toUpperCase().trim(); const e=jobEntry(cat); return !!((e&&e.tier==="Clerk")||cat.startsWith("CLERK")); }catch(e){ return false; } }
+window.njIsClerkCat=njIsClerkCat;
 function njToggleClerk(){
   const cat=(document.getElementById('njCat').value||"").toUpperCase().trim();
-  const e=jobEntry(cat);
-  const isClerk = (e&&e.tier==="Clerk") || cat.startsWith("CLERK");
+  const isClerk = njIsClerkCat(cat);
   const wrap=document.getElementById('njClerkWrap');
   if(wrap)wrap.style.display=isClerk?"block":"none";
 }
@@ -20693,6 +20727,7 @@ function slipReattach(j,pos,ignoreId){
     if(docketPhotoHere(had))return false;              /* it already has its picture here — the plain refusal stands */
     had.photo=shot; had.src='photo'; window.scanThumb=null;
     try{ if(j&&j.slip)had.slip=j.slip; }catch(e){}   /* #slipclock — the slip's own date + clock ride onto the entry */
+    try{ if(j&&j.att)had.att=true; }catch(e){}       /* #clerkproof — attached by hand, no reader: the form's clock stands in for a clerk docket */
     try{ window.scanLast=null; }catch(e){}
     /* #slipfirst(sep24) — a docket that was typed by hand (0 ⬡, no vote on the reel) just
        got its slip. The slip is the receipt: pay it now under the normal faucet rules, and
@@ -20703,7 +20738,7 @@ function slipReattach(j,pos,ignoreId){
       try{ sealBucks(had); }catch(e){}
     }
     saveDK(); renderDockets();
-    if(_settled){ try{ feedLiveFromDocket(had,myBoardId(),'slip later'); }catch(e){} }
+    if(_settled){ try{ feedLiveFromDocket(had,myBoardId(),(j&&j.att)?(njIsClerkCat(had.category)?'clerk slip':'slip attached'):'slip later'); }catch(e){} }
     try{ checkMarks(); }catch(e){}
     if(pos!=null) alert("Docket read: "+pos+". That job was already in the log — this photo is now on that entry.");
     else { try{ toast("✓ Photo added to the entry already in the log"); }catch(e){} }
@@ -21126,7 +21161,7 @@ document.getElementById('njAdd').onclick=()=>{
     const sb=(window.scanLast&&window.scanLast.p&&window.scanLast.p.berth)?String(window.scanLast.p.berth).toUpperCase().replace(/\s+/g,' ').trim():'';
     if(termHit&&sb&&berthMatch(sb,termHit.berths))return sb;
   }catch(e){} return undefined; })();
-  const j={date,ship:ship||"—",terminal:termOk,berth:termBerth,dock:termDock,bno:termBno,category,shift,start:start||undefined,hours:hours||undefined,flex:flex||undefined,clerkPct:clerkPct||undefined,finish:njFinGet()||undefined,board:"",queue:"",photo:(window.scanThumb||null),_id:Date.now()};   /* #finish — the casual's own word on the finish-up */
+  const j={date,ship:ship||"—",terminal:termOk,berth:termBerth,dock:termDock,bno:termBno,category,shift,start:start||undefined,hours:hours||undefined,flex:flex||undefined,clerkPct:clerkPct||undefined,finish:njFinGet()||undefined,board:"",queue:"",photo:(window.scanThumb||null),att:(window.njAttached&&window.scanThumb)?true:undefined,_id:Date.now()};   /* #finish — the casual's own word on the finish-up · #clerkproof — att: the slip was attached by hand, not read */
   try{ if(j.photo&&window.scanLast&&window.scanLast.p)j.slip=slipProof(window.scanLast.p); }catch(e){}   /* #slipclock — the reader's read of the slip, not the form's defaults */
   const editId=window.njEditId||null;
   if(isDupDocket(j,editId)){
@@ -21140,16 +21175,23 @@ document.getElementById('njAdd').onclick=()=>{
     const ix=DOCKETS.findIndex(x=>x._id==editId);
     if(ix>-1){
       const prev=DOCKETS[ix];
-      DOCKETS[ix]={...prev,date,ship:ship||"—",terminal:termOk,berth:termBerth,dock:termDock,bno:(termBno||((prev.bno&&termHit&&berthMatch(prev.bno,termHit.berths))?prev.bno:undefined)),category,shift,start:start||prev.start||undefined,hours:hours||undefined,flex:(start?flex:prev.flex)||undefined,clerkPct:clerkPct||undefined,finish:njFinGet()||undefined,photo:prev.photo}; // #27 — no start typed = keep the old flex
+      const _newShot=(window.njAttached&&typeof window.scanThumb==='string'&&window.scanThumb.indexOf('data:')===0)?window.scanThumb:null;   /* #clerkproof — a slip attached while fixing the record */
+      DOCKETS[ix]={...prev,date,ship:ship||"—",terminal:termOk,berth:termBerth,dock:termDock,bno:(termBno||((prev.bno&&termHit&&berthMatch(prev.bno,termHit.berths))?prev.bno:undefined)),category,shift,start:start||prev.start||undefined,hours:hours||undefined,flex:(start?flex:prev.flex)||undefined,clerkPct:clerkPct||undefined,finish:njFinGet()||undefined,photo:_newShot||prev.photo,att:(_newShot?true:prev.att)||undefined}; // #27 — no start typed = keep the old flex
       if(shift==="HootOwl"&&hours>0)setLearnedHoot(hours); // learn the real hoot length
       if(hours>0){ learnJob(category, null, hours, null); renderJobDatalist(); } // remember corrected hours
+      /* #clerkproof(sep30) — a hand-typed entry just got its slip. The slip is the receipt: pay it under the
+         faucet rules and, if its own dispatch is still running, let it walk the board — once, ever, the same
+         rule slipReattach keeps. The flag goes with it. */
+      let _settled=false;
+      if(_newShot&&prev.handOnly){ const cur=DOCKETS[ix]; delete cur.handOnly; cur.src='photo'; _settled=true; try{ sealBucks(cur); }catch(e){} }
       saveDK();renderDockets();drawWG();checkMarks();
+      if(_settled){ try{ feedLiveFromDocket(DOCKETS[ix],myBoardId(),njIsClerkCat(category)?'clerk slip':'slip attached'); }catch(e){} }
       try{ scanLearnFromEdit(editId,DOCKETS[ix]); }catch(e){}   /* #learn — fixing a scanned row teaches the reader */
       try{ if(window.FINISH) FINISH.schedule(); }catch(e){}   /* #finish — an edited finish-up answer refits the model */
-      window.njEditId=null;
+      window.njEditId=null; window.scanThumb=null; window.njAttached=false;
       document.getElementById('njAdd').textContent="Seal it in the log";
       njClearForm();
-      toast("✓ Log Updated");            // #46 — success flashes, no OK button
+      if(!_settled)toast("✓ Log Updated");            // #46 — success flashes, no OK button (a settled seal already spoke its ⬡)
       return;
     }
     window.njEditId=null; // fell through (entry gone) — treat as new
@@ -21173,10 +21215,11 @@ document.getElementById('njAdd').onclick=()=>{
      settles it then (pays, and moves the board if its own dispatch is still running). */
   const _handOnly=!j.photo;
   let _tapeSrc='fixed';
-  try{ const rd=window.scanLast&&window.scanLast.p&&window.scanLast.p.date; if(j.photo&&rd&&rd!==j.date)_tapeSrc='fixed date'; }catch(e){}
+  if(j.att)_tapeSrc=njIsClerkCat(category)?'clerk slip':'slip attached';   /* #clerkproof — the tape names a hand-attached shot */
+  else try{ const rd=window.scanLast&&window.scanLast.p&&window.scanLast.p.date; if(j.photo&&rd&&rd!==j.date)_tapeSrc='fixed date'; }catch(e){}
   if(_handOnly){
     j.earned=0; j.handOnly=true;
-    try{ toast("✓ Logged for the record — a docket typed by hand doesn't move the board or pay ⬡. Scan the slip (fix it after if it misreads) to count it."); }catch(e){}
+    try{ toast("✓ Logged for the record — a docket typed by hand doesn't move the board or pay ⬡. Scan the slip to count it — a handwritten clerk docket: Fix the record → Attach the slip."); }catch(e){}
   } else sealBucks(j);                      /* #antifraud — decides the ⬡ (sets j.earned) and speaks the toast */
   DOCKETS.push(j);saveDK();renderDockets();
   try{ if(window.FINISH) FINISH.schedule(); }catch(e){}   /* #finish — a sealed finish-up answer refits the model */
@@ -21206,6 +21249,7 @@ function manualOpen(photo){
   const w=document.getElementById('njPhotoWrap'),im=document.getElementById('njPhotoImg');
   if(w&&im){ if(photo){im.src=photo;w.style.display='';} else {w.style.display='none';im.removeAttribute('src');} }
   try{ const hn=document.getElementById('njHandNote'); if(hn)hn.style.display=photo?'none':''; }catch(e){}   /* #slipfirst — a shot on top: this one counts */
+  try{ if(window.njAttPaint)njAttPaint(photo); }catch(e){}   /* #clerkproof — nothing to attach over a shot that already rides the form */
   const t=document.getElementById('njFormTitle');if(t)t.innerHTML='Fix The Record <span class="sl">//</span> check it against the slip';
   if(s){s.classList.add('on');try{s.querySelector('.sheet-card').scrollTop=0;}catch(e){}}
 }
@@ -21238,7 +21282,41 @@ function njClearForm(){
   document.getElementById('njClerkPct').value="0";
   var _cw=document.getElementById('njClerkWrap'); if(_cw)_cw.style.display="none";
   try{ njFinSet(''); }catch(e){}
+  window.njAttached=false; try{ if(window.njAttPaint)njAttPaint(null); }catch(e){}   /* #clerkproof — the attached shot never outlives its form */
 }
+/* ═══ #clerkproof(sep30) — THE ATTACH BUTTON. One file picker (camera or roll — the phone offers both),
+   the same loadShot() the scanner uses (upright, 1280 thumb for the vault), NO reader. The photo becomes
+   window.scanThumb exactly as a scan would, flagged njAttached so the seal knows it was attached, not read.
+   Hidden whenever a photo already rides the form (a scan that didn't read clean, or an entry that has its
+   slip) — there is nothing to attach over. */
+(function(){
+  const inp=document.getElementById('njAttach'), btn=document.getElementById('njAttachBtn'), show=document.getElementById('njAttShow'), img=document.getElementById('njAttImg'), drop=document.getElementById('njAttDrop');
+  if(!inp||!btn)return;
+  window.njAttached=false;
+  function paint(onTop){
+    const on=!!(window.njAttached&&typeof window.scanThumb==='string');
+    const rides=!!onTop||(!on&&typeof window.scanThumb==='string');   /* a photo already on the form that isn't ours */
+    if(show)show.style.display=on?'flex':'none';
+    if(on&&img)img.src=window.scanThumb;
+    btn.style.display=(on||rides)?'none':'';
+    const hn=document.getElementById('njHandNote'); if(hn)hn.style.display=(on||rides)?'none':'';
+  }
+  window.njAttPaint=paint;
+  btn.addEventListener('click',function(){ try{ inp.value=''; }catch(e){} inp.click(); });
+  inp.addEventListener('change',async function(){
+    const f=inp.files&&inp.files[0]; if(!f)return;
+    const was=btn.innerHTML; btn.disabled=true; btn.textContent='Developing the shot…';
+    try{
+      const r=await loadShot(f);
+      if(!(r&&typeof r.thumb==='string'))throw new Error('no shot');
+      window.scanThumb=r.thumb; window.scanLast=null; window.njAttached=true;
+    }catch(e){ try{ toast('That photo couldn’t be read — try another shot'); }catch(_){} }
+    btn.disabled=false; btn.innerHTML=was; paint(null);
+    try{ inp.value=''; }catch(e){}   /* so the same shot can be picked again — a picker only fires change on a new value */
+  });
+  if(drop)drop.addEventListener('click',function(){ window.njAttached=false; window.scanThumb=null; paint(null); });
+  paint(null);
+})();
 /* #finish — the Finish-up? chips on the log form */
 function njFinGet(){ try{ const b=document.querySelector('#njFin .chip.on'); return b?(b.dataset.fin||''):''; }catch(e){ return ''; } }
 function njFinSet(v){ try{ document.querySelectorAll('#njFin .chip').forEach(b=>b.classList.toggle('on',(b.dataset.fin||'')===(v||''))); }catch(e){} }
