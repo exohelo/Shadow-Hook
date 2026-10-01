@@ -8,7 +8,8 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct1privacy';   /* oct 1 (3rd) — LAST SEEN IS A PRIVACY SETTING: "Show when I was last on" moves from About you to Privacy settings, beside Appear offline; About you is renamed About me; and the switch now shows what the profile really says — it was read before the session came back, so it always came up ON, even for a member who had hidden it (#lastseen). And the DM "wire" talk says Direct Messages now — privacy, alerts, the DM page, the burn sheet, every toast (#dmwords) */
+window.SHK_BUILD='oct1docket';   /* oct 1 (4th) — SHARE TODAY'S DOCKET HAS THREE SETTINGS, like Direct Messages: EVERYONE (any signed-in member can see which dock, ship and shift you logged today), FRIENDS, or NOBODY. The server keeps the rule (docket_shares.audience); a shared docket shows on the member's card and beside their name on the Members roster, not only in the friends list (#dkshare3) */
+/* was: oct1privacy */   /* oct 1 (3rd) — LAST SEEN IS A PRIVACY SETTING: "Show when I was last on" moves from About you to Privacy settings, beside Appear offline; About you is renamed About me; and the switch now shows what the profile really says — it was read before the session came back, so it always came up ON, even for a member who had hidden it (#lastseen). And the DM "wire" talk says Direct Messages now — privacy, alerts, the DM page, the burn sheet, every toast (#dmwords) */
 /* was: oct1waitlist */   /* oct 1 (2nd) — THE WAITING LIST HEARS EVERY PHONE: a 🔔 request saved only on a member's phone (signed out, or tapped before the list existed) now goes up to the Order's list the next time the app reads it, dated when it was asked (#wantsync); the Keymaster's own phone-only taps stay off it */
 /* was: oct1shutter */   /* oct 1 — THE SHUTTER STOPS FREEZING THE PHONE: the docket camera asks for a 12-megapixel still instead of the sensor's biggest, and cuts it to the frame at the reader's size in one decode; the season's motion holds still while the camera is up and the shot develops (#camstall). Freeze reports keep their animation names and a long task's attribution (480 characters for a freeze), say if the Halloween music was playing, note window blur/focus and screen turns, and a pop-up left open is no longer called a freeze. Also first shipped under this stamp (sep 30 – oct 1, they went out still marked sep29cardday): goo drips, clerk slip as proof, marks queue, the midnight Halloween flip, the raffle switch, buying off the flyer + the draw countdown, GIFs on the wall, the pumpkin lantern, no bar under titles, the raffle banner folding itself, the 3D price sticker, a Samsung no longer taken for an iPhone */
 /* was: sep29cardday */   /* sep 29 — member card readable in daylight: the gold/orange pieces get dark ink on light fills */
@@ -8424,11 +8425,15 @@ html.daylight .hm-lm .lk-g,html.daylight .hm-lm .lk-w{fill:#dfeaf7}
             <div class="alt">👁 Show when I was last on</div>
             <div class="als">Other members see “seen 2h ago” on your card. Off, they only see it while you’re online.</div>
           </div><button class="alsw on" id="abSeen" type="button" role="switch" aria-checked="true" aria-label="Show when I was last on"><i></i></button></div>
-        <!-- #dkshare(sep28) — share today's docket with friends: ON by default, lives with the other DM/friend settings -->
-        <div class="alrow" style="border-top:1px solid var(--line-soft)"><div class="alm">
-            <div class="alt">📍 Share today's docket with friends</div>
-            <div class="als" id="dkShareNote">Friends see which dock, ship and shift you logged today. Nobody else.</div>
-          </div><button class="alsw" id="dkShareSw" type="button" role="switch" aria-label="Share today's docket with friends"><i></i></button></div>
+        <!-- #dkshare3(oct1) — SHARE TODAY'S DOCKET, three ways like Direct Messages: EVERYONE (any signed-in member),
+             FRIENDS, or NOBODY. Was a friends-only switch (#dkshare sep28). The server keeps the rule. -->
+        <p class="alnote" style="margin:12px 0 9px;padding-top:12px;border-top:1px solid var(--line-soft)">📍 Who can see today's docket — the dock, ship and shift you logged.</p>
+        <div class="lbseg" id="dkShareSeg">
+          <button type="button" data-ds="all">🌍 EVERYONE</button>
+          <button type="button" data-ds="friends">⚓ FRIENDS</button>
+          <button type="button" data-ds="off">🚫 NOBODY</button>
+        </div>
+        <p class="sub" id="dkShareNote" style="margin:2px 0 10px"></p>
         <!-- #friends2(sep28) — Friend requests + Your friends moved to the ✉ DMs page (their own card) -->
         <p class="sub" style="margin:10px 0 0">⚓ Friend requests and your friends list live on the <b style="color:var(--bone)">Social → ✉ DMs</b> page.</p>
       </div>
@@ -28009,7 +28014,7 @@ window.bannerChooser=bannerChooser;
    the phone remembers which one you left open. */
 (function(){
   const SPEC=[['aboutBox','🪪','About me','Picture, banner, handle, email, birthday'],   /* #lastseen(oct1) — was "About you", renamed by request */
-              ['dmPrivBox','🔒','Privacy settings','Who can DM you, last seen, appear offline, docket sharing'],
+              ['dmPrivBox','🔒','Privacy settings','Who can DM you, last seen, appear offline, who sees your docket'],
               ['alBox','🔔','Alerts','What pings your phone, and text size']];
   let openId=''; try{ openId=localStorage.getItem('shadowhook_fold')||''; }catch(e){}
   SPEC.forEach(([id,ic,title,sub])=>{
@@ -29203,7 +29208,8 @@ function dmMembersPaint(){
   const show=hit.slice(0,_memShow);
   host.innerHTML=show.map(m=>{
     const me=m.id===window.__shkUid, p=on[m.id];
-    const sub=me?'that’s you':p?('<span style="color:var(--ok)">● on now</span>'+(p.room?' · standing in '+esc(p.room):'')):(m.circle&&CIRCLE_NAMES[m.circle]?CIRCLE_NAMES[m.circle]:'')+(m.since?(m.circle&&CIRCLE_NAMES[m.circle]?' · ':'')+'since '+esc(memSince(m.since)):'');
+    const dl=(!me&&typeof dkShareLine==='function')?dkShareLine(m.id):'';   /* #dkshare3 — where they're working today, when they share it */
+    const sub=me?'that’s you':dl?(dl+(p?' · <span style="color:var(--ok)">● on now</span>':'')):p?('<span style="color:var(--ok)">● on now</span>'+(p.room?' · standing in '+esc(p.room):'')):(m.circle&&CIRCLE_NAMES[m.circle]?CIRCLE_NAMES[m.circle]:'')+(m.since?(m.circle&&CIRCLE_NAMES[m.circle]?' · ':'')+'since '+esc(memSince(m.since)):'');
     return '<div role="button" style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line-soft);cursor:pointer" onclick="openDmCard(\''+jsq(m.id)+'\',\''+jsq(m.handle)+'\')">'   /* #selfcard — your own row opens your card too */
       +_dmAv(m.handle,m.id)
       +'<span style="flex:1;min-width:0"><b style="display:block;font-family:\'Inter\',system-ui,-apple-system,\'Segoe UI\',Roboto,sans-serif;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(m.handle)+(DM.friends[m.id]?' <span class="pill" style="font-size:9px;padding:1px 6px;color:var(--copper-hi);border-color:rgba(238,180,107,.35)">⚓ friend</span>':'')+'</b>'
@@ -29280,6 +29286,7 @@ function mcFactsHTML(uid,name,self){
   if(!self&&d.mutual>0)chips.push('<span class="mc-chip">⚓ '+d.mutual+' friend'+(d.mutual===1?'':'s')+' in common</span>');
   const online=((typeof FLOOR!=='undefined'&&FLOOR.roster)||[]).some(p=>p.uid===uid);
   if(!self&&!online&&d.seen)chips.push('<span class="mc-chip dim">👁 seen '+mcAgo(d.seen)+'</span>');
+  try{ if(!self&&typeof dkShareLine==='function'){ const dl=dkShareLine(uid); if(dl)chips.push('<span class="mc-chip">'+dl+' today</span>'); } }catch(e){}   /* #dkshare3 — a docket they chose to share */
   if(self&&d.seen_hidden)chips.push('<span class="mc-chip dim">👁 last seen hidden</span>');
   if(chips.length)h+='<div class="mc-chips">'+chips.join('')+'</div>';
   const M=mcMarks(d.marks);
@@ -29360,6 +29367,7 @@ window.mcReport=function(uid,name){
 /* ---- the member card: DM or friend, gated honestly ---- */
 async function openDmCard(uid,h){
   if(!uid)return;
+  window.__dmCardUid=uid; window.__dmCardName=h||'';   /* #dkshare3 — so a shared docket landing later can repaint the open card */
   let sh=document.getElementById('dmCardSheet');
   if(!sh){
     sh=document.createElement('div');sh.className='sheet';sh.id='dmCardSheet';sh.style.zIndex='95';
@@ -29936,9 +29944,7 @@ function dmFriendsPaint(){
   const on={}; ((typeof FLOOR!=='undefined'&&FLOOR.roster)||[]).forEach(p=>{ if(p.uid)on[p.uid]=1; });
   const today=(typeof todayISO==='function')?todayISO():'';
   if(fl)fl.innerHTML=fIds.length?fIds.map(u=>{
-    const sh=(DM.shares||{})[u];
-    const at=(sh&&sh.date===today)?('📍 at <b style="color:var(--bone)">'+esc(sh.terminal||'a dock')+'</b>'+(sh.ship&&sh.ship!=='—'?' · '+esc(sh.ship):'')+(sh.shift?' · '+esc(sh.shift):''))
-      :(on[u]?'<span style="color:var(--ok)">● on now</span>':'');
+    const at=dkShareLine(u)||(on[u]?'<span style="color:var(--ok)">● on now</span>':'');   /* #dkshare3 — one helper for the line */
     return '<div style="display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid var(--line-soft)">'
     +_dmAv(DM.friends[u],u)+'<span style="flex:1;min-width:0;font-family:\'Inter\',system-ui,-apple-system,\'Segoe UI\',Roboto,sans-serif;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(DM.friends[u])+(at?'<span class="sub" style="display:block;font-size:11px;white-space:normal;line-height:1.35">'+at+'</span>':'')+'</span>'
     +'<button class="pill" style="cursor:pointer;color:var(--copper-hi);border-color:rgba(238,180,107,.4);background:none" onclick="openDmThread(\''+jsq(u)+'\',\''+jsq(DM.friends[u])+'\')">💬</button>'
@@ -29954,7 +29960,13 @@ window.dmFriendsPaint=dmFriendsPaint;
    the row is deleted when the switch goes OFF. RLS: you write your own row, you READ only
    rows of casuals you're friends with. Off by default — location is the casual's to give. */
 DM.shares={};
-function dkShareOn(){ try{return localStorage.getItem(K('dkshare'))!=='0';}catch(e){return true;} }   /* ON unless the casual turned it off */
+/* #dkshare3(oct1) — THREE WAYS, LIKE DIRECT MESSAGES. dkShareMode(): 'all' (any signed-in member the casual
+   hasn't blocked), 'friends', or 'off'. Same phone key as the old switch (it rides the cloud mirror to the
+   casual's other phones): the old '1' reads as friends, '0' as off, nothing set as friends — the old default.
+   The row carries `audience`; the server's read rule (docket_shares: read) is what actually keeps a stranger
+   out of a friends-only row. NOBODY = no row at all. */
+function dkShareMode(){ try{ const v=localStorage.getItem(K('dkshare')); if(v==='all'||v==='friends'||v==='off')return v; return v==='0'?'off':'friends'; }catch(e){ return 'friends'; } }
+function dkShareOn(){ return dkShareMode()!=='off'; }
 function dkShareToday(){
   const t=(typeof todayISO==='function')?todayISO():'';
   const all=(typeof DOCKETS!=='undefined'&&Array.isArray(DOCKETS))?DOCKETS:[];
@@ -29965,8 +29977,9 @@ function dkShareToday(){
 let _dkShareSig='';
 async function dkShareSync(force){
   if(!(window.SB&&window.__shkUid))return;
-  const on=dkShareOn(), me=window.__shkUid;
-  const row=on?dkShareToday():null;
+  const mode=dkShareMode(), me=window.__shkUid;
+  const row=(mode!=='off')?dkShareToday():null;
+  if(row)row.audience=mode;   /* #dkshare3 — who the row is for */
   const sig=row?JSON.stringify(row):'off';
   if(!force&&sig===_dkShareSig)return; _dkShareSig=sig;
   try{
@@ -29976,27 +29989,42 @@ async function dkShareSync(force){
 }
 async function dkShareLoad(){
   if(!(window.SB&&window.__shkUid))return;
-  const ids=Object.keys(DM.friends||{}); if(!ids.length){DM.shares={}; try{dmFriendsPaint();}catch(e){} return;}
   try{
+    /* #dkshare3 — every row this member may read today: friends' rows, and the rows set to EVERYONE.
+       The server's rule decides which those are; the app only asks for today. */
     const t=(typeof todayISO==='function')?todayISO():'';
-    const r=await window.SB.from('docket_shares').select('*').in('user_id',ids).eq('date',t);
-    if(r&&!r.error&&Array.isArray(r.data)){ DM.shares={}; r.data.forEach(x=>{DM.shares[x.user_id]=x;}); try{dmFriendsPaint();}catch(e){} }
+    const r=await window.SB.from('docket_shares').select('*').eq('date',t).neq('user_id',window.__shkUid).limit(1000);
+    if(r&&!r.error&&Array.isArray(r.data)){ DM.shares={}; r.data.forEach(x=>{DM.shares[x.user_id]=x;});
+      try{dmFriendsPaint();}catch(e){} try{dmMembersPaint();}catch(e){}
+      try{ const sh=document.getElementById('dmCardSheet'); if(sh&&sh.classList.contains('on')&&window.__dmCardUid)openDmCard(window.__dmCardUid,window.__dmCardName); }catch(e){} }
   }catch(e){}
 }
+/* one line for a shared docket: "📍 at APM · MSC ANNA · Day" — or '' when there's nothing shared today */
+function dkShareLine(uid){
+  const sh=(DM.shares||{})[uid], t=(typeof todayISO==='function')?todayISO():'';
+  if(!sh||sh.date!==t)return '';
+  return '📍 at <b style="color:var(--bone)">'+esc(sh.terminal||'a dock')+'</b>'+(sh.ship&&sh.ship!=='—'?' · '+esc(sh.ship):'')+(sh.shift?' · '+esc(sh.shift):'');
+}
+window.dkShareLine=dkShareLine;
 window.dkShareLoad=dkShareLoad; window.dkShareSync=dkShareSync;
 function dkSharePaint(){
-  const sw=document.getElementById('dkShareSw'), n=document.getElementById('dkShareNote'); if(!sw)return;
-  const on=dkShareOn(); sw.classList.toggle('on',on); sw.setAttribute('aria-checked',on?'true':'false');
-  if(n){ const row=on?dkShareToday():null;
-    n.textContent=!on?'Off — your friends see nothing about where you work.'
-      :row?('Sharing now: '+(row.terminal||'your dock')+(row.ship&&row.ship!=='—'?' · '+row.ship:'')+(row.shift?' · '+row.shift:'')+' — your friends can see it today.')
-      :'Friends see which dock, ship and shift you logged today. Nobody else.'; }
+  const seg=document.getElementById('dkShareSeg'), n=document.getElementById('dkShareNote'); if(!seg)return;
+  const mode=dkShareMode();
+  seg.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.ds===mode));
+  if(n){ const row=(mode!=='off')?dkShareToday():null;
+    const what=row?('Sharing now: '+(row.terminal||'your dock')+(row.ship&&row.ship!=='—'?' · '+row.ship:'')+(row.shift?' · '+row.shift:'')):'';
+    n.textContent=mode==='off'?'Nobody sees where you work.'
+      :mode==='all'?(what?what+' — any signed-in member can see it today.':'Any signed-in member can see which dock, ship and shift you logged today. Anyone you block sees nothing.')
+      :(what?what+' — your friends can see it today.':'Friends see which dock, ship and shift you logged today. Nobody else.'); }
 }
-(function(){ const sw=document.getElementById('dkShareSw'); if(!sw)return;
-  sw.addEventListener('click',function(){
+(function(){ const seg=document.getElementById('dkShareSeg'); if(!seg)return;
+  seg.addEventListener('click',function(e){
+    const b=e.target.closest('button'); if(!b||!seg.contains(b))return;
     if(!(window.SB&&window.__shkUid)){ try{toast('Sign in first — sharing rides your account');}catch(e){} return; }
-    const on=!dkShareOn(); try{localStorage.setItem(K('dkshare'),on?'1':'0');}catch(e){}
-    dkSharePaint(); dkShareSync(true); try{toast(on?'📍 Friends can see today\'s docket':'📍 Docket sharing off');}catch(e){}
+    const mode=b.dataset.ds; if(!/^(all|friends|off)$/.test(mode||''))return;
+    try{localStorage.setItem(K('dkshare'),mode);}catch(e){}
+    dkSharePaint(); dkShareSync(true);
+    try{toast(mode==='all'?'📍 Any member can see today\'s docket':mode==='friends'?'📍 Friends can see today\'s docket':'📍 Docket sharing off');}catch(e){}
   }); })();
 /* the row follows the log: every harbor-board repaint (seal, 60 s tick, tab open) re-checks it */
 function _dkShareHook(){ const orig=window.renderHarborBoard; if(typeof orig!=='function'||orig._dkshare)return;
