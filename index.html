@@ -1330,6 +1330,8 @@ html.daylight .badge.earned{background:#fff;border-width:2px}
 .bcomp .bc-av{flex:none;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:17px;background:radial-gradient(circle at 34% 26%,rgba(238,180,107,.32),rgba(11,13,15,.6));border:1px solid rgba(238,180,107,.4)}
 .bcomp .bc-say{flex:1;min-width:0;text-align:left;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:12.5px;color:var(--steel);background:var(--well);border:1px solid var(--line-soft);border-radius:99px;padding:9px 13px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bcomp .bc-ic{flex:none;width:34px;height:34px;border-radius:10px;border:1px solid rgba(238,180,107,.3);background:transparent;font-size:15px;line-height:1;cursor:pointer;color:var(--copper-hi)}
+.bcomp .bc-ic.gif{font:800 10.5px/1 'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;letter-spacing:.06em}   /* #boardgif — the word, like the keyboard's own GIF key */
+.pay-gif{display:block;width:100%;min-height:120px;max-height:240px;margin:0 auto 10px;border-radius:12px;object-fit:contain;background:#000}   /* #boardgif — the pick plays on the caption sheet */
 .bcomp .bc-ic:active,.bcomp .bc-say:active{background:rgba(238,180,107,.14)}
 .bpost{position:relative;display:flex;flex-direction:column;gap:9px;padding:12px 13px;margin:0 0 10px;border-radius:15px;cursor:pointer;
   background:linear-gradient(180deg,rgba(34,27,19,.5),rgba(13,11,9,.34));border:1px solid var(--line-soft)}
@@ -26082,7 +26084,9 @@ function openPaySheet(o){ // {title,sub,price,fields:[{k,label,ph}],go,onPaid}
       :'<span class="lbl">'+f.label+'</span><input class="field" data-k="'+f.k+'"'+(f.opt?' data-opt="1"':'')+(f.list?' list="paylist_'+f.k+'" autocomplete="off"':'')+' placeholder="'+esc(f.ph||'')+'" value="'+esc(f.v||'')+'" style="margin-bottom:12px" maxlength="'+(f.max||60)+'">'
        /* #paylist — one box that is both a list and an open field: type anything, or pick from the suggestions the phone pops up */
        +(f.list?'<datalist id="paylist_'+f.k+'">'+f.list.map(g=>'<option value="'+esc(g)+'">').join('')+'</datalist>':'')).join('')
-    +'<div class="sixstrip" style="margin:2px 0 14px;justify-content:space-between"><span>Price <b class="mono" style="color:var(--copper-hi)">'+(o.price?o.price+' ⬡':'FREE')+'</b></span><span>Your stack <b class="mono" style="color:'+((!o.price||CREDITS>=o.price)?'var(--ok)':'var(--ember)')+'">'+CREDITS.toLocaleString()+' ⬡</b></span></div>'
+    /* #freeplain(sep30) — a free sheet says nothing about money: the Price FREE / Your stack strip only
+       rides when there is a price to weigh against the stack (by request — it read as a charge on a board post) */
+    +(o.price?'<div class="sixstrip" style="margin:2px 0 14px;justify-content:space-between"><span>Price <b class="mono" style="color:var(--copper-hi)">'+o.price+' ⬡</b></span><span>Your stack <b class="mono" style="color:'+((CREDITS>=o.price)?'var(--ok)':'var(--ember)')+'">'+CREDITS.toLocaleString()+' ⬡</b></span></div>':'')
     +'<button class="btn" id="payGo" type="button">'+(o.price?'⬡ PAY '+o.price+' — ':'✓ ')+o.go+'</button>'
     +'<button class="btn-ghost" id="payNo" type="button" style="width:100%;margin-top:10px;border:0;color:#586067">Never mind</button></div>';
   sh.querySelector('#payNo').addEventListener('click',()=>sh.classList.remove('on'));
@@ -27061,7 +27065,7 @@ function storyKind(s){
   if(s.demo)return 'demo';
   const p=s.plat||'', u=String(s.url||'');
   if(p==='hook-txt'||(!u.trim()&&String(s.note||'').trim()))return 'txt';   /* #social2 — a board post that's just words */
-  if(p==='hook-img')return 'img';
+  if(p==='hook-img'||p==='hook-gif')return 'img';   /* #boardgif — a GIF is drawn like a photo */
   if(p==='hook-vid')return 'vid';
   if(/^data:image/i.test(u)||/\.(jpe?g|png|webp|gif)(\?|$)/i.test(u))return 'img';
   if(/\.(mp4|webm|mov|m4v)(\?|$)/i.test(u))return 'vid';
@@ -30418,7 +30422,8 @@ function bindHot(host){
    the viewer with the talk open. Your own posts strike from the ✕ (two taps). */
 function boardPostHTML(s,i,step){
   const k=storyKind(s), p=(k==='link')?detectPlatform(s.url):null, ov=storyOverlay(s.note);
-  const kindTxt=k==='txt'?'✍ said':k==='img'?'📸 photo':k==='vid'?'🎬 clip':(p?(p.ico+' '+p.label):'🔗 link');
+  const isGif=(s.plat==='hook-gif')||/\.gif(\?|#|$)/i.test(String(s.url||''));   /* #boardgif */
+  const kindTxt=k==='txt'?'✍ said':k==='img'?(isGif?'🎞 gif':'📸 photo'):k==='vid'?'🎬 clip':(p?(p.ico+' '+p.label):'🔗 link');
   let body='';
   if(k==='txt'){
     body='<div class="bp-txt">'+esc(String(s.note||'')).replace(/\n/g,'<br>')+'</div>';
@@ -30462,6 +30467,7 @@ function boardSectionHTML(step){
     +'<button type="button" class="bc-say" data-bnew="txt">Say something…</button>'
     +'<button type="button" class="bc-ic" data-bnew="shoot" aria-label="Shoot a photo or clip">📷</button>'
     +'<button type="button" class="bc-ic" data-bnew="pick" aria-label="From your gallery">🖼</button>'
+    +'<button type="button" class="bc-ic gif" data-bnew="gif" aria-label="Post a GIF">GIF</button>'   /* #boardgif */
     +'<button type="button" class="bc-ic" data-bnew="link" aria-label="Paste a link">🔗</button>'
   +'</div>';
   try{ html+=storyUploadsHTML(); }catch(e){}   /* #upbar — posts on their way up */
@@ -30476,6 +30482,7 @@ function bindBoard(host){
     try{
       if(k==='txt')newTextPostFlow();
       else if(k==='link')newStoryFlow();
+      else if(k==='gif'){ if(typeof guestWall==='function'&&guestWall())return; newGifPostFlow(); }   /* #boardgif */
       else if(k==='shoot'){ if(typeof guestWall==='function'&&guestWall())return; storyShootChooser(); }   /* #camopen */
       else{ if(typeof guestWall==='function'&&guestWall())return; const i=document.getElementById('storyPick'); if(i){i.value='';i.click();} }
     }catch(err){} }));
@@ -30543,6 +30550,47 @@ function newTextPostFlow(prefill){
     }});
 }
 window.newTextPostFlow=newTextPostFlow;
+/* ═══ #boardgif(sep30) — A GIF ON THE BOARD. The same GIPHY picker the rooms and the DMs use hands
+   its pick HERE instead of a room (openGifPicker's callback door, #talkmedia), a caption sheet follows
+   with the GIF playing on it, and the row lands in `stories` as hook-gif — drawn like a photo, labelled
+   gif. Free, like every other board post. A pasted tenor/giphy page link is turned into its media file
+   first (gifMediaUrl), so it plays on the board instead of opening a web page. */
+function newGifPostFlow(){
+  if(typeof guestWall==='function'&&guestWall())return;
+  if(typeof openGifPicker!=='function'){ toast('The GIF picker isn’t loaded on this build'); return; }
+  openGifPicker(function(raw){
+    const url=(typeof gifMediaUrl==='function'&&gifMediaUrl(raw))||String(raw||'').trim();
+    if(!/^https?:\/\/\S+$/i.test(url)){ toast('That doesn’t look like a GIF link'); return; }
+    setTimeout(function(){
+      openPaySheet({title:"POST A GIF",sub:'<img class="pay-gif" src="'+esc(url)+'" alt="">Say something with it, or just let it play.',
+        price:0,go:"POST IT",fields:[{k:"note",label:"Caption (optional)",ph:"a word to go with it",opt:true,max:140}],
+        onPaid:async v=>{
+          const note=String(v.note||'').trim().slice(0,140);
+          const row={owner:window.__shkUid,by_id:ACCT_ID,by_handle:chatMyHandle(),url:url,platform:'hook-gif',note:note};
+          const localSave=()=>{
+            MY_LOCAL_STORIES.unshift({id:'loc'+Date.now(),by_handle:chatMyHandle(),by_id:ACCT_ID,url:url,platform:'hook-gif',note:note,created_at:new Date().toISOString(),local:true});
+            try{localStorage.setItem(K('mystories'),JSON.stringify(MY_LOCAL_STORIES.filter(s=>!/^blob:/.test(String(s.url||'')))));}catch(e){}
+            renderSocialFeed();
+          };
+          if(window.SB&&window.__shkUid){
+            try{
+              const r=await window.SB.from('stories').insert(row);
+              if(r.error)throw r.error;
+              ALL_STORIES.unshift(Object.assign({id:'srv'+Date.now(),created_at:new Date().toISOString()},row));
+              renderSocialFeed();
+              try{sbLoadStories(true);}catch(e){}
+              try{tallyAdd('story');unlockBadge(bixLate("Storyteller"))}catch(e){}
+              toast('🎞 Posted — the board sees it');
+            }catch(e){localSave();toast(storyFailMsg(e));}
+            return;
+          }
+          localSave();
+          toast('Offline — it rides up next sign-in');
+        }});
+    },160);
+  });
+}
+window.newGifPostFlow=newGifPostFlow;
 
 /* ---------- the TILE SHEETS — LOBBIES · GATHERINGS · CLANS ---------- */
 let _socSheetKind=null;
