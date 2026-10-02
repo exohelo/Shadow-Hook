@@ -8,7 +8,8 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct1welcome';   /* oct 1 (14th) — THE WELCOME: Command Center → The Welcome sets a private Direct Message every new member gets from the Keymaster the moment they sign up — written and switched on here, sent by the server (WELCOME-DM.sql), {handle} filled in (#welcome). */
+window.SHK_BUILD='oct1letterhead';   /* oct 1 (15th) — THE WELCOME WEARS A LETTERHEAD: the crest and "The Order of The Shadow Hook" (welcome-letterhead.png, deployed beside this file) land as a picture just above the welcome words; a checkbox in The Welcome turns it on (#letterhead). */
+/* was: oct1welcome */   /* oct 1 (14th) — THE WELCOME: Command Center → The Welcome sets a private Direct Message every new member gets from the Keymaster the moment they sign up — written and switched on here, sent by the server (WELCOME-DM.sql), {handle} filled in (#welcome). */
 /* was: oct1lanterneyes */   /* oct 1 (13th) — the predicted-stop jack-o'-lantern's eyes sit lower, on its face instead of poking over the top (#lanterneyes). */
 /* was: oct1alertsub */   /* oct 1 (12th) — the Alerts fold no longer promises text size (it moved out); it reads "What pings your phone". */
 /* was: oct1gooroot */   /* oct 1 (11th) — THE GOO STOPS RESTYLING THE WHOLE APP: the tilt-sensor slime set five CSS variables on <html> every frame, which pushed every element on the page back through style while the phone was in a hand; they now go only on the tab bar and the drip layer, change only when the value moves, and sensor jitter under 0.1° is ignored (#gooroot). */
@@ -44542,6 +44543,12 @@ window.SEASON_STORY={
     <div class="race-board-tabs" id="kmWelcome"><button data-v="off">OFF</button><button data-v="on">ON</button></div>
     <textarea class="field" id="kmWelcomeTxt" rows="4" maxlength="1000" placeholder="Welcome to The Order of The Shadow Hook, {handle} ⚓ …" style="width:100%;resize:vertical;margin:8px 0 4px"></textarea>
     <div class="sub" style="margin:0 0 8px;font-size:11px">{handle} becomes the new member's handle. It comes from YOUR account — saving it here makes you the sender.</div>
+    <!-- #letterhead(oct1) — the branded header (welcome-letterhead.png, deployed beside index.html) lands as a picture just above the words -->
+    <label style="display:flex;align-items:center;gap:10px;margin:0 0 10px;cursor:pointer">
+      <input type="checkbox" id="kmWelcomeHead" style="width:18px;height:18px;accent-color:var(--copper)">
+      <span class="sub" style="margin:0">Letterhead on top</span>
+      <img src="welcome-letterhead.png" alt="" style="margin-left:auto;height:38px;border-radius:6px" onerror="this.style.display='none'">
+    </label>
     <button class="btn" id="kmWelcomeSave" type="button" style="width:100%">⚓ SAVE THE WELCOME</button>
     <div class="sub" id="kmWelcomeMsg" style="margin-top:6px"></div>
 
@@ -45141,10 +45148,11 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
     if(!window.SB){ msg.textContent='backend off'; return; }
     msg.textContent='reading…';
     try{
-      const r=await window.SB.from('welcome_dm').select('is_on,body,from_id,from_handle,updated_at').eq('id',1).maybeSingle();
+      const r=await window.SB.from('welcome_dm').select('is_on,body,from_id,from_handle,header_url,updated_at').eq('id',1).maybeSingle();
       if(r.error){ msg.textContent=/relation|does not exist|schema cache/i.test(String(r.error.message))?'⚠ Run WELCOME-DM.sql once in Supabase → SQL Editor, then reopen this.':'⚠ '+r.error.message; return; }
       _wlcRow=r.data||{is_on:false,body:''};
       seg(sw,_wlcRow.is_on?'on':'off');
+      try{ const hb=$('kmWelcomeHead'); if(hb)hb.checked=!!_wlcRow.header_url; }catch(e){}   /* #letterhead */
       if(document.activeElement!==tx)tx.value=_wlcRow.body||WELCOME_DEFAULT;
       let n=null; try{ const c=await window.SB.rpc('welcome_count'); if(!c.error)n=c.data; }catch(e){}
       kmWelcomeNote(n);
@@ -45156,6 +45164,7 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
     msg.innerHTML=(_wlcRow.is_on&&_wlcRow.from_id&&String(_wlcRow.body||'').trim()
         ?'<span style="color:var(--ok)">● ON</span> — every new member gets it from <b>'+who+'</b>'
         :'○ OFF — new members get nothing')
+      +(_wlcRow.is_on&&_wlcRow.header_url?' · with the letterhead':'')
       +(n!=null?' · '+n+' welcomed so far':'');
   }
   window.kmWelcomeLoad=kmWelcomeLoad;
@@ -45168,7 +45177,9 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
     sv.disabled=true; msg.textContent='saving…';
     try{
       const me=(typeof chatMyHandle==='function'?chatMyHandle():'')||((document.getElementById('meHandle')||{}).textContent||'').trim()||null;
-      const r=await window.SB.from('welcome_dm').update({is_on:on,body:body,from_id:window.__shkUid,from_handle:me,updated_at:new Date().toISOString()}).eq('id',1).select('is_on,body,from_id,from_handle').maybeSingle();
+      let head=null; try{ const hb=$('kmWelcomeHead'); if(hb&&hb.checked)head=new URL('welcome-letterhead.png',location.href).href; }catch(e){}   /* #letterhead — the deployed site's own copy */
+      if(head&&!/^https:\/\//.test(head))head=null;   /* a phone on file:// or http can't hand the server a link a member's phone will load */
+      const r=await window.SB.from('welcome_dm').update({is_on:on,body:body,from_id:window.__shkUid,from_handle:me,header_url:head,updated_at:new Date().toISOString()}).eq('id',1).select('is_on,body,from_id,from_handle,header_url').maybeSingle();
       if(r.error)throw r.error;
       if(!r.data)throw new Error('the server kept the old one (is WELCOME-DM.sql run, and is this a key?)');
       _wlcRow=r.data; try{toast(on?'⚓ The Welcome is ON — the next new member gets it from you':'○ The Welcome is OFF');}catch(e){}
