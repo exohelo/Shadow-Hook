@@ -8,7 +8,8 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct1lanterneyes';   /* oct 1 (13th) — the predicted-stop jack-o'-lantern's eyes sit lower, on its face instead of poking over the top (#lanterneyes). */
+window.SHK_BUILD='oct1welcome';   /* oct 1 (14th) — THE WELCOME: Command Center → The Welcome sets a private Direct Message every new member gets from the Keymaster the moment they sign up — written and switched on here, sent by the server (WELCOME-DM.sql), {handle} filled in (#welcome). */
+/* was: oct1lanterneyes */   /* oct 1 (13th) — the predicted-stop jack-o'-lantern's eyes sit lower, on its face instead of poking over the top (#lanterneyes). */
 /* was: oct1alertsub */   /* oct 1 (12th) — the Alerts fold no longer promises text size (it moved out); it reads "What pings your phone". */
 /* was: oct1gooroot */   /* oct 1 (11th) — THE GOO STOPS RESTYLING THE WHOLE APP: the tilt-sensor slime set five CSS variables on <html> every frame, which pushed every element on the page back through style while the phone was in a hand; they now go only on the tab bar and the drip layer, change only when the value moves, and sensor jitter under 0.1° is ignored (#gooroot). */
 /* was: oct1burnline */   /* oct 1 (10th) — the small print under 🧹 BURN MY DIRECT MESSAGES is gone; the button stands alone. */
@@ -44531,6 +44532,20 @@ window.SEASON_STORY={
     <div class="sub" id="kmPushMsg" style="margin-top:6px"></div>
 
     </div></details>
+    <!-- #welcome(oct1) — A WELCOME DM FOR EVERY NEW MEMBER. The server sends it the moment an account is
+         created (WELCOME-DM.sql: a trigger on profiles), from whichever key SAVED it here — so it lands as
+         a real Direct Message thread from you, and they can answer it. {handle} becomes their handle. -->
+    <details class="kmsec" id="kmSecWelcome" open>
+      <summary class="card-h">The Welcome</summary>
+      <div class="kmsec-b">
+    <div class="sub" style="margin:6px 0 2px">A private Direct Message to every new member, the moment they sign up</div>
+    <div class="race-board-tabs" id="kmWelcome"><button data-v="off">OFF</button><button data-v="on">ON</button></div>
+    <textarea class="field" id="kmWelcomeTxt" rows="4" maxlength="1000" placeholder="Welcome to The Order of The Shadow Hook, {handle} ⚓ …" style="width:100%;resize:vertical;margin:8px 0 4px"></textarea>
+    <div class="sub" style="margin:0 0 8px;font-size:11px">{handle} becomes the new member's handle. It comes from YOUR account — saving it here makes you the sender.</div>
+    <button class="btn" id="kmWelcomeSave" type="button" style="width:100%">⚓ SAVE THE WELCOME</button>
+    <div class="sub" id="kmWelcomeMsg" style="margin-top:6px"></div>
+
+    </div></details>
     <div class="card-h km-tools-h">Tools</div>
     <div style="display:flex;gap:8px;margin-top:8px">
       <button class="btn-ghost" id="kmRefresh" type="button" style="flex:1">↻ Re-pull all wires</button>
@@ -45114,6 +45129,54 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
   /* #rflswitch2(oct1) — kmRaffle was missing from this list, so its ON button never took: the tap did
      nothing, segVal() kept reading OFF, and every PUSH sent raffle:'off' no matter what was tapped. */
   ['kmRain','kmStop','kmSix','kmSeason','kmRaffle'].forEach(id=>{const h=$(id);if(h)h.addEventListener('click',e=>{const b=e.target.closest('button');if(b)seg(h,b.dataset.v);});});
+
+  /* ═══ #welcome(oct1) — THE WELCOME: read + save the one welcome_dm row (WELCOME-DM.sql). The server
+     does the sending (a trigger on profiles), so it works with every phone closed. A save signs the
+     row with this key's own id and handle — RLS refuses anything else — so the sender is whoever saved. */
+  const WELCOME_DEFAULT='Welcome to The Order of The Shadow Hook, {handle} ⚓\n\nGlad to have you on the floor. The Wire calls tonight’s stop, seal your dockets to climb the Race, and the Marks wall fills as you go.\n\nAnything off, or any question at all — answer right here. — the Keymaster';
+  let _wlcRow=null;
+  async function kmWelcomeLoad(){
+    const msg=$('kmWelcomeMsg'), tx=$('kmWelcomeTxt'), sw=$('kmWelcome'); if(!msg||!tx||!sw)return;
+    if(!tx.value)tx.value=WELCOME_DEFAULT;   /* a starting draft, even before the table answers */
+    if(!window.SB){ msg.textContent='backend off'; return; }
+    msg.textContent='reading…';
+    try{
+      const r=await window.SB.from('welcome_dm').select('is_on,body,from_id,from_handle,updated_at').eq('id',1).maybeSingle();
+      if(r.error){ msg.textContent=/relation|does not exist|schema cache/i.test(String(r.error.message))?'⚠ Run WELCOME-DM.sql once in Supabase → SQL Editor, then reopen this.':'⚠ '+r.error.message; return; }
+      _wlcRow=r.data||{is_on:false,body:''};
+      seg(sw,_wlcRow.is_on?'on':'off');
+      if(document.activeElement!==tx)tx.value=_wlcRow.body||WELCOME_DEFAULT;
+      let n=null; try{ const c=await window.SB.rpc('welcome_count'); if(!c.error)n=c.data; }catch(e){}
+      kmWelcomeNote(n);
+    }catch(e){ msg.textContent='⚠ '+(e&&e.message||e); }
+  }
+  function kmWelcomeNote(n){
+    const msg=$('kmWelcomeMsg'); if(!msg||!_wlcRow)return;
+    const who=_wlcRow.from_handle?esc(_wlcRow.from_handle):'—';
+    msg.innerHTML=(_wlcRow.is_on&&_wlcRow.from_id&&String(_wlcRow.body||'').trim()
+        ?'<span style="color:var(--ok)">● ON</span> — every new member gets it from <b>'+who+'</b>'
+        :'○ OFF — new members get nothing')
+      +(n!=null?' · '+n+' welcomed so far':'');
+  }
+  window.kmWelcomeLoad=kmWelcomeLoad;
+  try{ const h=$('kmWelcome'); if(h)h.addEventListener('click',e=>{const b=e.target.closest('button');if(b)seg(h,b.dataset.v);}); }catch(e){}
+  try{ const sv=$('kmWelcomeSave'); if(sv)sv.addEventListener('click',async function(){
+    const msg=$('kmWelcomeMsg'), tx=$('kmWelcomeTxt');
+    if(!window.SB||!window.__shkUid){ msg.textContent='sign in first'; return; }
+    const body=String(tx.value||'').trim().slice(0,1000), on=segVal($('kmWelcome'),'off')==='on';
+    if(on&&!body){ msg.textContent='⚠ write the welcome first — an empty one sends nothing'; return; }
+    sv.disabled=true; msg.textContent='saving…';
+    try{
+      const me=(typeof chatMyHandle==='function'?chatMyHandle():'')||((document.getElementById('meHandle')||{}).textContent||'').trim()||null;
+      const r=await window.SB.from('welcome_dm').update({is_on:on,body:body,from_id:window.__shkUid,from_handle:me,updated_at:new Date().toISOString()}).eq('id',1).select('is_on,body,from_id,from_handle').maybeSingle();
+      if(r.error)throw r.error;
+      if(!r.data)throw new Error('the server kept the old one (is WELCOME-DM.sql run, and is this a key?)');
+      _wlcRow=r.data; try{toast(on?'⚓ The Welcome is ON — the next new member gets it from you':'○ The Welcome is OFF');}catch(e){}
+      let n=null; try{ const c=await window.SB.rpc('welcome_count'); if(!c.error)n=c.data; }catch(e){}
+      kmWelcomeNote(n);
+    }catch(e){ msg.textContent='⚠ not saved: '+(e&&e.message||e); }
+    sv.disabled=false;
+  }); }catch(e){}
   try{ const hr=$('kmRaffle'); if(hr)hr.addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b)return; const n=$('kmRaffleNote'); if(!n)return;
     const live=String(((window.KM_FLAGS||{}).raffle)||'off');
     n.textContent=(b.dataset.v===live)?('Raffle '+live.toUpperCase()+' — this is the crew’s current setting.'):('Raffle '+String(b.dataset.v).toUpperCase()+' is set here only — PUSH TO EVERY PHONE to send it.');
@@ -45296,6 +45359,7 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
     try{kmDesk();}catch(e){}       /* #desk — what waits for the seal, first thing */
     try{kmChamber();}catch(e){}    /* #chamber — the motions on the floor */
     kmPulse();
+    try{kmWelcomeLoad();}catch(e){}   /* #welcome */
     try{kmAlarms();}catch(e){}   /* #alarms — what jammed, first thing you see */
     try{kmSheetFlags();}catch(e){} /* #kmflag — sheets whose numbers don't square */
     try{kmBots();}catch(e){}       /* #kmbots — the manual workflow triggers */
