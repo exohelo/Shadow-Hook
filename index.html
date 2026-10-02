@@ -8,7 +8,8 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct1burnline';   /* oct 1 (10th) — the small print under 🧹 BURN MY DIRECT MESSAGES is gone; the button stands alone. */
+window.SHK_BUILD='oct1gooroot';   /* oct 1 (11th) — THE GOO STOPS RESTYLING THE WHOLE APP: the tilt-sensor slime set five CSS variables on <html> every frame, which pushed every element on the page back through style while the phone was in a hand; they now go only on the tab bar and the drip layer, change only when the value moves, and sensor jitter under 0.1° is ignored (#gooroot). */
+/* was: oct1burnline */   /* oct 1 (10th) — the small print under 🧹 BURN MY DIRECT MESSAGES is gone; the button stands alone. */
 /* was: oct1replies */   /* oct 1 (9th) — A FREEZE REPORT NAMES THE TABLE: when the slow code is what the app did with a Supabase answer ("Response.text.then"), the report now says which query it was, how many rows came back and how long the app sat on it — 'replies: rpc raffle_state 1 row 1840ms' (#replies). */
 /* was: oct1cardpull */   /* oct 1 (8th) — THE MEMBER CARD PULLS DOWN TO CLOSE: drag the small profile popup down from its top (finger or mouse) and it drops away, the #profpull feel; a grabber pill sits on the banner; taps on its buttons are untouched (#cardpull). */
 /* was: oct1privorder */   /* oct 1 (7th) — PRIVACY SETTINGS IN ORDER: who can see today's docket moves up under who can DM you, so the two EVERYONE · FRIENDS · NOBODY pickers sit together and the switches follow (#privorder). */
@@ -43141,9 +43142,18 @@ html[data-tab]:not([data-tab="dockets"]) #snBanner{display:none!important}
     if(Math.abs(b)>150)g=-g;
     var a=(screen.orientation&&screen.orientation.angle)||window.orientation||0;   /* landscape: the other axis is "sideways" */
     if(a===90)g=b; else if(a===-90||a===270)g=-b;
-    target=Math.max(-6,Math.min(6,-g*.3));   /* .3: a real 20° tilt reads as a 6° slosh on the bar (drops answer 2.5× that) — the pool is thick, a spill would look broken */
+    var nt=Math.max(-6,Math.min(6,-g*.3));   /* .3: a real 20° tilt reads as a 6° slosh on the bar (drops answer 2.5× that) — the pool is thick, a spill would look broken */
+    /* #gooroot(oct1) — a phone in a hand is never still: the sensor jitters a few hundredths of a degree
+       sixty times a second, and every jitter used to wake the spring. Under a tenth of a degree is noise. */
+    if(Math.abs(nt-target)<.1)return;
+    target=nt;
     if(!raf)raf=requestAnimationFrame(step);
   }
+  var gooLast={};
+  function gooHosts(){ try{ return document.querySelectorAll('.nav,.sn-decor'); }catch(e){ return []; } }
+  function gooPut(k,v){ if(gooLast[k]===v)return; gooLast[k]=v; var h=gooHosts(); for(var i=0;i<h.length;i++)h[i].style.setProperty(k,v); }
+  function gooClear(){ gooLast={}; window.__gooNow=null; var h=gooHosts(); for(var i=0;i<h.length;i++){ ['--gooTilt','--gooSlide','--gooTan'].forEach(function(k){ h[i].style.removeProperty(k); }); }
+    try{ var r=document.documentElement; ['--gooTilt','--gooSlide','--gooTan','--gooDrag','--gooDragPx'].forEach(function(k){ r.style.removeProperty(k); }); }catch(e){} }
   function step(){
     raf=0;
     if(!nav)nav=document.documentElement;
@@ -43152,17 +43162,23 @@ html[data-tab]:not([data-tab="dockets"]) #snBanner{display:none!important}
     vel=(vel+(target-cur)*k)*d; cur+=vel;
     if(Math.abs(target-cur)>.02||Math.abs(vel)>.02){ raf=requestAnimationFrame(step); }
     else { cur=target; vel=0; }
-    nav.style.setProperty('--gooTilt',cur.toFixed(2)+'deg');
-    nav.style.setProperty('--gooSlide',(-cur*3).toFixed(1)+'px');   /* toward the low side */
-    nav.style.setProperty('--gooTan',Math.tan(cur*Math.PI/180).toFixed(4));   /* #levelsplash — the surface's slope, for the drops */
-    /* #goodrag — a second, slower spring: the hanging goo trails the pool */
+    /* #gooroot(oct1) — THE TILT NO LONGER RESTYLES THE WHOLE APP. These were set on <html>, every
+       frame the spring moved. A custom property on the root is inherited by every element on the
+       page, so each write sent all ~7,000 of them back through style — sixty times a second for as
+       long as the phone sat in a hand (oct 1 MONEYMITCH alarm: step 1507 ms inside a 2.7 s freeze on
+       the Board). They now go only on the two places that read them — the tab bar (.nav: the pool,
+       the lip) and the drip layer (.sn-decor: the drops) — at a tenth of a degree, and only when the
+       value actually changed. --gooDrag / --gooDragPx were written and never read: gone. */
+    gooPut('--gooTilt',(Math.round(cur*10)/10).toFixed(1)+'deg');
+    gooPut('--gooSlide',(-cur*3).toFixed(0)+'px');   /* toward the low side */
+    gooPut('--gooTan',Math.tan(cur*Math.PI/180).toFixed(3));   /* #levelsplash — the surface's slope, for the drops */
+    window.__gooNow={tilt:cur,slide:-cur*3,tan:Math.tan(cur*Math.PI/180)};   /* the splash reads these instead of the root's computed style */
+    /* #goodrag — a second, slower spring: the hanging goo trails the pool (the flow loop still rides it) */
     dvel=(dvel+(cur-dcur)*.006)*.95; dcur+=dvel;
-    nav.style.setProperty('--gooDrag',dcur.toFixed(2)+'deg');
-    nav.style.setProperty('--gooDragPx',(Math.tan(-dcur*3*Math.PI/180)*30).toFixed(1)+'px');   /* skewX(-3·drag) at a 30px hang: the tip's shift, same sign as the hill */   /* the shear at a 30px hang, as px */
     if(Math.abs(cur-dcur)>.02||Math.abs(dvel)>.02){ if(!raf)raf=requestAnimationFrame(step); }
   }
   function start(){ if(on||!allowed()||!('DeviceOrientationEvent' in window))return; on=true; window.addEventListener('deviceorientation',onOrient,{passive:true}); }
-  function stop(){ if(!on)return; on=false; window.removeEventListener('deviceorientation',onOrient); target=0; if(nav){ nav.style.removeProperty('--gooTilt'); nav.style.removeProperty('--gooSlide'); nav.style.removeProperty('--gooTan'); } cur=vel=0; }
+  function stop(){ if(!on)return; on=false; window.removeEventListener('deviceorientation',onOrient); target=0; gooClear(); cur=vel=0; }
   /* iPhone: the sensor is behind a permission that can only be asked from a tap */
   function ask(){
     if(asked||!allowed())return;
@@ -43173,7 +43189,7 @@ html[data-tab]:not([data-tab="dockets"]) #snBanner{display:none!important}
   document.addEventListener('click',ask,{capture:true,passive:true});
   document.addEventListener('touchend',ask,{capture:true,passive:true});
   document.addEventListener('visibilitychange',function(){ if(document.hidden)stop(); else if(asked)start(); });
-  setInterval(function(){ if(on&&!allowed())stop(); else if(!on&&asked&&allowed())start(); },3000);
+  setInterval(function(){ if(on&&!allowed())stop(); else if(!on&&asked&&allowed())start(); gooLast={}; },3000);   /* #gooroot — a re-drawn drip layer picks the values up on the next move */
   ask=(function(f){ return function(){ if(season())f(); }; })(ask);   /* nothing is asked outside October */
   /* Android / desktop Chrome: no permission gate — begin as soon as the skin is up */
   if(!(window.DeviceOrientationEvent&&typeof DeviceOrientationEvent.requestPermission==='function')){ setTimeout(function(){ if(season()){ asked=true; start(); } },1500); }
@@ -43801,8 +43817,9 @@ window.SEASON_DECOR={
           if(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches)return;
           var z=parseFloat(getComputedStyle(document.body).zoom)||1, x=(parseFloat(getComputedStyle(d).left)||0), y=parseFloat(L.style.getPropertyValue('--land'))||0;   /* left already carries --gooFlowT, so the splash rides with the lip */
           /* #gootilt — a drop that fell downhill lands downhill: offset the splash by the tilted path */
-          try{ var tl=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gooTilt'))||0; if(tl){ var fall=Math.max(0,y-(parseFloat(getComputedStyle(d).top)||0)); x+=Math.tan(-tl*.45*Math.PI/180)*fall; } }catch(_){}
-          try{ var cs=getComputedStyle(document.documentElement), tn=parseFloat(cs.getPropertyValue('--gooTan'))||0, sl=parseFloat(cs.getPropertyValue('--gooSlide'))||0,
+          try{ var tl=(window.__gooNow&&window.__gooNow.tilt)||0;   /* #gooroot — off the spring, not a forced style read */
+             if(tl){ var fall=Math.max(0,y-(parseFloat(getComputedStyle(d).top)||0)); x+=Math.tan(-tl*.45*Math.PI/180)*fall; } }catch(_){}
+          try{ var gn=window.__gooNow||{}, tn=+gn.tan||0, sl=+gn.slide||0,
                    cx=parseFloat(L.style.getPropertyValue('--cx'))||(window.innerWidth/2/z);
                if(tn)y+=(x-cx-sl)*tn; }catch(_){}   /* #levelsplash — the splash lands ON the tilted surface, not the flat line */
           var ring=document.createElement('i'); ring.className='gs-ring'; ring.style.left=x+'px'; ring.style.top=(y+4)+'px'; SP.appendChild(ring);
