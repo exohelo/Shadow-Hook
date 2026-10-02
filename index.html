@@ -8,7 +8,8 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct1cardpull';   /* oct 1 (8th) — THE MEMBER CARD PULLS DOWN TO CLOSE: drag the small profile popup down from its top (finger or mouse) and it drops away, the #profpull feel; a grabber pill sits on the banner; taps on its buttons are untouched (#cardpull). */
+window.SHK_BUILD='oct1replies';   /* oct 1 (9th) — A FREEZE REPORT NAMES THE TABLE: when the slow code is what the app did with a Supabase answer ("Response.text.then"), the report now says which query it was, how many rows came back and how long the app sat on it — 'replies: rpc raffle_state 1 row 1840ms' (#replies). */
+/* was: oct1cardpull */   /* oct 1 (8th) — THE MEMBER CARD PULLS DOWN TO CLOSE: drag the small profile popup down from its top (finger or mouse) and it drops away, the #profpull feel; a grabber pill sits on the banner; taps on its buttons are untouched (#cardpull). */
 /* was: oct1privorder */   /* oct 1 (7th) — PRIVACY SETTINGS IN ORDER: who can see today's docket moves up under who can DM you, so the two EVERYONE · FRIENDS · NOBODY pickers sit together and the switches follow (#privorder). */
 /* was: oct1dmback */   /* oct 1 (6th) — SWIPE A DIRECT MESSAGE AWAY: a sideways drag from anywhere in an open DM goes back to the list, the wire following your thumb like a product page (#dmswipe); and the phone's own edge-swipe Back can no longer walk past the app's Back guard and close the whole app — the guard re-plants its sentinel on your next tap, so Back from a DM always lands on the list (#backfresh). */
 /* was: oct1names */   /* oct 1 (5th) — A FREEZE REPORT NAMES THE FUNCTION: on Chrome the report carries the long frame's own attribution — the function's name and its character position in this file — and on every browser the timer callbacks that ran long (name, or the first words of the code); a long task that belonged to an iframe (the hidden YouTube player) says so (#names). The Halloween music's YouTube player is no longer loaded for a member who has the sound muted (#ytmuted). */
@@ -49132,6 +49133,34 @@ html.arcade .arc-aurora i{mix-blend-mode:normal;
       }); }).observe({type:'long-animation-frame',buffered:false});
     }
   }catch(e){}
+  /* #replies(oct1) — WHICH SUPABASE REPLY'S HANDLER RAN LONG. Chrome names a frame's script as
+     "Response.text.then" when the slow code is whatever the app did with a reply it awaited — the
+     oct 1 RED_SILVER_32 alarm: 1852 ms of it, and nothing to say which of the four tables that had
+     just landed (profiles, raffle_state, race_book, board_week) it belonged to. Every query builder's
+     then() now stamps the moment its answer is handed over, and a zero-delay timer measures how long
+     the thread stayed busy after it (the awaiting code runs in that gap). Anything over 150 ms is
+     kept, and a freeze report names it: 'replies: rpc raffle_state 1 row 1840ms'. Pass-through only —
+     the answer, the error and the order are untouched. */
+  var replies=[];
+  (function armReplies(tries){
+    try{
+      if(!window.SB||typeof window.SB.from!=='function'){ if(tries<40)setTimeout(function(){ armReplies(tries+1); },500); return; }
+      var P=Object.getPrototypeOf(window.SB.from('profiles').select('id'));
+      while(P&&!Object.prototype.hasOwnProperty.call(P,'then'))P=Object.getPrototypeOf(P);
+      if(!P||P.__shkReplies)return; P.__shkReplies=1;
+      var orig=P.then;
+      P.then=function(ok,bad){
+        var self=this, label='?';
+        try{ var u=String(self.url&&self.url.pathname||self.url||''); var m=/\/rest\/v1\/rpc\/(\w+)/.exec(u)||/\/rest\/v1\/(\w+)/.exec(u); label=m?((/\/rpc\//.test(u)?'rpc ':'')+m[1]):'?'; }catch(x){}
+        return orig.call(self,function(v){
+          try{ var t0=performance.now(), n=(v&&Array.isArray(v.data))?v.data.length:(v&&v.data!=null?1:0);
+            setTimeout(function(){ var d=performance.now()-t0; if(d>150){ replies.push({a:t0,b:t0+d,s:label+' '+n+' row'+(n===1?'':'s')+' '+Math.round(d)+'ms'}); if(replies.length>12)replies.shift(); } },0); }catch(x){}
+          return ok?ok(v):v;
+        },bad);
+      };
+    }catch(e){}
+  })(0);
+  function repliesIn(a,b){ try{ return replies.filter(function(r){ return r.a<=b&&r.b>=a; }).map(function(r){ return r.s; }).slice(-3).join(', '); }catch(e){ return ''; } }
   function scriptsIn(a,b){ try{ var out=[]; frames.forEach(function(f){ if(f.a<=b&&f.b>=a)f.sc.forEach(function(s){ out.push(s); }); });
     out.sort(function(x,y){ return y.ms-x.ms; }); var seen={}; return out.filter(function(s){ if(seen[s.s])return false; seen[s.s]=1; return true; }).slice(0,3).map(function(s){ return s.s+' '+s.ms+'ms'; }).join(', '); }catch(e){ return ''; } }
   var hasLT=false;
@@ -49168,6 +49197,7 @@ html.arcade .arc-aurora i{mix-blend-mode:normal;
       var CAP=560;
       /* #names — who: the frame's scripts (Chrome), the timer callbacks that ran long (every browser), the iframe */
       try{ var who=[], sc=(startAt>0)?scriptsIn(startAt-50,startAt+(ms||0)+50):'', sl=(window.shkCrumb&&shkCrumb.slow&&startAt>0)?shkCrumb.slow(startAt-200,startAt+(ms||0)+200):'';
+        var rp=(startAt>0)?repliesIn(startAt-50,startAt+(ms||0)+50):''; if(rp)who.push('replies: '+rp);   /* #replies — the table first: it is the answer */
         if(sc)who.push('scripts: '+sc); if(sl)who.push('slow: '+sl); if(extra)who.push(extra); extra=who.join(' · '); }catch(e){}
       var mus=''; try{ var mst=window.hwMusic&&hwMusic.state&&hwMusic.state(); if(mst)mus=' · music '+mst; }catch(e){}
       var head=what+' '+(ms/1000).toFixed(1)+'s on '+(scr||'?')+open+loader+' · after: '+(suspects(startAt)||'?');
