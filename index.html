@@ -8,7 +8,8 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct2wakestagger';   /* oct 2 — THE WAKE-UP CATCH-UP IS SPREAD OUT: coming back to the app (or the wire reconnecting) re-pulls twelve tables; they used to leave together and land together, stalling an iPhone 3 s on wake. They now go out a quarter-second apart, the call's own inputs first (#wakestagger). */
+window.SHK_BUILD='oct2markstall';   /* oct 2 (2nd) — TAPPING A MARK NO LONGER STALLS THE PHONE: the popup restarts its animations with one layout pass instead of five, builds its confetti in one insert (24 pieces on a phone), drops the live background blur on touch screens, and the Halloween motion behind it holds still while it's open (#markstall). */
+/* was: oct2wakestagger */   /* oct 2 — THE WAKE-UP CATCH-UP IS SPREAD OUT: coming back to the app (or the wire reconnecting) re-pulls twelve tables; they used to leave together and land together, stalling an iPhone 3 s on wake. They now go out a quarter-second apart, the call's own inputs first (#wakestagger). */
 /* was: oct1botread */   /* oct 1 (16th) — THE DISPATCH BOT READS: its words are Inter at 14px on their own line under the name and mood, idle chatter in bone instead of steel grey; the name, mood and face are a size up (#botread). */
 /* was: oct1letterhead */   /* oct 1 (15th) — THE WELCOME WEARS A LETTERHEAD: the crest and "The Order of The Shadow Hook" (welcome-letterhead.png, deployed beside this file) land as a picture just above the welcome words; a checkbox in The Welcome turns it on (#letterhead). */
 /* was: oct1welcome */   /* oct 1 (14th) — THE WELCOME: Command Center → The Welcome sets a private Direct Message every new member gets from the Keymaster the moment they sign up — written and switched on here, sent by the server (WELCOME-DM.sql), {handle} filled in (#welcome). */
@@ -999,6 +1000,10 @@ html:has(.sheet.on),html.sheet-open{overflow:hidden}
 html.daylight .heist{background:rgba(64,54,38,.6)}
 /* badge unlock celebration */
 .bpop{position:fixed;inset:0;z-index:70;background:rgba(5,6,7,.86);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);display:none;align-items:center;justify-content:center;overflow:hidden}
+/* #markstall(oct2) — on a phone the Mark popup drops the live blur (it re-blurred the whole animated page
+   behind it every frame) for a deeper solid veil, and the season's motion holds still while it's up. */
+@media (pointer:coarse){.bpop{backdrop-filter:none;-webkit-backdrop-filter:none;background:rgba(5,6,7,.93)}}
+html:has(#bpop.on) .sn-decor *,html:has(#bpop.on) .sn-scene *,html:has(#bpop.on) .hwl-frame *{animation-play-state:paused!important}
 .bpop.on{display:flex}
 .bpop-stage{position:relative;text-align:center;padding:30px;width:100%;max-width:420px}
 .rays{position:absolute;left:50%;top:34%;width:560px;height:560px;transform:translate(-50%,-50%);border-radius:50%;
@@ -23843,13 +23848,22 @@ function bpopShow(icon,name,sub,earnedState,fresh,rar){
   document.getElementById('bpopClaim').textContent=earnedState?(fresh?'Claim It':'Close'):'One Day';
   try{ const _ba=document.getElementById('bpopAll'); if(_ba)_ba.style.display='none'; }catch(e){}   /* #markq — markQShow turns it on for a queue */
   // restart medal + text animations
-  const st=bpop.querySelector('.bpop-stage');st.style.animation='none';void st.offsetWidth;
-  ['bpopIcon','bpopKicker','bpopName','bpopSub'].forEach(id=>{const el=document.getElementById(id);const a=el.style.animation;el.style.animation='none';void el.offsetWidth;el.style.animation=a||''});
+  /* #markstall(oct2) — ONE forced layout to restart the five animations, not five. Each `void offsetWidth`
+     made the phone re-measure the whole page (5,600 nodes, 100 running animations) before the popup
+     even showed — the oct 2 SALTY_BONES_56 alarm: 2.8 s stalled the moment a Mark on the wall was tapped. */
+  const st=bpop.querySelector('.bpop-stage');
+  const _rs=[st].concat(['bpopIcon','bpopKicker','bpopName','bpopSub'].map(id=>document.getElementById(id))).filter(Boolean);
+  const _ra=_rs.map(el=>el.style.animation);
+  _rs.forEach(el=>{el.style.animation='none';});
+  void bpop.offsetWidth;
+  _rs.forEach((el,i)=>{el.style.animation=(el===st)?'':(_ra[i]||'');});
   // confetti burst only for earned
   const burst=document.getElementById('bpopBurst');burst.innerHTML="";
   if(earnedState){
     const cols=['#eeb46b','#c9803f','#f4e3c2','#b3552a','#dcd6c9'];
-    for(let k=0;k<42;k++){
+    const _nB=(window.matchMedia&&matchMedia('(pointer:coarse)').matches)?24:42;   /* #markstall — a phone gets 24 pieces, still a burst */
+    const _frag=document.createDocumentFragment();
+    for(let k=0;k<_nB;k++){
       const p=document.createElement('i');
       const ang=Math.random()*Math.PI*2, dist=90+Math.random()*180;
       p.style.setProperty('--dx',Math.cos(ang)*dist+'px');
@@ -23857,8 +23871,9 @@ function bpopShow(icon,name,sub,earnedState,fresh,rar){
       p.style.setProperty('--rr',(Math.random()*720-360)+'deg');
       p.style.background=cols[k%cols.length];
       p.style.animationDelay=(Math.random()*.15)+'s';
-      burst.appendChild(p);
+      _frag.appendChild(p);
     }
+    burst.appendChild(_frag);   /* #markstall — one insert, not one per piece */
     if(navigator.vibrate)navigator.vibrate(fresh?[40,60,40,60,120]:[30]);
   }
   bpop.classList.add('on');
