@@ -8,7 +8,8 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct2markstall';   /* oct 2 (2nd) — TAPPING A MARK NO LONGER STALLS THE PHONE: the popup restarts its animations with one layout pass instead of five, builds its confetti in one insert (24 pieces on a phone), drops the live background blur on touch screens, and the Halloween motion behind it holds still while it's open (#markstall). */
+window.SHK_BUILD='oct2dmhide';   /* oct 2 (3rd) — SWIPE TO HIDE A CONVERSATION: drag a Direct Messages row sideways and it slides off, with a two-second UNDO; hidden on this phone only, nothing deleted, and it comes back the moment either side says something new; "Show N hidden" brings them all back (#dmhide). */
+/* was: oct2markstall */   /* oct 2 (2nd) — TAPPING A MARK NO LONGER STALLS THE PHONE: the popup restarts its animations with one layout pass instead of five, builds its confetti in one insert (24 pieces on a phone), drops the live background blur on touch screens, and the Halloween motion behind it holds still while it's open (#markstall). */
 /* was: oct2wakestagger */   /* oct 2 — THE WAKE-UP CATCH-UP IS SPREAD OUT: coming back to the app (or the wire reconnecting) re-pulls twelve tables; they used to leave together and land together, stalling an iPhone 3 s on wake. They now go out a quarter-second apart, the call's own inputs first (#wakestagger). */
 /* was: oct1botread */   /* oct 1 (16th) — THE DISPATCH BOT READS: its words are Inter at 14px on their own line under the name and mood, idle chatter in bone instead of steel grey; the name, mood and face are a size up (#botread). */
 /* was: oct1letterhead */   /* oct 1 (15th) — THE WELCOME WEARS A LETTERHEAD: the crest and "The Order of The Shadow Hook" (welcome-letterhead.png, deployed beside this file) land as a picture just above the welcome words; a checkbox in The Welcome turns it on (#letterhead). */
@@ -6514,6 +6515,26 @@ html.daylight{--hm-water:#dbe4f3;--hm-grid:rgba(40,60,120,.07);--hm-land:#f4f0e6
 html.daylight .sky-box .sk-name{text-shadow:none}
 #hvw .hv-hint{position:absolute;left:0;right:0;bottom:calc(14px + env(safe-area-inset-bottom));text-align:center;pointer-events:none;font-family:'Inter',system-ui,sans-serif;font-size:10px;letter-spacing:.18em;color:var(--steel);transition:opacity .3s}
 #hvw.moved .hv-hint{opacity:0}
+/* #dmhide(oct2) — swipe-to-hide rows in the Direct Messages list, and the two-second Undo bar */
+.dmr{position:relative;overflow:hidden;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.dmr-fg{position:relative;z-index:1;background:inherit;will-change:transform}
+.dmr.drag .dmr-fg{background:var(--plate,#14110d)}
+.dmr-bg{position:absolute;inset:0 0 1px;display:none;align-items:center;justify-content:space-between;padding:0 16px;border-radius:10px;
+  background:linear-gradient(90deg,rgba(179,85,42,.35),rgba(179,85,42,.12) 45%,rgba(179,85,42,.12) 55%,rgba(179,85,42,.35));color:var(--copper-hi);font:600 12px 'Inter',system-ui,sans-serif;letter-spacing:.04em}
+.dmr.drag .dmr-bg{display:flex}
+.dmr.drag:not(.left) .dmr-bg span:last-child,.dmr.drag.left .dmr-bg span:first-child{visibility:hidden}
+.dmr-showhid{display:block;margin:10px auto 2px;background:none;border:1px solid var(--line);border-radius:99px;padding:7px 14px;color:var(--steel);font:500 12px 'Inter',system-ui,sans-serif;cursor:pointer}
+.dmr-tip{margin:8px 0 0;font-size:11px;text-align:center;opacity:.7}
+#dmUndo{position:fixed;left:50%;bottom:calc(92px + env(safe-area-inset-bottom));transform:translate(-50%,16px);z-index:111;opacity:0;pointer-events:none;
+  display:flex;align-items:center;gap:14px;padding:10px 12px 10px 16px;border-radius:14px;overflow:hidden;max-width:calc(100vw - 28px);
+  background:linear-gradient(184deg,var(--btn-hi),var(--btn-lo));border:1px solid rgba(238,180,107,.45);box-shadow:0 12px 30px rgba(0,0,0,.5);
+  font:500 13px 'Inter',system-ui,sans-serif;color:var(--bone);transition:opacity .2s ease,transform .2s ease}
+#dmUndo.on{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+#dmUndoTx{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#dmUndoBtn{flex:none;background:none;border:0;color:var(--copper-hi);font:700 13px 'Inter',system-ui,sans-serif;letter-spacing:.06em;cursor:pointer;padding:4px 6px}
+#dmUndoT{position:absolute;left:0;bottom:0;height:2px;width:100%;background:var(--copper-hi);transform-origin:left;animation:dmUndoT 2s linear forwards}
+#dmUndo:not(.on) #dmUndoT{animation:none}
+@keyframes dmUndoT{from{transform:scaleX(1)}to{transform:scaleX(0)}}
 /* the dock sheet */
 #hdSheet{z-index:75}
 /* #hdpull(sep23) — no Close button: a grabber on top, and the card follows a finger pulled down from its top */
@@ -29294,24 +29315,93 @@ window.handleInitial=handleInitial;
 function _dmAv(h,uid){let x=0;const s=String(h||'?');for(let i=0;i<s.length;i++)x=(x*31+s.charCodeAt(i))>>>0;
   const pic=(uid&&typeof avatarOf==='function')?avatarOf(uid):'';   /* #avatar — a picture beats the letter */
   return '<span'+(uid?' data-avuid="'+esc(uid)+'"':'')+' style="flex:none;width:32px;height:32px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;font-family:\'Anton\',sans-serif;font-size:14px;background:'+(pic?'#0a0b0d':'hsl('+(x%360)+',42%,42%)')+';color:#fff">'+(pic?avatarHTML(uid,esc(handleInitial(s))):esc(handleInitial(s)))+'</span>';}
+
+/* ═══ #dmhide(oct2) — SWIPE A CONVERSATION OUT OF THE LIST ═══
+   By request: the Keymaster's inbox filled with the welcome threads. Drag a row sideways (finger or
+   mouse) and it slides off; an "Undo" bar holds for two seconds. Hiding is THIS PHONE's tidy-up only:
+   nothing is deleted, the other casual sees nothing, and the moment either of you says something new
+   the conversation comes back to the top on its own. "Show N hidden" at the foot brings them all back. */
+function dmHideMap(){ try{ return JSON.parse(localStorage.getItem(K('dmhide'))||'{}')||{}; }catch(e){ return {}; } }
+function dmHideSave(m){ try{ localStorage.setItem(K('dmhide'),JSON.stringify(m)); }catch(e){} }
+function dmLastAt(u){ const t=DM.threads[u]; const l=t&&t.msgs[t.msgs.length-1]; return String((l&&l.at)||''); }
+function dmIsHidden(u){ const m=dmHideMap(); if(!m[u])return false;
+  if(dmLastAt(u)>String(m[u])){ delete m[u]; dmHideSave(m); return false; }   // something new was said: it comes back
+  return true; }
+window.dmUnhideAll=function(){ dmHideSave({}); dmRenderAll(); };
+let _dmUndo=null;
+function dmHide(u){
+  const m=dmHideMap(); m[u]=dmLastAt(u)||new Date().toISOString(); dmHideSave(m);
+  try{ if(typeof dmMarkSeen==='function')dmMarkSeen(u); }catch(e){}   /* a hidden thread never leaves a badge behind */
+  dmRenderAll(); dmUndoBar(u);
+}
+function dmUndoBar(u){
+  let bar=document.getElementById('dmUndo');
+  if(!bar){ bar=document.createElement('div'); bar.id='dmUndo'; bar.setAttribute('role','status');
+    bar.innerHTML='<span id="dmUndoTx"></span><button type="button" id="dmUndoBtn">UNDO</button><i id="dmUndoT"></i>';
+    document.body.appendChild(bar);
+    bar.querySelector('#dmUndoBtn').addEventListener('click',()=>{ const id=bar.dataset.uid; if(!id)return;
+      const m=dmHideMap(); delete m[id]; dmHideSave(m); bar.classList.remove('on'); clearTimeout(_dmUndo); dmRenderAll(); }); }
+  bar.dataset.uid=u;
+  bar.querySelector('#dmUndoTx').textContent='Hid '+dmPeerName(u);
+  const t=bar.querySelector('#dmUndoT'); t.style.animation='none'; void t.offsetWidth; t.style.animation='';
+  bar.classList.add('on'); clearTimeout(_dmUndo);
+  _dmUndo=setTimeout(()=>{ bar.classList.remove('on'); bar.dataset.uid=''; },2000);
+}
+function dmrArm(inbox){
+  if(inbox._dmrArmed)return; inbox._dmrArmed=1;
+  let g=null;
+  const rowOf=n=>{ try{ return n&&n.closest?n.closest('.dmr'):null; }catch(e){ return null; } };
+  function start(x,y,t){ const r=rowOf(t); if(!r){g=null;return;} g={r:r,fg:r.querySelector('.dmr-fg'),x0:x,y0:y,dx:0,t0:Date.now(),live:false,W:r.clientWidth||320}; }
+  function move(x,y,ev){ if(!g)return; const dx=x-g.x0, dy=y-g.y0; g.dx=dx;
+    if(!g.live){ if(Math.abs(dx)<10&&Math.abs(dy)<10)return; if(Math.abs(dy)>=Math.abs(dx)){ g=null; return; }
+      g.live=true; g.r.classList.add('drag'); g.fg.style.transition='none'; window.__dmrDragged=true; }
+    g.r.classList.toggle('left',dx<0);
+    g.fg.style.transform='translateX('+dx+'px)'; if(ev&&ev.cancelable)ev.preventDefault(); }
+  function end(){ if(!g)return; const tr=g; g=null; if(!tr.live)return;
+    setTimeout(()=>{ window.__dmrDragged=false; },350);   // the click that ends a drag doesn't open the thread
+    const far=Math.abs(tr.dx), fast=far/Math.max(1,Date.now()-tr.t0)>0.6;
+    tr.fg.style.transition='transform .22s cubic-bezier(.4,0,.2,1)';
+    if(far>tr.W*0.35||(fast&&far>50)){
+      tr.fg.style.transform='translateX('+(tr.dx<0?-1:1)*tr.W*1.1+'px)';
+      const h=tr.r.offsetHeight; tr.r.style.height=h+'px';
+      setTimeout(()=>{ tr.r.style.transition='height .18s ease,opacity .18s ease'; tr.r.style.height='0px'; tr.r.style.opacity='0'; },160);
+      setTimeout(()=>{ dmHide(tr.r.dataset.uid); },360);
+    }else{ tr.fg.style.transform=''; setTimeout(()=>{ tr.r.classList.remove('drag','left'); tr.fg.style.transition=''; },240); }
+  }
+  inbox.addEventListener('touchstart',e=>{ if(e.touches.length!==1){g=null;return;} const t=e.touches[0]; start(t.clientX,t.clientY,e.target); },{passive:true});
+  inbox.addEventListener('touchmove',e=>{ if(!g)return; const t=e.touches[0]; if(t)move(t.clientX,t.clientY,e); },{passive:false});
+  inbox.addEventListener('touchend',end,{passive:true});
+  inbox.addEventListener('touchcancel',()=>{ if(g){ g.dx=0; end(); } },{passive:true});
+  inbox.addEventListener('mousedown',e=>{ if(e.button===0)start(e.clientX,e.clientY,e.target); });
+  window.addEventListener('mousemove',e=>{ if(g)move(e.clientX,e.clientY,null); });
+  window.addEventListener('mouseup',()=>end());
+  inbox.addEventListener('dragstart',e=>{ if(rowOf(e.target))e.preventDefault(); });
+}
 function dmRenderAll(){
   dmBadges();
   const inbox=document.getElementById('dmInbox');
   if(inbox){
-    const uids=Object.keys(DM.threads).sort((a,b)=>{
+    const allU=Object.keys(DM.threads).sort((a,b)=>{
       const la=DM.threads[a].msgs, lb=DM.threads[b].msgs;
       return String((lb[lb.length-1]||{}).at||'')<String((la[la.length-1]||{}).at||'')?-1:1;
     });
-    inbox.innerHTML=uids.length?uids.map(u=>{
+    /* #dmhide(oct2) — a swiped-away conversation stays out of the list until something NEW is said in it */
+    const uids=allU.filter(u=>!dmIsHidden(u)), nHid=allU.length-uids.length;
+    inbox.innerHTML=(uids.length?uids.map(u=>{
       const t=DM.threads[u], last=t.msgs[t.msgs.length-1]||{}, un=dmUnread(u);
-      return '<div role="button" style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line-soft);cursor:pointer" onclick="openDmThread(\''+jsq(u)+'\')">'
+      return '<div class="dmr" data-uid="'+esc(u)+'"><div class="dmr-bg" aria-hidden="true"><span>🙈 Hide</span><span>Hide 🙈</span></div>'
+        +'<div class="dmr-fg" role="button" style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line-soft);cursor:pointer" onclick="if(!window.__dmrDragged)openDmThread(\''+jsq(u)+'\')">'
         +_dmAv(dmPeerName(u),u)
         +'<span style="flex:1;min-width:0"><b style="display:block;font-family:\'Inter\',system-ui,-apple-system,\'Segoe UI\',Roboto,sans-serif;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(dmPeerName(u))+(DM.friends[u]?' <span class="pill" style="color:var(--ok);border-color:rgba(127,174,106,.45)">friend</span>':'')+'</b>'
         +'<span class="sub" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(last.mine?'you: ':'')+esc(String(last.tx||'').slice(0,48))+'</span></span>'
         +(un?'<span style="flex:none;min-width:19px;height:19px;border-radius:10px;background:var(--ember);color:#fff;font-size:10.5px;font-weight:700;display:flex;align-items:center;justify-content:center">'+un+'</span>':'')
-        +'</div>';
+        +'</div></div>';
     }).join('')
-    :'<p class="sub">'+((window.SB&&window.__shkUid)?'No Direct Messages yet — find a casual below and say the word.':'Sign in to read your Direct Messages.')+'</p>';
+    :(nHid?'<p class="sub">All caught up — every conversation is swiped away.</p>'
+      :'<p class="sub">'+((window.SB&&window.__shkUid)?'No Direct Messages yet — find a casual below and say the word.':'Sign in to read your Direct Messages.')+'</p>'))
+    +(nHid?'<button type="button" class="dmr-showhid" onclick="dmUnhideAll()">↺ Show '+nHid+' hidden conversation'+(nHid===1?'':'s')+'</button>':'')
+    +(uids.length>1&&!nHid?'<p class="sub dmr-tip">Swipe a conversation sideways to hide it.</p>':'');
+    try{ dmrArm(inbox); }catch(e){}
   }
   const find=document.getElementById('dmFind');
   if(find){
