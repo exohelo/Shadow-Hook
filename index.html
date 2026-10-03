@@ -8,7 +8,8 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct2dmhide';   /* oct 2 (3rd) — SWIPE TO HIDE A CONVERSATION: drag a Direct Messages row sideways and it slides off, with a two-second UNDO; hidden on this phone only, nothing deleted, and it comes back the moment either side says something new; "Show N hidden" brings them all back (#dmhide). */
+window.SHK_BUILD='oct2dispsame';   /* oct 2 (4th) — WAKING THE APP NO LONGER RE-CHEWS TWO WEEKS OF SHEETS: the dispatch pull re-ingested and repainted all ~30 recent sheets every time, changed or not (a 5.3 s stall on an iPhone on wake); now only a sheet whose updated_at is new gets ingested, and a pull with nothing new does nothing (#dispsame). */
+/* was: oct2dmhide */   /* oct 2 (3rd) — SWIPE TO HIDE A CONVERSATION: drag a Direct Messages row sideways and it slides off, with a two-second UNDO; hidden on this phone only, nothing deleted, and it comes back the moment either side says something new; "Show N hidden" brings them all back (#dmhide). */
 /* was: oct2markstall */   /* oct 2 (2nd) — TAPPING A MARK NO LONGER STALLS THE PHONE: the popup restarts its animations with one layout pass instead of five, builds its confetti in one insert (24 pieces on a phone), drops the live background blur on touch screens, and the Halloween motion behind it holds still while it's open (#markstall). */
 /* was: oct2wakestagger */   /* oct 2 — THE WAKE-UP CATCH-UP IS SPREAD OUT: coming back to the app (or the wire reconnecting) re-pulls twelve tables; they used to leave together and land together, stalling an iPhone 3 s on wake. They now go out a quarter-second apart, the call's own inputs first (#wakestagger). */
 /* was: oct1botread */   /* oct 1 (16th) — THE DISPATCH BOT READS: its words are Inter at 14px on their own line under the name and mood, idle chatter in bone instead of steel grey; the name, mood and face are a size up (#botread). */
@@ -18433,7 +18434,7 @@ function ingestForecastBatch(rows){
    live in localStorage on devices that saw them, so the server only needs to hand
    over the recent window (keys start with the ISO date, so a string >= works).
    Reconnect storms are coalesced: a re-pull inside 90 s is a no-op. */
-const DISPATCH_PULL_DAYS=14; let _dispLastPull=0;
+const DISPATCH_PULL_DAYS=14; let _dispLastPull=0; const _dispSeen={};   /* #dispsame — key → updated_at already ingested this session */
 function _dispCutoffKey(){const d=new Date(Date.now()-DISPATCH_PULL_DAYS*864e5);return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
 async function sbLoadDispatch(force){
   if(!window.SB){try{DEVLOG.data('dispatch_boards',{ok:false,err:'no backend client'});}catch(e){} return;}
@@ -18442,7 +18443,16 @@ async function sbLoadDispatch(force){
   try{
     const r=await window.SB.from('dispatch_boards').select('key,data,updated_at').gte('key',_dispCutoffKey()).order('key',{ascending:true});
     if(r&&!r.error&&Array.isArray(r.data)){
-      try{ingestForecastBatch(r.data);}catch(e){}   /* #freezefix — one quiet landing, one paint */
+      /* #dispsame(oct2) — ONLY THE SHEETS THAT CHANGED. Every pull handed all ~30 sheets of the last two
+         weeks back through ingestForecast and then repainted the boards, the harbor and the call — even
+         when not one of them had moved since the last pull. On an older iPhone that was the whole freeze:
+         oct 2 MAD_SILVER_55, 5.3 s stalled the instant dispatch_boards (30 rows) landed on waking the app.
+         A sheet is re-ingested only when its updated_at is new to this session; nothing new, nothing done. */
+      const fresh=r.data.filter(x=>x&&x.key&&(force||_dispSeen[x.key]!==String(x.updated_at||'')));   /* a forced pull re-reads everything */
+      if(fresh.length){
+        try{ingestForecastBatch(fresh);}catch(e){}   /* #freezefix — one quiet landing, one paint */
+        fresh.forEach(x=>{ _dispSeen[x.key]=String(x.updated_at||''); });
+      }
       try{const latest=r.data.slice().sort((a,b)=>String(a.updated_at||'').localeCompare(String(b.updated_at||''))).pop();
         DEVLOG.data('dispatch_boards',{ok:true,rows:r.data.length,latest:(latest?latest.key+' @ '+String(latest.updated_at||'').slice(0,19).replace('T',' ')+'Z':'—')});}catch(e){}
     }else{
