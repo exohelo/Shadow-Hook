@@ -51334,13 +51334,9 @@ window.HARBOR_LORE={"ports":{"LA":{"name":"Port of Los Angeles","kicker":"San Pe
     +    '<p class="sub" id="pwcMsg" style="margin:8px 0 0;min-height:1em"></p>'
     +  '</div>'
     +'</div>'
-    +'<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line-soft)">'
-    +  '<div style="font-weight:700;font-size:14px;color:var(--bone)">📱 Your devices</div>'
-    +  '<div style="margin:3px 0 8px;font-size:12px;line-height:1.5;color:var(--steel)">Every device signed into your account. A new one sends an alert to the others.</div>'
-    +  '<div id="devList" class="sub" style="font-size:12.5px;line-height:1.7">—</div>'
-    +'</div>';
+    ;   /* #devwatch2(oct3) — no device list, by request: just the alert when a new one signs in */
   host.appendChild(wrap);
-  try{ var sub=box.querySelector('.fold-btn .ft span'); if(sub)sub.textContent='Who can DM you, last seen, appear offline, who sees your docket, password, your devices'; }catch(e){}
+  try{ var sub=box.querySelector('.fold-btn .ft span'); if(sub)sub.textContent='Who can DM you, last seen, appear offline, who sees your docket, password'; }catch(e){}
 
   var form=$id('pwcForm'), openB=$id('pwcOpen'), msg=$id('pwcMsg'), go=$id('pwcGo');
   function showForm(on,outAll){ form.style.display=on?'':'none'; openB.style.display=on?'none':'';
@@ -51377,20 +51373,6 @@ window.HARBOR_LORE={"ports":{"LA":{"name":"Port of Los Angeles","kicker":"San Pe
     }finally{ go.disabled=false; go.textContent=label; }
   });
 
-  /* ── your devices ── */
-  async function paintDevices(){
-    var el=$id('devList'); if(!el||!window.SB||!window.__shkUid)return;
-    try{
-      var r=await window.SB.from('member_devices').select('dev,label,first_seen,last_seen').order('last_seen',{ascending:false}).limit(20);
-      if(r.error)throw r.error;
-      var rows=r.data||[]; if(!rows.length){ el.textContent='Just this one.'; return; }
-      el.innerHTML=rows.map(function(x){ var me=x.dev===MY;
-        return '<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--line-soft)">'
-          +'<span style="color:var(--bone)">'+esc(x.label||'Earlier device')+(me?' <b style="color:var(--copper-hi)">· this one</b>':'')+'</span>'
-          +'<span style="color:var(--steel);white-space:nowrap">'+(me?'now':esc(ago(x.last_seen)))+'</span></div>'; }).join('');
-    }catch(e){ el.textContent='Couldn’t load the list right now.'; }
-  }
-
   /* ── the alert card ── */
   function alertCard(list){
     var old=$id('secAlertCard'); if(old)old.remove();
@@ -51399,11 +51381,11 @@ window.HARBOR_LORE={"ports":{"LA":{"name":"Port of Los Angeles","kicker":"San Pe
     var c=document.createElement('div'); c.id='secAlertCard'; c.setAttribute('role','alert');
     c.style.cssText='position:fixed;left:12px;right:12px;top:calc(env(safe-area-inset-top,0px) + 12px);z-index:9000;max-width:520px;margin:0 auto;'
       +'background:var(--panel,#16121f);border:1px solid rgba(238,180,107,.6);border-radius:14px;padding:14px 14px 12px;box-shadow:0 12px 40px rgba(0,0,0,.6);color:var(--bone,#eee)';
-    c.innerHTML='<div style="font-weight:800;letter-spacing:.06em;color:var(--copper-hi,#f0a050);margin-bottom:4px">🔐 NEW SIGN-IN ON YOUR ACCOUNT</div>'
+    c.innerHTML='<div style="font-weight:800;letter-spacing:.06em;color:var(--copper-hi,#f0a050);margin-bottom:4px">🔐 WAS THIS YOU?</div>'
       +'<div style="font-size:14px;line-height:1.5">'+esc(a.label||'A device')+' · '+esc(when(a.created_at))+(more>0?' <span style="color:var(--steel)">(+'+more+' more)</span>':'')+'</div>'
-      +'<div style="font-size:12.5px;color:var(--steel);margin:4px 0 11px;line-height:1.5">If this wasn’t you, change your password now — that signs the other device out.</div>'
-      +'<div style="display:flex;gap:8px"><button class="btn-line" id="secMe" type="button" style="flex:1;background:none;box-shadow:none;color:var(--bone,#eee)">That was me</button>'
-      +'<button class="btn-line gold" id="secNotMe" type="button" style="flex:1;padding:11px;font-weight:800">Not me</button></div>';
+      +'<div style="font-size:12.5px;color:var(--steel);margin:4px 0 11px;line-height:1.5">A new device just signed into your account. If it wasn’t you, change your password — that signs it out.</div>'
+      +'<div style="display:flex;gap:8px"><button class="btn-line" id="secMe" type="button" style="flex:1;background:none;box-shadow:none;color:var(--bone,#eee)">Yes, it was me</button>'
+      +'<button class="btn-line gold" id="secNotMe" type="button" style="flex:1;padding:11px;font-weight:800">No — change password</button></div>';
     document.body.appendChild(c);
     var clear=function(){ try{ list.forEach(function(x){ window.SB.rpc('security_alert_seen',{p_id:x.id}); }); }catch(e){} c.remove(); };
     $id('secMe').addEventListener('click',clear);
@@ -51434,7 +51416,7 @@ window.HARBOR_LORE={"ports":{"LA":{"name":"Port of Los Angeles","kicker":"San Pe
   async function checkIn(){
     var uid=window.__shkUid; if(!window.SB||!uid||!MY||checked===uid)return; checked=uid;
     try{ await window.SB.rpc('device_checkin',{p_dev:MY,p_label:devLabel()}); }catch(e){ checked=''; return; }
-    lookAlerts(true); paintDevices();
+    lookAlerts(true);
   }
   var tries=0;
   (function wait(){                                        /* the wire comes up a beat after this script */
@@ -51448,7 +51430,6 @@ window.HARBOR_LORE={"ports":{"LA":{"name":"Port of Los Angeles","kicker":"San Pe
   })();
   document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='visible')lookAlerts(false); });
   /* the list repaints whenever the profile opens */
-  try{ var ops=window.openProfileSheet; if(typeof ops==='function')window.openProfileSheet=function(){ var r=ops.apply(this,arguments); try{ paintDevices(); }catch(e){} return r; }; }catch(e){}
 }catch(e){} })();
 </script>
 <script>window.__SHK_EOF=1;</script>
