@@ -2204,6 +2204,17 @@ html.daylight .btn{box-shadow:inset 0 1px 0 rgba(255,255,255,.5)}
 @keyframes hdrMsgIn{0%{transform:scale(.6);opacity:0}100%{transform:scale(1);opacity:1}}
 @keyframes hdrMsgPulse{0%,100%{box-shadow:0 0 16px rgba(224,73,46,.6),0 3px 0 #7a1608,inset 0 1px 0 rgba(255,255,255,.3)}50%{box-shadow:0 0 26px rgba(255,90,60,.95),0 3px 0 #7a1608,inset 0 1px 0 rgba(255,255,255,.3)}}
 html.daylight .hdr-msg{box-shadow:0 0 10px rgba(224,73,46,.35),0 3px 0 #7a1608}
+/* #hdrfr — the friend-request alert: the ✉'s shape in gold */
+.hdr-msg.hdr-fr{color:#2a1700;background:linear-gradient(160deg,#ffd27a,#e0952e);border-color:rgba(255,220,150,.8);
+  box-shadow:0 0 12px rgba(240,170,60,.55),0 2px 0 #7a4a08,inset 0 1px 0 rgba(255,255,255,.45);animation:hdrMsgIn .35s cubic-bezier(.2,.9,.3,1.2),hdrFrPulse 2.4s ease-in-out 1s infinite}
+.hdr-msg.hdr-fr:active{box-shadow:0 0 16px rgba(240,170,60,.6),0 1px 0 #7a4a08}
+.hdr-msg.hdr-fr.ring{animation:hdrMsgRing .6s ease-out}
+@keyframes hdrFrPulse{0%,100%{box-shadow:0 0 14px rgba(240,170,60,.55),0 3px 0 #7a4a08,inset 0 1px 0 rgba(255,255,255,.45)}50%{box-shadow:0 0 24px rgba(255,200,90,.95),0 3px 0 #7a4a08,inset 0 1px 0 rgba(255,255,255,.45)}}
+html.daylight .hdr-msg.hdr-fr{box-shadow:0 0 10px rgba(240,170,60,.35),0 3px 0 #7a4a08}
+/* both alerts up: they sit together as a pair, tight, so the dispatch clock keeps its room */
+#hcmsg:not([style*="none"]) + .hdr-fr{margin-left:-7px}
+.hc-right .hdr-msg{padding:0 6px 0 5px;gap:3px}
+#dmFriendsCard.flash{animation:abFlash 1.4s ease-out}
 @media (prefers-reduced-motion:reduce){.hdr-msg{animation:none}}
 @keyframes hdrMsgRing{0%{transform:scale(1)}30%{transform:scale(1.18) rotate(-8deg)}60%{transform:scale(1.05) rotate(6deg)}100%{transform:scale(1)}}
 /* #hdr2 — .sixchip retired with the header pill; .six-days now reads in the profile sheet */
@@ -5122,7 +5133,11 @@ window.DEVLOG=(function(){
       <div class="hc-right">
         <!-- #hdrmsg(sep28) — ✉ MESSAGES rides the header beside the ⚓: one tap to the DMs page from any
              tab. The badge counts unread wires + friend requests waiting; hidden when there's nothing. -->
-        <button class="hdr-msg" id="hcmsg" type="button" title="Messages &amp; friends" aria-label="New messages and friend requests" style="display:none"><span class="ic">✉</span><i id="hcMsgN"></i></button>
+        <button class="hdr-msg" id="hcmsg" type="button" title="Messages" aria-label="New messages" style="display:none"><span class="ic">✉</span><i id="hcMsgN"></i></button>
+        <!-- #hdrfr(oct3) — FRIEND REQUESTS get their own header alert, by request: they used to ride inside the ✉
+             count, so a request read as "a message" and was only found on the DMs page. Gold, not red; a tap
+             lands on the Friends card with the requests at the top. -->
+        <button class="hdr-msg hdr-fr" id="hcfr" type="button" title="Friend requests" aria-label="Friend requests waiting" style="display:none"><span class="ic">🤝</span><i id="hcFrN"></i></button>
         <button class="hdr-seal" id="hcrest" type="button" title="Your account — profile, 6-month rule &amp; log out" aria-label="Account, profile and log out">⚓</button>
       </div>
     </div>
@@ -29197,12 +29212,21 @@ function dmBadges(){
   const d=document.getElementById('dmPillDot');if(d)d.style.display=n>0?'':'none';
   /* #hdrmsg — the header ✉: shown once signed in, badge = unread wires + requests waiting */
   const b=document.getElementById('hcmsg'), c=document.getElementById('hcMsgN');
-  const show=!!(window.SB&&window.__shkUid)&&n>0;   /* an alert: only there when something waits */
-  if(b)b.style.display=show?'':'none';
-  if(c)c.textContent=n>99?'99+':String(n);
-  if(b)b.title=n?(un?un+' unread':'')+(un&&rq?' · ':'')+(rq?rq+' friend request'+(rq==1?'':'s'):''):'';
+  const signed=!!(window.SB&&window.__shkUid);
+  /* #hdrfr(oct3) — ✉ is messages only now; friend requests have their own gold 🤝 beside it */
+  if(b)b.style.display=(signed&&un>0)?'':'none';
+  if(c)c.textContent=un>99?'99+':String(un);
+  if(b)b.title=un?un+' unread message'+(un==1?'':'s'):'';
+  const f=document.getElementById('hcfr'), fn=document.getElementById('hcFrN');
+  if(f)f.style.display=(signed&&rq>0)?'':'none';
+  if(fn)fn.textContent=rq>99?'99+':String(rq);
+  if(f)f.title=rq?rq+' friend request'+(rq==1?'':'s')+' waiting':'';
 }
 window.dmBadges=dmBadges;
+(function(){ const f=document.getElementById('hcfr'); if(f)f.addEventListener('click',function(){   /* #hdrfr — straight to the requests */
+  try{gotoTab('order');}catch(e){} try{setHallView('msg');}catch(e){}
+  setTimeout(function(){ try{ const c=document.getElementById('dmFriendsCard'); if(!c)return;
+    c.scrollIntoView({behavior:'smooth',block:'start'}); c.classList.remove('flash'); void c.offsetWidth; c.classList.add('flash'); }catch(e){} },250); }); })();
 (function(){ const b=document.getElementById('hcmsg'); if(b)b.addEventListener('click',function(){
   try{gotoTab('order');}catch(e){} try{setHallView('msg');}catch(e){} window.scrollTo(0,0); }); })();
 function dmPeerName(uid){
@@ -29293,7 +29317,8 @@ function dmSub(){
       /* #friends2 — a request landing rings the bell and bumps the badge at once */
       .on('postgres_changes',{event:'INSERT',schema:'public',table:'friend_requests',filter:'to_id=eq.'+window.__shkUid},
         p=>{try{ const r=p&&p.new; if(!r)return; DM.reqIn[r.from_id]=r.from_handle||'a casual'; dmRenderAll();
-          const b=document.getElementById('hcmsg'); if(b){b.classList.remove('ring'); void b.offsetWidth; b.classList.add('ring');}
+          const b=document.getElementById('hcfr'); if(b){b.classList.remove('ring'); void b.offsetWidth; b.classList.add('ring');}   /* #hdrfr */
+          try{ toast('🤝 '+String(r.from_handle||'a casual')+' sent you a friend request'); }catch(e){}
           if(typeof alertFire==='function')alertFire('dm',{title:'⚓ Friend request',body:String(r.from_handle||'a casual')+' wants to be friends',tag:'shadowhook-fr-'+r.from_id}); }catch(e){}})
       .on('postgres_changes',{event:'DELETE',schema:'public',table:'friend_requests'},p=>{try{dmLoad();}catch(e){}})
       .on('postgres_changes',{event:'*',schema:'public',table:'friends'},p=>{try{dmLoad();}catch(e){}})
