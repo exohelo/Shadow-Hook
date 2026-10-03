@@ -2204,6 +2204,10 @@ html.daylight .btn{box-shadow:inset 0 1px 0 rgba(255,255,255,.5)}
 @keyframes hdrMsgIn{0%{transform:scale(.6);opacity:0}100%{transform:scale(1);opacity:1}}
 @keyframes hdrMsgPulse{0%,100%{box-shadow:0 0 16px rgba(224,73,46,.6),0 3px 0 #7a1608,inset 0 1px 0 rgba(255,255,255,.3)}50%{box-shadow:0 0 26px rgba(255,90,60,.95),0 3px 0 #7a1608,inset 0 1px 0 rgba(255,255,255,.3)}}
 html.daylight .hdr-msg{box-shadow:0 0 10px rgba(224,73,46,.35),0 3px 0 #7a1608}
+/* #dmdel — your own bubble: hold it to delete (no iOS copy/callout fighting the hold); the held one dims */
+#dmFeed .dm-b.me{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+#dmFeed .dm-b.me img,#dmFeed .dm-b.me video{-webkit-touch-callout:none}
+#dmFeed .dm-b.dm-pick{opacity:.55;transform:scale(.97);transition:transform .15s,opacity .15s}
 /* #hdrfr — the friend-request alert: the ✉'s shape in gold */
 .hdr-msg.hdr-fr{color:#2a1700;background:linear-gradient(160deg,#ffd27a,#e0952e);border-color:rgba(255,220,150,.8);
   box-shadow:0 0 12px rgba(240,170,60,.55),0 2px 0 #7a4a08,inset 0 1px 0 rgba(255,255,255,.45);animation:hdrMsgIn .35s cubic-bezier(.2,.9,.3,1.2),hdrFrPulse 2.4s ease-in-out 1s infinite}
@@ -8521,6 +8525,11 @@ html.daylight .hm-lm .lk-g,html.daylight .hm-lm .lk-w{fill:#dfeaf7}
             <div class="alt">👁 Show when I was last on</div>
             <div class="als">Other members see “seen 2h ago” on your card. Off, they only see it while you’re online.</div>
           </div><button class="alsw on" id="abSeen" type="button" role="switch" aria-checked="true" aria-label="Show when I was last on"><i></i></button></div>
+        <!-- #cardhrs(oct3) — hours on your card: shown by default, one switch to keep them to yourself -->
+        <div class="alrow" style="border-top:1px solid var(--line-soft)"><div class="alm">
+            <div class="alt">⏱ Show my hours on my card</div>
+            <div class="als">Members see your Experience Hours on the book when they open your card. Off, only you see them.</div>
+          </div><button class="alsw on" id="abHrs" type="button" role="switch" aria-checked="true" aria-label="Show my hours on my card"><i></i></button></div>
         <!-- #friends2(sep28) — Friend requests + Your friends moved to the ✉ DMs page (their own card) -->
         <p class="sub" style="margin:10px 0 0">⚓ Friend requests and your friends list live on the <b style="color:var(--bone)">Social → ✉ DMs</b> page.</p>
       </div>
@@ -29514,8 +29523,14 @@ function mcFactsHTML(uid,name,self){
   const d=c.d; let h='<div class="mc-facts">';
   if(d.founding)h+='<div class="mc-found"><span class="mc-fi">⚜</span><span><b>FOUNDING MEMBER</b><small>#'+d.founding+' of the first 20 to join the Order</small></span></div>';
   const chips=[];
-  if(d.streak>=2)chips.push('<span class="mc-chip hot">🔥 '+d.streak+' weeks straight on the board</span>');
-  else if(d.streak===1)chips.push('<span class="mc-chip">🔥 on the board this week</span>');
+  /* #cardhrs(oct3) — EXPERIENCE HOURS ON THE BOOK, by request: the figure their own phone publishes to the
+     Race (posting or stub + every docket sealed since). Hidden by the member in Privacy settings → nobody
+     else gets the number from the server; their own card says it's hidden. */
+  if(d.hrs!=null&&+d.hrs>0)chips.push('<span class="mc-chip hot">⏱ '+Math.round(+d.hrs).toLocaleString()+' hrs on the book</span>');
+  if(self&&d.hrs_hidden)chips.push('<span class="mc-chip dim">⏱ hours hidden from others</span>');
+  /* the streak counts WEEKS WITH A SEALED DOCKET (work on the docks), not time in the app — said so now */
+  if(d.streak>=2)chips.push('<span class="mc-chip">🔥 '+d.streak+' weeks straight on the docks</span>');
+  else if(d.streak===1)chips.push('<span class="mc-chip">🔥 worked the docks this week</span>');
   if(!self&&d.mutual>0)chips.push('<span class="mc-chip">⚓ '+d.mutual+' friend'+(d.mutual===1?'':'s')+' in common</span>');
   const online=((typeof FLOOR!=='undefined'&&FLOOR.roster)||[]).some(p=>p.uid===uid);
   if(!self&&!online&&d.seen)chips.push('<span class="mc-chip dim">👁 seen '+mcAgo(d.seen)+'</span>');
@@ -30100,6 +30115,52 @@ function dmDrawThread(){
   }).join('')
   :'<p class="sub" style="text-align:center;margin-top:30px">A private conversation, just you two. Masked handles, and talk is free.</p>';
   f.scrollTop=f.scrollHeight;
+  try{ dmDelArm(); if(window._dmDelHint)_dmDelHint(); }catch(e){}   /* #dmdel */
+}
+/* ═══ #dmdel(oct3) — DELETE ONE MESSAGE YOU SENT ═══
+   By request: the only way out of a Direct Message was the BURN desk — your whole side of a conversation,
+   or every conversation. Now press and hold (or right-click on a computer) one of YOUR OWN bubbles → "Delete
+   this message?" → it's deleted from the server for both of you. Their messages can't be touched — the
+   server only lets a sender delete their own (dm: sender may delete own). A photo or clip goes with its file;
+   a GIF is only a link. The other phone hears the DELETE over realtime (dmApplyDelete) and the bubble goes. */
+function dmDelArm(){   /* armed on the feed each time a thread draws — the feed is built when a conversation opens */
+  const feed=document.getElementById('dmFeed'); if(!feed||feed._dmdel)return; feed._dmdel=1;
+  let tmr=null, sx=0, sy=0, fired=false;
+  const mine=el=>{ const b=el&&el.closest&&el.closest('.dm-b.me'); return (b&&!b.classList.contains('pend')&&feed.contains(b))?b:null; };
+  function find(id){ const t=DM.threads[DM.openPeer]; return t?t.msgs.find(x=>String(x.id)===String(id)):null; }
+  function ask(b){
+    const m=find(b.dataset.dmid); if(!m||!m.mine)return;
+    try{ if(navigator.vibrate)navigator.vibrate(12); }catch(e){}
+    b.classList.add('dm-pick');
+    const what=(m.kind==='video')?'this clip':(m.kind==='gif')?'this GIF':(m.kind&&m.kind!=='text'&&m.url)?'this photo':'this message';
+    const done=()=>b.classList.remove('dm-pick');
+    shConfirm('It comes off both phones — yours and theirs. This can’t be undone.',()=>{ done(); del(m); },
+      {title:'Delete '+what+'?',icon:'🗑',okText:'Delete',noText:'Keep it',onNo:done});
+  }
+  async function del(m){
+    if(!(window.SB&&window.__shkUid)){ toast('Sign in first'); return; }
+    let r=null;
+    try{ r=await window.SB.from('dm_messages').delete().eq('id',m.id).eq('from_id',window.__shkUid).select('id'); }catch(e){ r={error:e}; }
+    if(r&&r.error){ toast('Couldn’t delete it — check your signal'); return; }
+    if(!r||!r.data||!r.data.length){ dmApplyDelete(m.id); toast('🗑 Deleted'); return; }   /* already gone on the server */
+    if(m.url&&(m.kind==='photo'||m.kind==='video'||m.kind==='image')){ try{ await _burnFiles([m.url]); }catch(e){} }
+    dmApplyDelete(m.id);
+    try{ toast('🗑 Message deleted'); }catch(e){}
+  }
+  const cancel=()=>{ clearTimeout(tmr); tmr=null; };
+  feed.addEventListener('touchstart',e=>{ const b=mine(e.target); if(!b||e.touches.length>1)return; fired=false;
+    sx=e.touches[0].clientX; sy=e.touches[0].clientY; cancel(); tmr=setTimeout(()=>{ fired=true; ask(b); },520); },{passive:true});
+  feed.addEventListener('touchmove',e=>{ if(!tmr)return; const t=e.touches[0]; if(Math.abs(t.clientX-sx)>10||Math.abs(t.clientY-sy)>10)cancel(); },{passive:true});
+  feed.addEventListener('touchend',e=>{ cancel(); if(fired){ e.preventDefault(); fired=false; } });
+  feed.addEventListener('touchcancel',cancel);
+  feed.addEventListener('contextmenu',e=>{ const b=mine(e.target); if(!b)return; e.preventDefault(); cancel(); if(!fired)ask(b); fired=false; });
+  /* a computer has no long-press: hold the mouse down too */
+  feed.addEventListener('mousedown',e=>{ if(e.button!==0)return; const b=mine(e.target); if(!b)return; fired=false; cancel(); tmr=setTimeout(()=>{ fired=true; ask(b); },600); });
+  ['mouseup','mouseleave'].forEach(ev=>feed.addEventListener(ev,cancel));
+  /* say it once, the first time a member opens a conversation with something of theirs in it */
+  window._dmDelHint=function(){ try{ if(localStorage.getItem('shadowhook_dmdelhint'))return;
+    const t=DM.threads[DM.openPeer]; if(!t||!t.msgs.some(x=>x.mine))return;
+    localStorage.setItem('shadowhook_dmdelhint','1'); setTimeout(()=>{ try{ toast('Tip: press and hold a message you sent to delete it'); }catch(e){} },900); }catch(e){} };
 }
 async function dmSend(){
   if(typeof guestWall==='function'&&guestWall())return;   /* #guest */
@@ -30555,10 +30616,30 @@ window.dmDiag=dmDiag;
           try{ localStorage.setItem(SEENK(),on?'0':'1'); }catch(e){}
           try{toast(on?'👁 Members can see when you were last on':'👁 Last seen hidden');}catch(e){} try{delete window.MCARD[window.__shkUid];}catch(e){}
         }catch(e){ put(!on); try{toast('Couldn’t save that — try again');}catch(x){} } }); }
+    /* #cardhrs(oct3) — the hours switch: the same pattern as last seen (remembered, re-read, honest on failure) */
+    const hs=$('abHrs');
+    if(hs){ const HK=()=>K('hrshide');
+      const put=on=>{ hs.classList.toggle('on',on); hs.setAttribute('aria-checked',on?'true':'false'); };
+      let gen=0;
+      try{ const c=localStorage.getItem(HK()); if(c==='1')put(false); else if(c==='0')put(true); }catch(e){}
+      const hrsLoad=async()=>{ try{ if(!(window.SB&&window.__shkUid))return; const my=++gen;
+          const r=await window.SB.from('profiles').select('hrs_hidden').eq('id',window.__shkUid).maybeSingle();
+          if(my!==gen||!r||r.error||!r.data)return;
+          const hid=!!r.data.hrs_hidden; put(!hid); try{ localStorage.setItem(HK(),hid?'1':'0'); }catch(e){} }catch(e){} };
+      window.hrsHideLoad=hrsLoad;
+      hrsLoad(); setTimeout(hrsLoad,4000); setTimeout(hrsLoad,10000);
+      hs.addEventListener('click',async()=>{
+        if(!(window.SB&&window.__shkUid)){ try{toast('Sign in first — this setting rides your card');}catch(e){} return; }
+        const on=!hs.classList.contains('on'); gen++; put(on);
+        try{ const r=await window.SB.from('profiles').update({hrs_hidden:!on}).eq('id',window.__shkUid).select('hrs_hidden'); if(r.error)throw r.error;
+          if(!r.data||!r.data.length)throw new Error('the server kept the old setting');
+          try{ localStorage.setItem(HK(),on?'0':'1'); }catch(e){}
+          try{toast(on?'⏱ Members can see your hours':'⏱ Hours hidden — only you see them');}catch(e){} try{delete window.MCARD[window.__shkUid];}catch(e){}
+        }catch(e){ put(!on); try{toast('Couldn’t save that — try again');}catch(x){} } }); }
     const g=$('abGender'); if(g)g.addEventListener('click',e=>{ const x=e.target.closest('button'); if(!x)return; AB.gender=x.dataset.g||''; paint(); });
   })();
   function hook(){ const o=window.openProfileSheet; if(typeof o!=='function'||o._about)return;
-    const w=function(){ const r=o.apply(this,arguments); try{ paint(); load(); }catch(e){} try{ if(window.seenLoad)window.seenLoad(); }catch(e){} return r; }; w._about=1; window.openProfileSheet=w; }   /* #lastseen — the switch re-reads on every open */
+    const w=function(){ const r=o.apply(this,arguments); try{ paint(); load(); }catch(e){} try{ if(window.seenLoad)window.seenLoad(); }catch(e){} try{ if(window.hrsHideLoad)window.hrsHideLoad(); }catch(e){} return r; }; w._about=1; window.openProfileSheet=w; }   /* #lastseen — the switch re-reads on every open */
   window.addEventListener('load',hook); setTimeout(hook,0);   /* openProfileSheet is defined further down the file */
   paint();
 })();
@@ -51343,7 +51424,7 @@ window.HARBOR_LORE={"ports":{"LA":{"name":"Port of Los Angeles","kicker":"San Pe
     +'</div>'
     ;   /* #devwatch2(oct3) — no device list, by request: just the alert when a new one signs in */
   host.appendChild(wrap);
-  try{ var sub=box.querySelector('.fold-btn .ft span'); if(sub)sub.textContent='Who can DM you, last seen, appear offline, who sees your docket, password'; }catch(e){}
+  try{ var sub=box.querySelector('.fold-btn .ft span'); if(sub)sub.textContent='Who can DM you, last seen, your hours, appear offline, who sees your docket, password'; }catch(e){}
 
   var form=$id('pwcForm'), openB=$id('pwcOpen'), msg=$id('pwcMsg'), go=$id('pwcGo');
   function showForm(on,outAll){ form.style.display=on?'':'none'; openB.style.display=on?'none':'';
