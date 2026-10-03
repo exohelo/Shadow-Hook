@@ -8678,7 +8678,7 @@ html.daylight .hm-lm .lk-g,html.daylight .hm-lm .lk-w{fill:#dfeaf7}
       <div class="big" style="font-size:20px;letter-spacing:.06em">HOURS ON THE BOOK</div>
       <p class="sub" style="margin:8px 0 16px">Your Experience Hours as printed on your stub, and the date they're paid through. Every docket you seal after that date stacks on top — you'll never have to type it again.</p>
       <div style="margin-bottom:10px"><span class="lbl">Hours on the book</span><input class="field" id="hbHrs" type="number" inputmode="decimal" step="0.5" min="0" placeholder="e.g. 3277.5"></div>
-      <div style="margin-bottom:10px"><span class="lbl">Paid through <small style="text-transform:none;letter-spacing:0">— the cutoff on that figure</small></span><input class="field" id="hbThru" type="date"></div>
+      <div style="margin-bottom:10px"><span class="lbl">Paid through <small style="text-transform:none;letter-spacing:0">— the date on your stub</small></span><input class="field" id="hbThru" type="date"></div>
       <div class="sub" id="hbPreview" style="margin:0 0 14px;text-align:center;line-height:1.5"></div>
       <p class="sub" id="hbPosted" style="margin:0 0 14px;line-height:1.5"></p>
       <button class="btn-line gold" id="hbSave" style="width:100%">Set it</button>
@@ -17843,8 +17843,9 @@ function hbPreviewUpd(){
   const pv=document.getElementById('hbPreview'), po=document.getElementById('hbPosted');
   if(!pv)return;
   const h=parseFloat(document.getElementById('hbHrs').value)||0;
-  const thru=document.getElementById('hbThru').value||POSTING_PAID_THRU;
-  if(h>0&&/^\d{4}-\d{2}-\d{2}$/.test(thru)){
+  const thru=document.getElementById('hbThru').value||'';   /* #thrublank — no silent 5/22 */
+  if(h>0&&!thru){ pv.style.display=''; pv.innerHTML='<span style="color:var(--copper-hi)">Now pick the <b>Paid through</b> date printed on your stub.</span>'; }
+  else if(h>0&&/^\d{4}-\d{2}-\d{2}$/.test(thru)){
     const since=sealedHoursSince(thru);
     pv.style.display='';
     pv.innerHTML='Your book: <b style="color:var(--bone)">'+h.toLocaleString()+'</b> typed + <b style="color:var(--bone)">'+Math.round(since).toLocaleString()+'</b> sealed since '+thru.slice(5).replace("-","/").replace(/^0/,"")+' = <b style="color:var(--copper-hi)">'+Math.round(h+since).toLocaleString()+' hrs</b> on the book';
@@ -17860,7 +17861,12 @@ window._hbPreviewUpd=hbPreviewUpd;
 function openHoursSheet(){
   const b=HRSBASE||{};
   document.getElementById('hbHrs').value = (+b.hrs>0)?b.hrs:"";
-  document.getElementById('hbThru').value = /^\d{4}-\d{2}-\d{2}$/.test(b.thru||"") ? b.thru : POSTING_PAID_THRU;
+  /* #thrublank(oct3) — THE DATE STARTS EMPTY. It used to open on the posting's own date (5/22), and a casual
+     who typed a fresh stub figure and left the date alone was told it "needs the Keymaster's word": with
+     no days since the posting, the ceiling is the posted figure + 100. FLINCH (Y4916), oct 3: 4,551 typed,
+     4,188 posted, refused — over a date he never touched. Now the date is theirs to pick, every time,
+     unless they already set their own figure (then their own date comes back). */
+  document.getElementById('hbThru').value = (b.src==='typed' && /^\d{4}-\d{2}-\d{2}$/.test(b.thru||"")) ? b.thru : "";
   try{document.getElementById('hbThru').setAttribute('max',todayISO())}catch(e){}
   hbPreviewUpd();
   document.getElementById('hoursSheet').classList.add('on');
@@ -17907,10 +17913,10 @@ window.openHoursSheet=openHoursSheet;
   const save=document.getElementById('hbSave');
   if(save)save.addEventListener('click',()=>{
     const h=parseFloat(document.getElementById('hbHrs').value);
-    const t=document.getElementById('hbThru').value||POSTING_PAID_THRU;
+    const t=document.getElementById('hbThru').value||'';   /* #thrublank */
     if(!(h>0)){ alert("Enter the hours your stub shows — or tap “Use the Order’s posting instead” below."); return; }
     if(h>20000){ alert("That's more hours than any casual on the posting. Check the number — Experience Hours, not year-to-date dollars."); return; }
-    if(!/^\d{4}-\d{2}-\d{2}$/.test(t)){ alert("Pick the date that figure is paid through — it's printed on the stub."); return; }
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(t)){ alert("Pick the Paid through date — it's printed on your stub, next to your Experience Hours."); try{document.getElementById('hbThru').focus();}catch(e){} return; }
     if(t>todayISO()){ alert("That date hasn't happened yet. Use the paid-through date on the stub in your hand."); return; }
     /* #hoursceiling(aug17) — the jump guard. Checked AFTER the date, because the
        ceiling is computed from it: the further forward your stub is paid through,
@@ -17924,6 +17930,7 @@ window.openHoursSheet=openHoursSheet;
           ? "The posting has this card at " + _posted.toLocaleString() + " hrs, paid through " + POSTING_PAID_THRU + "."
           : "This card isn't on the 07/13 posting, so there's no figure to check it against.") +
         "\nPaid through " + t + ", the most that adds up to is about " + Math.round(_ceil).toLocaleString() + " hrs.\n\n" +
+        "First check the Paid through date is the one on your stub — an older date allows fewer hours.\n\n" +
         "If your book really is bigger than that, it needs the Keymaster's word — send it through ⚓ Send word and it gets set by hand.\n\n" +
         "Check the number: Experience Hours, not year-to-date dollars, and not hours you've already sealed as dockets — those add on top by themselves."
       );
