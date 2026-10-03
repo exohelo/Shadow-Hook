@@ -20380,7 +20380,21 @@ window.shkChunk=(function(){
   function idle(name,delayMs){
     var go=function(){ try{ if(!now(name))setTimeout(go,2000); }catch(e){} };   /* blocks not parsed yet → look again */
     var arm=function(){ setTimeout(function(){
-      if(window.requestIdleCallback)requestIdleCallback(go,{timeout:10000}); else setTimeout(go,1500); }, delayMs||0); };
+      if(window.requestIdleCallback)requestIdleCallback(go,{timeout:10000}); else quiet(go); }, window.requestIdleCallback?(delayMs||0):Math.max(delayMs||0,20000)); };
+    /* #quietdoor(oct3) — THE ALARMS, oct 2 22:48: "stalled 2.5s on #scr-dockets · did: chunk maps -4.3s" on
+       iPhone Safari, 18 s after boot. Safari has no requestIdleCallback, so the idle door fell back to a blind
+       1.5 s timer and dropped ~330 KB of yard-map code on the phone while the casual was using it. Where there
+       is no idle callback, the door now waits at least 20 s, then for 3 s with no touch, scroll or key, with the
+       app on screen. The 🗺 gate and the Ports tab still open it at once when it's actually wanted. */
+    function quiet(fn){
+      var last=Date.now(), evs=['pointerdown','touchstart','scroll','keydown'], mark=function(){ last=Date.now(); };
+      evs.forEach(function(e){ try{ window.addEventListener(e,mark,{passive:true,capture:true}); }catch(x){} });
+      var chk=function(){
+        if(done[name]){ off(); return; }                         /* a door opened it meanwhile */
+        if(document.visibilityState==='visible'&&Date.now()-last>=3000){ off(); fn(); } else setTimeout(chk,1000); };
+      var off=function(){ evs.forEach(function(e){ try{ window.removeEventListener(e,mark,{capture:true}); }catch(x){} }); };
+      setTimeout(chk,3000);
+    }
     if(document.readyState==='complete')arm(); else window.addEventListener('load',arm,{once:true});
   }
   function on(name,h){ hooks[name]=h; }
@@ -23032,7 +23046,21 @@ async function sbLoadProductReviews(){
      reviewed must never be asked about, and that is only knowable once the
      reviews are in. Ping comes a beat later so a cold boot isn't a buzz. */
   try{ renderRevNudge(); }catch(e){}
-  setTimeout(function(){ try{ rvnPing(); }catch(e){} },4000);
+  /* #pinglate(oct3) — THE ALARMS, oct 3 07:16: "stalled 4.9s on #scr-board · slow: timer ~try{ rvnPing(); }
+     4805ms" on an iPhone that took 5 s just to parse the page. rvnPing does no work to speak of — a few
+     localStorage reads, Notification.permission, showNotification — but on a slow phone at boot each of
+     those waits on the system, and it was booked 4 s after EVERY reviews load (each rt sync re-arms it).
+     Now: booked once a session, 45 s on, and only fired while the app is on screen. It is a week-old
+     nudge; a minute late costs nothing. */
+  if(!window.__rvnBooked){ window.__rvnBooked=true;
+    const fire=function(){
+      if(document.visibilityState!=='visible'){
+        const v=function(){ if(document.visibilityState==='visible'){ document.removeEventListener('visibilitychange',v); setTimeout(fire,5000); } };
+        document.addEventListener('visibilitychange',v); return; }
+      try{ rvnPing(); }catch(e){}
+    };
+    setTimeout(fire,45000);
+  }
 }
 /* ---- the catalog off the server; the seed holds the floor until it answers ---- */
 /* #freshshelf(sep19) — THE SHELF WAS READ ONCE, AT BOOT, AND NEVER AGAIN.
@@ -33225,6 +33253,7 @@ function camStillAsk(cap){
   }catch(e){ return null; }
 }
 async function frameCrop(blob,fz){
+  if(fz&&shkWebkitDecode())return frameCropWebkit(blob,fz);   /* #offthread */
   if(!fz||!window.createImageBitmap)return null;
   let W=0,H=0,url='';
   try{ url=URL.createObjectURL(blob);
@@ -33255,6 +33284,33 @@ async function frameCrop(blob,fz){
     try{ shkCrumb('crop '+c.width+'x'+c.height); }catch(e){}
     return await new Promise(r=>{ try{ c.toBlob(b=>r(b||null),'image/jpeg',0.92); }catch(e){ r(null); } });
   }finally{ try{ bm.close(); }catch(e){} }
+}
+/* #offthread(oct3) — frameCrop for WebKit: the same frame, margin and size rules, but the photo is decoded by
+   <img>.decode() (WebKit's own thread) and the crop is drawn straight off the decoded <img>. Fails open the
+   same way: anything odd → null → the whole photo goes on and loadShot shrinks it. */
+async function frameCropWebkit(blob,fz){
+  let url=''; try{ url=URL.createObjectURL(blob); }catch(e){ return null; }
+  try{
+    const im=await shkImgDecoded(url);
+    const W=im.naturalWidth||im.width, H=im.naturalHeight||im.height;   /* upright: an <img> obeys the photo's orientation */
+    if(!(W>0&&H>0))return null;
+    if(Math.abs(W/H-fz.a)/fz.a>0.05)return null;                 /* not the picture the preview showed — don't guess */
+    const m=0.07;
+    const x0=Math.max(0,fz.x-m*fz.w), y0=Math.max(0,fz.y-m*fz.h);
+    const x1=Math.min(1,fz.x+fz.w*(1+m)), y1=Math.min(1,fz.y+fz.h*(1+m));
+    if(x1-x0>0.92&&y1-y0>0.92)return null;                       /* the frame is the whole picture — nothing to cut */
+    const sx=Math.round(x0*W), sy=Math.round(y0*H), sw=Math.max(1,Math.round((x1-x0)*W)), sh=Math.max(1,Math.round((y1-y0)*H));
+    if(sw<400||sh<300)return null;
+    const k=Math.min(1,OCR_SIDE/Math.max(sw,sh));
+    const c=document.createElement('canvas'); c.width=Math.max(1,Math.round(sw*k)); c.height=Math.max(1,Math.round(sh*k));
+    await shotYield();                                            /* let the frame paint before the draw */
+    const g=c.getContext('2d'); g.imageSmoothingEnabled=true; g.imageSmoothingQuality='high';
+    g.drawImage(im,sx,sy,sw,sh,0,0,c.width,c.height);
+    try{ shkCrumb('crop '+c.width+'x'+c.height); }catch(e){}
+    await shotYield();
+    return await new Promise(r=>{ try{ c.toBlob(b=>r(b||null),'image/jpeg',0.92); }catch(e){ r(null); } });
+  }catch(e){ return null; }
+  finally{ try{ URL.revokeObjectURL(url); }catch(e){} }
 }
 document.getElementById('scanBtn').addEventListener('click',()=>{
   scanAborted=false;
@@ -33304,8 +33360,30 @@ document.getElementById('scanSheet').addEventListener('click',e=>{if(e.target.id
    one task, where the old path was two of that size back to back. */
 function shotYield(){ return new Promise(r=>{ let done=false; const go=()=>{ if(!done){done=true;r();} };
   try{ requestAnimationFrame(()=>setTimeout(go,0)); }catch(e){} setTimeout(go,120); }); }   /* a frame if one is coming, 120 ms if not (hidden tab) */
+/* ═══ #offthread(oct3) — THE SHUTTER FROZE THE PHONE AGAIN: 10.9 s ═══
+   THE ALARMS, oct 3 07:15 — iPhone Safari/26 on the home screen: "stalled 10.9s on #scr-dockets · tap #camGo
+   -2.6s, photo 5.7MB +0.2s". The trail got past 'photo' and never reached 'crop' — the whole stall sat inside
+   frameCrop's createImageBitmap(blob). Safari builds an ImageBitmap from a Blob ON THE PAGE'S THREAD and does
+   not honour resizeWidth while it decodes, so #camstall's "one shrunk decode" was, on an iPhone, a full
+   12-megapixel decode with the page locked. HTMLImageElement.decode() is the one decode WebKit does on its
+   own thread; drawing the decoded <img> into the small canvas afterwards is a GPU draw. So on WebKit (every
+   iPhone browser, and Safari on a Mac) both frameCrop and shotDecode now take the <img>.decode() road.
+   Chrome and Firefox keep createImageBitmap, which they already do off the thread.
+   window.__shkForceWebkit=true makes any browser take the WebKit road — that's how it was tested. */
+function shkWebkitDecode(){ try{ return !!window.__shkForceWebkit || !!window.GestureEvent || (/AppleWebKit/.test(navigator.userAgent)&&!/Chrome\/|Chromium\//.test(navigator.userAgent)); }catch(e){ return false; } }
+async function shkImgDecoded(url){
+  const i=new Image(); i.decoding='async';
+  await new Promise((res,rej)=>{ i.onload=res; i.onerror=()=>rej(new Error('unreadable shot')); i.src=url; });
+  try{ if(i.decode)await i.decode(); }catch(e){}            /* a refused decode() still leaves a loaded <img> — the draw decodes it, as before */
+  return i;
+}
 async function shotDecode(f,max){
   let url=''; try{ url=URL.createObjectURL(f); }catch(e){}
+  if(shkWebkitDecode()){                                      /* #offthread — decoded on WebKit's own thread; loadShot draws and revokes */
+    const im=await shkImgDecoded(url);
+    if(!((im.naturalWidth||im.width)>0)){ try{ URL.revokeObjectURL(url); }catch(e){} throw new Error('empty shot'); }
+    return im;
+  }
   const img=await new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=()=>rej(new Error('unreadable shot')); i.src=url; });
   const w=img.naturalWidth||img.width, h=img.naturalHeight||img.height, revoke=()=>{ try{ if(url)URL.revokeObjectURL(url); }catch(e){} };
   if(!(w>0&&h>0)){ revoke(); throw new Error('empty shot'); }
