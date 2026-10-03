@@ -8,7 +8,8 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct2friendfix';   /* oct 2 (5th) — FRIEND REQUESTS MEET IN THE MIDDLE: a member card whose owner already asked you now offers "✓ Accept their friend request" instead of "Add friend" (which sent a second request the other way and left both waiting), asking back counts as yes, and a request you sent shows "sent — waiting" instead of the button just vanishing (#friendfix). */
+window.SHK_BUILD='oct2clerkscan';   /* oct 2 (6th) — CLERK DOCKETS MOVE THE BOARD: a CLERK docket sealed through Scan (the reader can't read handwriting, so no date or clock came off it) now stands on the form's own date and start, the same as an attached clerk slip — it used to pay and sit out; and the scan tape keeps the swipes that didn't move the board, with the reason (#clerkscan). */
+/* was: oct2friendfix */   /* oct 2 (5th) — FRIEND REQUESTS MEET IN THE MIDDLE: a member card whose owner already asked you now offers "✓ Accept their friend request" instead of "Add friend" (which sent a second request the other way and left both waiting), asking back counts as yes, and a request you sent shows "sent — waiting" instead of the button just vanishing (#friendfix). */
 /* was: oct2dispsame */   /* oct 2 (4th) — WAKING THE APP NO LONGER RE-CHEWS TWO WEEKS OF SHEETS: the dispatch pull re-ingested and repainted all ~30 recent sheets every time, changed or not (a 5.3 s stall on an iPhone on wake); now only a sheet whose updated_at is new gets ingested, and a pull with nothing new does nothing (#dispsame). */
 /* was: oct2dmhide */   /* oct 2 (3rd) — SWIPE TO HIDE A CONVERSATION: drag a Direct Messages row sideways and it slides off, with a two-second UNDO; hidden on this phone only, nothing deleted, and it comes back the moment either side says something new; "Show N hidden" brings them all back (#dmhide). */
 /* was: oct2markstall */   /* oct 2 (2nd) — TAPPING A MARK NO LONGER STALLS THE PHONE: the popup restarts its animations with one layout pass instead of five, builds its confetti in one insert (24 pieces on a phone), drops the live background blur on touch screens, and the Halloween motion behind it holds still while it's open (#markstall). */
@@ -12567,7 +12568,14 @@ function slipLiveCheck(j,wk){
        there is no printed clock to read — so its photo is the receipt and the FORM's own date and start stand
        in, tagged on the tape so the crown can check the shot against them. A printed docket still has to be
        scanned: the reader's read of its clock is what proves it. */
-    if(j&&j.att&&!(s&&s.date)){
+    /* #clerkscan(oct2) — A CLERK SLIP THAT WENT THROUGH SCAN counts the same as one attached. Clerks don't
+       use Attach — they hit Scan like everyone else, the reader half-reads the handwriting, and the docket
+       sealed with a photo but no date or clock read off it. That fell to the printed-docket rule below
+       ("the reader couldn't read the date") and never moved the board: EXO's and MIGHTY_WARRIOR_60's CLERK
+       dockets (9/30, 10/2) both paid and both sat out. A clerk docket WITH its photo now stands on the
+       form's own date and start, exactly like #clerkproof's attached slip, and the tape says so. */
+    const _clerkShot=!!(j&&j.photo&&njIsClerkCat(j.category)&&!(s&&s.date&&s.start));
+    if(j&&(j.att||_clerkShot)&&!(s&&s.date&&(s.start||!_clerkShot))){
       if(!njIsClerkCat(j.category))return {ok:false,why:"a printed docket has to be scanned, so the reader can confirm the date and clock on it"};
       if(j.date!==todayISO())return {ok:false,why:"the form is dated "+md(j.date)+", not today"};
       if(!j.start)return {ok:false,why:"no job start on the form, so it can’t tell day from night"};
@@ -12612,7 +12620,8 @@ function feedLiveFromDocket(j,id,src){
        on ITS OWN window's tape, so the right board keeps its witness and tonight's
        count never sees it. (If scan_tape constrains `outcome`, add 'backlog' to the
        list — a refused insert is caught and changes nothing either way.) */
-    try{ stPush(id,'backlog',null,src||'docket',dw&&dw.key); }catch(e){}
+    try{ const _w=(!dw)?'no shift read':(dw.key!==wk)?'other dispatch':(sc&&sc.why)?(/not today/.test(sc.why)?'not today':/start|clock|AM\/PM/.test(sc.why)&&/couldn|no job start/.test(sc.why)?'no start time':/date/.test(sc.why)?'no date read':/board is running/.test(sc.why)?'wrong shift':/printed docket/.test(sc.why)?'printed — scan it':'not proven'):'not proven';
+      stPush(id,'backlog',null,(src||'docket')+' · '+_w,dw&&dw.key); }catch(e){}   /* #clerkscan — the tape now keeps the swipes that DIDN'T move it, and says why */
     try{
       const liveSaid=(String(wk).indexOf("_DAY")>0)?"DAY":"NIGHT";
       const msg=(dw&&dw.key===wk&&!sc.ok&&sc.why)
@@ -46979,7 +46988,7 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
     let rows=window.__kmTapeRows||[];
     if(q)rows=rows.filter(x=>((x.pos||'')+' '+(x.by_handle||'')+' '+(x.outcome||'')+' '+(x.src||'')+' '+(x.k||'')).toLowerCase().indexOf(q)>=0);
     if(!rows.length){out.innerHTML='<span style="color:var(--steel)">'+(q?'nothing on the tape matches that':'no swipes on the tape yet')+'</span>';return;}
-    const WORD={posted:'moved the board',same:'on the card — board was already there',behind:'behind the reel',held:'held — past the line of fire',bad:'bad card'};   /* #samecard */
+    const WORD={posted:'moved the board',same:'on the card — board was already there',behind:'behind the reel',held:'held — past the line of fire',bad:'bad card',backlog:'didn’t move it'};   /* #clerkscan */   /* #samecard */
     const COL ={posted:'#9fd18a',same:'#7fcde8',behind:'#d8a544',held:'#e0492e',bad:'#8a8f96'};
     let html='',lastK=null;
     rows.forEach(function(x){
