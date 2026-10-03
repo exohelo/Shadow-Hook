@@ -8,7 +8,8 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct2dispsame';   /* oct 2 (4th) — WAKING THE APP NO LONGER RE-CHEWS TWO WEEKS OF SHEETS: the dispatch pull re-ingested and repainted all ~30 recent sheets every time, changed or not (a 5.3 s stall on an iPhone on wake); now only a sheet whose updated_at is new gets ingested, and a pull with nothing new does nothing (#dispsame). */
+window.SHK_BUILD='oct2friendfix';   /* oct 2 (5th) — FRIEND REQUESTS MEET IN THE MIDDLE: a member card whose owner already asked you now offers "✓ Accept their friend request" instead of "Add friend" (which sent a second request the other way and left both waiting), asking back counts as yes, and a request you sent shows "sent — waiting" instead of the button just vanishing (#friendfix). */
+/* was: oct2dispsame */   /* oct 2 (4th) — WAKING THE APP NO LONGER RE-CHEWS TWO WEEKS OF SHEETS: the dispatch pull re-ingested and repainted all ~30 recent sheets every time, changed or not (a 5.3 s stall on an iPhone on wake); now only a sheet whose updated_at is new gets ingested, and a pull with nothing new does nothing (#dispsame). */
 /* was: oct2dmhide */   /* oct 2 (3rd) — SWIPE TO HIDE A CONVERSATION: drag a Direct Messages row sideways and it slides off, with a two-second UNDO; hidden on this phone only, nothing deleted, and it comes back the moment either side says something new; "Show N hidden" brings them all back (#dmhide). */
 /* was: oct2markstall */   /* oct 2 (2nd) — TAPPING A MARK NO LONGER STALLS THE PHONE: the popup restarts its animations with one layout pass instead of five, builds its confetti in one insert (24 pieces on a phone), drops the live background blur on touch screens, and the Halloween motion behind it holds still while it's open (#markstall). */
 /* was: oct2wakestagger */   /* oct 2 — THE WAKE-UP CATCH-UP IS SPREAD OUT: coming back to the app (or the wire reconnecting) re-pulls twelve tables; they used to leave together and land together, stalling an iPhone 3 s on wake. They now go out a quarter-second apart, the call's own inputs first (#wakestagger). */
@@ -29651,13 +29652,18 @@ async function openDmCard(uid,h){
   }else{
     inner+='<div class="sub" style="border:1px dashed rgba(224,73,46,.45);color:var(--warn);border-radius:10px;padding:9px 11px;margin-bottom:4px">🚫 '+esc(h||name)+' takes no Direct Messages.</div>';
   }
-  if(friend)inner+='<button class="btn-ghost" style="width:100%;margin-top:10px" onclick="dmUnfriend(\''+jsq(uid)+'\')">✕ Unfriend</button>';
+  /* #friendfix(oct2) — THEIR REQUEST IS WAITING ON YOU: the card used to offer "Add friend" here, which
+     sent a SECOND request the other way — two people both asking, neither one friends. It accepts now. */
+  if(!friend&&DM.reqIn&&DM.reqIn[uid])inner+='<button class="btn" style="width:100%;margin-top:10px" onclick="dmAccept(\''+jsq(uid)+'\').then(()=>{try{openDmCard(\''+jsq(uid)+'\',\''+jsq(h||name)+'\')}catch(e){}})">✓ Accept their friend request</button>';
+  else if(friend)inner+='<button class="btn-ghost" style="width:100%;margin-top:10px" onclick="dmUnfriend(\''+jsq(uid)+'\')">✕ Unfriend</button>';
   else if(can&&!DM.reqOut[uid])inner+='<button class="btn-ghost" style="width:100%;margin-top:10px" onclick="dmSendReq(\''+jsq(uid)+'\',\''+jsq(h||name)+'\')">⚓ Add friend</button>';
+  else if(can&&DM.reqOut[uid])inner+='<button class="btn-ghost" style="width:100%;margin-top:10px" disabled>⚓ Friend request sent — waiting</button>';   /* #friendfix — it used to just vanish */
   draw(inner);
 }
 window.openDmCard=openDmCard;
 async function dmSendReq(uid,h){
   if(!(window.SB&&window.__shkUid)){toast('Sign in first — friendship rides your account');return;}
+  if(DM.reqIn&&DM.reqIn[uid]){ await dmAccept(uid); try{openDmCard(uid,h);}catch(e){} return; }   /* #friendfix — they already asked you: asking back IS saying yes */
   DM.reqOut[uid]=1; openDmCard(uid,h);
   try{
     const r=await window.SB.from('friend_requests').insert({from_id:window.__shkUid,to_id:uid,from_handle:(typeof chatMyHandle==='function'?chatMyHandle():'a casual')});
