@@ -9448,6 +9448,21 @@ function mergeDockets(a,b){
   }
   function lastseenKey(a){ return 'shadowhook_lastseen_'+a; }
   function deviceOnly(k){ return /^shadowhook_lastseen_[A-Z]\d{2,5}$/.test(k||''); }
+  /* #hoursnewest(oct4) — THE STARTING HOURS ON DISK: THE NEWER COPY WINS, WHICHEVER SIDE HOLDS IT.
+     SALTY_BONES_56, oct 4: "i did the whole paycheck thing and it just keeps going back to the hours on the
+     last hiring list." His phone held 3,678 thru 9/25 (the Race got it, through pushMyBook) while the server
+     still held the Oct 2 "use the posting" row. The mirror lays a server row over the disk unless the key is
+     in this open's outbox — so a typed figure whose push never landed was put back to the posting ON DISK at
+     the next open (the in-memory copy kept the newer one, which is why the Race still read right), and the
+     open after that booted from the disk: the posting again. For this one key the two copies carry their own
+     clock (`at`), so the mirror reads it: an older server copy is NOT applied — the phone's newer copy is
+     queued up instead, and the server catches up. */
+  function hoursKeep(k,v){
+    if(!/^shadowhook_hoursbase_/.test(k||'')) return false;
+    try{ var L=JSON.parse(localStorage.getItem(k)||'null'), S=(v==null||v==='')?null:JSON.parse(String(v));
+      if(L&&typeof L==='object'&&+L.at>0&&(!S||!(+S.at>=+L.at))){ _pending[k]=JSON.stringify(L); markDirty(); arm(PUSH_DELAY); return true; } }catch(e){}
+    return false;
+  }
   function markDirty(){ try{ _set(DIRTY,'1'); }catch(e){} }
   function clearDirty(){ try{ _rem(DIRTY); }catch(e){} }
 
@@ -9642,6 +9657,7 @@ function mergeDockets(a,b){
          the marks by mark — and writes the union back, which is the only way a job sealed on
          another phone can join this one. */
       if((row.k in _pending) && !/^shadowhook_(dockets|badges)_/.test(row.k)) return;
+      if(hoursKeep(row.k,row.v)) return;   /* #hoursnewest */
       if(apply(row.k,row.v)){ changed++; try{ settle(row.k); }catch(e){} } });
     // MIGRATION / GAP-FILL: push up any Work ID data this device holds that the
     // server is still missing — never clobbering what's already up there. This is
@@ -9679,7 +9695,8 @@ function mergeDockets(a,b){
                 var row=(payload&&payload.new&&payload.new.k)?payload.new:((payload&&payload.old)||null);
                 if(!row||!row.k||deviceOnly(row.k)) return;   /* #doubleboot */
                 var del=(payload.eventType==='DELETE');
-                if(apply(row.k, del?null:String(row.v!=null?row.v:''))) settle(row.k);
+                if(hoursKeep(row.k, del?null:row.v)) return;   /* #hoursnewest */
+                 if(apply(row.k, del?null:String(row.v!=null?row.v:''))) settle(row.k);
               }catch(e){ console.warn('[cloud] live apply', e); }
             })
         .subscribe(function(status){
@@ -17994,6 +18011,8 @@ window.openHoursSheet=openHoursSheet;
     }
     HRSBASE={hrs:Math.round(h*10)/10, thru:t, at:Date.now(), src:'typed'};
     saveHoursBase();
+    /* #hoursnewest — and straight to the server too, not only through the mirror's outbox */
+    try{ if(window.SB&&window.__shkUid)window.SB.from('user_kv').upsert({owner:window.__shkUid,card_id:ACCT_ID,k:K("hoursbase"),v:JSON.stringify(HRSBASE)},{onConflict:'owner,k'}).then(function(){},function(){}); }catch(e){}
     try{renderYear()}catch(e){}          // ladder + header + the Race all hang off this
     try{renderHoursSrc()}catch(e){}
     try{if(typeof checkMarks==='function')checkMarks()}catch(e){}
@@ -29771,7 +29790,7 @@ async function openDmCard(uid,h){
     if(p&&!p.error&&p.data){priv=p.data.dm_privacy||'all';if(p.data.handle)h=p.data.handle; if(p.data.banner_url){BANNERS[uid]=p.data.banner_url; cov=p.data.banner_url;}}
   }catch(e){}
   const friend=!!DM.friends[uid];
-  const can=(priv==='all')||(priv==='friends'&&friend);
+  const can=(priv==='all')||(priv==='friends'&&friend)||!!window.__isKM;   /* #kmdm(oct4) — the Keymaster can always reach a member (dm_gate on the wire agrees) */
   let inner='';
   if(friend)inner+='<div class="sub" style="border:1px dashed rgba(127,174,106,.45);color:var(--ok);border-radius:10px;padding:9px 11px;margin-bottom:4px">⚓ Friends — you always reach each other.</div>';
   if(can)inner+='<button class="btn" style="margin-top:10px" onclick="openDmThread(\''+jsq(uid)+'\',\''+jsq(h||name)+'\')">💬 Send a DM</button>';
