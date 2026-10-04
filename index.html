@@ -29799,7 +29799,16 @@ async function dmDecline(uid){
   delete DM.reqIn[uid]; dmRenderAll();
 }
 window.dmDecline=dmDecline;
-async function dmUnfriend(uid){
+/* #unfriendask(oct4) — UNFRIEND ASKS FIRST. The ✕ beside a friend cut the tie on a single tap, no question —
+   the Keymaster hit it meaning to clear a message and lost the friend. Now it asks, names who, and says
+   plainly that their messages stay; "Keep" is the safe default. */
+function dmUnfriend(uid){
+  const nm=dmPeerName(uid);
+  shConfirm('You and '+nm+' stop being friends. Your messages stay — this only removes the friendship. To clear a single message, press and hold it in the chat instead.',
+    ()=>{ _dmUnfriendNow(uid); },
+    {title:'Unfriend '+nm+'?',icon:'⚓',okText:'Unfriend',noText:'Keep '+nm});
+}
+async function _dmUnfriendNow(uid){
   let r=null; try{ r=await window.SB.from('friends').delete().or('and(a.eq.'+window.__shkUid+',b.eq.'+uid+'),and(a.eq.'+uid+',b.eq.'+window.__shkUid+')').select('a'); }catch(e){ r={error:e}; }
   if(r&&r.error){ toast('Couldn’t unfriend — '+((r.error&&r.error.message)||'check your signal')); return; }
   if(delKept(r)){ delRefused('friendship','friends'); return; }   /* #delcheck */
@@ -30332,7 +30341,7 @@ function dmFriendsPaint(){
     return '<div style="display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid var(--line-soft)">'
     +_dmAv(DM.friends[u],u)+'<span style="flex:1;min-width:0;font-family:\'Inter\',system-ui,-apple-system,\'Segoe UI\',Roboto,sans-serif;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(DM.friends[u])+(at?'<span class="sub" style="display:block;font-size:11px;white-space:normal;line-height:1.35">'+at+'</span>':'')+'</span>'
     +'<button class="pill" style="cursor:pointer;color:var(--copper-hi);border-color:rgba(238,180,107,.4);background:none" onclick="openDmThread(\''+jsq(u)+'\',\''+jsq(DM.friends[u])+'\')">💬</button>'
-    +'<button class="pill" style="cursor:pointer;background:none" onclick="dmUnfriend(\''+jsq(u)+'\')">✕</button></div>';}).join('')
+    +'<button class="pill" style="cursor:pointer;background:none" title="Unfriend" aria-label="Unfriend '+esc(DM.friends[u])+'" onclick="dmUnfriend(\''+jsq(u)+'\')">✕</button></div>';}).join('')
     :'<p class="sub" style="margin:2px 0 0">No friends yet — ⚓ Add friend on a casual’s card (Members, below).</p>';
   try{dkSharePaint();}catch(e){}
 }
