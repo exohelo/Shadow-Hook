@@ -13176,8 +13176,35 @@ setInterval(function(){
     try{publishCall();}catch(e){}
     try{renderRecentBoards();}catch(e){}
   }
-  else{ try{publishCall();}catch(e){} }   /* #liverecalc — never "calculates once and stops": the call re-figures every minute */
+  else{ try{_minuteRecalc();}catch(e){} }   /* #liverecalc → #minutecheap(oct3) */
 },60000);
+/* ═══ #minutecheap(oct3) — THE MINUTE TICK FROZE A PHONE FOR 3.9 s ═══
+   THE ALARMS, oct 3 17:05 — MAD_SILVER_55, iPhone Safari/18 on the home screen, #scr-board, mid night-board:
+   "stalled 4.4s · slow: interval ~const n=nowLA(),_m=n.getHours()*60+n.getMinu 3880ms". That is this tick.
+   #liverecalc ran the WHOLE prediction engine (publishCall — categories, momentum, the PMF, the ladder, the
+   odds) every 60 s whether anything had changed or not, and on an older iPhone that is ~4 s of locked page,
+   every minute, during the very window people are watching. Every real change already re-figures the call
+   on the spot — repredict() is wired to 29 places (drops, the wire, sheets, corrections, seals). So the tick
+   now only re-figures when something it can see moved: the board, the opening card, the drop count, the
+   live window, the seal, the slot. A safety re-figure still runs every 3 min during a live board and every
+   15 min otherwise, so it never "calculates once and stops". Nothing runs while the app is in the background;
+   coming back to it re-figures once, two seconds after. */
+let _mrSig='', _mrAt=0;
+function _minuteRecalc(force){
+  if(document.visibilityState!=='visible'){ _mrSig=''; return; }
+  let sig, live=false;
+  try{ live=!!liveWindow();
+    const k=_predKey();
+    sig=JSON.stringify([k, pendingStartCard(), (k===dropKey()?(dropUnion().total||0):0), Object.keys(DISPATCH_DATA).length,
+      live, (typeof startConfirmed==='function'?!!startConfirmed():1), callSlot]);
+  }catch(e){ sig='x'+Date.now(); }
+  const safety=(live?3:15)*60000;
+  if(!force&&sig===_mrSig&&Date.now()-_mrAt<safety)return;
+  _mrSig=sig; _mrAt=Date.now();
+  publishCall();
+}
+document.addEventListener('visibilitychange',function(){
+  if(document.visibilityState==='visible')setTimeout(function(){ try{_minuteRecalc();}catch(e){} },2000); });
 /* #53 — the next board picks up right where the last one ended; show that as the starting point */
 /* the next board opens on the card AFTER the last one dispatched:
    day ends on W4912 → night opens W4913 */
