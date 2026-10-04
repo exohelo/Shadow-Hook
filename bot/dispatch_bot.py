@@ -129,6 +129,26 @@ def require_env():
         sys.exit(f"FATAL: missing env {', '.join(missing)} — add the repo secret "
                  f"(Settings → Secrets and variables → Actions → SUPABASE_SERVICE_KEY).")
 
+# ── #dupfinal(oct4) — THE HALL POSTED THE EARLY COUNT AS THE FINAL. On 10/4 the Nightside-Final folder
+# got 100426N.pdf with the same rows as 100426E.pdf — the early look, filed twice — and the bot took it as
+# tonight's final: 24 ships, 134 UTR open, to the job. A final that is the early's twin is not a final.
+# The bot now compares an incoming N/D sheet with the early it already holds for that board; if every ship
+# line and the total match, it skips (returns no page), keeps chasing, and the REAL final lands the moment
+# the hall replaces the file — a genuine final always moves something (crew, jobs, the total).
+def _ship_sig(ships):
+    out = []
+    for s in ships or []:
+        out.append((str(s.get("ship", "")).strip().upper(), str(s.get("company", "")).strip().upper(),
+                    int(s.get("crew") or 0), str(s.get("jobs", "")).strip().upper(), bool(s.get("cancelled"))))
+    return sorted(out)
+
+def same_as_early(payload, early):
+    if not payload or not early or not payload.get("ships") or not early.get("ships"):
+        return False
+    pt = (payload.get("total") or {}).get("total")
+    et = (early.get("total") or {}).get("total")
+    return _ship_sig(payload["ships"]) == _ship_sig(early["ships"]) and (pt is None or et is None or pt == et)
+
 def process(t, dry=False, existing=None):
     """Parse the downloaded sheet at t['tmp'] and upsert it under t['key']."""
     parsed = parse_pdf(t["tmp"])
@@ -147,7 +167,12 @@ def process(t, dry=False, existing=None):
         print(json.dumps({"key": t["key"], "nest": t["nest"], "data": merge({}, payload, t["nest"])},
                          indent=2, ensure_ascii=False))
         return t["key"]
-    merged = merge(existing if existing is not None else sb_get(t["key"]), payload, t["nest"])
+    base = existing if existing is not None else sb_get(t["key"])
+    if not t["nest"] and same_as_early(payload, (base or {}).get("early")):   # #dupfinal
+        print(f"  ≠ {os.path.basename(t['tmp'])}: same rows as tonight's EARLY sheet — the hall filed the early "
+              f"as the final. Not ingesting; will keep checking for the real one.")
+        return None
+    merged = merge(base, payload, t["nest"])
     sb_upsert(t["key"], merged)
     tot = payload.get("total") or {}
     print(f"  ✓ {t['key']}{'.'+t['nest'] if t['nest'] else ''}  total={tot.get('total','?')} jobs"
