@@ -2208,6 +2208,11 @@ html.daylight .hdr-msg{box-shadow:0 0 10px rgba(224,73,46,.35),0 3px 0 #7a1608}
 #dmFeed .dm-b.me{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 #dmFeed .dm-b.me img,#dmFeed .dm-b.me video{-webkit-touch-callout:none}
 #dmFeed .dm-b.dm-pick{opacity:.55;transform:scale(.97);transition:transform .15s,opacity .15s}
+/* #friendrow — one big 💬 on a friend's row; the row itself is the card */
+.fr-row .fr-msg{flex:none;width:46px;height:40px;border-radius:12px;border:1px solid rgba(238,180,107,.55);background:linear-gradient(184deg,var(--btn-hi),var(--btn-lo));color:var(--copper-hi);font-size:19px;line-height:1;cursor:pointer;box-shadow:0 2px 0 rgba(0,0,0,.35)}
+.fr-row .fr-msg:active{transform:translateY(1px);box-shadow:none}
+.fr-row.fr-held{background:rgba(238,180,107,.08)}
+.fr-row:active{background:rgba(255,255,255,.03)}
 /* #ticketdm — the ticket card inside a bubble */
 #dmFeed .dm-b.tix{padding:0;background:none;border:0;box-shadow:none;max-width:82%}
 .dm-tix{border:1px dashed rgba(238,180,107,.75);border-radius:14px;padding:12px 14px;background:linear-gradient(160deg,rgba(238,180,107,.16),rgba(238,180,107,.05));min-width:200px}
@@ -29824,6 +29829,23 @@ async function _dmUnfriendNow(uid){
   try{openDmCard(uid,dmPeerName(uid));}catch(e){}
 }
 window.dmUnfriend=dmUnfriend;
+/* #friendrow(oct4) — the friends list rows: a tap opens the card, a press-and-hold (or right-click) offers Unfriend */
+function frRowsArm(fl){
+  if(fl._frArmed)return; fl._frArmed=1;
+  let tmr=null, sx=0, sy=0, held=false;
+  const rowOf=el=>{ const r=el&&el.closest&&el.closest('.fr-row'); return (r&&fl.contains(r)&&!(el.closest&&el.closest('.fr-msg')))?r:null; };
+  const cancel=()=>{ clearTimeout(tmr); tmr=null; };
+  const hold=r=>{ held=true; try{ if(navigator.vibrate)navigator.vibrate(12); }catch(e){} r.classList.add('fr-held'); setTimeout(()=>r.classList.remove('fr-held'),400); dmUnfriend(r.dataset.uid); };
+  fl.addEventListener('click',e=>{ const r=rowOf(e.target); if(!r)return; if(held){ held=false; return; } try{ openDmCard(r.dataset.uid,r.dataset.h); }catch(x){} });
+  fl.addEventListener('keydown',e=>{ const r=rowOf(e.target); if(r&&(e.key==='Enter'||e.key===' ')){ e.preventDefault(); openDmCard(r.dataset.uid,r.dataset.h); } });
+  fl.addEventListener('touchstart',e=>{ const r=rowOf(e.target); if(!r||e.touches.length>1)return; held=false; sx=e.touches[0].clientX; sy=e.touches[0].clientY; cancel(); tmr=setTimeout(()=>hold(r),550); },{passive:true});
+  fl.addEventListener('touchmove',e=>{ if(!tmr)return; const t=e.touches[0]; if(Math.abs(t.clientX-sx)>10||Math.abs(t.clientY-sy)>10)cancel(); },{passive:true});
+  fl.addEventListener('touchend',e=>{ cancel(); if(held)e.preventDefault(); });
+  fl.addEventListener('touchcancel',cancel);
+  fl.addEventListener('mousedown',e=>{ if(e.button!==0)return; const r=rowOf(e.target); if(!r)return; held=false; cancel(); tmr=setTimeout(()=>hold(r),600); });
+  ['mouseup','mouseleave'].forEach(ev=>fl.addEventListener(ev,cancel));
+  fl.addEventListener('contextmenu',e=>{ const r=rowOf(e.target); if(!r)return; e.preventDefault(); cancel(); if(!held)hold(r); });
+}
 /* ---- the thread ---- */
 function _dmView(){
   let v=document.getElementById('dmView');
@@ -30408,11 +30430,13 @@ function dmFriendsPaint(){
   const today=(typeof todayISO==='function')?todayISO():'';
   if(fl)fl.innerHTML=fIds.length?fIds.map(u=>{
     const at=dkShareLine(u)||(on[u]?'<span style="color:var(--ok)">● on now</span>':'');   /* #dkshare3 — one helper for the line */
-    return '<div style="display:flex;align-items:center;gap:9px;padding:7px 0;border-bottom:1px solid var(--line-soft)">'
-    +_dmAv(DM.friends[u],u)+'<span style="flex:1;min-width:0;font-family:\'Inter\',system-ui,-apple-system,\'Segoe UI\',Roboto,sans-serif;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(DM.friends[u])+(at?'<span class="sub" style="display:block;font-size:11px;white-space:normal;line-height:1.35">'+at+'</span>':'')+'</span>'
-    +'<button class="pill" style="cursor:pointer;color:var(--copper-hi);border-color:rgba(238,180,107,.4);background:none" onclick="openDmThread(\''+jsq(u)+'\',\''+jsq(DM.friends[u])+'\')">💬</button>'
-    +'<button class="pill" style="cursor:pointer;background:none" title="Unfriend" aria-label="Unfriend '+esc(DM.friends[u])+'" onclick="dmUnfriend(\''+jsq(u)+'\')">✕</button></div>';}).join('')
+    /* #friendrow(oct4) — NO ✕ ON THE ROW. It sat a thumb's width from 💬 and cut a friend on a slip. Now: tap the
+       row → their card; the one bigger 💬 → the chat; press and hold the row → "Unfriend …?" (which asks). */
+    return '<div class="fr-row" data-uid="'+esc(u)+'" data-h="'+esc(DM.friends[u])+'" role="button" tabindex="0" style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line-soft);cursor:pointer;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none">'
+    +_dmAv(DM.friends[u],u)+'<span style="flex:1;min-width:0;font-family:\'Inter\',system-ui,-apple-system,\'Segoe UI\',Roboto,sans-serif;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(DM.friends[u])+(at?'<span class="sub" style="display:block;font-size:11px;white-space:normal;line-height:1.35">'+at+'</span>':'')+'</span>'
+    +'<button class="fr-msg" type="button" aria-label="Message '+esc(DM.friends[u])+'" onclick="event.stopPropagation();openDmThread(\''+jsq(u)+'\',\''+jsq(DM.friends[u])+'\')">💬</button></div>';}).join('')
     :'<p class="sub" style="margin:2px 0 0">No friends yet — ⚓ Add friend on a casual’s card (Members, below).</p>';
+  try{ if(fl)frRowsArm(fl); }catch(e){}   /* #friendrow */
   try{dkSharePaint();}catch(e){}
 }
 window.dmFriendsPaint=dmFriendsPaint;
