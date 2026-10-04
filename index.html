@@ -2208,6 +2208,14 @@ html.daylight .hdr-msg{box-shadow:0 0 10px rgba(224,73,46,.35),0 3px 0 #7a1608}
 #dmFeed .dm-b.me{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 #dmFeed .dm-b.me img,#dmFeed .dm-b.me video{-webkit-touch-callout:none}
 #dmFeed .dm-b.dm-pick{opacity:.55;transform:scale(.97);transition:transform .15s,opacity .15s}
+/* #ticketdm — the ticket card inside a bubble */
+#dmFeed .dm-b.tix{padding:0;background:none;border:0;box-shadow:none;max-width:82%}
+.dm-tix{border:1px dashed rgba(238,180,107,.75);border-radius:14px;padding:12px 14px;background:linear-gradient(160deg,rgba(238,180,107,.16),rgba(238,180,107,.05));min-width:200px}
+.dm-tix-h{font-weight:800;letter-spacing:.04em;color:var(--copper-hi);font-size:14px}
+.dm-tix-t{font-size:12.5px;color:var(--bone);margin-top:2px}
+.dm-tix-f{margin-top:9px;font-size:12.5px}
+.dm-tix-f .dm-claim{width:100%;padding:10px;font-weight:800}
+#dmFeed .dm-b.tix .dm-t{display:block;margin-top:4px}
 /* #hdrfr — the friend-request alert: the ✉'s shape in gold */
 .hdr-msg.hdr-fr{color:#2a1700;background:linear-gradient(160deg,#ffd27a,#e0952e);border-color:rgba(255,220,150,.8);
   box-shadow:0 0 12px rgba(240,170,60,.55),0 2px 0 #7a4a08,inset 0 1px 0 rgba(255,255,255,.45);animation:hdrMsgIn .35s cubic-bezier(.2,.9,.3,1.2),hdrFrPulse 2.4s ease-in-out 1s infinite}
@@ -29833,6 +29841,7 @@ function _dmView(){
     /* #dmmedia(sep04) — ＋ (photo or clip) and GIF, the room's two buttons on the wire */
     +'<button class="attach" id="dmAtt" type="button" aria-label="Add photo or video">＋</button>'
     +'<button class="attach gifbtn" id="dmGif" type="button" aria-label="Send a GIF">GIF</button>'
+    +'<button class="attach" id="dmTix" type="button" aria-label="Drop a free raffle ticket" title="Drop a free raffle ticket into this chat" style="display:none">🎟</button>'   /* #ticketdm — Keymaster only */
     +'<input type="file" id="dmFile" accept="image/*,video/*" hidden>'
     +'<input id="dmIn" placeholder="Say your piece…" title="Say your piece — or paste a picture straight in (⌘/Ctrl-V), or drag one into the chat" autocomplete="off" style="flex:1;min-width:0;background:var(--void);border:1px solid var(--line);border-radius:99px;padding:11px 15px;color:var(--bone);font-family:inherit;font-size:16px;outline:none">'
     +'<button id="dmSendBtn" type="button" style="flex:none;width:42px;height:42px;border-radius:50%;border:1px solid rgba(238,180,107,.5);background:linear-gradient(184deg,var(--btn-hi),var(--btn-lo));color:var(--copper-hi);font-size:16px;cursor:pointer">➤</button></div>';
@@ -29847,6 +29856,7 @@ function _dmView(){
     if(DM.mediaOff){ toast(DM.mediaOff); dmMediaNote(DM.mediaOff); return; }   /* #dmmedia2 — say it, don't open a picker that leads nowhere */
     const f=v.querySelector('#dmFile'); f.value=''; f.click(); });
   v.querySelector('#dmFile').addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; e.target.value=''; if(!f)return; dmSendMedia(f); });
+  v.querySelector('#dmTix').addEventListener('click',()=>{ dmTicketDrop(); });   /* #ticketdm */
   v.querySelector('#dmGif').addEventListener('click',()=>{ if(typeof guestWall==='function'&&guestWall())return;
     if(DM.mediaOff){ toast(DM.mediaOff); dmMediaNote(DM.mediaOff); return; }   /* #dmmedia2 */
     try{ openGifPicker(u=>{ const gm=(typeof gifMediaUrl==='function'&&gifMediaUrl(u))||u; dmSendGif(gm); }); }catch(e){} });
@@ -29927,6 +29937,7 @@ function openDmThread(uid,h){
   v.querySelector('#dmTName').textContent=DM.openPeerH;
   v.querySelector('#dmTAv').outerHTML='<span id="dmTAv">'+_dmAv(DM.openPeerH,DM.openPeer)+'</span>';
   v.querySelector('#dmTFriend').style.display=DM.friends[uid]?'':'none';
+  try{ v.querySelector('#dmTix').style.display=window.__isKM?'':'none'; }catch(e){}   /* #ticketdm */
   v.style.display='flex';
   dmDrawThread(); dmMarkSeen(uid); dmRenderAll();
 }
@@ -30140,18 +30151,77 @@ function dmDrawThread(){
     const tm=(function(){try{const d=new Date(m.at);return d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});}catch(e){return'';}})();
     /* #dmmedia — a photo or GIF is the bubble; a clip plays inline; a pending upload sits at half strength */
     const k=m.kind||'text', u=String(m.url||'');
-    const body=(k==='text'||!u)?esc(m.tx)
+    const body=(k==='ticket')?dmTicketHTML(m)   /* #ticketdm(oct4) */
+      :(k==='text'||!u)?esc(m.tx)
       :(k==='video'?'<video src="'+esc(u)+'" controls playsinline preload="metadata" style="display:block;max-width:100%;border-radius:10px;background:#000"></video>'
         :'<img src="'+esc(u)+'" alt="'+(k==='gif'?'GIF':'')+'" loading="lazy" style="display:block;max-width:100%;max-height:320px;border-radius:10px">');
     /* #dmbig — classes carry the look (see the sheet); a media bubble is the picture itself.
        A RUN (same side, next one inside 4 min) shows the time once, on its last bubble — Messenger's rhythm. */
     const nx=arr[i+1], run=!!(nx&&nx.mine===m.mine&&(new Date(nx.at)-new Date(m.at))<240000);
-    return '<div data-dmid="'+esc(String(m.id))+'" class="dm-b '+(m.mine?'me':'them')+((k!=='text'&&u)?' media':'')+(m.pend?' pend':'')+(run?' run':'')+'">'
+    return '<div data-dmid="'+esc(String(m.id))+'" class="dm-b '+(m.mine?'me':'them')+((k!=='text'&&k!=='ticket'&&u)?' media':'')+(k==='ticket'?' tix':'')+(m.pend?' pend':'')+(run?' run':'')+'">'
       +body+(run?'':'<span class="dm-t">'+tm+'</span>')+'</div>';
   }).join('')
   :'<p class="sub" style="text-align:center;margin-top:30px">A private conversation, just you two. Masked handles, and talk is free.</p>';
   f.scrollTop=f.scrollHeight;
   try{ dmDelArm(); if(window._dmDelHint)_dmDelHint(); }catch(e){}   /* #dmdel */
+  try{ dmTicketsLoad(); }catch(e){}   /* #ticketdm */
+}
+/* ═══ #ticketdm(oct4) — A FREE RAFFLE TICKET, DROPPED INTO A DIRECT MESSAGE ═══
+   By request: the Keymaster wanted to hand a casual a raffle ticket without handing them 150 ⬡ they might
+   spend on something else. So: in any Direct Message the Keymaster has a 🎟 beside GIF. One tap drops a
+   ticket card into the chat (km_raffle_comp — keymaster only, on the wire). The casual sees the card with a
+   CLAIM button; tapping it puts the ticket in the hat at 0 ⬡ (raffle_claim_comp — only the person it was
+   sent to can claim, once, while the raffle is live). No coins move at any point. The message itself is
+   plain words on an older build ("…tap CLAIM…"), so nobody sees a broken picture before they update. */
+DM.comps=DM.comps||{};
+function dmTicketHTML(m){
+  const c=DM.comps[String(m.id)];
+  const n=c?c.qty:1, word=n+' free raffle ticket'+(n===1?'':'s');
+  const title=(c&&c.title)||'';
+  let foot;
+  if(!c)foot='<span class="sub">…</span>';
+  else if(c.claimed_at)foot='<span style="color:var(--ok)">✓ '+(m.mine?'Claimed':'In the hat')+'</span>';
+  else if(m.mine)foot='<span class="sub">waiting to be claimed</span>';
+  else foot='<button type="button" class="btn-line gold dm-claim" data-comp="'+esc(c.id)+'" onclick="dmTicketClaim(this)">🎟 CLAIM</button>';
+  return '<div class="dm-tix"><div class="dm-tix-h">🎟 '+esc(word)+'</div>'+(title?'<div class="dm-tix-t">'+esc(title)+'</div>':'')
+    +(c&&c.note?'<div class="sub" style="margin-top:2px">'+esc(c.note)+'</div>':'')+'<div class="dm-tix-f">'+foot+'</div></div>';
+}
+let _dmTixBusy=false;
+async function dmTicketsLoad(){
+  const t=DM.threads[DM.openPeer]; if(!t||!window.SB||!window.__shkUid)return;
+  const want=t.msgs.filter(m=>m.kind==='ticket'&&!DM.comps[String(m.id)]).map(m=>String(m.id));
+  if(!want.length||_dmTixBusy)return; _dmTixBusy=true;
+  try{
+    const r=await window.SB.from('raffle_comps').select('id,dm_id,qty,note,claimed_at,raffles(title)').in('dm_id',want);
+    if(r.error)throw r.error;
+    (r.data||[]).forEach(c=>{ DM.comps[String(c.dm_id)]={id:c.id,qty:c.qty,note:c.note,claimed_at:c.claimed_at,title:(c.raffles&&c.raffles.title)||''}; });
+    want.forEach(id=>{ if(!DM.comps[id])DM.comps[id]={id:null,qty:1,claimed_at:null,title:'',gone:true}; });   /* the raffle it rode on is gone */
+    if(r.data&&r.data.length)dmDrawThread();
+  }catch(e){}finally{ _dmTixBusy=false; }
+}
+async function dmTicketClaim(btn){
+  const id=btn&&btn.dataset.comp; if(!id)return;
+  btn.disabled=true; btn.textContent='🎟 CLAIMING…';
+  try{
+    const r=await window.SB.rpc('raffle_claim_comp',{p_comp:id}); if(r.error)throw r.error;
+    const d=r.data||{};
+    Object.keys(DM.comps).forEach(k=>{ if(DM.comps[k].id===id)DM.comps[k].claimed_at=new Date().toISOString(); });
+    dmDrawThread();
+    toast(d.already?'🎟 Already in the hat':'🎟 You’re in — '+(d.tickets||d.qty)+' ticket'+((d.tickets||d.qty)===1?'':'s')+' in the hat');
+    try{ if(window.rflReload)rflReload(); }catch(e){}
+  }catch(e){ btn.disabled=false; btn.textContent='🎟 CLAIM';
+    const m=String((e&&e.message)||''); toast(m.indexOf('claim:')===0?m.slice(6).trim():'Couldn’t claim it — try again'); }
+}
+window.dmTicketClaim=dmTicketClaim;
+async function dmTicketDrop(){
+  if(!window.__isKM||!DM.openPeer)return;
+  const nm=DM.openPeerH||dmPeerName(DM.openPeer);
+  shConfirm('One free ticket for the live raffle lands in this chat. '+nm+' taps CLAIM and it goes in the hat — no coins change hands.',
+    async()=>{ try{
+      const r=await window.SB.rpc('km_raffle_comp',{p_to:DM.openPeer,p_qty:1,p_note:null}); if(r.error)throw r.error;
+      toast('🎟 Ticket dropped for '+nm); dmLoad();
+    }catch(e){ const m=String((e&&e.message)||''); toast(m.indexOf('comp:')===0?m.slice(5).trim():'Couldn’t drop the ticket'); } },
+    {title:'Drop a free raffle ticket?',icon:'🎟',okText:'Drop it',noText:'Not now'});
 }
 /* ═══ #dmdel(oct3) — DELETE ONE MESSAGE YOU SENT ═══
    By request: the only way out of a Direct Message was the BURN desk — your whole side of a conversation,
@@ -30168,7 +30238,7 @@ function dmDelArm(){   /* armed on the feed each time a thread draws — the fee
     const m=find(b.dataset.dmid); if(!m||!m.mine)return;
     try{ if(navigator.vibrate)navigator.vibrate(12); }catch(e){}
     b.classList.add('dm-pick');
-    const what=(m.kind==='video')?'this clip':(m.kind==='gif')?'this GIF':(m.kind&&m.kind!=='text'&&m.url)?'this photo':'this message';
+    const what=(m.kind==='video')?'this clip':(m.kind==='gif')?'this GIF':(m.kind==='ticket')?'this ticket':(m.kind&&m.kind!=='text'&&m.url)?'this photo':'this message';
     const done=()=>b.classList.remove('dm-pick');
     shConfirm('It comes off both phones — yours and theirs. This can’t be undone.',()=>{ done(); del(m); },
       {title:'Delete '+what+'?',icon:'🗑',okText:'Delete',noText:'Keep it',onNo:done});
