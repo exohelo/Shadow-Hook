@@ -6301,6 +6301,16 @@ window.DEVLOG=(function(){
   #recentBoards .rb-line .rbn.dn{color:#9fd18a}
   #recentBoards .rb-line .rbn.fl{color:#f2a184}
   #recentBoards .rb-line .rbn.att{color:var(--copper-hi)}
+  /* #stats3(oct5) — Casual Flopped · No Double Back · Attendance as three even columns */
+  #recentBoards .rb-stats3{display:grid;grid-template-columns:repeat(auto-fit,minmax(0,1fr));gap:4px 8px;margin-top:3px}
+  #recentBoards .rb-stats3 .rbs{display:flex;flex-direction:column;min-width:0;line-height:1.15}
+  #recentBoards .rb-stats3 .rbs+.rbs{border-left:1px solid var(--line-soft);padding-left:8px}
+  #recentBoards .rb-stats3 .rbn{font-size:15px}
+  #recentBoards .rb-stats3 small{display:block;font-size:10.5px;line-height:1.2;letter-spacing:.01em;color:var(--steel);margin-top:1px}   /* may wrap inside its own column — never away from its number */
+  #recentBoards .rb-cyc{margin-top:3px;font-size:11px}
+  #recentBoards .rbcard{flex-wrap:wrap;row-gap:0}
+  #recentBoards .rb-foot{flex:1 1 100%;min-width:0;margin-top:-1px}   /* the card's full width — glyph edge to edge — so each figure gets a third of it */
+  #recentBoards .rb-foot>.rb-line:first-child{margin-top:2px}
   #recentBoards .rb-badge{flex:0 0 68px;align-self:center;text-align:center}
   #recentBoards .rb-stat{display:flex;flex-direction:column;align-items:center;gap:3px}
   #recentBoards .rb-emoji{font-size:32px;line-height:1;filter:drop-shadow(0 0 8px rgba(0,0,0,.5))}
@@ -19019,9 +19029,18 @@ function renderRecentBoards(){
       const still=(boardMoved(r)===false), hc=still?heldCard(r):null, cyc=boardCycled(r);
       const line2=still
         ? (hi('0','fl')+' Casual Flopped · <b class="rbn">the board did not move</b>')
-        : (fl!=null?hi(fl.toLocaleString(),'fl')+' Casual Flopped'+(off>0?' · '+hi(off.toLocaleString(),'dn')+' no double back':'')+(att!=null?' · '+hi(att+'%','att')+' Attendance':'')+(cyc?' · <b class="rbn">cycled the book</b>':''):'');   /* #offboard · #nodouble — the crew the rule kept off this board */
+        /* #stats3(oct5) — the three figures sit side by side, each number stacked over its own label, so a
+           narrow card wraps a LABEL inside its column instead of splitting "20%" from "Attendance" */
+        : (fl!=null?('<div class="rb-stats3">'
+            +[['fl',fl.toLocaleString(),'Casual Flopped'],(off>0?['dn',off.toLocaleString(),'No Double Back']:null),(att!=null?['att',att+'%','Attendance']:null)]
+              .filter(Boolean).map(x=>'<span class="rbs">'+hi(x[1],x[0])+'<small>'+x[2]+'</small></span>').join('')
+            +'</div>'+(cyc?'<div class="rb-cyc"><b class="rbn">cycled the book</b></div>':'')):'');   /* #offboard · #nodouble — the crew the rule kept off this board */
+      /* #stats3 — the three-figure row (and the wire's line under it) runs the FULL width of the card, under
+         the badge too, so each column has room for its label on one line. A held board keeps its one-liner. */
+      const _s3=!still&&line2&&line2.indexOf('rb-stats3')>=0;
       const score=(line1?'<div class="rb-line">'+line1+'</div>':'')
-                 +(line2?'<div class="rb-line">'+line2+'</div>':'');
+                 +(line2&&!_s3?'<div class="rb-line">'+line2+'</div>':'');
+      const _foot=(_s3?'<div class="rb-line">'+line2+'</div>':'')+(window.bwChips?window.bwChips(key):'');
       const when=(r.rain?'🌧 ':'')+(r.hol?'🕯 ':'');
       const card=document.createElement('div'); card.className='rbcard '+cls(r.slot);
       const _status=myBoardStatus(r);
@@ -19033,9 +19052,9 @@ function renderRecentBoards(){
         +(r.start?'<div class="rb-range">'+(still?hc:r.start)+' <span class="rb-arrow">'+(still?'&#10227;':'&rarr;')+'</span> '+(still?hc:endP)
           +(still?' <span class="pill red">HELD</span>':(cyc?' <span class="pill gold">CYCLED</span>':''))+(window.pmaChip?window.pmaChip(key,r):'')+'</div>':'')   /* the hero stays on top · #pmasheet — PMA's end card */
         +score
-        +(window.bwChips?window.bwChips(key):'')   /* #112 — the wire's post/confirm/heist line */
         +'</div>'
-        +(_status?'<div class="rb-badge">'+_status+'</div>':'');
+        +(_status?'<div class="rb-badge">'+_status+'</div>':'')
+        +(_foot?'<div class="rb-foot">'+_foot+'</div>':'');   /* #112 — the wire's post/confirm/heist line rides in the foot · #stats3 */
       let xp=null;
       if(dd||_pmaH){ card.style.cursor='pointer';
         xp=document.createElement('div'); xp.className='jobxp'; xp.style.display='none';
@@ -19312,35 +19331,17 @@ function renderBotStatus(now){
       sleepy:["i was supposed to be doing something… oh well, probably already did it. going back to sleep 😴","mmmf… five more minutes… 💤","resting my eyes. purely professional 😴","zzz… huh? oh. nothing. …zzz 💤","this chair is so comfy right now 🥱","did i check the board? …i'll check after this nap 💤","so cozy, so quiet, so sleepy 😴","holding down the desk. with my face 💤","g'night board. g'night hall. g'night me 😴"],
       bored:["mmmmm thinking… nope, nothing 🥱","counting the ceiling tiles. i'm at forty-one.","nothing to do. shocking, i know.","i was gonna do something. forgot what. oh well.","staring at the board. the board stares back 🙄","reorganized the paperclips. twice.","this is the part where nothing happens.","wake me if the plot advances 🥱","so… anyway. still nothing."]
     },
-    /* #pmasheet(oct5) — THE OFFICIAL NUMBERS, SAID PLAINLY. When PMA's 720 Dispatch Summary is on file the
-       bot reports what it shows, in a neutral voice — no blame, no complaints about PMA (by request).
-       {B} = which board, {X} = letters off, {U} = the union sheet's total, {P} = PMA's jobs ordered,
-       {D} = the difference (signed). pmafact: the call missed and the final order differed from the union
-       sheet. pmaclean: the call missed and the order matched — the bot owns its miss. pmanews: the order
-       differed but the call still landed within a letter. */
-    pmafact:{
-      grumpy:["{B} came in {X} letters off. the union sheet had {U}, PMA's final order was {P} ({D}). bigger board than I read","{B}: {U} on the union sheet, {P} on PMA's summary ({D}). that's most of the {X} letters"],
-      chill:["{B} landed {X} letters off — the union sheet had {U}, PMA's final order was {P} ({D}) 🤷","the final order on {B} came to {P}, the union sheet had {U} ({D}). explains the {X} off ☕"],
-      sweet:["{B} came in {X} off 💛 — the union sheet had {U} and PMA's final order was {P} ({D}). orders change, it happens","{B}: {U} on the union sheet, {P} on PMA's summary ({D}). we'll get the next one 🌷"],
-      happy:["{B} came in {X} off — the final order was {P} vs {U} on the union sheet ({D}). more work out there 😄","{D} jobs on {B} beyond the union sheet ({U} → {P}). that's the {X} letters ✨"],
-      sleepy:["{B}… {X} off… final order {P}, union sheet {U} ({D}) 😴","{B} went {U} → {P} ({D}). that's the {X} letters 💤"],
-      bored:["{B}: union sheet {U}, final order {P} ({D}). {X} off 🥱","{B} came in {X} off. order went {U} → {P}. anyway."]
-    },
-    pmaclean:{
-      grumpy:["{B}'s order matched the union sheet ({P}). the {X} letters are mine. don't rub it in 😤","the numbers held on {B} ({P}). I missed by {X} on my own. ugh"],
-      chill:["{B}'s order held at {P}, same as the sheet — that {X}-letter miss is on me 🫠","numbers matched on {B} ({P}). I just called it off by {X}. it happens 😎"],
-      sweet:["{B}'s order matched the sheet ({P}), so that {X}-letter miss is mine — sorry, friend 💛","{B} held at {P}. I missed by {X}. learning from it 🌷"],
-      happy:["{B} held at {P} — the {X} off is mine! back to the drawing board 😄","{B} matched the sheet ({P}). my miss — I'll get the next one 🎈"],
-      sleepy:["{B} matched the sheet… so the {X} letters were me… *yawn* 😴","{B} held at {P}. my miss. need more coffee 💤"],
-      bored:["{B} matched the sheet. {X} off is on me. whatever 🥱","{B}: {P}, same as the union sheet. my miss. moving on."]
-    },
+    /* #pmasheet(oct5) — PMA'S SHEET LANDED: fun facts, nothing else. By request the bot never mentions how
+       far the call was off, never explains or justifies a miss, never compares the order to the union sheet
+       and never complains about PMA — it just shares the official numbers, playfully.
+       {B} = which board, {P} = jobs PMA ordered, {C} = jobs sent to the casual hall, {E} = PMA's end card. */
     pmanews:{
-      grumpy:["{B}'s final order came to {P} (union sheet {U}, {D}). still called it 😤","{B} went {U} → {P} ({D}). call held anyway 🙄"],
-      chill:["{B}'s final order: {P} (union sheet {U}, {D}). the call held anyway 😎","{B} went {U} → {P} ({D}) and still landed where I said ☕"],
-      sweet:["{B}'s order came to {P} ({D} from the sheet), and the call still held 💛","{B}: the union sheet said {U}, the final order was {P}. we rode it out together ✨"],
-      happy:["{D} on {B} ({U} → {P}) and the call STILL landed 🎉","{B}: {U} → {P}. more work, same call 😄"],
-      sleepy:["{B} went {U} → {P}… call held… nap earned 😴","{B} moved {D}. didn't even wake me up 💤"],
-      bored:["{B} went {U} → {P}. call held. yawn 🥱","{B}: {U} → {P}. still called it. anyway."]
+      grumpy:["PMA's sheet is in. {B}: {P} jobs ordered, {C} down to the casual hall, closed on {E}. there. happy? 😤","official word on {B}: {C} jobs hit the casual hall, last card {E}. now let me nap 🙄","{B} by the book — {P} ordered, {C} to the casual hall, ended {E}. paperwork done 😒"],
+      chill:["PMA's sheet just dropped 📄 {B}: {P} jobs ordered, {C} to the casual hall, ended on {E} 😎","official numbers on {B} — {C} jobs for the casual hall, last card {E} ☕","{B} in the books: {P} ordered, {C} to the hall, closed {E} 🌊"],
+      sweet:["PMA's sheet is here 💛 {B}: {C} jobs went to the casual hall, last card {E}. hope you caught one!","{B} officially: {P} jobs ordered, {C} for the casual hall, ended on {E} 🌷","the official word on {B} — {C} casual hall jobs, closed on {E}. proud of this crew 🥰"],
+      happy:["PMA's sheet landed! 🎉 {B}: {C} jobs to the casual hall, last card {E}!","{P} jobs ordered on {B} — {C} of them for the casual hall! ended on {E} 😄","{B} is official: {C} casual hall jobs, closed {E}. busy docks = happy docks 🙌"],
+      sleepy:["*yawn* PMA's sheet… {B}… {C} jobs to the casual hall… ended {E} 😴","{B}: {P} ordered, {C} to the hall, last card {E}. g'night 💤","official numbers in… {C} casual jobs on {B}… {E}… zzz 🥱"],
+      bored:["PMA's sheet. {B}: {P} ordered, {C} to the casual hall, ended {E}. there you go 🥱","{B}: {C} casual hall jobs, last card {E}. official. anyway.","the official sheet's in. {B} closed on {E}. {C} to the hall. riveting."]
     }
   };
   const VIBES=Object.keys(MOODS);   // #193 — the mood roster comes straight from the MOODS map
@@ -19382,41 +19383,25 @@ function renderBotStatus(now){
      when it has nothing else to report it makes a general comment instead. */
   const _dm=now.getHours()*60+now.getMinutes(), DISPATCH_ON=_dm>=(16*60+30)&&_dm<(19*60)&&!boardSealed(now,"PM");   /* #118b — no flop = floor's clear · #205 — night ends 7:00 */
   justLanded.forEach(s=>parts.push(chip("🎉 "+fill(pick("found",s.kind),s),"var(--ok)")));
-  /* #pmasheet(oct5) — a fresh miss: the newest graded call came in 2+ letters off (the record counts
-     ±1 as a hit), it was graded in the last 6 hours, and the board is from today or yesterday (so the
-     first open after this update — which grades old boards in one sweep — can't dig up a stale one).
-     Held during night dispatch, like the rest of the bot's chatter. */
-  let pmaMiss=null, pmaNews=null;
+  /* #pmasheet(oct5) — a FINISHED PMA summary posted in the last 6 hours, for a board from today or yesterday:
+     the bot shares its numbers, playfully. It never says how the call did (by request — no reminders of a
+     miss, no explaining, no complaining). Held during night dispatch, like the rest of the bot's chatter. */
+  let pmaNews=null;
   const _bname=k=>{ const sl=k.slice(-2), d=new Date(k.slice(0,10)+"T12:00:00");   /* keys are 2026-10-05_Mon_AM */
     const dn=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][d.getDay()]||"";
     return (dn?dn+"'s ":"")+(sl==="AM"?"day board":"night board"); };
   try{
-    const _pl=(typeof _predLog==="function")?_predLog():{};
-    const _yd=new Date(now.getTime()-36*3600000), _floor=_yd.getFullYear()+"-"+String(_yd.getMonth()+1).padStart(2,"0")+"-"+String(_yd.getDate()).padStart(2,"0");
-    const _k=Object.keys(_pl).filter(k=>_pl[k]&&_pl[k].off!=null&&_pl[k].st&&k.slice(0,10)>=_floor).sort((a,b)=>_pl[b].st-_pl[a].st)[0];
-    if(_k&&_pl[_k].off>=2&&(now.getTime()-_pl[_k].st)<6*3600000){
-      /* #pmasheet — only with PMA's official summary in hand, and only as fact: what the final order was,
-         or that it matched and the miss is the bot's own. No summary on file → nothing said about PMA. */
-      const x=window.pmaDelta?window.pmaDelta(_k):null;
-      if(x) pmaMiss={B:_bname(_k),X:_pl[_k].off,k:_k,x:x,kind:window.pmaMoved(x)?"pmafact":"pmaclean"};
-    }
-    /* #pmasheet — no miss to explain, but a PMA sheet posted in the last 6 hours shows the order moved
-       on a board the call still got within a letter: say so, plainly */
-    if(!pmaMiss&&window.PMA_DATA){
+    if(window.PMA_DATA){
+      const _yd=new Date(now.getTime()-36*3600000), _floor=_yd.getFullYear()+"-"+String(_yd.getMonth()+1).padStart(2,"0")+"-"+String(_yd.getDate()).padStart(2,"0");
       const ks=Object.keys(window.PMA_DATA).filter(k=>k.slice(0,10)>=_floor).sort().reverse();
       for(const k of ks){ const pd=window.PMA_DATA[k], at=Date.parse((pd&&pd.at)||"")||0;
-        if(!at||now.getTime()-at>6*3600000)continue;
-        const x=window.pmaDelta?window.pmaDelta(k):null, g=_pl[k];
-        if(x&&window.pmaMoved(x)&&g&&g.off!=null&&g.off<=1){ pmaNews={B:_bname(k),X:g.off,k:k,x:x,kind:"pmanews"}; break; } }
+        if(!pd||!pd.final||!pd.end||pd.toCH==null||!at||now.getTime()-at>6*3600000)continue;
+        pmaNews={B:_bname(k),k:k,P:pd.ordered,C:pd.toCH,E:pd.end}; break; }
     }
   }catch(e){}
-  const _sgn=v=>(v>0?"+":"")+Number(v).toLocaleString();
   const _rep=(t,a,b)=>t.split(a).join(b);
-  const pmaFill=(t,m)=>{ t=_rep(_rep(t,"{B}",m.B),"{X}",m.X);
-    if(m.x){ t=_rep(_rep(_rep(t,"{U}",Number(m.x.u).toLocaleString()),"{P}",Number(m.x.ord).toLocaleString()),"{D}",_sgn(m.x.d)); }
-    return t; };
-  if(pmaMiss&&!DISPATCH_ON){ stress="alarm"; parts.push(chip("📉 "+pmaFill(pick(pmaMiss.kind,pmaMiss.k),pmaMiss),"var(--ember)")); }
-  else if(pmaNews&&!DISPATCH_ON){ parts.push(chip("🏢 "+pmaFill(pick("pmanews",pmaNews.k),pmaNews),"var(--copper-hi)")); }
+  const pmaFill=(t,m)=>_rep(_rep(_rep(_rep(t,"{B}",m.B),"{P}",m.P!=null?Number(m.P).toLocaleString():"—"),"{C}",Number(m.C).toLocaleString()),"{E}",m.E);
+  if(pmaNews&&!DISPATCH_ON){ parts.push(chip("📄 "+pmaFill(pick("pmanews",pmaNews.k),pmaNews),"var(--copper-hi)")); }
   const activeShown=DISPATCH_ON?st.active.filter(s=>s.kind!=="MORNING"):st.active;
   activeShown.forEach(s=>{
     const late=s.state==="overdue"; if(late)stress="alarm";
