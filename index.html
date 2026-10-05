@@ -37892,6 +37892,17 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
       on('dlSheets',renderSheets);   /* #jul23d — the D/E/N sheet editor */
       on('dlPma',()=>{ if(window.pmaPanel)window.pmaPanel(pane,render); });   /* #pmasheet — the official PMA summary */
     }
+    /* #kmtodo(oct5) — the To-Do's "✎ Enter the sheet" lands here, already set to the board and sheet it's about */
+    window.kmOpenSheetEditor=function(key,which){
+      try{
+        pane.style.display='block'; renderSheets();
+        const k=document.getElementById('shKey');
+        if(k&&key){ if(![].some.call(k.options,o=>o.value===key))k.insertAdjacentHTML('afterbegin','<option value="'+esc(key)+'">'+esc(key)+' · (no sheet yet)</option>'); k.value=key; }
+        shFill();
+        const w=document.getElementById('shWhich');
+        if(w&&which&&[].some.call(w.options,o=>o.value===which)){ w.value=which; shFill(); }
+      }catch(e){ try{DEVLOG.err('kmOpenSheetEditor: '+e.message);}catch(_){} }
+    };
     btn.addEventListener('click',function(){ pane.style.display=(pane.style.display==='none'?'block':'none'); if(pane.style.display==='block')render(); });
   }catch(e){ try{console.warn('devlog panel failed:',e);}catch(_){} }
 })();
@@ -38140,11 +38151,12 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
     if(!parsed.ok)return {ok:false,line:'✗ '+name+': '+parsed.err};
     const key=keyOf(parsed.date,parsed.shift);
     if(!key)return {ok:true,skip:true,line:'· '+parsed.date+' Shift '+parsed.shift+' has no casual dispatch — skipped'};
-    if(D[key]&&D[key].final&&!parsed.final)return {ok:true,skip:true,key:key,line:'· '+boardName(key)+': already have the finished sheet'};
+    if(pmaDone(D[key])&&!pmaDone(parsed))return {ok:true,skip:true,key:key,line:'· '+boardName(key)+': already have the finished sheet'};
     const data=Object.assign({},parsed,{src:how||'upload',file:name,at:new Date().toISOString()});
     ingest(key,data);
     const w=await saveRow(key,data);
-    return {ok:true,key:key,final:parsed.final,line:(parsed.final?'✓ ':'◐ ')+boardName(key)+' · '+(parsed.start||'—')+' → '+(parsed.end||'not finished yet')+(parsed.toCH!=null?' · '+n(parsed.toCH)+' to the casual hall':'')+' · '+w};
+    const done=pmaDone(parsed);
+    return {ok:true,key:key,final:done,line:(done?'✓ ':'◐ ')+boardName(key)+' · '+(parsed.start||'—')+' → '+(parsed.end||(done?'no end card on PMA’s sheet':'not finished yet'))+(parsed.toCH!=null?' · '+n(parsed.toCH)+' to the casual hall':'')+' · '+w};
   }
   async function uploadFiles(files,say,how){
     for(const f of files){
@@ -38177,7 +38189,14 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
     }
     return out;
   }
-  window.pmaMissing=function(now){ return recentBoards(now).filter(k=>!(D[k]&&D[k].final)); };
+  /* #pmadone(oct5) — a sheet is DONE once it shows the casual dispatch finished (its L/S Dispatch
+     Completed time), end card or not: PMA's Sun 10/4 day sheet carries the finish time and 565 jobs to the
+     casual hall but no end card, and uploading the same PDF again can never add one — so nothing nags for it.
+     Only a sheet posted BEFORE the casual dispatch ended (start card, no finish time) still wants the
+     finished one. Without an end card the record keeps the wire's. */
+  function pmaDone(p){ return !!(p&&(p.final||p.lsDone)); }
+  window.pmaDone=pmaDone;
+  window.pmaMissing=function(now){ return recentBoards(now).filter(k=>!pmaDone(D[k])); };
 
   /* direct links to each shift's PMA page — cached 20 min, retried no more than every 5 */
   let LINKS={}, _linksAt=0, _linksTry=0;
@@ -38215,25 +38234,24 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
     document.head.appendChild(st); }catch(e){}
 
   const fine=()=>{ try{ return matchMedia('(pointer:fine)').matches; }catch(e){ return false; } };
-  /* 1 · the PMA card on the Wire */
+  /* 1 · #kmtodo(oct5) — the PMA chores moved off the Wire into the Command Center's To-Do (with a pop-up
+     when one comes due), so the Wire stays the casuals'. This keeps the To-Do current and the links fresh. */
   function renderBar(){
-    try{
-      const rb=document.getElementById('recentBoards'); if(!rb)return;
-      let bar=document.getElementById('pmaBar');
-      const miss=window.__isKM?window.pmaMissing():[];
-      if(!miss.length){ if(bar)bar.remove(); return; }
-      if(!bar){ bar=document.createElement('div'); bar.id='pmaBar'; rb.insertAdjacentElement('beforebegin',bar); }
-      const chips=miss.slice().reverse().map(k=>'<a class="pma-chip" href="'+esc(LINKS[k]||PMA_LIST)+'" target="_blank" rel="noopener" title="Open this shift on PMA — tick their human check if it asks, then “view the PDF”">'
-        +esc(boardName(k))+(D[k]&&!D[k].final?' · needs end card':'')+' ↗</a>').join('');
-      bar.innerHTML='<div class="pma-row"><b>📄 PMA sheets to grab</b><span class="pma-sub">Keymaster</span></div>'
-        +'<div class="pma-chips">'+chips+'</div>'
-        +'<div class="pma-acts"><label class="pma-btn">📄 Add PDF<input type="file" accept="application/pdf,.pdf" multiple hidden></label>'
-        +'<span class="pma-hint">'+(fine()?'or drop the PDFs anywhere on the app · ⚓ one-click bookmark: ⚙ Dev Log → PMA SHEETS':'tap a shift, open “view the PDF”, then Add PDF')+'</span></div>';
-      bar.querySelector('input').addEventListener('change',async ev=>{ const fs=[...(ev.target.files||[])]; ev.target.value=''; if(fs.length)await quickAdd(fs); });
-      fetchLinks().then(ok=>{ if(ok)renderBar(); });
-    }catch(e){}
+    try{ const old=document.getElementById('pmaBar'); if(old)old.remove(); }catch(e){}
+    try{ if(window.kmTodoRefresh)window.kmTodoRefresh(); }catch(e){}
+    fetchLinks().then(ok=>{ if(ok){ try{ if(window.kmTodoRefresh)window.kmTodoRefresh(); }catch(e){} } });
   }
   window.pmaRenderBar=renderBar;
+  /* what the To-Do needs from here */
+  window.PMA_API={
+    missing:()=>window.pmaMissing(),
+    partial:k=>!!(D[k]&&!pmaDone(D[k])),
+    link:k=>LINKS[k]||PMA_LIST,
+    name:k=>boardName(k),
+    add:files=>quickAdd(files),
+    went:k=>{ _pend={key:k,at:Date.now()}; },
+    phone:()=>!fine()
+  };
   /* picker / drop → one toast with the outcome */
   async function quickAdd(files){
     const got=[];
@@ -38255,6 +38273,70 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
   window.addEventListener('drop',e=>{ _depth=0; dropUI(false); if(!window.__isKM||e.defaultPrevented)return;
     const fs=[...((e.dataTransfer&&e.dataTransfer.files)||[])].filter(f=>f.type==='application/pdf'||/\.pdf$/i.test(f.name));
     if(!fs.length)return; e.preventDefault(); quickAdd(fs); });
+
+  /* 4 · 📲 SHARE IT IN (phone) — #pmashare(oct5). On Android the installed app sits in the share sheet
+     for PDFs (manifest share_target). The share lands on pma-share-sw.js, a small worker that owns only
+     /pma-share/: it tucks the PDF(s) into the 'shadowhook-share' cache and opens the app at ?pma-share.
+     Here they're read, put on the record, and the cache is emptied. Held until the member is signed in. */
+  try{ if('serviceWorker' in navigator)navigator.serviceWorker.register('pma-share-sw.js',{scope:'pma-share/'}).catch(()=>{}); }catch(e){}
+  let _shareBusy=false;
+  async function takeShared(){
+    if(_shareBusy||!('caches' in window))return;
+    const acct=(typeof loadAcct==='function')?loadAcct():null;
+    if(!(window.__shkUid||(acct&&acct.handle)))return;                  /* still at the gate — keep them for later */
+    _shareBusy=true;
+    try{
+      const c=await caches.open('shadowhook-share');
+      const reqs=(await c.keys()).filter(r=>/\/__pma-share\//.test(r.url));
+      if(!reqs.length)return;
+      const t0=Date.now(); while(Date.now()-t0<8000&&!(window.SB&&window.__isKM!=null))await new Promise(r=>setTimeout(r,250));   /* let the Keymaster key land */
+      const got=[];
+      for(const r of reqs){
+        try{
+          const res=await c.match(r); const name=decodeURIComponent((res&&res.headers.get('x-file-name'))||'shared.pdf');
+          const out=await takePdf(name,await res.arrayBuffer(),'share');
+          got.push(!out.ok?'✗ '+name+' isn’t a PMA dispatch summary':out.skip?(out.key?boardName(out.key)+' was already in':''):(out.final?'✓ ':'◐ ')+boardName(out.key)+(out.final?' on the record':' (no end card yet)'));
+        }catch(e){ got.push('✗ couldn’t read a shared file'); }
+        try{ await c.delete(r); }catch(e){}
+      }
+      const txt=got.filter(Boolean).join(' · ');
+      if(txt){ try{ toast('📄 PMA: '+txt); }catch(e){} }
+      renderBar();
+    }catch(e){}
+    finally{
+      _shareBusy=false;
+      try{ if(/[?&]pma-share=/.test(location.search))history.replaceState(null,'',location.pathname+location.hash); }catch(e){}
+    }
+  }
+  setTimeout(takeShared,2500);
+  document.addEventListener('visibilitychange',()=>{ if(!document.hidden)setTimeout(takeShared,800); });
+
+  /* 5 · BACK FROM PMA WITHOUT SHARING (iPhone, or no Share option) — tapping a shift on the card remembers
+     it; when the app comes back to the front with that sheet still missing, one tap opens the file picker. */
+  let _pend=null;
+  try{ const st2=document.createElement('style'); st2.textContent=
+    '#pmaAsk{position:fixed;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom,0px) + 86px);z-index:99980;max-width:460px;margin:0 auto;padding:14px 14px 12px;border-radius:14px;background:#101820;border:1px solid rgba(143,199,240,.55);box-shadow:0 12px 36px rgba(0,0,0,.55);color:#e8e3d6;font:14px/1.4 Inter,system-ui,sans-serif}'
+    +'#pmaAsk b{color:#8fc7f0}#pmaAsk .pa-row{display:flex;gap:10px;margin-top:10px}'
+    +'#pmaAsk .pa-go{flex:1;text-align:center;cursor:pointer;padding:11px;border-radius:10px;border:1px solid rgba(143,199,240,.6);background:rgba(143,199,240,.16);color:#8fc7f0;font-weight:800}'
+    +'#pmaAsk .pa-no{cursor:pointer;padding:11px 14px;border-radius:10px;border:1px solid rgba(122,130,138,.45);background:none;color:#aab2b8;font-weight:700}'
+    +'html.daylight #pmaAsk{background:#fff;color:#1b2a36;border-color:#8db4d6}html.daylight #pmaAsk b,html.daylight #pmaAsk .pa-go{color:#1f527f}';
+    document.head.appendChild(st2); }catch(e){}
+  function askAdd(key){
+    let el=document.getElementById('pmaAsk'); if(el)el.remove();
+    el=document.createElement('div'); el.id='pmaAsk';
+    el.innerHTML='Got the <b>'+esc(boardName(key))+'</b> PMA sheet?'
+      +'<div class="pa-row"><label class="pa-go">📄 Add the PDF<input type="file" accept="application/pdf,.pdf" multiple hidden></label><button class="pa-no" type="button">Later</button></div>';
+    document.body.appendChild(el);
+    el.querySelector('.pa-no').addEventListener('click',()=>el.remove());
+    el.querySelector('input').addEventListener('change',async ev=>{ const fs=[...(ev.target.files||[])]; el.remove(); if(fs.length)await quickAdd(fs); });
+    setTimeout(()=>{ try{ el.remove(); }catch(e){} },120000);
+  }
+  document.addEventListener('visibilitychange',()=>{
+    if(document.hidden||!_pend)return;
+    const p=_pend;
+    if(Date.now()-p.at>30*60000){ _pend=null; return; }
+    setTimeout(()=>{ if(document.hidden)return; if(D[p.key]&&D[p.key].final){ _pend=null; return; } _pend=null; askAdd(p.key); },900);
+  });
 
   /* 3 · ⚓ THE ONE-CLICK BOOKMARK. This function is never run inside the app: its source is written into a
      bookmark (see bookmarkHref) and runs on pmanet.org when the Keymaster clicks it there. Same-origin
@@ -38338,7 +38420,7 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
     else{
       let closeT=0;
       const closeSoon=ms=>{ clearTimeout(closeT); closeT=setTimeout(()=>{ try{window.close();}catch(_){} },ms); };
-      const have=()=>Object.keys(D).filter(k=>D[k]&&D[k].final);
+      const have=()=>Object.keys(D).filter(k=>pmaDone(D[k]));
       const readyP=(async()=>{   /* let the sign-in and the cloud copy land, then say which sheets are already in */
         const t0=Date.now();
         while(Date.now()-t0<8000&&!(window.SB&&window.__isKM!=null))await new Promise(r=>setTimeout(r,250));
@@ -38398,6 +38480,222 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
     document.getElementById('pmFile').addEventListener('change',async function(ev){ const fs=[...(ev.target.files||[])]; if(fs.length){ await uploadFiles(fs,say); renderBar(); setTimeout(function(){ window.pmaPanel(pane,back); const m=document.getElementById('pmMsg'); if(m&&msg)m.innerHTML=msg.innerHTML; },600); } });
   };
 }catch(e){ try{console.warn('[pmasheet]',e);}catch(_){} }})();
+</script>
+<script>
+/* ═══ #kmtodo(oct5) — THE KEYMASTER'S TO-DO ═══════════════════════════════════════════════════════
+   One list, in the Command Center, of the chores that keep the record honest — each with its tool one
+   tap away — and a pop-up the moment one comes due:
+     · BOARD LOG — a finished board with no end card on the record (nobody posted it, the hotline didn't
+       land it, no PMA sheet). 📞 Call the hall's recorded board, then ✎ log it — the board log opens
+       already set to that board. A sealed board with no come-down is listed too, quietly (no pop-up).
+     · UNION SHEET — a D / E / N sheet that's late or never came in. 📄 the union's own PDF on ilwu13.com,
+       then ✎ type the totals into the Sheet Editor, already set to that board and sheet.
+     · PMA SHEET — the official summary for a finished board (see #pmatools).
+   A chore leaves the list by itself the moment it's done. "✓ skip" takes one off for good (a holiday
+   with no board, a sheet that will never post). The pop-up: Open (straight to this list), Later (two
+   hours), ✕ (it stays in the list and won't pop again for twelve hours). Keymasters only; never during
+   the boot, the bookmark's inbox, or over another open sheet; and not before the morning's data has
+   loaded, so it never cries wolf over a sheet that simply hadn't been read yet. */
+(function(){try{
+  const LS='shadowhook_todo';
+  let ST={}; try{ ST=JSON.parse(localStorage.getItem(LS)||'{}')||{}; }catch(e){ ST={}; }
+  ['snooze','done','rung'].forEach(k=>{ if(!ST[k]||typeof ST[k]!=='object')ST[k]={}; });
+  function save(){ try{ const cut=Date.now()-10*864e5;
+    ['snooze','done','rung'].forEach(k=>Object.keys(ST[k]).forEach(id=>{ if(!(ST[k][id]>cut))delete ST[k][id]; }));
+    localStorage.setItem(LS,JSON.stringify(ST)); }catch(e){} }
+  const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const HALL_TEL='tel:+13106209879';                 /* the Casual Hall Tapeline — the recorded board */
+  const pad=n=>String(n).padStart(2,'0');
+  const isoOf=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+  const bName=k=>{ const d=new Date(k.slice(0,10)+'T12:00:00'); return DOW[d.getDay()]+' '+(d.getMonth()+1)+'/'+d.getDate()+' '+(k.slice(-2)==='AM'?'day':'night'); };
+  const clock=d=>{ const h=d.getHours()%12||12; return h+':'+pad(d.getMinutes())+' '+(d.getHours()<12?'AM':'PM'); };
+  /* boards whose dispatch is over — day at 10:00 AM, night at 7:30 PM (the half hour lets the crowd seal it) */
+  function finishedBoards(now,n){
+    const out=[];
+    for(let back=0;back<3&&out.length<n;back++){
+      const d=new Date(now.getFullYear(),now.getMonth(),now.getDate()-back);
+      ['PM','AM'].forEach(ap=>{ const over=new Date(d); over.setHours(ap==='AM'?10:19,ap==='AM'?0:30,0,0); if(now>=over&&out.length<n)out.push(isoOf(d)+'_'+DOW[d.getDay()]+'_'+ap); });
+    }
+    return out;
+  }
+  const SHEET_NAME={EARLY:'early count (E)',NIGHT:'night final (N)',MORNING:'day final (D)'};
+
+  function tasks(){
+    const out=[]; if(!window.__isKM)return out;
+    const now=(typeof nowLA==='function')?nowLA():new Date();
+    /* 1 · board logs */
+    try{
+      let heard=null; try{ const hl=(window.HALL_LINE_ROWS||[])[0]; heard=(hl&&typeof hlImplied==='function')?Object.assign({conf:hl.conf},hlImplied(hl)||{}):null; }catch(e){}
+      finishedBoards(now,4).forEach(k=>{
+        const r=(typeof RECENT!=='undefined')?RECENT.find(x=>x&&x.date+'_'+x.slot===k):null;
+        if(!(r&&r.end)){
+          const hint=(heard&&heard.key===k&&heard.end)?' The hall line heard <b>'+esc(heard.end)+'</b>'+(heard.conf!=null?' ('+Math.round(heard.conf*100)+'% sure)':'')+'.':'';
+          out.push({id:'log|'+k,kind:'log',key:k,pri:1,ring:true,title:bName(k)+' — no end card on the record',
+            sub:'Nobody posted where this board ended. Call the hall’s recorded board, then log it.'+hint});
+        }else if(typeof boardDown==='function'&&boardDown(r)==null&&(typeof boardMoved!=='function'||boardMoved(r)!==false)){
+          out.push({id:'down|'+k,kind:'down',key:k,pri:4,ring:false,title:bName(k)+' — no come-down logged',
+            sub:'The end card is in ('+esc(r.end)+'); nobody logged how many came down.'});
+        }
+      });
+    }catch(e){}
+    /* 2 · union sheets that are late, or never came in (the last day) */
+    try{
+      const st=window.DispatchBot&&DispatchBot.status(now);
+      ((st&&st.searches)||[]).forEach(s=>{
+        const late=s.state==='overdue', missed=s.state==='closed'&&s.kind!=='EARLY'&&(now-s.close)<24*3600000;
+        if(!late&&!missed)return;
+        out.push({id:'sheet|'+s.kind+'|'+s.key,kind:'sheet',key:s.key,which:(s.kind==='EARLY'?'E':s.kind==='NIGHT'?'N':'D'),url:s.url||'',pri:2,ring:true,
+          title:'Union '+SHEET_NAME[s.kind]+' for '+bName(s.key)+(late?' is late':' never came in'),
+          sub:'Due about '+clock(s.expect)+(s.expect.toDateString()===now.toDateString()?'':' '+DOW[s.expect.getDay()])+'. Open the union’s PDF and type the totals in.'});
+      });
+    }catch(e){}
+    /* 3 · PMA sheets */
+    try{ const A=window.PMA_API; if(A)A.missing().forEach(k=>out.push({id:'pma|'+k,kind:'pma',key:k,pri:3,ring:true,
+      title:'PMA sheet for '+bName(k)+(A.partial(k)?' — grab the finished one':''),
+      sub:A.partial(k)?'The one on file went up before the casual dispatch ended.':'The official summary — it puts PMA’s cards on the record.'})); }catch(e){}
+    return out.filter(t=>!ST.done[t.id]).sort((a,b)=>a.pri-b.pri||(a.key<b.key?1:a.key>b.key?-1:0));
+  }
+
+  try{ const st=document.createElement('style'); st.textContent=
+    '#kmTodo .td-card{border:1px solid var(--line-soft);border-left-width:3px;border-radius:12px;padding:10px 12px;margin:0 0 8px;background:rgba(255,255,255,.02)}'
+    +'#kmTodo .td-card.td-log{border-left-color:#e0492e}#kmTodo .td-card.td-sheet{border-left-color:#eeb46b}#kmTodo .td-card.td-pma{border-left-color:#8fc7f0}#kmTodo .td-card.td-down{border-left-color:var(--steel)}'
+    +'#kmTodo .td-t{font-weight:700;color:var(--bone);font-size:14px;line-height:1.35}'
+    +'#kmTodo .td-s{font-size:12px;color:var(--steel);margin:3px 0 8px;line-height:1.45}#kmTodo .td-s b{color:var(--bone)}'
+    +'#kmTodo .td-a{display:flex;flex-wrap:wrap;gap:6px;align-items:center}'
+    +'#kmTodo .td-btn{display:inline-block;cursor:pointer;padding:7px 11px;border-radius:9px;border:1px solid var(--line);background:none;color:var(--bone);font:700 12px Inter,system-ui,sans-serif;text-decoration:none;line-height:1.2}'
+    +'#kmTodo .td-btn.hot{border-color:rgba(238,180,107,.6);background:rgba(238,180,107,.14);color:var(--copper-hi)}'
+    +'#kmTodo .td-skip{margin-left:auto;cursor:pointer;background:none;border:0;color:var(--steel);font:600 11px Inter,system-ui,sans-serif;padding:6px}'
+    +'#kmTodo .td-z{font-size:10.5px;color:var(--steel);font-weight:600}'
+    +'#kmTodo .td-ok{color:#7fae6a;font-weight:700;padding:4px 0 2px}'
+    +'#kmTodo .td-foot{font-size:11px;color:var(--steel);margin-top:2px;line-height:1.45}'
+    +'#kmTodoPop{position:fixed;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom,0px) + 86px);z-index:99985;max-width:460px;margin:0 auto;padding:12px 14px;border-radius:14px;background:#14100c;border:1px solid rgba(238,180,107,.6);box-shadow:0 12px 36px rgba(0,0,0,.55);color:#e8e3d6;font:14px/1.4 Inter,system-ui,sans-serif}'
+    +'#kmTodoPop .tp-h{display:flex;align-items:center;gap:8px;font-weight:800;color:#eeb46b}'
+    +'#kmTodoPop .tp-x{margin-left:auto;background:none;border:0;color:#aab2b8;font-size:17px;cursor:pointer;padding:2px 6px;line-height:1}'
+    +'#kmTodoPop ul{margin:8px 0 10px;padding-left:18px;color:#d8d2c4;font-size:13px}#kmTodoPop li{margin:2px 0}'
+    +'#kmTodoPop .tp-row{display:flex;gap:10px}'
+    +'#kmTodoPop .tp-go{flex:1;cursor:pointer;padding:11px;border-radius:10px;border:1px solid rgba(238,180,107,.6);background:rgba(238,180,107,.16);color:#eeb46b;font-weight:800}'
+    +'#kmTodoPop .tp-later{cursor:pointer;padding:11px 14px;border-radius:10px;border:1px solid rgba(122,130,138,.45);background:none;color:#aab2b8;font-weight:700}'
+    +'html.daylight #kmTodoPop{background:#fff;color:#1b2a36;border-color:#e3bb92}html.daylight #kmTodoPop ul{color:#33414c}html.daylight #kmTodoPop .tp-h,html.daylight #kmTodoPop .tp-go{color:#8f3d08}';
+    document.head.appendChild(st); }catch(e){}
+
+  function actionsFor(t){
+    const A=window.PMA_API, k=' data-k="'+esc(t.key)+'"';
+    const b=(act,label,extra,cls)=>'<button type="button" class="td-btn'+(cls?' '+cls:'')+'" data-act="'+act+'"'+k+(extra||'')+'>'+label+'</button>';
+    if(t.kind==='log') return '<a class="td-btn hot" href="'+HALL_TEL+'">📞 Call the hall</a>'+b('log','✎ Log the board')
+      +(A?'<a class="td-btn" href="'+esc(A.link(t.key))+'" target="_blank" rel="noopener" data-act="pmaopen"'+k+'>📄 PMA sheet ↗</a>':'');
+    if(t.kind==='down') return b('log','✎ Log the come-down');
+    if(t.kind==='sheet') return (t.url?'<a class="td-btn hot" href="'+esc(t.url)+'" target="_blank" rel="noopener">📄 Union PDF ↗</a>':'')+b('enter','✎ Enter the sheet',' data-w="'+esc(t.which)+'"');
+    if(t.kind==='pma'&&A) return '<a class="td-btn hot" href="'+esc(A.link(t.key))+'" target="_blank" rel="noopener" data-act="pmaopen"'+k+'>Open on PMA ↗</a>'
+      +'<label class="td-btn">📄 Add PDF<input type="file" accept="application/pdf,.pdf" multiple hidden data-act="pmaadd"></label>';
+    return '';
+  }
+  function render(ts){
+    const sec=document.getElementById('kmSecTodo'), pill=document.getElementById('kmTodoN'), box=document.getElementById('kmTodo');
+    if(sec)sec.style.display=window.__isKM?'':'none';
+    if(pill){ pill.textContent=ts.length; pill.style.display=ts.length?'':'none'; }
+    if(!box)return;
+    const now=Date.now();
+    const sig=JSON.stringify(ts.map(t=>t.id+'|'+t.sub+(ST.snooze[t.id]>now?'|z':'')));
+    if(box.dataset.sig===sig)return; box.dataset.sig=sig;
+    if(!ts.length){ box.innerHTML='<div class="td-ok">✓ All caught up — nothing needs you right now.</div>'; return; }
+    const hasPma=ts.some(t=>t.kind==='pma'||t.kind==='log'), A=window.PMA_API;
+    /* td- prefix: "sheet" is the app's own pop-up class (fixed, hidden until .on) — a bare kind name collided with it */
+    box.innerHTML=ts.map(t=>'<div class="td-card td-'+t.kind+'"><div class="td-t">'+esc(t.title)+(ST.snooze[t.id]>now?' <span class="td-z">⏰ later</span>':'')+'</div>'
+        +'<div class="td-s">'+t.sub+'</div><div class="td-a">'+actionsFor(t)+'<button type="button" class="td-skip" data-act="done" data-id="'+esc(t.id)+'" title="Take this one off the list for good">✓ skip</button></div></div>').join('')
+      +(hasPma&&A?'<div class="td-foot">'+(A.phone()?'PMA on the phone: Open on PMA → tick their box if it asks → view the PDF → Share → Shadow Hook.':'PMA PDFs: drop them anywhere on the app, or use the ⚓ bookmark (⚙ Dev Log → PMA SHEETS).')+'</div>':'');
+  }
+  function closeKm(){ try{ const sh=document.getElementById('kmSheet'); if(sh)sh.classList.remove('on'); }catch(e){} try{ if(typeof kmSeasonRestore==='function')kmSeasonRestore(); }catch(e){} }
+  /* ✎ Log the board — the board log opens already set to this board (added to its list if nobody ever logged it) */
+  function openBoardLog(k){
+    try{
+      openBoardSheet();
+      const sel=document.getElementById('brBoard'); if(!sel)return;
+      if(![].some.call(sel.options,o=>o.value===k)){ const p=k.split('_'); sel.insertAdjacentHTML('afterbegin','<option value="'+esc(k)+'">'+(typeof fmtD==='function'?fmtD(p[0]):p[0])+' &#183; '+esc(p[1]+' '+p[2])+'</option>'); }
+      sel.value=k;
+      ['brFlex','br1','br1end','br2','brEnd'].forEach(id=>{ const e=document.getElementById(id); if(e)e.value=''; });
+      try{ brSyncStart(); }catch(e){}
+      /* a board nobody ever logged has no row — its start is one card past the board BEFORE it on the record
+         (brSyncStart's fallback is the newest board's handoff, which is only right for the live one) */
+      try{
+        const has=RECENT.find(x=>x&&x.date+'_'+x.slot===k&&x.start);
+        if(!has){
+          const ord=x=>x.date+(String(x.slot).endsWith('AM')?'_1':'_2'), me={date:k.slice(0,10),slot:k.slice(11)};
+          const prev=RECENT.filter(x=>x&&x.date&&x.slot&&ord(x)<ord(me)).sort((a,b)=>ord(a)<ord(b)?-1:ord(a)>ord(b)?1:0).pop();
+          const st=document.getElementById('brStart');
+          if(st)st.value=(prev&&prev.end&&typeof handoffCard==='function')?handoffCard(prev):'';
+        }
+      }catch(e){}
+      try{ brPreview(); }catch(e){} try{ brWitness(); }catch(e){}
+      const bs=document.getElementById('boardSheet'); if(bs)bs.classList.add('on');
+    }catch(e){ try{ toast('couldn’t open the board log'); }catch(_){} }
+  }
+  function bind(){
+    const box=document.getElementById('kmTodo'); if(!box||box.dataset.bound)return; box.dataset.bound='1';
+    box.addEventListener('click',e=>{
+      const el=e.target.closest('[data-act]'); if(!el)return;
+      const act=el.getAttribute('data-act'), k=el.getAttribute('data-k');
+      if(act==='done'){ ST.done[el.getAttribute('data-id')]=Date.now(); save(); refresh(); return; }
+      if(act==='pmaopen'){ try{ window.PMA_API.went(k); }catch(_){} return; }           /* the link opens PMA itself */
+      if(act==='log'){ closeKm(); setTimeout(()=>openBoardLog(k),150); return; }
+      if(act==='enter'){ closeKm(); setTimeout(()=>{ try{ window.kmOpenSheetEditor(k,el.getAttribute('data-w')); }catch(_){} },150); return; }
+    });
+    box.addEventListener('change',async e=>{
+      const inp=e.target; if(!inp||inp.getAttribute('data-act')!=='pmaadd')return;
+      const fs=[...(inp.files||[])]; inp.value='';
+      if(fs.length&&window.PMA_API){ await window.PMA_API.add(fs); refresh(); }
+    });
+  }
+
+  /* the pop-up */
+  const _bootAt=Date.now();
+  function dataReady(){
+    if(!window.SB)return true;
+    const T=(window.DEVLOG&&DEVLOG._s&&DEVLOG._s.tables)||{};
+    return !!(T.dispatch_boards&&T.board_wire)||Date.now()-_bootAt>45000;
+  }
+  function busy(){
+    if(window.__pmaInbox||document.hidden)return true;
+    if(document.getElementById('boot')||document.getElementById('kmTodoPop')||document.getElementById('pmaAsk'))return true;
+    if(document.querySelector('.sheet.on'))return true;
+    const dl=document.getElementById('devLogPane'); if(dl&&dl.style.display==='block')return true;
+    if(document.documentElement.classList.contains('at-gate'))return true;
+    return false;
+  }
+  function ringing(ts){ const now=Date.now(); return ts.filter(t=>t.ring&&!(ST.snooze[t.id]>now)&&!(ST.rung[t.id]&&now-ST.rung[t.id]<12*3600000)); }
+  function openTodo(){
+    try{ window.kmOpen(); }catch(e){}
+    setTimeout(()=>{ const d=document.getElementById('kmSecTodo'); if(d){ d.open=true; try{ d.scrollIntoView({behavior:'smooth',block:'start'}); }catch(e){ d.scrollIntoView(); } } },250);
+  }
+  window.kmTodoOpen=openTodo;
+  function pop(ring){
+    const el=document.createElement('div'); el.id='kmTodoPop'; el.setAttribute('role','dialog'); el.setAttribute('aria-label','Keymaster to-do');
+    const n=ring.length;
+    el.innerHTML='<div class="tp-h">📋 '+(n===1?'One thing needs you':n+' things need you')+'<button type="button" class="tp-x" aria-label="Close">✕</button></div>'
+      +'<ul>'+ring.slice(0,3).map(t=>'<li>'+esc(t.title)+'</li>').join('')+(n>3?'<li>…and '+(n-3)+' more</li>':'')+'</ul>'
+      +'<div class="tp-row"><button type="button" class="tp-go">Open the To-Do</button><button type="button" class="tp-later">Later</button></div>';
+    document.body.appendChild(el);
+    const ids=ring.map(t=>t.id), done=()=>{ try{ el.remove(); }catch(e){} };
+    el.querySelector('.tp-x').addEventListener('click',()=>{ ids.forEach(id=>ST.rung[id]=Date.now()); save(); done(); });
+    el.querySelector('.tp-later').addEventListener('click',()=>{ const until=Date.now()+2*3600000; ids.forEach(id=>ST.snooze[id]=until); save(); done(); try{ toast('⏰ I’ll remind you in two hours — it’s in the Command Center till then'); }catch(e){} });
+    el.querySelector('.tp-go').addEventListener('click',()=>{ ids.forEach(id=>ST.rung[id]=Date.now()); save(); done(); openTodo(); });
+  }
+  function refresh(){
+    let ts=[]; try{ ts=tasks(); }catch(e){}
+    try{ bind(); render(ts); }catch(e){}
+    try{ const p=document.getElementById('kmTodoPop'); if(p&&!ts.some(t=>t.ring))p.remove(); }catch(e){}   /* all done → the pop-up closes itself */
+    return ts;
+  }
+  window.kmTodoRefresh=refresh;
+  window.kmTodoTasks=()=>{ try{ return tasks(); }catch(e){ return []; } };
+  function check(){
+    const ts=refresh();
+    if(!window.__isKM||!dataReady()||Date.now()-_bootAt<8000||busy())return;
+    const ring=ringing(ts); if(ring.length)pop(ring);
+  }
+  setTimeout(check,12000); setInterval(check,60000);
+  document.addEventListener('visibilitychange',()=>{ if(!document.hidden)setTimeout(check,1500); });
+}catch(e){ try{console.warn('[kmtodo]',e);}catch(_){} }})();
 </script>
 
 <script type="text/x-lazy" data-chunk="maps">
@@ -45577,6 +45875,11 @@ window.SEASON_STORY={
 
     <!-- #desk(sep4) — deputies propose, the crown seals. The note shows on a deputy key only. -->
     <div id="kmDeputyNote" class="sub" style="display:none;margin:-6px 0 12px;padding:9px 12px;border:1px solid rgba(238,180,107,.45);border-radius:10px;line-height:1.55;color:var(--bone)">🗝 <b>COUNCIL MEMBER</b> — you sit on the Shadow Council, and you see everything the Keymaster sees. Every lever you pull goes to the Keymaster’s desk with your reason on it; nothing lands until the seal.</div>
+    <!-- #kmtodo(oct5) — the chores that keep the record honest, each with its tool one tap away; a pop-up rings when one comes due -->
+    <details class="kmsec" id="kmSecTodo" open>
+      <summary class="card-h">The To-Do <span class="pill red" id="kmTodoN" style="display:none">0</span></summary>
+      <div class="kmsec-b"><div id="kmTodo" class="sub" style="margin-bottom:12px">—</div></div>
+    </details>
     <details class="kmsec" id="kmSecDesk" open>
       <summary class="card-h">The Desk <span class="pill red" id="kmDeskN" style="display:none">0</span></summary>
       <div class="kmsec-b">
@@ -46603,6 +46906,7 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
   }
   window.kmOpen=function(){
     const sh=$('kmSheet');sh.classList.add('on');
+    try{ if(window.kmTodoRefresh)window.kmTodoRefresh(); }catch(e){}   /* #kmtodo — the chores, counted before the jump bar reads the doors */
     try{kmSecInit();}catch(e){}     /* #readable — folds remembered, jump bar built */
     try{kmNumbers();}catch(e){}     /* #numbers — the hall's numbers, off this phone's record */
     const f=window.KM_FLAGS||{};
