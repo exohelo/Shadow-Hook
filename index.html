@@ -5836,6 +5836,8 @@ window.DEVLOG=(function(){
         <div class="wire-srcline"><span class="wire-src est" id="wSrc">—</span></div>
         <!-- #hallsay(sep14) — the phone line's own words, and the ▶ that reads the call aloud -->
         <div class="hall-say" id="hallSay" style="display:none"></div>
+        <!-- #hallclock(oct5) — while the board is live: when the casual hall usually wraps (PMA's finish times; filled by #pmaplus) -->
+        <div class="wire-wrapdone" id="wWrapDone" style="display:none"></div>
         <div class="wire-stage">
           <div class="wire-stoplbl">PREDICTED STOP</div>
           <div class="wire-stop" id="predStop">—</div>
@@ -19412,7 +19414,7 @@ function renderBotStatus(now){
       const _yd=new Date(now.getTime()-36*3600000), _floor=_yd.getFullYear()+"-"+String(_yd.getMonth()+1).padStart(2,"0")+"-"+String(_yd.getDate()).padStart(2,"0");
       const ks=Object.keys(window.PMA_DATA).filter(k=>k.slice(0,10)>=_floor).sort().reverse();
       for(const k of ks){ const pd=window.PMA_DATA[k], at=Date.parse((pd&&pd.at)||"")||0;
-        if(!pd||!pd.final||!pd.end||pd.toCH==null||!at||now.getTime()-at>6*3600000)continue;
+        if(!pd||pd.held||pd.tossed||!pd.final||!pd.end||pd.toCH==null||!at||now.getTime()-at>6*3600000)continue;
         pmaNews={B:_bname(k),k:k,P:pd.ordered,C:pd.toCH,E:pd.end}; break; }
     }
   }catch(e){}
@@ -35795,7 +35797,7 @@ function hlApplyToRecord(){
     if(!row){row={date:date,slot:slot,rain:false,hol:false};RECENT.push(row);
       RECENT.sort((a,b)=>{const ka=a.date+(String(a.slot).endsWith('AM')?'_1':'_2'),kb=b.date+(String(b.slot).endsWith('AM')?'_1':'_2');return ka<kb?-1:ka>kb?1:0;});}
     if(row.end===imp.end){window._hlApplied={key:imp.key,end:imp.end,note:'already on the record'};return;}
-    if(window.PMA_DATA&&PMA_DATA[imp.key]&&PMA_DATA[imp.key].end){window._hlApplied={skipped:'PMA’s official sheet already set '+imp.key+' ('+PMA_DATA[imp.key].end+')'};return;}   /* #pmafinal */
+    if(window.PMA_DATA&&PMA_DATA[imp.key]&&PMA_DATA[imp.key].end&&!PMA_DATA[imp.key].held&&!PMA_DATA[imp.key].tossed){window._hlApplied={skipped:'PMA’s official sheet already set '+imp.key+' ('+PMA_DATA[imp.key].end+')'};return;}   /* #pmafinal */
     row.end=imp.end; row._hotline=true;
     if(row.start){try{row.act=boardActOf(row.start,imp.end,row);}catch(e){}}   /* #lapact */
     try{chainBoards(imp.key);}catch(e){}
@@ -38062,7 +38064,7 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
   function ingest(key,data,quiet){
     if(!key||!data)return false;
     const prev=D[key];
-    if(prev&&prev.final&&!data.final){ if(data._u){ prev._u=data._u; save(); } return false; }
+    if(prev&&prev.final&&!data.final&&!data.tossed){ if(data._u){ prev._u=data._u; save(); } return false; }   /* #pmaguard — a tossed sheet clears a held one */
     D[key]=Object.assign({},data); save();
     if(!quiet){ try{ apply(key); }catch(e){} redraw(); }
     return true;
@@ -38084,7 +38086,7 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
     return r;
   }
   function assertOne(key){
-    const p=D[key]; if(!p||(!p.start&&!p.end)||typeof RECENT==='undefined')return false;
+    const p=D[key]; if(!p||p.held||p.tossed||(!p.start&&!p.end)||typeof RECENT==='undefined')return false;   /* #pmaguard — a held sheet sets nothing */
     const r=recRow(key,!!p.end); if(!r)return false;
     let ch=false;
     /* #pmadown(oct5) — by request PMA's data is the most accurate we have: once the sheet shows the casual
@@ -38126,7 +38128,7 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
   /* grade on the official end card — predScore(k,end,true) re-scores even a board the crowd already sealed */
   function apply(key){
     try{ window.pmaAssert(); }catch(e){}
-    const p=D[key]; if(!p||!p.end)return;
+    const p=D[key]; if(!p||p.held||p.tossed||!p.end)return;   /* #pmaguard — nor grades anything */
     try{ if(typeof predScore==='function')predScore(key,p.end,true); }catch(e){}
   }
   let _rd=0, _rp=false;
@@ -38179,7 +38181,8 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
 
   /* the PMA OFFICIAL block inside the dispatch sheet */
   window.pmaXp=function(key,rec){
-    const p=D[key]; if(!p)return '';
+    const p=D[key]; if(!p||p.tossed)return '';
+    if(p.held)return window.__isKM?'<div class="xp-h">PMA SHEET · ON HOLD</div><div class="xp-mem" style="color:var(--ember)">&#9888; Waiting on your check in the To-Do: '+esc((p.held.why||[]).join('; '))+'</div>':'';   /* #pmaguard */
     const x=window.pmaDelta(key);
     let h='<div class="xp-h">PMA OFFICIAL · SHIFT '+esc(p.shift)+(p.done?' · dispatch done '+esc(t12(p.done)):'')+'</div>';
     h+='<div class="xp-tot">Ordered <b>'+n(p.ordered)+'</b> · Dispatched <b>'+n(p.dispatched)+'</b>'
@@ -38200,12 +38203,12 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
     return h;
   };
   /* #pmadown — the jobs the casual hall filled (longshore + clerk), once the sheet shows the dispatch done */
-  function pmaCame(p){ if(!p||!pmaDone(p))return null; const v=(p.lsFilled!=null?p.lsFilled:p.toCH); return v==null?null:v+(+p.clerk||0); }
+  function pmaCame(p){ if(!p||p.held||p.tossed||!pmaDone(p))return null; const v=(p.lsFilled!=null?p.lsFilled:p.toCH); return v==null?null:v+(+p.clerk||0); }
   window.pmaCame=k=>pmaCame(D[k]);
   const t12=t=>{ const m=/^(\d{1,2}):(\d{2})$/.exec(String(t||'')); if(!m)return String(t||''); let h=+m[1]; const ap=h>=12?'PM':'AM'; h=h%12||12; return h+':'+m[2]+' '+ap; };
   /* #pmaclerk(oct5) — the record card's PMA line: longshore + clerk the hall filled, and when it wrapped */
   window.pmaRecLine=function(key){
-    const p=D[key]; if(!p||!pmaDone(p))return '';
+    const p=D[key]; if(!p||p.held||p.tossed||!pmaDone(p))return '';
     const v=(p.lsFilled!=null?p.lsFilled:p.toCH), bits=[];
     if(v!=null)bits.push(p.clerk>0?'<b>'+n(v)+'</b> longshore + <b>'+n(p.clerk)+'</b> clerk':'<b>'+n(v)+'</b> to the casual hall');
     if(p.lsDone)bits.push('hall done <b>'+esc(t12(p.lsDone))+'</b>');
@@ -38213,7 +38216,7 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
   };
   /* the pill on the record row */
   window.pmaChip=function(key,rec){
-    const p=D[key]; if(!p||!p.end)return '';
+    const p=D[key]; if(!p||p.held||p.tossed||!p.end)return '';
     if(rec&&rec.end&&rec.end.toUpperCase()===p.end)return ' <span class="pill grn" title="Official — set by PMA’s 720 Dispatch Summary">PMA ✓</span>';
     if(rec&&rec.end)return ' <span class="pill red" title="PMA’s official end card — the record says '+esc(rec.end)+'">PMA '+esc(p.end)+'</span>';
     return ' <span class="pill gold" title="PMA’s official end card">PMA '+esc(p.end)+'</span>';
@@ -38250,6 +38253,83 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
     return 'on the wire ✓';
   }
   function boardName(key){ const d=new Date(key.slice(0,10)+'T12:00:00'); return DOW[d.getDay()]+' '+(d.getMonth()+1)+'/'+d.getDate()+' '+(key.slice(-2)==='AM'?'day':'night'); }
+
+  /* ═══ #pmaguard(oct5) — A BAD READ NEVER BECOMES THE RECORD ══════════════════════════════════════
+     PMA's sheet overrides everything once it's on file — the cards, the come-down, the grades — so one
+     misread PDF (a layout change at PMA, a number picked up from the wrong column) would spread through all
+     of it. Every sheet the Keymaster adds is checked first, against itself and against what the app
+     already knows. If something doesn't add up, the sheet is saved but HELD: nothing reads it (record,
+     grades, Port Today, The Hall, the bot) until the Keymaster compares it with the PDF and taps
+     "It's right" or "Toss it" in the Command Center To-Do (it rings). Each check is loose enough that a
+     real sheet passes — every sheet on file on Oct 5 does:
+       · the sheet against itself — dispatched ≤ ordered, casual hall ≤ ordered, filled ≤ sent, finish
+         times inside that shift's dispatch, sane counts of clerk jobs, A + B, ships and gangs;
+       · the casual board picks up where it stopped — the start card sits a few cards after the previous
+         PMA sheet's end (or ON its card, when that board held);
+       · against the union's final sheet — PMA's jobs dispatched matched it to the job on Oct 5 (1,617), so
+         a gap of 20% and 150+ jobs is a misread, not a late order;
+       · against the record — an end card two or more letters off the hall line's;
+       · a board that moved calls at least as many cards as the jobs it filled. */
+  const _prevKey=key=>{ const i=key.indexOf('_'), date=key.slice(0,i), ap=key.slice(-2), d=new Date(date+'T12:00:00');
+    if(ap==='PM')return date+'_'+DOW[d.getDay()]+'_AM';
+    d.setDate(d.getDate()-1);
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')+'_'+DOW[d.getDay()]+'_PM'; };
+  function pmaChecks(key,p){
+    const why=[], ok=v=>v!=null&&isFinite(v);
+    try{
+      if(ok(p.ordered)&&(p.ordered<50||p.ordered>6000))why.push('jobs ordered reads '+n(p.ordered));
+      if(ok(p.ordered)&&ok(p.dispatched)&&p.dispatched>p.ordered+5)why.push('more jobs dispatched ('+n(p.dispatched)+') than ordered ('+n(p.ordered)+')');
+      if(ok(p.ordered)&&ok(p.toCH)&&p.toCH>p.ordered)why.push('more jobs to the casual hall ('+n(p.toCH)+') than ordered ('+n(p.ordered)+')');
+      if(ok(p.toCH)&&ok(p.lsFilled)&&p.lsFilled>p.toCH+5)why.push('the casual hall filled '+n(p.lsFilled)+' but was sent '+n(p.toCH));
+      if(ok(p.clerk)&&p.clerk>400)why.push(n(p.clerk)+' clerk jobs');
+      if(ok(p.classA)&&ok(p.classB)&&p.classA+p.classB>6000)why.push('A + B checked in reads '+n(p.classA+p.classB));
+      const tm=t=>{ const m=/^(\d{1,2}):(\d{2})$/.exec(String(t||'')); return m?(+m[1])*60+(+m[2]):null; };
+      const win=p.shift===1?[240,720]:p.shift===2?[840,1320]:null;
+      [['lsDone','the casual hall'],['done','the dispatch']].forEach(x=>{ const v=tm(p[x[0]]);
+        if(v!=null&&win&&(v<win[0]||v>win[1]))why.push(x[1]+' finished at '+p[x[0]]+', outside the '+(p.shift===1?'day':'night')+' dispatch'); });
+      if(Array.isArray(p.ships)){ const g=p.ships.reduce((a,s)=>a+Math.max(0,+(s&&s.g)||0),0);
+        if(p.ships.length>160||g>500)why.push(p.ships.length+' ships with '+g+' gangs');
+        else if(p.ships.some(s=>(+(s&&s.g)||0)>40))why.push('a ship with more than 40 gangs'); }
+      /* the casual board picks up where it stopped (spanWalk: same card → 0, the next card → 1–2, backwards → the whole book) */
+      const pk=_prevKey(key), pp=D[pk];
+      if(p.start&&pp&&!pp.held&&!pp.tossed&&typeof countActiveSpan==='function'){
+        const from=pp.end||(pmaDone(pp)?pp.start:null);
+        if(from){ const c=countActiveSpan(from,p.start,false);
+          if(c!=null&&c>6)why.push('starts on '+p.start+', but PMA’s '+boardName(pk)+' sheet '+(pp.end?'ended on ':'sat on ')+from); } }
+      /* PMA's jobs dispatched against the union's final sheet */
+      const dd=(typeof DISPATCH_DATA!=='undefined')?DISPATCH_DATA[key]:null;
+      let u=null; try{ u=(dd&&typeof sheetGrandTotal==='function')?sheetGrandTotal(dd):null; }catch(e){}
+      if(u>0&&ok(p.dispatched)&&Math.abs(p.dispatched-u)>Math.max(150,Math.round(u*0.2)))why.push('jobs dispatched reads '+n(p.dispatched)+'; the union sheet says '+n(u));
+      /* the end card against the record's (the hall line / the wire) */
+      if(p.end&&typeof RECENT!=='undefined'){ const r=RECENT.find(x=>x&&x.date+'_'+x.slot===key);
+        if(r&&r.end&&!r._pma&&/^[A-Z]/i.test(String(r.end))){ const a=AZ.indexOf(p.end[0]), b=AZ.indexOf(String(r.end).toUpperCase()[0]);
+          if(a>=0&&b>=0&&Math.min((a-b+26)%26,(b-a+26)%26)>=2)why.push('ends on '+p.end+'; the record says '+String(r.end).toUpperCase()); } }
+      /* a board that moved calls at least as many cards as the jobs it filled */
+      if(p.start&&p.end&&p.cyc!==true&&typeof countActiveSpan==='function'){
+        const sp=countActiveSpan(p.start,p.end,false), cd=pmaCame(Object.assign({},p,{held:null,tossed:null}));
+        if(sp!=null&&sp>1&&cd!=null&&sp<cd*0.9)why.push('the board walked '+n(sp)+' cards but filled '+n(cd)+' jobs'); }
+    }catch(e){}
+    return why;
+  }
+  window.pmaChecks=(k,p)=>pmaChecks(k,p||D[k]);
+  /* the Keymaster's two answers (the To-Do's buttons) */
+  async function pmaApprove(k){
+    const p=D[k]; if(!p||!p.held)return;
+    let by='the Keymaster'; try{ const a=(typeof loadAcct==='function')?loadAcct():null; if(a&&a.handle)by=a.handle; }catch(e){}
+    const data=Object.assign({},p); delete data.held; delete data._u; data.ok={by:by,at:new Date().toISOString(),why:p.held.why||[]};
+    D[k]=data; save(); try{ apply(k); }catch(e){} redraw(true);
+    const w=await saveRow(k,data);
+    try{ DEVLOG.note('PMA sheet OK’d: '+k); }catch(e){}
+    try{ toast('✓ '+boardName(k)+' is on the record · '+w); }catch(e){}
+  }
+  async function pmaToss(k){
+    const p=D[k]; if(!p)return;
+    const stub={date:p.date||k.slice(0,10),shift:p.shift||(k.slice(-2)==='AM'?1:2),tossed:true,at:new Date().toISOString(),src:'tossed'};
+    D[k]=stub; save(); redraw(true);
+    const w=await saveRow(k,stub);
+    try{ DEVLOG.note('PMA sheet tossed: '+k); }catch(e){}
+    try{ toast('🗑 Tossed the '+boardName(k)+' sheet — add it again when you can · '+w); }catch(e){}
+  }
   /* one PDF in → read, filed, on the wire. The same road for the picker, a drop, and the bookmark. */
   async function takePdf(name,src,how){
     const parsed=pmaParse(await readPdf(src));
@@ -38258,9 +38338,17 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
     if(!key)return {ok:true,skip:true,line:'· '+parsed.date+' Shift '+parsed.shift+' has no casual dispatch — skipped'};
     if(pmaDone(D[key])&&!pmaDone(parsed))return {ok:true,skip:true,key:key,line:'· '+boardName(key)+': already have the finished sheet'};
     const data=Object.assign({},parsed,{src:how||'upload',file:name,at:new Date().toISOString()});
+    /* #pmaguard — checked before it can touch anything; a sheet the Keymaster already OK'd with the same
+       numbers keeps its OK */
+    const prevOk=D[key]&&D[key].ok, same=prevOk&&['start','end','toCH','dispatched','ordered'].every(f=>D[key][f]===data[f]);
+    const why=same?[]:pmaChecks(key,data);
+    if(same)data.ok=prevOk;
+    if(why.length)data.held={why:why,at:data.at};
     ingest(key,data);
     const w=await saveRow(key,data);
     const done=pmaDone(parsed);
+    if(why.length){ try{ DEVLOG.note('PMA sheet held: '+key+' — '+why.join('; ')); }catch(e){} try{ if(window.kmTodoRefresh)window.kmTodoRefresh(); }catch(e){}
+      return {ok:true,key:key,final:done,held:true,line:'⚠ '+boardName(key)+' — on hold for your check: '+why[0]+(why.length>1?' (+'+(why.length-1)+' more)':'')+' · '+w}; }
     return {ok:true,key:key,final:done,line:(done?'✓ ':'◐ ')+boardName(key)+' · '+(parsed.start||'—')+' → '+(parsed.end||(done?'no end card on PMA’s sheet':'not finished yet'))+(parsed.toCH!=null?' · '+n(parsed.toCH)+' to the casual hall':'')+' · '+w};
   }
   async function uploadFiles(files,say,how){
@@ -38351,6 +38439,11 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
   window.PMA_API={
     missing:()=>window.pmaMissing(),
     partial:k=>!!(D[k]&&!pmaDone(D[k])),
+    /* #pmaguard — sheets waiting on the Keymaster's check, and the two answers */
+    held:()=>Object.keys(D).filter(k=>D[k]&&D[k].held).sort().reverse(),
+    why:k=>(D[k]&&D[k].held&&D[k].held.why)||[],
+    approve:k=>pmaApprove(k),
+    toss:k=>pmaToss(k),
     /* #pmaships — finished sheets from the last 10 days that were read before the reader knew ships and clerk jobs */
     old:()=>{ const cut=new Date(Date.now()-10*864e5), ck=cut.getFullYear()+'-'+String(cut.getMonth()+1).padStart(2,'0')+'-'+String(cut.getDate()).padStart(2,'0');
       return Object.keys(D).filter(k=>k.slice(0,10)>=ck&&pmaDone(D[k])&&!(D[k].v>=2)).sort().reverse(); },
@@ -38363,7 +38456,7 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
   /* picker / drop → one toast with the outcome */
   async function quickAdd(files){
     const got=[];
-    for(const f of files){ try{ const r=await takePdf(f.name,f,'upload'); got.push(r.ok?(r.skip?'':(r.final?'✓ ':'◐ ')+boardName(r.key)+(r.final?'':' (no end card yet)')):'✗ '+f.name); }catch(e){ got.push('✗ '+f.name+' — '+e.message); } }
+    for(const f of files){ try{ const r=await takePdf(f.name,f,'upload'); got.push(r.ok?(r.skip?'':r.held?'⚠ '+boardName(r.key)+' on hold — check the To-Do':(r.final?'✓ ':'◐ ')+boardName(r.key)+(r.final?'':' (no end card yet)')):'✗ '+f.name); }catch(e){ got.push('✗ '+f.name+' — '+e.message); } }
     const txt=got.filter(Boolean).join(' · ')||'nothing new in those PDFs';
     try{ toast('📄 PMA: '+txt); }catch(e){}
     renderBar();
@@ -38403,7 +38496,7 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
         try{
           const res=await c.match(r); const name=decodeURIComponent((res&&res.headers.get('x-file-name'))||'shared.pdf');
           const out=await takePdf(name,await res.arrayBuffer(),'share');
-          got.push(!out.ok?'✗ '+name+' isn’t a PMA dispatch summary':out.skip?(out.key?boardName(out.key)+' was already in':''):(out.final?'✓ ':'◐ ')+boardName(out.key)+(out.final?' on the record':' (no end card yet)'));
+          got.push(!out.ok?'✗ '+name+' isn’t a PMA dispatch summary':out.skip?(out.key?boardName(out.key)+' was already in':''):out.held?'⚠ '+boardName(out.key)+' on hold — check the To-Do':(out.final?'✓ ':'◐ ')+boardName(out.key)+(out.final?' on the record':' (no end card yet)'));
         }catch(e){ got.push('✗ couldn’t read a shared file'); }
         try{ await c.delete(r); }catch(e){}
       }
@@ -38576,7 +38669,8 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
       html+='<div style="border-bottom:1px solid rgba(122,130,138,.15);padding:4px 0;font:11px/1.5 monospace">'
         +'<b style="color:#c9d1d9">'+esc(k)+'</b> <span style="color:#586067">'+esc(p.src||'')+'</span><br>'
         +'ordered '+n(p.ordered)+' · disp '+n(p.dispatched)+' · CH '+n(p.toCH)+(p.clerk!=null?' + '+n(p.clerk)+' clerk':'')+' · '+esc(p.start||'—')+' → '+esc(p.end||'…')+(p.cyc?' · CYCLED':'')
-        +(Array.isArray(p.ships)?' · '+p.ships.length+' ships':(p.sx?' · '+p.sx.w.length+' ships worked':''))+(p.v>=2?'':' · <span style="color:#f2a184">read before ships/clerk — add it again</span>')
+        +(Array.isArray(p.ships)?' · '+p.ships.length+' ships':(p.sx?' · '+p.sx.w.length+' ships worked':''))+(p.tossed?' · <span style="color:#f2a184">TOSSED — add it again</span>':p.v>=2?'':' · <span style="color:#f2a184">read before ships/clerk — add it again</span>')
+        +(p.held?'<br><span style="color:#f2a184">⚠ ON HOLD: '+esc((p.held.why||[]).join('; '))+'</span>':'')+(p.ok?'<br><span style="color:#9fd18a">✓ OK’d by '+esc(p.ok.by)+'</span>':'')
         +(x?' · <span style="color:'+(window.pmaMoved(x)?'#f2a184':'#9fd18a')+'">union '+n(x.u)+' ('+(x.d>0?'+':'')+x.d+')</span>':'')+'</div>'; });
     pane.innerHTML=html;
     const msg=document.getElementById('pmMsg');
@@ -38663,6 +38757,11 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
     try{ const A=window.PMA_API; if(A)A.missing().forEach(k=>out.push({id:'pma|'+k,kind:'pma',key:k,pri:3,ring:true,
       title:'PMA sheet for '+bName(k)+(A.partial(k)?' — grab the finished one':''),
       sub:A.partial(k)?'The one on file went up before the casual dispatch ended.':'The official summary — it puts PMA’s cards on the record.'})); }catch(e){}
+    /* #pmaguard — a sheet on hold rings first: what didn't add up, and the two answers */
+    try{ const A=window.PMA_API; if(A&&A.held)A.held().forEach(k=>{ const why=A.why(k);
+      out.push({id:'pmaheld|'+k+'|'+why.join('|').length,kind:'pmaheld',key:k,pri:0,ring:true,
+        title:'Check the PMA sheet for '+bName(k),
+        sub:'It’s on hold and not on the record, because '+why.join('; ')+'. Compare it with the PDF, then use it or toss it.'}); }); }catch(e){}
     /* #pmaships — a sheet read before the update: adding the same PDF again fills in its ships and clerk jobs (no pop-up) */
     try{ const A=window.PMA_API; if(A&&A.old)A.old().forEach(k=>out.push({id:'pmaold|'+k,kind:'pma',key:k,pri:5,ring:false,
       title:'Re-add the PMA sheet for '+bName(k),
@@ -38672,6 +38771,7 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
 
   try{ const st=document.createElement('style'); st.textContent=
     '#kmTodo .td-card{border:1px solid var(--line-soft);border-left-width:3px;border-radius:12px;padding:10px 12px;margin:0 0 8px;background:rgba(255,255,255,.02)}'
+    +'#kmTodo .td-card.td-pmaheld{border-left-color:#e0492e;background:rgba(224,73,46,.06)}'
     +'#kmTodo .td-card.td-log{border-left-color:#e0492e}#kmTodo .td-card.td-sheet{border-left-color:#eeb46b}#kmTodo .td-card.td-pma{border-left-color:#8fc7f0}#kmTodo .td-card.td-down{border-left-color:var(--steel)}'
     +'#kmTodo .td-t{font-weight:700;color:var(--bone);font-size:14px;line-height:1.35}'
     +'#kmTodo .td-s{font-size:12px;color:var(--steel);margin:3px 0 8px;line-height:1.45}#kmTodo .td-s b{color:var(--bone)}'
@@ -38699,6 +38799,8 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
       +(A?'<a class="td-btn" href="'+esc(A.link(t.key))+'" target="_blank" rel="noopener" data-act="pmaopen"'+k+'>📄 PMA sheet ↗</a>':'');
     if(t.kind==='down') return b('log','✎ Log the come-down');
     if(t.kind==='sheet') return (t.url?'<a class="td-btn hot" href="'+esc(t.url)+'" target="_blank" rel="noopener">📄 Union PDF ↗</a>':'')+b('enter','✎ Enter the sheet',' data-w="'+esc(t.which)+'"');
+    if(t.kind==='pmaheld'&&A) return b('pmaok','✓ It’s right — use it','','hot')+b('pmatoss','✗ Toss it')
+      +'<a class="td-btn" href="'+esc(A.link(t.key))+'" target="_blank" rel="noopener" data-act="pmaopen"'+k+'>Open on PMA ↗</a>';   /* #pmaguard */
     if(t.kind==='pma'&&A) return '<a class="td-btn hot" href="'+esc(A.link(t.key))+'" target="_blank" rel="noopener" data-act="pmaopen"'+k+'>Open on PMA ↗</a>'
       +'<label class="td-btn">📄 Add PDF<input type="file" accept="application/pdf,.pdf" multiple hidden data-act="pmaadd"></label>';
     return '';
@@ -38750,6 +38852,8 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
       const act=el.getAttribute('data-act'), k=el.getAttribute('data-k');
       if(act==='done'){ ST.done[el.getAttribute('data-id')]=Date.now(); save(); refresh(); return; }
       if(act==='pmaopen'){ try{ window.PMA_API.went(k); }catch(_){} return; }           /* the link opens PMA itself */
+      if(act==='pmaok'||act==='pmatoss'){ el.disabled=true;                               /* #pmaguard — the Keymaster's answer */
+        Promise.resolve(window.PMA_API&&(act==='pmaok'?window.PMA_API.approve(k):window.PMA_API.toss(k))).catch(()=>{}).then(()=>refresh()); return; }
       if(act==='log'){ closeKm(); setTimeout(()=>openBoardLog(k),150); return; }
       if(act==='enter'){ closeKm(); setTimeout(()=>{ try{ window.kmOpenSheetEditor(k,el.getAttribute('data-w')); }catch(_){} },150); return; }
     });
@@ -38826,7 +38930,8 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
    Nothing here writes anywhere: it reads the sheets every phone already has. Best Days and the weeks
    reach back past the 21 days the phone keeps by pulling a few numbers per sheet (no ship lists). */
 (function(){try{
-  const DATA=()=>window.PMA_DATA||{};
+  /* #pmaguard — a sheet on hold for the Keymaster's check (or tossed) is invisible here */
+  const DATA=()=>{ const src=window.PMA_DATA||{}, o={}; Object.keys(src).forEach(k=>{ const p=src[k]; if(p&&!p.held&&!p.tossed)o[k]=p; }); return o; };
   const DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'], DOWL=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -38894,7 +38999,7 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
   window.pmaPortToday=portToday;
 
   /* ── a few numbers per sheet, reaching back past the 21 days the phone keeps (Best Days + the weeks) ── */
-  const STK='shadowhook_pma_stats', F=['ordered','toCH','lsFilled','clerk','classA','classB','lsDone','start','end','cyc','final'];
+  const STK='shadowhook_pma_stats', F=['ordered','toCH','lsFilled','clerk','classA','classB','lsDone','start','end','cyc','final','held','tossed'];
   let STATS={at:0,rows:{}}; try{ const c=JSON.parse(localStorage.getItem(STK)||'null'); if(c&&c.rows)STATS=c; }catch(e){}
   let _stTry=0;
   async function loadStats(){
@@ -38909,7 +39014,10 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
       render();
     }catch(e){}
   }
-  function allRows(){ const out=Object.assign({},STATS.rows||{}), D=DATA(); Object.keys(D).forEach(k=>{ out[k]=D[k]; }); return out; }
+  function allRows(){ const out={}, S=STATS.rows||{}, src=window.PMA_DATA||{};
+    Object.keys(S).forEach(k=>{ if(S[k]&&!S[k].held&&!S[k].tossed)out[k]=S[k]; });
+    Object.keys(src).forEach(k=>{ const p=src[k]; if(!p)return; if(p.held||p.tossed)delete out[k]; else out[k]=p; });   /* this phone's copy wins, a hold included */
+    return out; }
 
   /* ── 4 · the hall's usual finish, per shift (median of the last five weeks) ── */
   window.pmaUsualWrap=function(ap){
@@ -39062,6 +39170,10 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
     +'.ph-grid .nil{opacity:.45}'
     +'.ph-note{font:500 12.5px/1.5 Inter,system-ui,sans-serif;color:var(--bone);margin-top:10px}.ph-note b{color:var(--copper-hi)}'
     +'.ph-foot{font:500 11px/1.45 Inter,system-ui,sans-serif;color:var(--steel);margin-top:8px}'
+    +'.wire-wrapdone{position:relative;z-index:1;margin:9px 0 2px;padding:8px 11px;border-radius:11px;border:1px solid rgba(238,180,107,.35);background:rgba(238,180,107,.07);font:500 12.5px/1.45 Inter,system-ui,sans-serif;color:var(--bone)}'
+    +'.wire-wrapdone b{color:var(--copper-hi);font-weight:700}.wire-wrapdone .wd-ic{margin-right:2px}'
+    +'.wire-wrapdone small{display:block;margin-top:2px;font-size:10.5px;color:var(--steel)}'
+    +'html.daylight .wire-wrapdone{background:#fff4e8;border-color:#e3bb92}'
     +'#recentBoards .rb-pmal{font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:11px;color:var(--steel);margin-top:4px;line-height:1.4}'
     +'#recentBoards .rb-pmal b{color:var(--bone);font-weight:700}'
     +'html.daylight .pt-new{color:#2f7a32;border-color:#9cc79a}'
@@ -39242,11 +39354,33 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
   }
   window.pmaHallPicture=function(which){ const W=window.pmaWeek(which||'week'); return W?draw(W):Promise.resolve(null); };
 
+  /* ═══ #hallclock(oct5) — WHILE THE BOARD IS LIVE: WHEN THE CASUAL HALL USUALLY WRAPS ═══
+     During the live window (liveWindow(): flex to the end, until the board is sealed) the Wire says when
+     PMA's sheets show the casual hall usually finishing for this shift (the median of the last five weeks,
+     shown once there are two or more) and how long until then. It folds away 15 minutes past that time —
+     the window can run on for a 2nd call — and the moment the board is sealed. */
+  function renderWrap(){
+    const el=document.getElementById('wWrapDone'); if(!el)return;
+    let w=null; try{ w=(typeof liveWindow==='function')?liveWindow():null; }catch(e){}
+    const u=w?window.pmaUsualWrap(w==='DAY'?'AM':'PM'):null;
+    if(!w||!u||u.n<2){ el.style.display='none'; return; }
+    const now=NOW(), m=tMin(u.t), at=new Date(now.getFullYear(),now.getMonth(),now.getDate(),Math.floor(m/60),m%60,0,0);
+    const mins=Math.round((at-now)/60000);
+    if(mins<-15){ el.style.display='none'; return; }
+    el.innerHTML='<span class="wd-ic">⏱</span> The casual hall usually wraps around <b>'+esc(t12(u.t))+'</b>'
+      +(mins>=2?' · <b>about '+mins+' min</b>':' · <b>any minute now</b>')
+      +'<small>PMA’s finish times · the last '+u.n+' '+(w==='DAY'?'day':'night')+' boards <span style="white-space:nowrap">('+esc(t12(u.lo).replace(/ (AM|PM)$/,''))+'–'+esc(t12(u.hi))+')</span></small>';
+    el.style.display='';
+  }
+  window.pmaRenderWrap=renderWrap;
+  setInterval(function(){ if(!document.hidden){ try{ renderWrap(); }catch(e){} } },30000);
+
   /* ═══ when to draw ═══ */
   let _rq=0;
   function render(){ if(_rq)return; _rq=setTimeout(function(){ _rq=0;
     try{ renderPort(); }catch(e){ try{ console.error('pmaplus port',e); }catch(_){} }
-    try{ renderHall(); }catch(e){ try{ console.error('pmaplus hall',e); }catch(_){} } },120); }
+    try{ renderHall(); }catch(e){ try{ console.error('pmaplus hall',e); }catch(_){} }
+    try{ renderWrap(); }catch(e){} },120); }
   window.pmaPlusRender=function(){ render(); try{ loadStats(); }catch(e){} };
   setTimeout(window.pmaPlusRender,2600); setTimeout(window.pmaPlusRender,7000);
   setInterval(function(){ if(!document.hidden)render(); },60000);
