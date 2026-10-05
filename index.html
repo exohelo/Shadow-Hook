@@ -4835,6 +4835,8 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
    loads — so a warm reload sprints to done in a blink instead of acting out 1.9s.
    Entry ADOPTS this bar (bootScreen finishes it, never restarts it), one show per
    page-load, with an 8s failsafe so a jammed boot can never hide the page. */
+/* #pmatools(oct5) — opened by the ⚓ PMA bookmark as its little inbox window? (read before anything can touch the hash) */
+try{ window.__pmaInbox=/^#pma-inbox/.test(location.hash||''); }catch(e){}
 (function(){try{
   if(!localStorage.getItem('shadowhook_account'))return;   /* fresh casuals see the gate, not a loader */
   var d=document.createElement('div');d.id='boot';
@@ -19409,7 +19411,10 @@ function renderBotStatus(now){
   }catch(e){}
   const _rep=(t,a,b)=>t.split(a).join(b);
   const pmaFill=(t,m)=>_rep(_rep(_rep(_rep(t,"{B}",m.B),"{P}",m.P!=null?Number(m.P).toLocaleString():"—"),"{C}",Number(m.C).toLocaleString()),"{E}",m.E);
-  if(pmaNews&&!DISPATCH_ON){ parts.push(chip("📄 "+pmaFill(pick("pmanews",pmaNews.k),pmaNews),"var(--copper-hi)")); }
+  /* #botfun(oct5) — the PMA line RIDES ALONG, it never takes the stage: it's built here but added after the
+     usual chatter below, and only every third turn (~4 min each), so the idle mutterings, the all-clear,
+     the small talk and the Halloween costume lines all keep running exactly as they did before PMA. */
+  const _pmaChip=(pmaNews&&!DISPATCH_ON&&rot%3===1)?chip("📄 "+pmaFill(pick("pmanews",pmaNews.k),pmaNews),"var(--copper-hi)"):null;
   const activeShown=DISPATCH_ON?st.active.filter(s=>s.kind!=="MORNING"):st.active;
   activeShown.forEach(s=>{
     const late=s.state==="overdue"; if(late)stress="alarm";
@@ -19440,6 +19445,7 @@ function renderBotStatus(now){
       }
     }
   }
+  if(_pmaChip)parts.push(_pmaChip);   /* #botfun — after the fun, never instead of it */
   /* #193 — panel border/bg/glow comes from the active mood.
      #daylight — the mood tints are dark-on-dark washes; in daylight the same six
      moods get light tints so the panel reads as a tinted card, not a black slab.
@@ -37825,7 +37831,7 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
         +'<button id="dlCorrect" style="flex:1 1 45%;background:linear-gradient(180deg,rgba(238,180,107,.18),rgba(11,13,15,.4));border:1px solid rgba(238,180,107,.5);color:#eeb46b;border-radius:9px;font:800 11px monospace;letter-spacing:.08em;padding:9px 8px;cursor:pointer">✎ LOG / CORRECT A BOARD</button>'
         +'<button id="dlPerm" style="flex:1 1 45%;background:none;border:1px solid rgba(122,130,138,.45);color:#aab2b8;border-radius:9px;font:800 11px monospace;letter-spacing:.08em;padding:9px 8px;cursor:pointer">⚿ TEST WIRE WRITE</button>'
         +'<button id="dlSheets" style="flex:1 1 100%;background:linear-gradient(180deg,rgba(127,174,106,.14),rgba(11,13,15,.4));border:1px solid rgba(127,174,106,.5);color:#9fd18a;border-radius:9px;font:800 11px monospace;letter-spacing:.08em;padding:9px 8px;cursor:pointer">▤ EDIT DISPATCH SHEETS (D / E / N)</button>'
-        +'<button id="dlPma" style="flex:1 1 100%;background:linear-gradient(180deg,rgba(143,199,240,.14),rgba(11,13,15,.4));border:1px solid rgba(143,199,240,.5);color:#8fc7f0;border-radius:9px;font:800 11px monospace;letter-spacing:.08em;padding:9px 8px;cursor:pointer">🏢 PMA SHEETS · upload the official summary</button></div>';   /* #pmasheet */
+        +'<button id="dlPma" style="flex:1 1 100%;background:linear-gradient(180deg,rgba(143,199,240,.14),rgba(11,13,15,.4));border:1px solid rgba(143,199,240,.5);color:#8fc7f0;border-radius:9px;font:800 11px monospace;letter-spacing:.08em;padding:9px 8px;cursor:pointer">🏢 PMA SHEETS · one-click bookmark &amp; uploads</button></div>';   /* #pmasheet */
       html+=h('BACKEND');
       html+=row('supabase client',window.SB?'<span style="color:#9fd18a">ready</span>':'<span style="color:#f2a184">NOT built (offline / config / library)</span>');
       try{html+=row('realtime',(typeof _liveOn!=='undefined'&&_liveOn)?'<span style="color:#9fd18a">SUBSCRIBED (live)</span>':'<span style="color:#d8a544">down — polling every 12s instead</span>');}catch(e){html+=row('realtime','unknown');}
@@ -38036,7 +38042,8 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
     if(_rp){ _rp=false; try{ if(typeof repredict==='function')repredict(); }catch(e){} }   /* the record moved — the next call re-figures */
     try{ if(typeof renderRecentBoards==='function')renderRecentBoards(); }catch(e){}
     try{ if(typeof updateBabyNote==='function')updateBabyNote(); }catch(e){}
-    try{ if(typeof renderBotStatus==='function')renderBotStatus(); }catch(e){} },400); }
+    try{ if(typeof renderBotStatus==='function')renderBotStatus(); }catch(e){}
+    try{ if(window.pmaRenderBar)window.pmaRenderBar(); }catch(e){} },400); }
   function applyAll(){ try{ window.pmaAssert(); }catch(e){} Object.keys(D).forEach(k=>{ try{ apply(k); }catch(e){} }); redraw(); }
 
   async function load(){
@@ -38110,61 +38117,267 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
     });
     return _pdfP;
   }
-  async function readPdf(file){
+  async function readPdf(src){   /* a File / Blob, or the raw bytes the ⚓ bookmark hands over */
     const lib=await pdfjs();
-    const doc=await lib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
+    const buf=(src instanceof ArrayBuffer)?src:(ArrayBuffer.isView(src)?src.buffer:await src.arrayBuffer());
+    const doc=await lib.getDocument({data:new Uint8Array(buf)}).promise;
     const items=[];
     for(let i=1;i<=doc.numPages;i++){ const tc=await (await doc.getPage(i)).getTextContent();
       tc.items.forEach(it=>{ const s=(it.str||'').trim(); if(s)items.push({p:i,s:s,x:it.transform[4],y:it.transform[5]}); }); }
     return items;
   }
   async function saveRow(key,data){
-    if(!window.SB)return 'saved on this phone only (no backend)';
+    if(!window.SB)return 'saved on this device only (no backend)';
+    try{ await window.SB.auth.getSession(); }catch(e){}   /* a fresh window (the bookmark's inbox) restores its sign-in first */
     const r=await window.SB.from('pma_sheets').upsert({key:key,shift:data.shift,data:data,src:data.src||'upload',updated_at:new Date().toISOString()},{onConflict:'key'});
-    if(r&&r.error)return 'saved on this phone only — the wire refused it: '+r.error.message+' (run PMA-SHEETS-SETUP.sql; uploads need the Keymaster key)';
+    if(r&&r.error)return 'saved on this device only — the wire refused it ('+r.error.message+'; adding PMA sheets needs the Keymaster key)';
     return 'on the wire ✓';
   }
-  async function uploadFiles(files,say){
+  function boardName(key){ const d=new Date(key.slice(0,10)+'T12:00:00'); return DOW[d.getDay()]+' '+(d.getMonth()+1)+'/'+d.getDate()+' '+(key.slice(-2)==='AM'?'day':'night'); }
+  /* one PDF in → read, filed, on the wire. The same road for the picker, a drop, and the bookmark. */
+  async function takePdf(name,src,how){
+    const parsed=pmaParse(await readPdf(src));
+    if(!parsed.ok)return {ok:false,line:'✗ '+name+': '+parsed.err};
+    const key=keyOf(parsed.date,parsed.shift);
+    if(!key)return {ok:true,skip:true,line:'· '+parsed.date+' Shift '+parsed.shift+' has no casual dispatch — skipped'};
+    if(D[key]&&D[key].final&&!parsed.final)return {ok:true,skip:true,key:key,line:'· '+boardName(key)+': already have the finished sheet'};
+    const data=Object.assign({},parsed,{src:how||'upload',file:name,at:new Date().toISOString()});
+    ingest(key,data);
+    const w=await saveRow(key,data);
+    return {ok:true,key:key,final:parsed.final,line:(parsed.final?'✓ ':'◐ ')+boardName(key)+' · '+(parsed.start||'—')+' → '+(parsed.end||'not finished yet')+(parsed.toCH!=null?' · '+n(parsed.toCH)+' to the casual hall':'')+' · '+w};
+  }
+  async function uploadFiles(files,say,how){
     for(const f of files){
-      try{
-        say('reading '+f.name+'…');
-        const parsed=pmaParse(await readPdf(f));
-        if(!parsed.ok){ say('✗ '+f.name+': '+parsed.err,true); continue; }
-        const key=keyOf(parsed.date,parsed.shift);
-        if(!key){ say('· '+f.name+': Shift '+parsed.shift+' has no casual dispatch — skipped'); continue; }
-        if(D[key]&&D[key].final&&!parsed.final){ say('· '+key+': already have the finished summary — this one was posted before the casual dispatch ended, kept the finished one'); continue; }
-        const data=Object.assign({},parsed,{src:'upload',file:f.name,at:new Date().toISOString()});
-        ingest(key,data);
-        const w=await saveRow(key,data);
-        say('✓ '+key+' · ordered '+n(parsed.ordered)+' · to the casual hall '+n(parsed.toCH)+' · '+(parsed.start||'—')+' → '+(parsed.end||'(not finished)')+' · '+w);
-      }catch(e){ say('✗ '+f.name+': '+e.message,true); }
+      try{ say('reading '+f.name+'…'); const r=await takePdf(f.name,f,how); say(r.line,!r.ok); }
+      catch(e){ say('✗ '+f.name+': '+e.message,true); }
     }
   }
-  async function pullNow(say){
+
+  /* ═══ #pmatools(oct5) — GETTING PMA'S PDF IN WITH AS LITTLE WORK AS POSSIBLE ═══
+     PMA guards each shift's summary page with a Cloudflare "Verify you are human" check, put there to keep
+     bots out, so a person has to open it — nothing here gets past that check or ticks it. What these tools
+     take away is everything AROUND that one moment:
+       1 · THE PMA CARD (Keymaster only, on the Wire): which recent boards still need their sheet, each with
+           a direct link to that exact shift's page on PMA (the links come off PMA's open list page, read by
+           the pma-pull function), plus "Add PDF".
+       2 · DROP ANYWHERE (computer): drag the PDFs onto the app window. No menus.
+       3 · ⚓ THE ONE-CLICK BOOKMARK (computer): on pmanet.org, one click fetches every summary the app is
+           missing — in the Keymaster's own browser, after they've passed the check themselves — and hands
+           the PDFs to the app through a small app window (pmanet.org won't let a page send data to another
+           site directly). If PMA asks for the check, it opens that page so the person can tick it, and they
+           click again. Set up from ⚙ Dev Log → 🏢 PMA SHEETS. */
+  const PMA_LIST='https://www.pmanet.org/members/bulletins-and-notices/la-lb-dispatch/';
+  /* the four most recent boards whose dispatch is over (day after 9:30 AM, night after 7:30 PM), newest first */
+  function recentBoards(now){
+    now=now||new Date(); const out=[];
+    for(let back=0;back<3&&out.length<4;back++){
+      const d=new Date(now.getFullYear(),now.getMonth(),now.getDate()-back);
+      const iso=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+      ['PM','AM'].forEach(ap=>{ const over=new Date(d); over.setHours(ap==='AM'?9:19,30,0,0); if(now>=over&&out.length<4)out.push(iso+'_'+DOW[d.getDay()]+'_'+ap); });
+    }
+    return out;
+  }
+  window.pmaMissing=function(now){ return recentBoards(now).filter(k=>!(D[k]&&D[k].final)); };
+
+  /* direct links to each shift's PMA page — cached 20 min, retried no more than every 5 */
+  let LINKS={}, _linksAt=0, _linksTry=0;
+  try{ const c=JSON.parse(localStorage.getItem('shadowhook_pma_links')||'null'); if(c&&c.links){ LINKS=c.links; _linksAt=c.at||0; } }catch(e){}
+  async function fetchLinks(){
+    if(Date.now()-_linksAt<20*60000||Date.now()-_linksTry<5*60000||!window.SUPABASE_URL)return false;
+    _linksTry=Date.now();
     try{
-      say('asking the server to pull from pmanet.org…');
       let tok=window.SUPABASE_ANON_KEY||'';
       try{ const s=await window.SB.auth.getSession(); if(s&&s.data&&s.data.session&&s.data.session.access_token)tok=s.data.session.access_token; }catch(e){}
       const r=await fetch(String(window.SUPABASE_URL).replace(/\/+$/,'')+'/functions/v1/pma-pull',{method:'POST',
         headers:{'Content-Type':'application/json','apikey':window.SUPABASE_ANON_KEY||'','Authorization':'Bearer '+tok},body:'{}'});
       const j=await r.json().catch(()=>null);
-      if(!r.ok||!j){ say('✗ pull failed (HTTP '+r.status+') — is the pma-pull function deployed?',true); return; }
-      (j.log||[]).forEach(l=>say('· '+l));
-      say(j.ok?'✓ done':'✗ '+(j.err||'pull failed'),!j.ok);
-      await load();
-    }catch(e){ say('✗ '+e.message,true); }
+      if(!j||!j.ok||!j.links)return false;
+      const m={}; j.links.forEach(l=>{ if(l&&l.key&&l.url&&!m[l.key])m[l.key]=l.url; });
+      LINKS=m; _linksAt=Date.now();
+      try{ localStorage.setItem('shadowhook_pma_links',JSON.stringify({at:_linksAt,links:LINKS})); }catch(e){}
+      return true;
+    }catch(e){ return false; }
   }
+
+  try{ const st=document.createElement('style'); st.textContent=
+    '#pmaBar{margin:0 0 12px;padding:10px 12px;border:1px solid rgba(143,199,240,.4);border-radius:12px;background:linear-gradient(180deg,rgba(18,30,42,.6),rgba(9,13,18,.5));font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:13px;color:var(--bone)}'
+    +'#pmaBar .pma-row{display:flex;align-items:baseline;gap:8px;margin-bottom:8px}#pmaBar .pma-row b{color:#8fc7f0;letter-spacing:.03em}'
+    +'#pmaBar .pma-sub{margin-left:auto;font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--steel)}'
+    +'#pmaBar .pma-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:9px}'
+    +'#pmaBar .pma-chip{display:inline-block;padding:5px 11px;border-radius:999px;border:1px solid rgba(143,199,240,.5);color:#8fc7f0;text-decoration:none;font-size:12.5px;font-weight:600;white-space:nowrap}'
+    +'#pmaBar .pma-acts{display:flex;align-items:center;gap:10px;flex-wrap:wrap}'
+    +'#pmaBar .pma-btn{cursor:pointer;padding:7px 13px;border-radius:9px;border:1px solid rgba(143,199,240,.55);background:rgba(143,199,240,.13);color:#8fc7f0;font-weight:700;font-size:12.5px}'
+    +'#pmaBar .pma-hint{font-size:11px;color:var(--steel);line-height:1.35}'
+    +'html.daylight #pmaBar{background:#eef5fb;border-color:#b3cee7;color:#1b2a36}'
+    +'html.daylight #pmaBar .pma-row b,html.daylight #pmaBar .pma-chip,html.daylight #pmaBar .pma-btn{color:#1f527f;border-color:#8db4d6}'
+    +'#pmaDrop{position:fixed;inset:0;z-index:99990;display:none;align-items:center;justify-content:center;flex-direction:column;gap:8px;pointer-events:none;background:rgba(8,12,16,.8);color:#8fc7f0;font:700 20px Inter,system-ui,sans-serif;outline:3px dashed rgba(143,199,240,.75);outline-offset:-14px}'
+    +'#pmaDrop.on{display:flex}#pmaDrop small{font:500 13px Inter,system-ui,sans-serif;color:#aab2b8}';
+    document.head.appendChild(st); }catch(e){}
+
+  const fine=()=>{ try{ return matchMedia('(pointer:fine)').matches; }catch(e){ return false; } };
+  /* 1 · the PMA card on the Wire */
+  function renderBar(){
+    try{
+      const rb=document.getElementById('recentBoards'); if(!rb)return;
+      let bar=document.getElementById('pmaBar');
+      const miss=window.__isKM?window.pmaMissing():[];
+      if(!miss.length){ if(bar)bar.remove(); return; }
+      if(!bar){ bar=document.createElement('div'); bar.id='pmaBar'; rb.insertAdjacentElement('beforebegin',bar); }
+      const chips=miss.slice().reverse().map(k=>'<a class="pma-chip" href="'+esc(LINKS[k]||PMA_LIST)+'" target="_blank" rel="noopener" title="Open this shift on PMA — tick their human check if it asks, then “view the PDF”">'
+        +esc(boardName(k))+(D[k]&&!D[k].final?' · needs end card':'')+' ↗</a>').join('');
+      bar.innerHTML='<div class="pma-row"><b>📄 PMA sheets to grab</b><span class="pma-sub">Keymaster</span></div>'
+        +'<div class="pma-chips">'+chips+'</div>'
+        +'<div class="pma-acts"><label class="pma-btn">📄 Add PDF<input type="file" accept="application/pdf,.pdf" multiple hidden></label>'
+        +'<span class="pma-hint">'+(fine()?'or drop the PDFs anywhere on the app · ⚓ one-click bookmark: ⚙ Dev Log → PMA SHEETS':'tap a shift, open “view the PDF”, then Add PDF')+'</span></div>';
+      bar.querySelector('input').addEventListener('change',async ev=>{ const fs=[...(ev.target.files||[])]; ev.target.value=''; if(fs.length)await quickAdd(fs); });
+      fetchLinks().then(ok=>{ if(ok)renderBar(); });
+    }catch(e){}
+  }
+  window.pmaRenderBar=renderBar;
+  /* picker / drop → one toast with the outcome */
+  async function quickAdd(files){
+    const got=[];
+    for(const f of files){ try{ const r=await takePdf(f.name,f,'upload'); got.push(r.ok?(r.skip?'':(r.final?'✓ ':'◐ ')+boardName(r.key)+(r.final?'':' (no end card yet)')):'✗ '+f.name); }catch(e){ got.push('✗ '+f.name+' — '+e.message); } }
+    const txt=got.filter(Boolean).join(' · ')||'nothing new in those PDFs';
+    try{ toast('📄 PMA: '+txt); }catch(e){}
+    renderBar();
+  }
+  setTimeout(renderBar,3000); setInterval(renderBar,5*60000);
+  window.addEventListener('focus',()=>setTimeout(renderBar,600));   /* back from PMA's tab — the card catches up */
+
+  /* 2 · drop the PDFs anywhere (Keymaster, PDFs only — every other drop in the app is left alone) */
+  let _dropEl=null, _depth=0;
+  function dragPdf(e){ try{ const it=e.dataTransfer&&e.dataTransfer.items; if(!it)return false; for(let i=0;i<it.length;i++){ if(it[i].kind==='file'&&it[i].type==='application/pdf')return true; } }catch(_){} return false; }
+  function dropUI(on){ if(!_dropEl){ _dropEl=document.createElement('div'); _dropEl.id='pmaDrop'; _dropEl.innerHTML='📄 Drop the PMA PDFs<small>they go straight onto the record</small>'; document.body.appendChild(_dropEl); } _dropEl.classList.toggle('on',!!on); }
+  window.addEventListener('dragenter',e=>{ if(!window.__isKM||!dragPdf(e))return; _depth++; dropUI(true); });
+  window.addEventListener('dragover',e=>{ if(!window.__isKM||e.defaultPrevented||!dragPdf(e))return; e.preventDefault(); try{e.dataTransfer.dropEffect='copy';}catch(_){} });
+  window.addEventListener('dragleave',()=>{ if(!_depth)return; _depth--; if(!_depth)dropUI(false); });
+  window.addEventListener('drop',e=>{ _depth=0; dropUI(false); if(!window.__isKM||e.defaultPrevented)return;
+    const fs=[...((e.dataTransfer&&e.dataTransfer.files)||[])].filter(f=>f.type==='application/pdf'||/\.pdf$/i.test(f.name));
+    if(!fs.length)return; e.preventDefault(); quickAdd(fs); });
+
+  /* 3 · ⚓ THE ONE-CLICK BOOKMARK. This function is never run inside the app: its source is written into a
+     bookmark (see bookmarkHref) and runs on pmanet.org when the Keymaster clicks it there. Same-origin
+     requests only, at most four summaries, one run per click. */
+  function PMA_BOOKMARK(APP){
+    var ORIGIN=new URL(APP).origin;
+    var box=document.getElementById('shkPmaBox');
+    if(!box){ box=document.createElement('div'); box.id='shkPmaBox';
+      box.style.cssText='position:fixed;z-index:2147483647;right:16px;bottom:16px;width:360px;max-width:calc(100vw - 32px);background:#101317;color:#e8e3d6;border:1px solid #eeb46b;border-radius:12px;padding:12px 14px;font:13px/1.5 system-ui,sans-serif;box-shadow:0 10px 34px rgba(0,0,0,.55);white-space:pre-line;cursor:pointer';
+      box.title='click to close'; box.onclick=function(){ box.remove(); }; document.body.appendChild(box); }
+    function say(t){ box.textContent='⚓ Shadow Hook · PMA sheets\n'+t; }
+    if(!/(^|\.)pmanet\.org$/.test(location.hostname)){ say('Open pmanet.org (Members → LA/LB Dispatch) and click this bookmark there.'); return; }
+    var w=window.open(APP+'#pma-inbox','shkPmaInbox','popup,width=440,height=640');
+    if(!w){ say('Your browser blocked the app window. Allow pop-ups for pmanet.org, then click the bookmark again.'); return; }
+    say('Opening the app…');
+    var DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    function keyOf(m,d,y,sh){ return y+'-'+m+'-'+d+'_'+DOW[new Date(+y,+m-1,+d).getDay()]+'_'+(sh==='1st'?'AM':'PM'); }
+    function blocked(t){ return /Just a moment|Verify you are human|challenge-platform|cf-chl/i.test(t||''); }
+    function waitFor(type,ms){ return new Promise(function(res){
+      var to=setTimeout(function(){ window.removeEventListener('message',h); res(null); },ms);
+      function h(e){ if(e.origin!==ORIGIN||!e.data||e.data.type!==type)return; clearTimeout(to); window.removeEventListener('message',h); res(e.data); }
+      window.addEventListener('message',h); }); }
+    var ready=waitFor('pma-inbox-ready',60000);
+    /* a still-open app window from the last click is reused, not reloaded — so ask it, every second, until it answers */
+    var ping=setInterval(function(){ try{ w.postMessage({type:'pma-hello'},ORIGIN); }catch(e){} },1000);
+    ready.then(function(){ clearInterval(ping); });
+    (async function(){
+      try{
+        var html=/la-lb-dispatch/.test(location.pathname)?document.documentElement.innerHTML:await (await fetch('/members/bulletins-and-notices/la-lb-dispatch/',{credentials:'include'})).text();
+        var re=/href="([^"]*dispatch-summary[^"]*)"[^>]*>\s*(\d{2})\/(\d{2})\/(\d{4})\s+(1st|2nd)\s+Shift\s+LA\/LB\s+Dispatch\s+Summary/gi, m, list=[];
+        while((m=re.exec(html))&&list.length<4)list.push({url:new URL(m[1].replace(/&amp;/g,'&'),location.href).href,key:keyOf(m[2],m[3],m[4],m[5]),title:m[2]+'/'+m[3]+' '+(m[5]==='1st'?'day':'night')});
+        if(!list.length){ say('Couldn’t find PMA’s LA/LB Dispatch list. Open Members → LA/LB Dispatch and click again.'); return; }
+        var idHere=(location.search.match(/id_content=(\d+)/)||[])[1];
+        say('Found '+list.length+' recent sheets. Waiting for the app…');
+        var r=await ready;
+        if(!r){ say('The app window didn’t answer. Sign in to The Shadow Hook in this browser, then click again.'); return; }
+        var have=r.have||[], need=list.filter(function(x){ return have.indexOf(x.key)<0; }), files=[], notes=[], stop=null;
+        for(var i=0;i<need.length;i++){
+          var x=need[i], doc=null;
+          try{
+          say('Getting the '+x.title+' sheet…');
+          if(idHere&&x.url.indexOf('id_content='+idHere)>=0&&!blocked(document.title)){ doc=document; }
+          else{
+            var res=await fetch(x.url,{credentials:'include'}), t=await res.text();
+            if(blocked(t)){ stop=x; break; }
+            if(!res.ok){ notes.push(x.title+': PMA answered '+res.status); continue; }
+            doc=new DOMParser().parseFromString(t,'text/html');
+          }
+          var as=[].slice.call(doc.querySelectorAll('a[href]'));
+          var a=as.filter(function(a){ return /view the pdf/i.test(a.textContent); })[0]||as.filter(function(a){ return /\.pdf(\?|#|$)/i.test(a.getAttribute('href')); })[0];
+          if(!a){ notes.push(x.title+': no PDF on its page yet'); continue; }
+          var pr=await fetch(new URL(a.getAttribute('href'),x.url).href,{credentials:'include'}), buf=await pr.arrayBuffer();
+          if(String.fromCharCode.apply(null,new Uint8Array(buf.slice(0,4)))!=='%PDF'){
+            if(blocked(new TextDecoder().decode(buf.slice(0,4000)))){ stop=x; break; }
+            notes.push(x.title+': the PDF didn’t come through ('+pr.status+')'); continue; }
+          files.push({name:x.title+'.pdf',buf:buf});
+          }catch(err){ notes.push(x.title+': couldn’t download it from PMA ('+err.message+')'); }   /* one bad sheet never stops the rest */
+        }
+        var done=waitFor('pma-result',120000);
+        w.postMessage({type:'pma-pdfs',files:files},ORIGIN,files.map(function(f){ return f.buf; }));
+        var out=files.length?await done:null;
+        var lines=(files.length?((out&&out.lines)||['The app didn’t confirm — check the PMA card in the app.']):(need.length?[]:['All caught up — the app already has every recent sheet ✓'])).concat(notes);
+        if(stop){ lines.push('PMA wants you to tick “Verify you are human” first. Opening the '+stop.title+' sheet — tick the box there, then click the bookmark again.'); say(lines.join('\n')); setTimeout(function(){ location.href=stop.url; },3000); return; }
+        say(lines.join('\n')||'Done.');
+      }catch(err){ say('Something went wrong: '+err.message); }
+    })();
+  }
+  function bookmarkHref(){ return 'javascript:'+encodeURIComponent('('+PMA_BOOKMARK.toString()+')('+JSON.stringify(location.origin+location.pathname)+')'); }
+
+  /* the bookmark's inbox: this app, opened by it as a small window. Takes PDFs only from pmanet.org,
+     files them under the signed-in Keymaster, says how it went, and closes itself. */
+  if(window.__pmaInbox){
+    const ORIG=['https://www.pmanet.org','https://pmanet.org'];
+    const ov=document.createElement('div'); ov.id='pmaInbox';
+    ov.style.cssText='position:fixed;inset:0;z-index:2147483000;background:#0b0d0f;color:#e8e3d6;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px;text-align:center;font:14px/1.5 Inter,system-ui,sans-serif';
+    ov.innerHTML='<div style="font-size:34px">⚓</div><b style="font-size:15px;color:#8fc7f0;letter-spacing:.08em">PMA SHEETS → THE SHADOW HOOK</b><div id="pmaInboxMsg" style="white-space:pre-line;color:#aab2b8;max-width:380px">Getting ready…</div>';
+    document.body.appendChild(ov);
+    const msg=t=>{ const m=document.getElementById('pmaInboxMsg'); if(m)m.textContent=t; };
+    const tell=o=>{ if(!window.opener)return; ORIG.forEach(org=>{ try{ window.opener.postMessage(o,org); }catch(e){} }); };
+    if(!window.opener){ msg('This window is opened by the ⚓ PMA bookmark on pmanet.org.'); }
+    else{
+      let closeT=0;
+      const closeSoon=ms=>{ clearTimeout(closeT); closeT=setTimeout(()=>{ try{window.close();}catch(_){} },ms); };
+      const have=()=>Object.keys(D).filter(k=>D[k]&&D[k].final);
+      const readyP=(async()=>{   /* let the sign-in and the cloud copy land, then say which sheets are already in */
+        const t0=Date.now();
+        while(Date.now()-t0<8000&&!(window.SB&&window.__isKM!=null))await new Promise(r=>setTimeout(r,250));
+        try{ await load(); }catch(e){}
+        msg('Waiting for PMA…');
+      })();
+      window.addEventListener('message',async e=>{
+        if(ORIG.indexOf(e.origin)<0||!e.data)return;
+        if(e.data.type==='pma-hello'){ clearTimeout(closeT); await readyP; tell({type:'pma-inbox-ready',have:have()}); return; }   /* first click, or a click that reused this window */
+        if(e.data.type!=='pma-pdfs')return;
+        clearTimeout(closeT);
+        const files=e.data.files||[], lines=[];
+        if(!files.length){ msg('Nothing new to add.'); closeSoon(2500); return; }
+        msg('Reading '+files.length+' PDF'+(files.length>1?'s':'')+'…');
+        for(const f of files){ try{ const r=await takePdf(f.name,f.buf,'bookmark'); lines.push(r.line); }catch(err){ lines.push('✗ '+f.name+': '+err.message); } }
+        msg(lines.join('\n')); tell({type:'pma-result',lines:lines});
+        closeSoon(6000);
+      });
+      readyP.then(()=>tell({type:'pma-inbox-ready',have:have()}));
+    }
+  }
+
   /* ⚙ Dev Log → 🏢 PMA SHEETS */
   window.pmaPanel=function(pane,back){
     const btn='border-radius:9px;font:800 11px monospace;letter-spacing:.08em;padding:10px 8px;cursor:pointer;width:100%;margin:4px 0';
+    const miss=window.pmaMissing();
     let html='<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'
       +'<b style="color:#8fc7f0;letter-spacing:.14em;font-size:12px">🏢 PMA SHEETS</b>'
       +'<span style="color:#586067;font-size:10px">the official 720 Dispatch Summary · LA/LB</span><span style="flex:1"></span>'
       +'<button id="pmBack" style="background:none;border:1px solid rgba(122,130,138,.4);color:#8f979e;border-radius:7px;font:700 10px monospace;padding:4px 10px;cursor:pointer">‹ back</button></div>'
-      +'<div style="color:#8f979e;font-size:10.5px;line-height:1.5;margin-bottom:8px">pmanet.org → Members → Bulletins &amp; Notices → LA/LB Dispatch → a shift → <b>view the PDF</b>. Drop the 1st (day) and 2nd (night) shift PDFs here. The night one goes up before the casual dispatch finishes — upload it again later for the end card.</div>'
+      +'<div style="color:#8f979e;font-size:10.5px;line-height:1.5;margin-bottom:8px">'+(miss.length?'Still to grab: <b style="color:#c9d1d9">'+miss.slice().reverse().map(boardName).map(esc).join(' · ')+'</b>':'<span style="color:#9fd18a">All caught up — every recent board has its PMA sheet.</span>')+'</div>'
+      +'<div style="margin:12px 0 5px;color:#eeb46b;font-size:10px;letter-spacing:.18em">⚓ ONE-CLICK BOOKMARK · on a computer</div>'
+      +'<div style="color:#aab2b8;font-size:11px;line-height:1.55">Drag this button to your browser’s bookmarks bar (once):</div>'
+      +'<a id="pmBm" href="#" title="Drag me to your bookmarks bar" style="display:inline-block;margin:7px 0;padding:8px 14px;border-radius:9px;border:1px solid rgba(238,180,107,.6);background:rgba(238,180,107,.14);color:#eeb46b;font:800 12px monospace;letter-spacing:.06em;text-decoration:none;cursor:grab">⚓ PMA → Hook</a>'
+      +' <button id="pmBmCopy" style="background:none;border:1px solid rgba(122,130,138,.45);color:#aab2b8;border-radius:7px;font:700 10px monospace;padding:5px 9px;cursor:pointer;vertical-align:middle">⧉ copy instead</button>'
+      +'<div style="color:#8f979e;font-size:10.5px;line-height:1.55">Then each day: open <a href="'+PMA_LIST+'" target="_blank" rel="noopener" style="color:#8fc7f0">PMA’s LA/LB Dispatch page</a> and click the bookmark. It grabs every sheet the app is missing and puts them on the record. If PMA shows its “Verify you are human” box, tick it yourself and click the bookmark again. Can’t drag it? Tap “copy”, then add a new bookmark and paste that as its address. Make sure you’re signed in to the app in the same browser.</div>'
+      +'<div style="margin:14px 0 5px;color:#eeb46b;font-size:10px;letter-spacing:.18em">OR ADD THE PDFs YOURSELF</div>'
       +'<label style="display:block;'+btn+';text-align:center;background:linear-gradient(180deg,rgba(143,199,240,.16),rgba(11,13,15,.4));border:1px solid rgba(143,199,240,.5);color:#8fc7f0">⬆ CHOOSE PMA PDF(s)<input id="pmFile" type="file" accept="application/pdf,.pdf" multiple style="display:none"></label>'
-      +'<button id="pmPull" style="'+btn+';background:none;border:1px solid rgba(122,130,138,.45);color:#aab2b8">↻ TRY A SERVER PULL FROM PMANET.ORG</button>'
-      +'<div style="color:#586067;font-size:10px;line-height:1.45;margin:-1px 0 4px">Oct 5: PMA’s site refused the server (HTTP 403) on the summary pages, so there’s no automatic pull. Upload is the way in for now.</div>'
+      +'<div style="color:#586067;font-size:10px;line-height:1.45;margin:2px 0 4px">On a computer you can also drop the PDFs anywhere on the app. The night sheet goes up before the casual dispatch finishes — add it again later for the end card.</div>'
       +'<div id="pmMsg" style="margin:8px 0;font:11px/1.55 monospace;color:#aab2b8"></div>'
       +'<div style="margin:14px 0 5px;color:#eeb46b;font-size:10px;letter-spacing:.18em">ON FILE</div>';
     const ks=Object.keys(D).sort().reverse().slice(0,14);
@@ -38177,9 +38390,12 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
     pane.innerHTML=html;
     const msg=document.getElementById('pmMsg');
     const say=(t,bad)=>{ if(msg)msg.insertAdjacentHTML('beforeend','<div style="color:'+(bad?'#f2a184':'#aab2b8')+'">'+esc(t)+'</div>'); };
+    const bm=document.getElementById('pmBm'); const href=bookmarkHref();
+    bm.setAttribute('href',href);
+    bm.addEventListener('click',ev=>{ ev.preventDefault(); say('Drag the ⚓ button to your bookmarks bar — clicking it here does nothing. It runs on pmanet.org.'); });
+    document.getElementById('pmBmCopy').addEventListener('click',async()=>{ try{ await navigator.clipboard.writeText(href); say('Copied. Add a new bookmark named “⚓ PMA → Hook” and paste this as its address.'); }catch(e){ say('Couldn’t copy here — drag the ⚓ button instead.',true); } });
     document.getElementById('pmBack').addEventListener('click',back);
-    document.getElementById('pmFile').addEventListener('change',async function(ev){ const fs=[...(ev.target.files||[])]; if(fs.length){ await uploadFiles(fs,say); setTimeout(function(){ window.pmaPanel(pane,back); const m=document.getElementById('pmMsg'); if(m&&msg)m.innerHTML=msg.innerHTML; },600); } });
-    document.getElementById('pmPull').addEventListener('click',async function(){ this.disabled=true; await pullNow(say); this.disabled=false; });
+    document.getElementById('pmFile').addEventListener('change',async function(ev){ const fs=[...(ev.target.files||[])]; if(fs.length){ await uploadFiles(fs,say); renderBar(); setTimeout(function(){ window.pmaPanel(pane,back); const m=document.getElementById('pmMsg'); if(m&&msg)m.innerHTML=msg.innerHTML; },600); } });
   };
 }catch(e){ try{console.warn('[pmasheet]',e);}catch(_){} }})();
 </script>
