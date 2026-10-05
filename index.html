@@ -638,6 +638,27 @@ hr.rule{border:0;border-top:1px solid var(--line-soft);margin:12px 0}
 /* #78/#81 — terminal boot lines removed: logo, name, San Pedro Bay line, bar only */
 .boot-bar{height:2px;background:var(--line-soft);margin-top:56px}
 .boot-bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--ember),var(--copper-hi));transition:width .3s}
+/* #smoothboot(oct5) — THE LOADER NEVER SITS STILL, AND IT LEAVES GENTLY.
+   · a soft sheen sweeps the filled bar, so a wait on the network still reads as "working"
+     (::before — Halloween's slime drip owns ::after)
+   · the exit is one move: the lockup eases up a hair while the screen fades
+   · a show built at the gate (no pre-painted loader) fades in instead of cutting in
+   Opacity/transform only; reduced-motion members get the plain bar and a plain fade. */
+.boot-bar i{position:relative}
+.boot-bar i::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.38),transparent) no-repeat;background-size:40% 100%;background-position:-100% 0;
+  animation:bootSheen 1.8s ease-in-out infinite}
+@keyframes bootSheen{to{background-position:200% 0}}
+#boot{transition:opacity .6s ease, visibility .6s}
+.boot-frame{transition:transform .7s cubic-bezier(.22,.61,.36,1)}
+#boot.done .boot-frame{transform:translateY(calc(-11vh - 10px)) scale(1.03)}
+#boot.fresh{animation:bootIn .35s ease backwards}   /* backwards, not both — a held fill would outrank .done's fade */
+@keyframes bootIn{from{opacity:0}}
+@media (prefers-reduced-motion:reduce){
+  .boot-bar i::before{animation:none;display:none}
+  #boot.done .boot-frame{transform:translateY(-11vh)}
+  #boot.fresh{animation:none}
+}
 
 #gatePage{display:none;padding-bottom:calc(104px + env(safe-area-inset-bottom))}   /* #gatefoot(aug29) — clears the fixed nav when the shell is up, so the footer line shows */
 #gatePage.on{display:block;animation:fadeUp .8s both}
@@ -4823,15 +4844,42 @@ html.daylight .nav button[data-scr="mayday"] .ico{filter:none}
     +'<div class="boot-sub">San Pedro Bay · Est. on the Waterfront</div>'
     +'<div class="boot-bar"><i id="bootBar" style="width:4%"></i></div></div>';
   document.body.appendChild(d);
-  var last=4;
+  /* #smoothboot(oct5) — the checkpoints are real, but most of them fire inside one long
+     synchronous parse, and the last stretch is a network wait (session + profile) with no
+     checkpoint at all — so the bar used to leap, then sit frozen around 84–97% for seconds.
+     Now: each checkpoint glides in (ease-out), and between them the bar CREEPS — a small
+     share of what's left every 300ms, so it slows as it nears the end and never reaches
+     100 on its own. Only bootScreen's __bootProg(100) finishes it. The creep never moves
+     the bar backwards and never passes 99. */
+  var last=4, shown=4, tick=0;
+  function bar(){ return document.getElementById('bootBar'); }
+  function paint(w,ms,ease){ var b=bar(); if(!b)return;
+    b.style.transition='width '+ms+'ms '+ease; b.style.width=w+'%'; }
   window.__bootProg=function(p){try{
     if(!(p>last))return; last=p;
-    var b=document.getElementById('bootBar'); if(!b)return;
-    b.style.transition='width .3s ease'; b.style.width=Math.min(p,100)+'%';
+    var w=Math.min(p,100); if(w<=shown&&w<100)return;     /* the creep is already past it — no step back */
+    shown=w; paint(shown, w>=100?260:420, 'cubic-bezier(.22,.61,.36,1)');
+  }catch(e){}};
+  tick=setInterval(function(){try{
+    if(window.__bootDone||!bar()){clearInterval(tick);return;}
+    if(last>=100)return;
+    var next=shown+(99-shown)*0.035; if(next-shown<0.04)return;
+    shown=next; paint(shown,320,'linear');
+  }catch(e){clearInterval(tick);}},300);
+  /* fade the loader away WITHOUT closing the show — used when the gate rises instead of
+     the app (a session with no profile, or nobody known and no line), so the gate isn't
+     hidden behind the crest until the 8s failsafe. A later sign-in still gets its show. */
+  window.__bootAway=function(){try{
+    clearInterval(tick); var el=document.getElementById('boot'); if(!el||el.getAttribute('data-away'))return;
+    el.setAttribute('data-away','1');   /* bootScreen won't adopt a loader that's on its way out */
+    el.classList.add('done');
+    setTimeout(function(){try{el.remove()}catch(e){}},800);
   }catch(e){}};
   setTimeout(function(){try{
-    if(!window.__bootDone){var el=document.getElementById('boot');
-      if(el){el.classList.add('done');setTimeout(function(){try{el.remove()}catch(e){}},800);}}
+    var _b=document.getElementById('boot'); if(!window.__bootDone&&_b&&!_b.getAttribute('data-away')){
+      window.__bootAway();
+      window.__bootDone=1;   /* the failsafe IS the show — a late entry walks straight in, no second crest */
+    }
   }catch(e){}},8000);
 }catch(e){}})();
 </script>
@@ -11213,6 +11261,8 @@ function gotoTab(name){
 function atGate(on){
   try{ if(on===undefined){ const g=document.getElementById('gatePage'); on=!!(g&&getComputedStyle(g).display!=='none'); }
     document.documentElement.classList.toggle('at-gate',!!on); }catch(e){}
+  /* #smoothboot — the gate is rising instead of the app: let the loader go now, not at the 8s failsafe */
+  if(on===true){ try{ if(!window.__bootDone&&window.__bootAway)window.__bootAway(); }catch(e){} }
 }
 window.atGate=atGate;
 function enterApp(tab){
@@ -11248,14 +11298,15 @@ function enterApp(tab){
 function bootScreen(cb,fast){
   if(window.__bootDone){ if(cb)cb(); return; }               // one show per page-load
   let d=document.getElementById('boot');
+  if(d && d.getAttribute('data-away')){ try{d.remove();}catch(e){} d=null; }   /* #smoothboot — stood down for the gate; this entry gets its own short show */
   const finish=()=>{ window.__bootDone=1; if(cb)cb();
     if(d){ d.classList.add('done'); setTimeout(()=>{try{d.remove()}catch(e){}},800); } };
   if(d && window.__bootProg){                                 // the live loader is up — finish it, don't replay it
     try{__bootProg(100);}catch(e){}
-    setTimeout(finish,280);
+    setTimeout(finish,300);   /* #smoothboot — let the 260ms sprint land on 100 before the fade starts */
     return;
   }
-  d=document.createElement('div');d.id='boot';
+  d=document.createElement('div');d.id='boot';d.className='fresh';   /* #smoothboot — fades in over the gate instead of cutting in */
   /* #78 + #81 — logo, the name in the engraved lockup, San Pedro Bay line, loading bar. That's it. */
   d.innerHTML='<div class="boot-frame">'
     +'<div class="crest" style="width:min(230px,62vw);margin:0 auto 24px"></div>'
@@ -11265,7 +11316,7 @@ function bootScreen(cb,fast){
   document.body.appendChild(d);
   const bar=d.querySelector('#bootBar');
   const dur=fast?550:800;
-  requestAnimationFrame(()=>requestAnimationFrame(()=>{bar.style.transition='width '+dur+'ms ease';bar.style.width='100%';}));
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{bar.style.transition='width '+dur+'ms cubic-bezier(.4,.1,.3,1)';bar.style.width='100%';}));
   setTimeout(finish,dur+250);
 }
 /* ===== backend account helpers (all no-ops if the backend is off) ===== */
