@@ -35538,6 +35538,8 @@ function chainBoards(fromKey){
       touched.forEach(x=>{st[x.date+"_"+x.slot]=Object.assign(st[x.date+"_"+x.slot]||{},x);});
       localStorage.setItem(K('boardresults'),JSON.stringify(st));}catch(e){}
   }
+  /* #pmafinal — whatever just rippled the record, PMA's official cards (when on file) have the last word */
+  try{ if(window.pmaAssert&&!window._pmaBusy)window.pmaAssert(); }catch(e){}
   return touched.length;
 }
 
@@ -35781,6 +35783,7 @@ function hlApplyToRecord(){
     if(!row){row={date:date,slot:slot,rain:false,hol:false};RECENT.push(row);
       RECENT.sort((a,b)=>{const ka=a.date+(String(a.slot).endsWith('AM')?'_1':'_2'),kb=b.date+(String(b.slot).endsWith('AM')?'_1':'_2');return ka<kb?-1:ka>kb?1:0;});}
     if(row.end===imp.end){window._hlApplied={key:imp.key,end:imp.end,note:'already on the record'};return;}
+    if(window.PMA_DATA&&PMA_DATA[imp.key]&&PMA_DATA[imp.key].end){window._hlApplied={skipped:'PMA’s official sheet already set '+imp.key+' ('+PMA_DATA[imp.key].end+')'};return;}   /* #pmafinal */
     row.end=imp.end; row._hotline=true;
     if(row.start){try{row.act=boardActOf(row.start,imp.end,row);}catch(e){}}   /* #lapact */
     try{chainBoards(imp.key);}catch(e){}
@@ -37917,8 +37920,8 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
      · lets the Dispatch Bot say, as FACT, how far PMA's order moved off the union sheet — or own a miss
        when PMA's numbers matched;
      · adds a PMA OFFICIAL block to the dispatch sheet and a PMA pill on the record row.
-   It never rewrites the board record itself: if PMA and the record disagree, the pill says so in red
-   and a human fixes the record the usual way. */
+   #pmafinal — and when it's on file it IS the record: its start / end cards, cycled flag and casual-hall
+   count replace whatever the wire had (see pmaAssert below). No PMA sheet → the wire's record stands. */
 (function(){try{
   const LS='shadowhook_pma';
   let D={}; try{ D=JSON.parse(localStorage.getItem(LS)||'{}')||{}; }catch(e){ D={}; }
@@ -37984,17 +37987,64 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
     if(!quiet){ try{ apply(key); }catch(e){} redraw(); }
     return true;
   }
+  /* ═══ #pmafinal(oct5) — WHEN PMA'S SHEET IS ON FILE, IT IS THE RECORD ═══
+     By request: PMA has the final say when we have its data. Its Casual Dispatch Start / End No. go onto
+     the board record (and its Hall Cycled flag and Jobs Sent to Casual Hall), whatever the wire, the
+     hotline or a casual's log said. Without a PMA sheet nothing changes: the record is the wire's and the
+     prediction runs on the ILWU sheet, exactly as before. A night summary posted before the casual
+     dispatch finished (start no. only) sets the start on an existing row and nothing else.
+     Applied on THIS phone from pma_sheets (every phone gets the same rows by realtime), never pushed to
+     board_wire — the wire's confirm / heist bucks stay out of it.
+     It holds: every ripple of the record (chainBoards — a wire row landing, a log, a NO FLOP, the hotline)
+     ends by re-asserting PMA, so a later post can't knock an official card off. */
+  function recRow(key,create){
+    let r=RECENT.find(x=>x.date+'_'+x.slot===key);
+    if(!r&&create){ const i=key.indexOf('_'); r={date:key.slice(0,i),slot:key.slice(i+1),rain:false,hol:false}; RECENT.push(r);
+      RECENT.sort((a,b)=>{const ka=a.date+(String(a.slot).endsWith('AM')?'_1':'_2'),kb=b.date+(String(b.slot).endsWith('AM')?'_1':'_2');return ka<kb?-1:ka>kb?1:0;}); }
+    return r;
+  }
+  function assertOne(key){
+    const p=D[key]; if(!p||(!p.start&&!p.end)||typeof RECENT==='undefined')return false;
+    const r=recRow(key,!!p.end); if(!r)return false;
+    let ch=false;
+    if(p.start&&r.start!==p.start){ r.start=p.start; ch=true; }
+    if(p.end){
+      if(r.end!==p.end){ r.end=p.end; ch=true; }
+      if(p.cyc!=null&&r.cyc!==p.cyc){ r.cyc=p.cyc; ch=true; }
+      if(p.toCH!=null&&r.ch!==p.toCH){ r.ch=p.toCH; ch=true; }
+      if(!r._pma){ r._pma=true; ch=true; }
+    }
+    if(!ch)return false;
+    if(r.start&&r.end){ try{ r.act=boardActOf(r.start,r.end,r); }catch(e){} }
+    try{ const st=_brStore(); const keep={date:r.date,slot:r.slot,start:r.start};
+      if(p.end)Object.assign(keep,{end:r.end,act:r.act,cyc:r.cyc,ch:r.ch,_pma:true});
+      st[key]=Object.assign(st[key]||{},keep); localStorage.setItem(K('boardresults'),JSON.stringify(st)); }catch(e){}
+    return true;
+  }
+  window.pmaAssert=function(){
+    if(window._pmaBusy||typeof RECENT==='undefined')return false;
+    window._pmaBusy=true; let any=false;
+    try{
+      const ks=Object.keys(D).sort();
+      ks.forEach(k=>{ if(assertOne(k)){ any=true; try{ chainBoards(k); }catch(e){} } });   /* ripple to the boards after it */
+      if(any)ks.forEach(k=>{ try{ assertOne(k); }catch(e){} });                         /* a ripple never moves an official card */
+    }finally{ window._pmaBusy=false; }
+    if(any){ try{ DEVLOG.note('PMA sheet set the record'); }catch(e){} redraw(true); }
+    return any;
+  };
   /* grade on the official end card — predScore(k,end,true) re-scores even a board the crowd already sealed */
   function apply(key){
+    try{ window.pmaAssert(); }catch(e){}
     const p=D[key]; if(!p||!p.end)return;
     try{ if(typeof predScore==='function')predScore(key,p.end,true); }catch(e){}
   }
-  let _rd=0;
-  function redraw(){ if(_rd)return; _rd=setTimeout(function(){ _rd=0;
+  let _rd=0, _rp=false;
+  function redraw(re){ if(re)_rp=true; if(_rd)return; _rd=setTimeout(function(){ _rd=0;
+    if(_rp){ _rp=false; try{ if(typeof repredict==='function')repredict(); }catch(e){} }   /* the record moved — the next call re-figures */
     try{ if(typeof renderRecentBoards==='function')renderRecentBoards(); }catch(e){}
     try{ if(typeof updateBabyNote==='function')updateBabyNote(); }catch(e){}
     try{ if(typeof renderBotStatus==='function')renderBotStatus(); }catch(e){} },400); }
-  function applyAll(){ Object.keys(D).forEach(k=>{ try{ apply(k); }catch(e){} }); redraw(); }
+  function applyAll(){ try{ window.pmaAssert(); }catch(e){} Object.keys(D).forEach(k=>{ try{ apply(k); }catch(e){} }); redraw(); }
 
   async function load(){
     if(!window.SB)return;
@@ -38048,7 +38098,7 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
   /* the pill on the record row */
   window.pmaChip=function(key,rec){
     const p=D[key]; if(!p||!p.end)return '';
-    if(rec&&rec.end&&rec.end.toUpperCase()===p.end)return ' <span class="pill grn" title="PMA’s official end card matches the record">PMA ✓</span>';
+    if(rec&&rec.end&&rec.end.toUpperCase()===p.end)return ' <span class="pill grn" title="Official — set by PMA’s 720 Dispatch Summary">PMA ✓</span>';
     if(rec&&rec.end)return ' <span class="pill red" title="PMA’s official end card — the record says '+esc(rec.end)+'">PMA '+esc(p.end)+'</span>';
     return ' <span class="pill gold" title="PMA’s official end card">PMA '+esc(p.end)+'</span>';
   };
