@@ -9788,7 +9788,9 @@ function mergeDockets(a,b){
     }
     /* #reviews — the word repaints with the key: sign in and the rating form
        appears on an open product page; sign out and it steps back to browse. */
-    try{ if(window.sbLoadProductReviews)window.sbLoadProductReviews(); }catch(e){}
+    /* #shopquiet(oct4) — only when WHO is signed in changed: a token refresh or a focus re-check is the same
+       person, and each one re-pulled up to 2,000 reviews and repainted the whole shop on whatever screen was up */
+    try{ if(window.sbLoadProductReviews&&window.__prvUid!==(uid||null)){ window.__prvUid=(uid||null); window.sbLoadProductReviews(); } }catch(e){}
     /* #floorreal(aug10) — presence is keyed by uid, so signing in or out has to
        rebuild the roster entry; otherwise the old key lingers and the hall
        counts a casual who isn't there. */
@@ -11169,6 +11171,7 @@ function gotoTab(name){
     try{ const _b=document.getElementById('harborBoard'), _g=_b&&_b.classList.contains('checked-in')?_b.getAttribute('data-goto'):null;
       if(_g&&/^\d+$/.test(_g)){ let _n=0; const _try=()=>{ if(window.harborFlyTo&&harborFlyTo(+_g))return; if(++_n<8)setTimeout(_try,300); }; setTimeout(_try,380); } }catch(e){}}   /* #lazy — the vault comes up with the tab */
   if(name==='board'){try{openPendingSheet();}catch(e){}}   // #93 — the Wire opens with the pending dispatch sheet showing
+  if(name==='armory'&&window.__shopStale){ window.__shopStale=false; try{ renderShop(); }catch(e){} try{ if(gearProd)paintGear(); }catch(e){} }   /* #shopquiet */
   if(name==='armory'){try{ if(typeof sbFreshProducts==='function')sbFreshProducts(); if(typeof shopKmNote==='function')shopKmNote(); if(typeof wantLoad==='function')wantLoad(); }catch(e){}}   // #waitlist(sep19) — and your own 🔔 list, so the button knows you and a landed drop can say so   // #freshshelf(sep19) — the Armory was the one tab with no hook here: its shelf was read once at boot, so new postings never showed in an app that was already open
 }
 /* #gateonly(aug31) — the gate and the tab bar are opposites: while the gate is up the
@@ -23150,8 +23153,13 @@ async function sbLoadProductReviews(){
      that is literally typing their word (the data is in; the next paint has it) */
   const typing=(function(){try{const a=document.activeElement;return !!(a&&a.id==='prvBody');}catch(e){return false;}})();
   if(typing)return;
-  try{ renderShop(); }catch(e){}
-  if(gearProd){ try{ paintGear(); }catch(e){} }
+  /* #shopquiet(oct4) — THE ALARMS, oct 4 17:57, MONEYMITCH, Android, on the Wire: "long task 2.1s on
+     #scr-board · after: product_reviews -1725ms … renderShop -0.7s". The reviews landed and the whole
+     Armory floor was rebuilt behind the Wire, where nobody could see it. Now the shop only repaints when the
+     Armory is the screen that's up; otherwise it's marked stale and repaints the moment the Armory opens. */
+  const _armUp=(function(){ try{ const a=document.getElementById('scr-armory'); return !!(a&&a.classList.contains('on')&&document.visibilityState==='visible'); }catch(e){ return true; } })();
+  if(_armUp){ try{ renderShop(); }catch(e){} if(gearProd){ try{ paintGear(); }catch(e){} } window.__shopStale=false; }
+  else window.__shopStale=true;
   /* #verified(aug10) — the ask waits for the book: an item they already
      reviewed must never be asked about, and that is only knowable once the
      reviews are in. Ping comes a beat later so a cold boot isn't a buzz. */
@@ -35079,19 +35087,27 @@ window.renderHarborBoard=function(){
         const _yard=/satellite/i.test(_term.aka||'')||!/^(LA|TI|LB)\b/.test(String(_term.berths||''));
         const _port=/^LB\b/.test(_term.berths)?'Port of Long Beach':/^(LA|TI)\b/.test(_term.berths)?'Port of Los Angeles':'San Pedro Bay';
         let _pier=''; try{ const dk=document.querySelector('.hm-dock[data-op="'+_term.operator+'"][data-berths="'+_term.berths+'"]'); if(dk)_pier=(dk.getAttribute('aria-label')||'').split(' — ')[0]; }catch(e){}
-        const _kick=_yard?'Satellite yard':(_port+(_pier?' · '+_pier:''));
+        const _kick=_yard?'Satellite yard':((_pier?_port.replace('Port of Los Angeles','Port of LA').replace('Port of Long Beach','Port of LB'):_port)+(_pier?' · '+_pier:''));   /* #mydock2 — short port name so the pier fits beside ✓ CHECKED IN */
         const _nm=_yard?_term.operator:esc(_term.aka||_term.operator)+(_term.aka&&_term.operator&&_term.aka!==_term.operator?' <small>· '+esc(_term.operator)+'</small>':'');
         _stage.innerHTML='<div class="hb-dock-hero" role="button" tabindex="0" aria-label="Open the full dock profile">'
-          +'<div class="hb-dock-k"><span>'+esc(_kick)+'</span><span class="hb-stoplbl live">✓ CHECKED IN · TODAY</span></div>'
+          +'<div class="hb-dock-k"><span>'+esc(_kick)+'</span><span class="hb-stoplbl live">✓ CHECKED IN</span></div>'
           +'<div class="hb-dock-n">'+_nm+'</div>'
-          +'<div class="hb-dock-b">'+(!_yard?'⚓ Berths <b>'+esc(_term.berths)+'</b>':'')
-          +(_term.security?' <i>·</i> <a href="tel:'+String(_term.security).replace(/\D/g,'')+'">☎ '+esc(_term.security)+'</a>':'')
-          +(_ship?' <i>·</i> Your ship <b>'+_ship+'</b>':'')+'</div></div>';
+          /* #mydock2(oct4) — berths, the phone and your ship as three chips on one line, not a sentence that wraps */
+          +'<div class="hb-dock-chips">'+(!_yard?'<span class="hbc">⚓ <b>'+esc(_term.berths)+'</b></span>':'')
+          +(_ship?'<span class="hbc">🚢 <b>'+_ship+'</b></span>':'')
+          +(_term.security?'<a class="hbc tel" href="tel:'+String(_term.security).replace(/\D/g,'')+'">☎ '+esc(_term.security)+'</a>':'')+'</div></div>';
         try{
           let _dock=board.querySelector('.hb-dock');
           if(!_dock){ _dock=document.createElement('div'); _dock.className='hb-dock'; const _m=board.querySelector('.hb-meters'); if(_m&&_m.parentNode)_m.parentNode.insertBefore(_dock,_m.nextSibling); else board.appendChild(_dock); }
           const P=(typeof dockCardParts==='function')?dockCardParts(_term):null;
-          _dock.innerHTML=P?((P.gates||P.checks?'<div class="card-h">Gates <span class="tag">➤ GO opens directions</span></div><div class="hd-gates">'+P.gates+P.checks+'</div>':'')+'<div class="hd-board">'+(P.intel||'')+'</div>'):'';
+          _dock.innerHTML=P?((P.gates||P.checks?'<div class="card-h">Gates <span class="tag">tap for directions</span></div><div class="hd-gates">'+P.gates+P.checks+'</div>':'')+'<div class="hd-board">'+(P.intel||'')+'</div>'):'';
+          /* #mydock2(oct4) — "Working now" under tonight's board named the same ship twice (ERVING, then ERVING ·
+             1 of the Order aboard — and the board row already says "1 aboard"). Kept only when it adds a ship. */
+          try{ const hs=[..._dock.querySelectorAll('.hd-board .card-h')]; const wn=hs.find(h=>/working now/i.test(h.textContent));
+            if(wn){ const body=wn.nextElementSibling; const brd=(_dock.querySelector('.hd-board')||{}).textContent||'';
+              const names=body?[...body.querySelectorAll('.gaterow .g b')].map(b=>b.textContent.trim().toUpperCase()):[];
+              const top=brd.split(/working now/i)[0].toUpperCase();
+              if(names.length&&names.every(n=>top.indexOf(n)>-1)){ wn.remove(); if(body)body.remove(); } } }catch(e){}
           _dock.style.display=_dock.innerHTML?'':'none';
         }catch(e){}
       } else if(_live){
@@ -35113,7 +35129,8 @@ window.renderHarborBoard=function(){
       /* #mydock — 🍔 FOOD rides here now (it left the harbor card's header for the date + weather) */
       const _food='<button type="button" class="hb-food" aria-label="Food trucks and restaurants" onclick="if(window.openFoodList)openFoodList()">🍔 FOOD</button>';
       if(_live){
-        _status.innerHTML='<span class="hb-live on">● ON THE CLOCK</span>'+_food+'<span class="hb-logged">'+_total+' docket'+(_total!==1?'s':'')+' logged'+(_term?'<br><a class="hb-full" href="#">Full profile ›</a>':'')+'</span>';
+        /* #mydock2 — the hero already says checked in; the footer is just the two things you'd tap */
+        _status.innerHTML=_food+'<span class="hb-logged">'+_total+' docket'+(_total!==1?'s':'')+' logged</span>'+(_term?'<a class="hb-full hb-fullbtn" href="#">Full dock profile ›</a>':'');
       } else if(_total){
         _status.innerHTML='<span class="hb-live">○ not checked in today</span>'+_food+'<span class="hb-logged">'+_total+' docket'+(_total!==1?'s':'')+' logged'+((_last&&_last.date)?(' · last '+_sd(_last.date)):'')+'</span>';
       } else {
@@ -51742,6 +51759,40 @@ window.HARBOR_LORE={"ports":{"LA":{"name":"Port of Los Angeles","kicker":"San Pe
   /* the list repaints whenever the profile opens */
 }catch(e){} })();
 </script>
+<style id="myDockCSS">
+/* ═══ #mydock2(oct4) — MY DOCK, TIGHTENED ═══
+   By request: "make it more legible and don't waste so much empty space". The checked-in card had the dock
+   name, then a wrapping sentence, then three harbor-wide counters (31 docks · 12 ships · 2 lines — nothing to
+   do with YOUR dock), then two tall full-width gate rows, then the same ship listed twice, then a footer
+   repeating "on the clock". Now: one kicker line, the name, three chips (berths · your ship · the phone),
+   the gates side by side as tiles, tonight's board once, and a one-line footer. Nothing is gone that you'd
+   tap — the harbor counters still show when you're not checked in, and the full profile is one tap. */
+#harborBoard.checked-in .hb-meters{display:none}
+#harborBoard.checked-in .hb-stage{padding-top:6px}
+.hb-dock-k{flex-wrap:nowrap;font-size:11px;letter-spacing:.12em}
+.hb-dock-k>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hb-dock-k .hb-stoplbl{flex:none;font-size:10.5px;letter-spacing:.14em}
+.hb-dock-n{font-size:clamp(28px,8.4vw,38px);margin:5px 0 9px}
+.hb-dock-chips{display:flex;flex-wrap:wrap;gap:6px}
+.hbc{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border:1px solid var(--line);border-radius:99px;font:600 12px/1.2 'Inter',system-ui,sans-serif;color:var(--steel);background:rgba(255,255,255,.03);text-decoration:none;white-space:nowrap}
+.hbc b{color:var(--bone);font-weight:700;letter-spacing:.02em}
+a.hbc.tel{color:var(--copper-hi);border-color:rgba(238,180,107,.45)}
+html.daylight .hbc{background:rgba(0,0,0,.025)}
+.hb-dock{margin-top:12px}
+.hb-dock .card-h{padding:10px 0 7px}
+.hb-dock .hd-gates{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
+.hb-dock .hd-gates .gaterow{display:flex;flex-direction:column;align-items:stretch;justify-content:space-between;gap:8px;padding:10px;border:1px solid var(--line)!important;border-radius:12px;background:rgba(255,255,255,.025);min-width:0}
+.hb-dock .hd-gates .gaterow .g{font-size:12.5px;line-height:1.3;min-width:0;font-weight:600}
+.hb-dock .hd-gates .gaterow a,.hb-dock .hd-gates .gaterow button{width:100%;text-align:center;padding:7px 10px;font-size:12px;box-sizing:border-box}
+.hb-dock .card-h{flex-wrap:nowrap;white-space:nowrap;gap:8px}
+.hb-dock .card-h .tag{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10.5px}
+.hb-dock .hd-board .card-h:first-child{margin-top:12px}
+.hb-dock .hd-board .card-b{padding-top:6px;padding-bottom:4px}
+.hb-dock .hd-board .gaterow{padding:6px 0}
+#harborBoard.checked-in .hb-status{margin-top:10px;padding-top:10px;gap:8px;flex-wrap:nowrap}
+#harborBoard.checked-in .hb-logged{margin-left:0;flex:1;text-align:center;font-size:11px}
+.hb-fullbtn{flex:none;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--copper-hi);text-decoration:none;border:1px solid rgba(238,180,107,.45);border-radius:99px;padding:6px 12px}
+</style>
 <style id="wideCSS">
 /* ═══ #wide(oct4) → #reflow(oct4) — BIGGER SCREENS: THE CARDS REALIGN, THEY DON'T STRETCH ═══
    By request. The first try (#wide) widened the one column, and on a computer every card came out
