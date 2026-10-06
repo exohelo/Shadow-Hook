@@ -8,7 +8,8 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct6nodisp';   /* oct 6 (5th) — no "jobs dispatched" line on the short night sheet's card; the jobs count above it already says it (#nightpma). */
+window.SHK_BUILD='oct6pmafirst';   /* oct 6 (6th) — the call runs on PMA first: the board's gang orders off its PMA sheet × what a gang has meant in jobs, 65%, the union's count 35% (or PMA alone before the union's sheet lands); PMA's come-down no longer rides the engine's count axis (#pmafirst). */
+/* was: oct6nodisp */   /* oct 6 (5th) — no "jobs dispatched" line on the short night sheet's card; the jobs count above it already says it (#nightpma). */
 /* was: oct6pmaonce */   /* oct 6 (4th) — PMA says it once on a record card: the PMA ✓ pill; the line under it is just 📋 477 longshore + 34 clerk (#pmaonce). */
 /* was: oct6nightpma */   /* oct 6 (3rd) — the short PMA night sheet (no end card) gets its PMA ✓ and a 📋 PMA · jobs dispatched line on the record (#nightpma). */
 /* was: oct6nightdone */   /* oct 6 (2nd) — a PMA sheet that carries Jobs Dispatched counts as finished even with no end card printed, so the Mon night To-Do and the "no end card yet" toast stop (#nightdone). */
@@ -14197,6 +14198,7 @@ function renderWireStage(o){
     }[L]||'—';
     /* #portsig — an estimate that heard the vessel schedule says so (only when it moved the number) */
     let txt2=txt; try{ const pv=window._portVol; if(pv&&(L==='EST'||L==='AM')&&Math.abs(pv.mult-1)>=0.03) txt2+=' · ships '+(pv.pct>0?'+':'')+pv.pct+'% vs normal'; }catch(e){}
+    try{ const pm=window._pmaVol; if(pm&&pm.g)txt2+=' · PMA first: '+pm.g+' gangs ordered'+(pm.union!=null?' (union sheet second)':''); }catch(e){}   /* #pmafirst */
     srcEl.className='wire-src '+cls; srcEl.textContent=txt2;
   }
   /* hero */
@@ -16000,6 +16002,12 @@ function publishCall(){
          that rides a sheet (the branches above) never takes this: the count is already known. */
       try{ const pv=(window.PORTSIG&&PORTSIG.adjust)?PORTSIG.adjust(nd2,isAM):null; if(pv&&pv.mult>0){ ex.ch=ex.ch*pv.mult; window._portVol=pv; } }catch(e){ window._portVol=null; }
     }
+    /* #pmafirst(oct6) — PMA's gang orders for this board come first; the union's count is second */
+    window._pmaVol=null;
+    try{ const pv=window.pmaVolFor?window.pmaVolFor(key,isAM):null;
+      if(pv&&pv.est>0){ const un=(source==='FINAL'||source==='EARLY')?ex.ch:null;
+        ex.ch=(un!=null)?(0.65*pv.est+0.35*un):pv.est; if(un==null)source='EARLY';
+        window._pmaVol=Object.assign({union:un},pv); } }catch(e){ window._pmaVol=null; }
     if(_dropTot>0){ ex.ch=Math.max(ex.ch||0,_dropTot*V4.boardsToCh); if(source!=='FINAL')source='EARLY'; }   /* #liverecalc */
     /* #casaxis — cross-slot momentum for a DAY board: how far last night's board ran.
        Prefer the record (a sealed board, or one the hotline/wire already ended), and fall
@@ -38299,13 +38307,17 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
          board has nothing come down (the record's own rule, boardEvidence). */
       if(!p.end&&r.cyc===false&&_cd>0){ delete r.cyc; r._cycLift=true; ch=true; }
       if(r.down!==_cd){ r.down=_cd; ch=true; }
-      if(r.ch!==_cd){ r.ch=_cd; ch=true; }
-    } else if(p.end&&p.toCH!=null&&r.ch!==p.toCH){ r.ch=p.toCH; ch=true; }
+      /* #pmafirst — PMA's come-down is NOT the engine's count axis (that's the union's casual count on the hall
+         scale, ~2× bigger). It rode into r.ch here and taught the engine that busy boards were quiet ones; the
+         come-down lives on r.down only. A row it wrote before gets its r.ch back off the union's count. */
+      if(r.ch===_cd){ delete r.ch; ch=true; }
+    }   /* #pmafirst — toCH stays off r.ch too */
     if(!ch)return false;
     if(r.start&&r.end){ try{ r.act=boardActOf(r.start,r.end,r); }catch(e){} }
     try{ const st=_brStore(); const keep={date:r.date,slot:r.slot,start:r.start};
-      if(p.end)Object.assign(keep,{end:r.end,act:r.act,cyc:r.cyc,ch:r.ch,_pma:true});
-      if(_cd!=null)Object.assign(keep,{down:r.down,ch:r.ch,cyc:r.cyc},r.end?{act:r.act}:{});
+      if(p.end)Object.assign(keep,{end:r.end,act:r.act,cyc:r.cyc,_pma:true});
+      if(_cd!=null)Object.assign(keep,{down:r.down,cyc:r.cyc},r.end?{act:r.act}:{});
+      if(st[key]&&st[key].ch===_cd)delete st[key].ch;   /* #pmafirst — the PMA figure a past build stored as ch */
       if(r._cycLift){ delete keep.cyc; if(st[key])delete st[key].cyc; delete r._cycLift; }   /* #nocycfix */
       st[key]=Object.assign(st[key]||{},keep); localStorage.setItem(K('boardresults'),JSON.stringify(st)); }catch(e){}
     return true;
@@ -38399,6 +38411,30 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
   /* #pmadown — the jobs the casual hall filled (longshore + clerk), once the sheet shows the dispatch done */
   function pmaCame(p){ if(!p||p.held||p.tossed||!pmaDone(p))return null; const v=(p.lsFilled!=null?p.lsFilled:p.toCH); return v==null?null:v+(+p.clerk||0); }
   window.pmaCame=k=>pmaCame(D[k]);
+  /* ═══ #pmafirst(oct6) — PMA FIRST, THE UNION'S SHEET SECOND ═══
+     By request: the call runs on PMA's numbers first. What PMA has BEFORE a dispatch is the board's gang
+     orders — the sheet for a shift goes up ahead of it with every ship's gangs on it. Total gangs × the
+     jobs a gang has meant on past boards (learned from boards that have both PMA's gangs and the union's
+     casual count, on the engine's own hall scale) is PMA's count for the board. The call takes it at 65%
+     with the union's sheet at 35%, or on its own when the union's sheet isn't in. No PMA sheet for the board,
+     or fewer than three boards to learn the ratio from → the union's count runs the call, as before. */
+  window.pmaVolFor=function(key,isAM){
+    try{
+      const p=D[key]; if(!p||p.held||p.tossed)return null;
+      const sx=window.pmaShipSum(p); const g=sx&&sx.g; if(!(g>20))return null;
+      const b2c=((typeof V4!=='undefined'&&V4)?V4.boardsToCh:0)||0.845;
+      const pairs=[];
+      Object.keys(D).sort().forEach(k=>{ if(k===key)return; const q=D[k]; if(!q||q.held||q.tossed)return;
+        const gx=(window.pmaShipSum(q)||{}).g; if(!(gx>20))return;
+        const dd=(typeof DISPATCH_DATA!=='undefined')?DISPATCH_DATA[k]:null; if(!dd)return;
+        let c=(dd.total&&dd.total.cas>0)?dd.total.cas:(typeof casualJobsOf==='function'?casualJobsOf(dd):null);
+        if(!(c>0))return; const r=c*b2c/gx; if(r>2&&r<40)pairs.push({am:/_AM$/.test(k),r:r}); });
+      let use=pairs.filter(x=>x.am===!!isAM).slice(-10); if(use.length<3)use=pairs.slice(-10);
+      if(use.length<3)return null;
+      const rs=use.map(x=>x.r).sort((a,b)=>a-b), J=rs[Math.floor(rs.length/2)];
+      return {g:g,J:J,n:use.length,est:g*J};
+    }catch(e){ return null; }
+  };
   const t12=t=>{ const m=/^(\d{1,2}):(\d{2})$/.exec(String(t||'')); if(!m)return String(t||''); let h=+m[1]; const ap=h>=12?'PM':'AM'; h=h%12||12; return h+':'+m[2]+' '+ap; };
   /* #pmaclerk(oct5) — the record card's PMA line: longshore + clerk the hall filled, and when it wrapped */
   window.pmaRecLine=function(key){
