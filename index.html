@@ -8,7 +8,8 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct6botwx';   /* oct 6 (20th) — the Dispatch Bot does mini weather reports off the Wire's Open-Meteo pull: heat, cold, rain, wind, fog, storms or a nice day, today before 3 PM and tonight after; every third turn, every other one when rain is close (#botwx). */
+window.SHK_BUILD='oct6moveless';   /* oct 6 (21st) — CHANCE IT MOVES and the HOT/WARM/COLD chip are gone from the call (they sat at 97–100% and said nothing); when a board might really hold (15%+), one warning line says the odds; the console's "% moves" follows the same rule (#moveless). */
+/* was: oct6botwx */   /* oct 6 (20th) — the Dispatch Bot does mini weather reports off the Wire's Open-Meteo pull: heat, cold, rain, wind, fog, storms or a nice day, today before 3 PM and tonight after; every third turn, every other one when rain is close (#botwx). */
 /* was: oct6botfloat */   /* oct 6 (19th) — THE BUBBLE: the Dispatch Bot floats bottom-left over the Wire — its face in a glowing circle, the line sliding out in a speech bubble when it says something new and tucking back after 14 s; tap the face to read it again (#botfloat). */
 /* was: oct6mission */   /* oct 6 (18th) — MISSION CONTROL: the board up next is one console — the call (jobs for casuals and how much of the hall's order that is), the chips that moved it, and a switch between the sheet (casual vs members, the top boards) and the week (vs average, the boards that moved most, all boards one tap away); The Call card and the old open sheet under Up Next are folded into it (#mission). */
 /* was: oct6gauge */   /* oct 6 (17th) — THE GAUGE: every board on the record is a small dashboard — attendance ring with the usual marked, the cards and letters walked, PMA total · hall · casual as bars, worked / flopped / not eligible / PMA split as pills — and its sheet pulls down from under it without repeating the tiles; PMA's block drops "Dispatched" (#gauge). */
@@ -5294,6 +5295,11 @@ html.daylight #botFloat .bf-bub{background:#fff;border-color:rgba(15,17,20,.14);
 html.daylight #botFloat .bf-av{background:#fff;border-color:var(--bf-ink);box-shadow:0 4px 12px rgba(15,17,20,.18)}
 html.daylight #botFloat .bf-dot{border-color:#fff;box-shadow:none}
 @media (prefers-reduced-motion:reduce){#botFloat .bf-av{animation:none}#botFloat.pop .bf-bub{animation:none}}
+</style>
+<style>
+/* #moveless */
+.wm-hold{width:100%;text-align:center;font:500 12.5px Inter,system-ui,sans-serif;color:var(--steel);padding:6px 10px;border-radius:12px;border:1px dashed rgba(224,73,46,.45);background:rgba(224,73,46,.08)}
+.wm-hold b{color:var(--ember);font-weight:800}
 </style>
 </head>
 <body>
@@ -14592,10 +14598,14 @@ function renderWireStage(o){
   /* meters — move% bar + heat, instead of a run-on sentence */
   const heat=o.mom>=3.5?'hot':o.mom>=1?'warm':'cold';
   const heatTxt=heat==='hot'?'🔥 HOT':heat==='warm'?'WARM':'❄ COLD';
-  set('wMeters',
-    '<div class="wm-move"><div class="wm-lbl">CHANCE IT MOVES<span class="pct">'+o.pmove+'%</span></div>'
-    +'<div class="wm-bar"><div class="wm-fill" style="width:'+Math.max(3,o.pmove)+'%"></div></div></div>'
-    +'<div class="heat '+heat+'">'+heatTxt+'</div>');
+  /* #moveless(oct6) — "CHANCE IT MOVES" sat at 97–100% on nearly every board and said nothing. It only speaks now
+     when holding is a real possibility (under 85% to move): one warning line with the odds the board sits. */
+  void heatTxt;
+  const _hold=100-o.pmove;
+  set('wMeters', _hold>=15
+    ? '<div class="wm-hold"><b>'+_hold+'%</b> chance the board <b>holds</b> — '+(_hold>=50?'more likely than not nobody gets called':'a quiet one could sit on its card')+'</div>'
+    : '');
+  try{ const m=document.getElementById('wMeters'); if(m)m.style.display=_hold>=15?'':'none'; }catch(e){}
   /* #cycle(sep4) — THE CYCLE LINE takes the runaway slot. See publishCall for the
      why. Three voices: ALERT when the call more likely than not reaches the rested
      letters, WATCH when the tail is real (the old 12% bar), steady otherwise — and
@@ -19532,7 +19542,7 @@ function mcConsole(key,dd,lc,live,pd){
   if(!f&&!sheet)return null;
   const esc=acEsc, n=v=>Number(v).toLocaleString();
   const D=new Date(pd+'T12:00:00'), lbl=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][D.getDay()]+' '+(D.getMonth()+1)+'/'+D.getDate()+' · '+(isAM?'Day':'Night');
-  let h='<div class="mc-hd"><span class="mc-live"><i></i>'+(live?'LIVE':'UP NEXT')+'</span><span class="mc-when">· '+lbl+'</span>'+(lc?'<span class="mc-mv">'+lc.pmove+'% MOVES</span>':'')+'</div>';
+  let h='<div class="mc-hd"><span class="mc-live"><i></i>'+(live?'LIVE':'UP NEXT')+'</span><span class="mc-when">· '+lbl+'</span>'+(lc&&lc.pmove<85?'<span class="mc-mv">'+(100-lc.pmove)+'% MAY HOLD</span>':'')+'</div>';
   if(f&&f.stop){ h+='<div class="mc-hero"><b>0</b><span>STOP-WORK SHEET<br>NO CASUAL WORK EXPECTED</span></div>'; }
   else if(f){ const pct=f.H?Math.min(100,Math.round(f.casual/f.H*100)):null;
     h+='<div class="mc-hero"><b>~'+n(f.casual)+'</b><span>JOBS EXPECTED<br>FOR CASUALS</span></div>';
@@ -19622,7 +19632,7 @@ function renderRecentBoards(){
       try{ const mc=mcConsole(key,dd,lc,live,pd); if(mc){ card.className='rbcard up mc-up'; card.innerHTML=mc; mcWire(card); return {card:card,xp:null}; } }catch(e){ try{console.warn('mission',e);}catch(_){} }
       card.innerHTML='<div class="rb-glyph">▶</div><div class="rb-main">'
         +'<div class="rb-top">'+(live?'LIVE':'UP NEXT')+' · '+fmtD(pd)+' · '+callSlot.replace('_',' ')+(_hasSheet?' <span class="rb-sheet">▤ SHEET ▾</span>':'')+'</div>'
-        +'<div class="rb-stats">'+(lc?'<span class="rb-chip">stop ~'+lc.stop+'</span><span class="rb-chip">band '+lc.lo+'–'+lc.hi+'</span><span class="rb-chip att">'+lc.pmove+'% moves</span>':'<span class="rb-chip">the wire is open</span>')+'</div></div>'
+        +'<div class="rb-stats">'+(lc?'<span class="rb-chip">stop ~'+lc.stop+'</span><span class="rb-chip">band '+lc.lo+'–'+lc.hi+'</span>'+(lc.pmove<85?'<span class="rb-chip att">'+(100-lc.pmove)+'% may hold</span>':'')+'':'<span class="rb-chip">the wire is open</span>')+'</div></div>'
         +'<span class="pill '+(live?'grn':'gold')+'">'+(live?'LIVE':'NEXT')+'</span>';
       let xp=null;
       if(_hasSheet){ card.style.cursor='pointer';
