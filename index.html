@@ -8,7 +8,8 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct6attgap';   /* oct 6 (15th) — attendance: "of N called" moves up beside SHOWED UP, so the legend has no gap (#attbar). */
+window.SHK_BUILD='oct6pulldown';   /* oct 6 (16th) — a board's sheet pulls down open and rolls back up (#pulldown); the sheet's tiles read PMA TOTAL · HALL JOBS · CASUAL BOARDS. */
+/* was: oct6attgap */   /* oct 6 (15th) — attendance: "of N called" moves up beside SHOWED UP, so the legend has no gap (#attbar). */
 /* was: oct6callslim */   /* oct 6 (14th) — The Call card is just the jobs expected to reach casuals and the three chips that moved it (weekday, time of month, steadys); tiles, routes bar, blend chip and Track Record tab removed (#callslim). */
 /* was: oct6attbar */   /* oct 6 (13th) — ATTENDANCE AS THE WHOLE CALL: each board row's meter is one full bar of every card called — worked, flopped, not eligible — with the % that showed up big, a tick at the shift's usual attendance (last 14 boards) and above/below/about usual; the row's figures are bigger and set in Inter (#attbar). */
 /* was: oct6dropest */   /* oct 6 (12th) — the Drop Log's "ballpark" is an ESTIMATE of how many came down so far, not of the whole board: the option reads "Estimate — about this many so far", the row tag "estimate", the total "came down so far · estimated" (#dropest). */
@@ -19071,9 +19072,10 @@ function xpSheet(d,label,key){
   /* #recent2 — PMA's number overrides every other (the Keymaster): its finished sheet's Jobs Dispatched, else its labor order (New − Cut) */
   const _pmH=pm?((pm.f&&pm.h!=null)?pm.h:(_nc!=null?_nc:null)):null;
   h+='<div class="xs-hero'+(_lsT?'':' two')+'">'
+    +(_lsT?'<div class="xs-t tot"><b>'+_n(_lsT)+'</b><span>PMA TOTAL</span><small>all longshore</small></div>':'')
     +'<div class="xs-t hall"><b>'+(_pmH!=null?_n(_pmH):(t.grand!=null?_n(t.grand):'—'))+'</b><span>HALL JOBS</span>'+'</div>'
     +'<div class="xs-t cas"><b>'+(casShown!=null?_n(casShown):'—')+'</b><span>CASUAL BOARDS</span></div>'
-    +(_lsT?'<div class="xs-t tot"><b>'+_n(_lsT)+'</b><span>PMA TOTAL</span><small>all longshore</small></div>':'')+'</div>';
++'</div>';
   if(pm&&pm.ls&&_lsT>0){
     const L=pm.ls, w=v=>Math.max(0,v/_lsT*100).toFixed(1)+'%';
     h+='<div class="xs-comp"><div class="xs-lbl"><span>WHERE THE '+_n(_lsT)+' GO</span>'+(pm.sw?'<b style="color:var(--ember)">STOP-WORK · RAIL ONLY</b>':'<b>'+_n(L[3])+' cut</b>')+'</div>'
@@ -19305,6 +19307,23 @@ function rbUsualAtt(isAM,date){
   const L=v.slice(-14); const out=L.length>=3?Math.round(L.reduce((a,b)=>a+b,0)/L.length):null;
   _rbAttC[k]=out; return out;
 }
+/* #pulldown(oct6) — a board's sheet drops open like a screen pulled down (height + a slight slide and fade) and
+   rolls back up when closed, instead of popping in and out */
+function rbXpToggle(xp,open){
+  if(!xp)return;
+  const reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if(xp._anim){ try{ xp._anim.cancel(); }catch(e){} xp._anim=null; }
+  if(open){ xp.style.display='block'; if(reduce||!xp.animate)return;
+    const h=xp.scrollHeight;
+    xp.style.overflow='hidden';
+    xp._anim=xp.animate([{height:'0px',opacity:0,transform:'translateY(-10px)'},{height:h+'px',opacity:1,transform:'translateY(0)'}],{duration:Math.min(520,260+h*0.12),easing:'cubic-bezier(.2,.8,.2,1)'});
+    xp._anim.onfinish=()=>{ xp.style.overflow=''; xp._anim=null; };
+  } else { if(reduce||!xp.animate){ xp.style.display='none'; return; }
+    const h=xp.offsetHeight; xp.style.overflow='hidden';
+    xp._anim=xp.animate([{height:h+'px',opacity:1,transform:'translateY(0)'},{height:'0px',opacity:0,transform:'translateY(-10px)'}],{duration:Math.min(420,220+h*0.08),easing:'cubic-bezier(.4,0,.6,1)'});
+    xp._anim.onfinish=()=>{ xp.style.display='none'; xp.style.overflow=''; xp._anim=null; };
+  }
+}
 function renderRecentBoards(){
   if(typeof rb==="undefined"||!rb)return;
   rb.innerHTML='';
@@ -19354,7 +19373,7 @@ function renderRecentBoards(){
         const s0=card.querySelector('.rb-sheet'); if(s0)s0.textContent='▤ SHEET ▴';
         /* #jul23c — remember the casual's choice: closing the pending sheet keeps it
            closed for the session (no re-render reopens it); a fresh app open resets it. */
-        card.addEventListener('click',()=>{const opening=(xp.style.display==='none');xp.style.display=opening?'block':'none';if(opening)delete window._pendClosed.sheet;else window._pendClosed.sheet=true;const s=card.querySelector('.rb-sheet');if(s)s.textContent=opening?'▤ SHEET ▴':'▤ SHEET ▾';});
+        card.addEventListener('click',()=>{const opening=(xp.style.display==='none');rbXpToggle(xp,opening);if(opening)delete window._pendClosed.sheet;else window._pendClosed.sheet=true;const s=card.querySelector('.rb-sheet');if(s)s.textContent=opening?'▤ SHEET ▴':'▤ SHEET ▾';});
       }
       return {card,xp};
     }});
@@ -19506,7 +19525,7 @@ function renderRecentBoards(){
         xp.innerHTML=(dd?xpSheet(dd,'DISPATCH SHEET — FINAL',key):'')+_pmaH+(dd&&dd.early?xpEarlyCompact(dd)+'<div class="xp-earlyfull" style="display:none">'+xpSheet(dd.early,'EARLY — FULL BREAKDOWN')+'</div>':'');
         if(dd&&dd.early){const more=xp.querySelector('.xp-more'),ef=xp.querySelector('.xp-earlyfull');
           if(more&&ef)more.addEventListener('click',ev=>{ev.stopPropagation();ef.style.display=(ef.style.display==='none')?'block':'none';more.textContent=(ef.style.display==='none')?'full sheet ▾':'full sheet ▴';});}
-        card.addEventListener('click',()=>{xp.style.display=(xp.style.display==='none')?'block':'none';const s=card.querySelector('.rb-sheet');if(s)s.textContent=xp.style.display==='none'?'▤ SHEET ▾':'▤ SHEET ▴';});
+        card.addEventListener('click',()=>{const _op=(xp.style.display==='none');rbXpToggle(xp,_op);const s=card.querySelector('.rb-sheet');if(s)s.textContent=!_op?'▤ SHEET ▾':'▤ SHEET ▴';});
       }
       return {card,xp};
     }});
