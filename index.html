@@ -8,7 +8,8 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct6pmafirst';   /* oct 6 (6th) — the call runs on PMA first: the board's gang orders off its PMA sheet × what a gang has meant in jobs, 65%, the union's count 35% (or PMA alone before the union's sheet lands); PMA's come-down no longer rides the engine's count axis (#pmafirst). */
+window.SHK_BUILD='oct6ladder';   /* oct 6 (7th) — THE LADDER: the call rebuilt on PMA's sheet — hall jobs (Longshore New − Cut, off PMA's labor order or the union sheet) × the recent letters-per-hall-job rate, with weekday, month-phase and steady-share effects learned off the record; stop-work sheets call no work; a jump in B book turnout speeds up the learning; blended with V4 by whichever has been closer lately. The reader takes PMA's Labor Order Summary; a sheet with only Jobs Dispatched is the EARLY (pre-dispatch) sheet again (#pmaladder). */
+/* was: oct6pmafirst */   /* oct 6 (6th) — the call runs on PMA first: the board's gang orders off its PMA sheet × what a gang has meant in jobs, 65%, the union's count 35% (or PMA alone before the union's sheet lands); PMA's come-down no longer rides the engine's count axis (#pmafirst). */
 /* was: oct6nodisp */   /* oct 6 (5th) — no "jobs dispatched" line on the short night sheet's card; the jobs count above it already says it (#nightpma). */
 /* was: oct6pmaonce */   /* oct 6 (4th) — PMA says it once on a record card: the PMA ✓ pill; the line under it is just 📋 477 longshore + 34 clerk (#pmaonce). */
 /* was: oct6nightpma */   /* oct 6 (3rd) — the short PMA night sheet (no end card) gets its PMA ✓ and a 📋 PMA · jobs dispatched line on the record (#nightpma). */
@@ -13782,7 +13783,7 @@ function restLadder(openingCard){
             heldLast:(boardMoved(lb)===false),sig:sig,base0:b0};
   }catch(e){return null;}
 }
-/* #ladder — STRETCH THE CALL. The engine's distribution says "with this count the
+/* #pmaladder — STRETCH THE CALL. The engine's distribution says "with this count the
    board moves m ordinary letters" (it ends inside letter start+m, so m covers the
    walk from m to m+1 ordinary letters). Re-walk that against the ladder: a thin
    letter only spends thinW of an ordinary letter, a fresh one spends a whole one.
@@ -14198,7 +14199,8 @@ function renderWireStage(o){
     }[L]||'—';
     /* #portsig — an estimate that heard the vessel schedule says so (only when it moved the number) */
     let txt2=txt; try{ const pv=window._portVol; if(pv&&(L==='EST'||L==='AM')&&Math.abs(pv.mult-1)>=0.03) txt2+=' · ships '+(pv.pct>0?'+':'')+pv.pct+'% vs normal'; }catch(e){}
-    try{ const pm=window._pmaVol; if(pm&&pm.g)txt2+=' · PMA first: '+pm.g+' gangs ordered'+(pm.union!=null?' (union sheet second)':''); }catch(e){}   /* #pmafirst */
+    try{ const lg=window._pmaLadder; if(lg){ if(lg.stop)txt2+=' · STOP-WORK sheet — no casual work expected'; else txt2+=' · '+(lg.est?'~':'')+Number(lg.H).toLocaleString()+' hall jobs ('+lg.Hsrc+') → ~'+Number(lg.casual).toLocaleString()+' to casuals';
+      const al=lg.fast&&lg.turnout&&lg.turnout.alert; if(al)txt2+=' · ⚠ B book turnout '+(al.dir==='up'?'jumped':'dropped')+' ('+al.from+' → '+al.to+') — re-learning fast'; } }catch(e){}   /* #pmaladder */   /* #pmafirst */
     srcEl.className='wire-src '+cls; srcEl.textContent=txt2;
   }
   /* hero */
@@ -14222,9 +14224,9 @@ function renderWireStage(o){
   const myId=(typeof myBoardId==='function')?myBoardId():null;
   const myDist=myId?((((AZ2.indexOf(myId[0])-o.base)%26)+26)%26):-1;
   const lad=o.ladder||null;
-  const thinAt=k=>!!(lad&&lad.thin&&lad.thin[k]>=0.34);           /* #ladder — a third or more resting: same edge restLadder names */
+  const thinAt=k=>!!(lad&&lad.thin&&lad.thin[k]>=0.34);           /* #pmaladder — a third or more resting: same edge restLadder names */
   const restAt=(o.cycle&&o.cycle.d>0)?o.cycle.d:-1;                /* first rested letter, if it's on the ladder */
-  const freshAt=(o.cycle&&o.cycle.opensThin&&o.cycle.fd>0)?o.cycle.fd:-1;   /* #ladder — where the fresh letters begin on a thin-opening night */
+  const freshAt=(o.cycle&&o.cycle.opensThin&&o.cycle.fd>0)?o.cycle.fd:-1;   /* #pmaladder — where the fresh letters begin on a thin-opening night */
   let cells='';
   for(let k=0;k<=span;k++){
     let cls='wire-cell', inner=AZ2[(o.base+k)%26];
@@ -14262,7 +14264,7 @@ function renderWireStage(o){
     run.style.display='block';
     const c=o.cycle;
     if(c&&c.opensThin){
-      /* #ladder — THE NIGHT OPENS INTO THIN LETTERS. The last board lapped (or ran
+      /* #pmaladder — THE NIGHT OPENS INTO THIN LETTERS. The last board lapped (or ran
          right up to this opening card), so the crew that worked it is exactly the
          crew this board calls first. The line says how far the thin stretch runs,
          where the fresh letters start, and the odds the call gets there. */
@@ -16002,12 +16004,8 @@ function publishCall(){
          that rides a sheet (the branches above) never takes this: the count is already known. */
       try{ const pv=(window.PORTSIG&&PORTSIG.adjust)?PORTSIG.adjust(nd2,isAM):null; if(pv&&pv.mult>0){ ex.ch=ex.ch*pv.mult; window._portVol=pv; } }catch(e){ window._portVol=null; }
     }
-    /* #pmafirst(oct6) — PMA's gang orders for this board come first; the union's count is second */
+    /* #pmaladder(oct6) — #pmafirst's gang-order blend is retired: the ladder below runs on PMA's labor order directly */
     window._pmaVol=null;
-    try{ const pv=window.pmaVolFor?window.pmaVolFor(key,isAM):null;
-      if(pv&&pv.est>0){ const un=(source==='FINAL'||source==='EARLY')?ex.ch:null;
-        ex.ch=(un!=null)?(0.65*pv.est+0.35*un):pv.est; if(un==null)source='EARLY';
-        window._pmaVol=Object.assign({union:un},pv); } }catch(e){ window._pmaVol=null; }
     if(_dropTot>0){ ex.ch=Math.max(ex.ch||0,_dropTot*V4.boardsToCh); if(source!=='FINAL')source='EARLY'; }   /* #liverecalc */
     /* #casaxis — cross-slot momentum for a DAY board: how far last night's board ran.
        Prefer the record (a sealed board, or one the hotline/wire already ended), and fall
@@ -16029,12 +16027,18 @@ function publishCall(){
       if(_xm==null){ try{ const L=V4._log(true); for(let i=L.length-1;i>=0&&i>=L.length-4;i--){ if(L[i][8]===key.slice(0,10)){ _xm=L[i][3]; break; } } }catch(e){} }
     }
     pmf=V4.predict({isAM:isAM,dow:dowIdx,chHat:ex.ch,totHat:ex.tot,mom:mom,date:nd2,cats:cats,xm:_xm});
+    /* #pmaladder(oct6) — THE LADDER: hall jobs off PMA's labor order (or the union sheet) through the union's ladder to the
+       casual board, blended with V4 by recent accuracy. A stop-work sheet calls no work. */
+    window._pmaLadder=null;
+    try{ if(window.PMALAD){ const lb=PMALAD.blend(key,isAM,pmf,{cats:cats,dropTot:_dropTot});
+      if(lb&&lb.pmf){ pmf=lb.pmf; window._pmaLadder=lb.info;
+        if(!lb.info.est&&(source==='EST'||source==='AM'))source='EARLY'; } } }catch(e){ window._pmaLadder=null; }
     const _cap=(typeof V4.capacityFor==="function")?V4.capacityFor(isAM):null;
     /* #casaxis — the readout names the axis the call actually ran on. `cas` is the sheet's
        casual figure, `ch` that figure on the hall scale (×boardsToCh) = the kNN's match key.
        totEwma is the weekday union-scale guess, carried for the fallback engines only —
        it is NOT off the sheet, so it never again gets to masquerade as a real total. */
-    window._v4dbg={source:source,axis:'casual',cas:(_cas!=null?Math.round(_cas):null),ch:Math.round(ex.ch),totEwma:Math.round(ex.tot),cap:_cap,spill:(_cap!=null?Math.round(Math.max(0,ex.tot-_cap)):null),att:(window._v4att||null),cats:cats.list,shutdown:!!cats.shutdown,mom:+(mom||0).toFixed(2),lastNight:(isAM&&_xm!=null?_xm:null),thisMorning:(!isAM&&_xm!=null?_xm:null),portVol:(window._portVol||null),earlyFed:_fromEarly,earlyDrift:(_fromEarly?+(_earlyDrift(!isAM)).toFixed(3):null)};   /* #earlyfeed(aug20) — the dev log shows when the call rides the 11 AM paper */
+    window._v4dbg={source:source,axis:'casual',cas:(_cas!=null?Math.round(_cas):null),ch:Math.round(ex.ch),totEwma:Math.round(ex.tot),cap:_cap,spill:(_cap!=null?Math.round(Math.max(0,ex.tot-_cap)):null),att:(window._v4att||null),cats:cats.list,shutdown:!!cats.shutdown,mom:+(mom||0).toFixed(2),lastNight:(isAM&&_xm!=null?_xm:null),thisMorning:(!isAM&&_xm!=null?_xm:null),portVol:(window._portVol||null),earlyFed:_fromEarly,earlyDrift:(_fromEarly?+(_earlyDrift(!isAM)).toFixed(3):null),pmaLadder:(window._pmaLadder?{H:window._pmaLadder.H,src:window._pmaLadder.Hsrc,casual:window._pmaLadder.casual,letters:+(+window._pmaLadder.L||0).toFixed(1),jpl:+(+window._pmaLadder.jpl||0).toFixed(1),eff:window._pmaLadder.eff,stop:window._pmaLadder.stop,w:window._pmaLadder.w,fast:window._pmaLadder.fast,alert:(window._pmaLadder.turnout&&window._pmaLadder.turnout.alert)||null,med:{ladder:window._pmaLadder.ladderMed,v4:window._pmaLadder.v4Med,blend:window._pmaLadder.blendMed}}:null)};   /* #earlyfeed(aug20) — the dev log shows when the call rides the 11 AM paper */
   }catch(_v4e){ if(window.console)console.warn('V4 fallback',_v4e); pmf=null; }
   if(!pmf){
     if(!isAM){
@@ -16114,7 +16118,7 @@ function publishCall(){
      in renderWireStage (the ladder hatches the rested letters; the runaway line
      becomes the cycle line). Null when the last board isn't sealed — the stage
      then falls back to the old runaway odds. */
-  /* #ladder — the rest zone is now read off the ladder (which letters are thin,
+  /* #pmaladder — the rest zone is now read off the ladder (which letters are thin,
      and where the fresh ones begin), not off the last board's two end letters. */
   let cycle=null;
   try{
@@ -16568,7 +16572,7 @@ window.renderMyOdds=renderMyOdds;
        (a weekday rolling over, a learned table settling) can still move, so allow at
        most one recompute per half hour when every visible input is unchanged. */
     var valve=Math.floor(Date.now()/1800000);
-    /* #ladder — the pending cell reads the stretched call, so the ladder is an input */
+    /* #pmaladder — the pending cell reads the stretched call, so the ladder is an input */
     var lad=null; try{ lad=(window._restLadder&&window._restLadder.any&&window._restLadder.anchor===anchor)?window._restLadder:null; }catch(e){}
     /* #v5slice(sep21) — THE FIT IS AN INPUT TOO. Every other piece of this key describes the
        DATA; none of it says which v5 fit turned the data into numbers. That was already a
@@ -16672,7 +16676,7 @@ window.renderMyOdds=renderMyOdds;
           for(j=0;j<27;j++){ if(pmf[j]) N[(q+j*10)%BINS]+=D[q]*pmf[j]; }
         }
         D=N;
-        if(isAM) momAM=0.3*meanRaw+0.7*momAM; else { momPM=0.3*meanRaw+0.7*momPM; lastPMact=meanRaw; }   /* #ladder — pace rolls on the ordinary mean */
+        if(isAM) momAM=0.3*meanRaw+0.7*momAM; else { momPM=0.3*meanRaw+0.7*momPM; lastPMact=meanRaw; }   /* #pmaladder — pace rolls on the ordinary mean */
 
         row.slots.push({ap:isAM?"AM":"PM",slot:slot,reach:reach,sharp:sharp,
                         band:(row.cal&&reach<0.09)?BANDS[0]:bandOf(reach),mean:mean});
@@ -38214,10 +38218,34 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
        working it, its type, status, ETA/ATA and gangs. Same rule as above — rows are found by POSITION: each
        vessel name sits in the "Vessel" column, and everything on its baseline belongs to it. */
     try{ const sh=pmaShips(clean); if(sh.length)out.ships=sh; }catch(e){}
-    out.v=2;   /* #pmaships — read by the reader that knows ships + clerk jobs (older rows lack them; the To-Do offers a re-add) */
+    try{ const lo=pmaLos(clean); if(lo)out.los=lo; }catch(e){}   /* #pmaladder — the Labor Order Summary */
+    out.v=3;   /* #pmaships — read by the reader that knows ships + clerk jobs (older rows lack them; the To-Do offers a re-add) */
     out.final=!!out.end;
     out.ok=true;
     return out;
+  }
+  /* #pmaladder(oct6) — the LABOR ORDER SUMMARY (page 3/4): Category/Board × Vessel/Dock/Rail/Total × New·Back·Steady·Cut·Total.
+     Found by POSITION like everything else here: a row is a Type word in the Type column; its five numbers are
+     the numeric items on its baseline right of it, left to right; its category is the nearest category label
+     on or above it in the Category/Board column. */
+  function pmaLos(clean){
+    const out={};
+    const hC=clean.find(i=>i.s==='Category/Board'); if(!hC)return null;
+    const pg=clean.filter(i=>i.p===hC.p);
+    const hT=pg.find(i=>i.s==='Type'&&Math.abs(i.y-hC.y)<=3); if(!hT)return null;
+    const isNum=s=>/^-?\d[\d,]*$/.test(s), toN=s=>parseInt(String(s).replace(/,/g,''),10);
+    const TYPES={Vessel:1,Dock:1,Rail:1,Total:1};
+    const cats=pg.filter(i=>Math.abs(i.x-hC.x)<=8&&i.y<hC.y-3&&!TYPES[i.s]&&!isNum(i.s));
+    const rows=pg.filter(i=>TYPES[i.s]&&Math.abs(i.x-hT.x)<=14&&i.y<hC.y-3).sort((a,b)=>b.y-a.y);
+    rows.forEach(R=>{
+      const ns=pg.filter(i=>Math.abs(i.y-R.y)<=3&&i.x>R.x+10&&isNum(i.s)).sort((a,b)=>a.x-b.x);
+      if(ns.length!==5)return;
+      let cat=null,d=1e9; cats.forEach(c=>{ const dy=c.y-R.y; if(dy>=-3&&dy<d){d=dy;cat=c.s;} });
+      if(!cat)return;
+      const v=ns.map(i=>toN(i.s));
+      (out[cat]=out[cat]||{})[R.s]={N:v[0],B:v[1],S:v[2],C:v[3],T:v[4]};
+    });
+    return Object.keys(out).length?out:null;
   }
   /* one vessel = {c company, v vessel, t type, s status, a ETA/ATA (YYYY-MM-DDTHH:MM), n new, b back, x cut,
      g total gangs this shift, w gangs worked to date, f gangs to finish} */
@@ -38395,6 +38423,11 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
     let h='<div class="xp-h">PMA · SHIFT '+esc(p.shift)+'</div>';   /* #nohalltime */
     h+='<div class="xp-tot">Ordered <b>'+n(p.ordered)+'</b> · Dispatched <b>'+n(p.dispatched)+'</b>'
       +(p.toCH!=null?' · To the casual hall <b style="color:var(--copper-hi)">'+n(p.toCH)+'</b>':'')+'</div>';
+    /* #pmaladder — the labor order: what the hall had to fill, and what was filled before it opened */
+    try{ const T=p.los&&p.los['Total Longshore']&&p.los['Total Longshore'].Total;
+      if(T)h+='<div class="xp-mem">Labor order · new <b>'+n(T.N)+'</b> · come-backs <b>'+n(T.B)+'</b> · steady <b>'+n(T.S)+'</b> · cut <b>'+n(T.C)+'</b> → <b style="color:var(--copper-hi)">'+n(T.N-T.C)+'</b> hall jobs'
+        +((p.los['Total Longshore'].Vessel||p.los['Total Longshore'].Dock)?'':' · <b style="color:var(--ember)">STOP-WORK</b> (rail only)')+'</div>';
+      if(p.classA!=null&&p.classB!=null)h+='<div class="xp-mem">Union checked in · A <b>'+n(p.classA)+'</b> · B <b>'+n(p.classB)+'</b></div>'; }catch(e){}
     if(x){ const moved=window.pmaMoved(x);
       h+='<div class="xp-mem"'+(moved?' style="color:var(--ember)"':'')+'>Union sheet <b>'+n(x.u)+'</b> → PMA order <b>'+n(x.ord)+'</b> ('
         +(x.d>0?'+':'')+x.d.toLocaleString()+')'+(moved?' — the final order differed from the union sheet':' — matches the union sheet')+'</div>'; }
@@ -38627,7 +38660,10 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
      end card and no "Ordered"/"L/S Dispatch Completed" lines: page 3 is just the Dispatch Actuals (jobs dispatched,
      start card, cycled Y/N). An early sheet has no Dispatch Actuals at all. So jobs-dispatched on the sheet means
      the dispatch is over — no more "grab the finished one" for a sheet that's as finished as PMA makes it. */
-  function pmaDone(p){ return !!(p&&(p.final||p.lsDone||p.dispatched!=null)); }
+  /* #pmaladder(oct6) — the PDFs' own timestamps say otherwise: the sheet that carries only Jobs Dispatched + the start card
+     is made BEFORE the dispatch (Mon 10/5 night's at ~4:15 PM, Tue 10/6 day's the evening before) — it's PMA's EARLY sheet,
+     with the full Labor Order Summary on it. Done = the sheet shows the dispatch's results. */
+  function pmaDone(p){ return !!(p&&(p.final||p.lsDone||p.toCH!=null||p.ordered!=null||p.classA!=null)); }
   window.pmaDone=pmaDone;
   window.pmaMissing=function(now){ return recentBoards(now).filter(k=>!pmaDone(D[k])); };
 
@@ -38927,6 +38963,248 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
     document.getElementById('pmFile').addEventListener('change',async function(ev){ const fs=[...(ev.target.files||[])]; if(fs.length){ await uploadFiles(fs,say); renderBar(); setTimeout(function(){ window.pmaPanel(pane,back); const m=document.getElementById('pmMsg'); if(m&&msg)m.innerHTML=msg.innerHTML; },600); } });
   };
 }catch(e){ try{console.warn('[pmasheet]',e);}catch(_){} }})();
+</script>
+<script>
+/* ═══ #pmaladder(oct6) — THE LADDER: THE CALL REBUILT ON PMA'S SHEET ═══════════════════════════════════════
+   By request, rebuilt from scratch around PMA's 720 Dispatch Summary. What 71 PMA sheets (Feb 2024 →
+   Oct 2026) and the board record taught us:
+     · HALL JOBS = Total Longshore New − Cut. PMA's "Jobs Dispatched" is that number to within a few jobs
+       on every finished sheet, and the union dispatch sheet's total is the same figure. Back (come-backs)
+       and Steady are filled before the hall opens; Cut is gangs cancelled; Walking Boss never touches it.
+     · THE UNION GOES FIRST. Steadys with no work, then A book, then B book take hall jobs; casuals get
+       what's left. The union can cover about two-thirds of the A+B men who check in (≈0.65–0.70 days,
+       ≈0.51–0.64 nights). Feb–Jun 2026 that covered every job (0 to casuals); since a big group of B book
+       moved up to A (B checked in ~600 → ~350, and the new A's pick their days) 25–45% of hall jobs reach
+       casuals.
+     · LETTERS ≈ CASUAL JOBS ÷ ~37. Jobs per letter is steady (28–43) except on laps.
+     · A HIGH STEADY SHARE (Steady ÷ Total) means fewer jobs reach casuals than usual (r ≈ −0.5).
+     · STOP-WORK sheets carry only Rail rows; hoot (shift 3) has no casual dispatch.
+   The engine, per board (day and night apart):
+     letters = hall jobs × the recent letters-per-hall-job rate (half-life 10 days — 4 when union turnout
+               just jumped) × weekday effect × month-phase effect × steady-share effect,
+     the rate learned on EVERY board in the record (hall jobs off PMA, else the union sheet, else the
+     log's count ÷ κ), the effects learned on the residuals and shrunk hard, so a pattern has to keep
+     showing up before it moves the call. Jobs per letter is learned from boards with both PMA's casual
+     count and the record's letters, so the call also says how many jobs it expects to reach casuals.
+   It rides beside V4 (the kNN): the published call is a blend, and the blend weight follows whichever
+   engine has been closer on the last 20 sealed boards (0.30–0.85). Stop-work → a no-work call. */
+(function(){try{
+  const SEED={"2024-02-17_Sat_AM":{"h":1141,"ls":[1141,338,302,0,1781],"f":1,"c":0,"A":1221,"B":618,"s":"R4889","e":"R4889"},"2024-02-19_Mon_AM":{"h":1063,"ls":[1062,635,407,0,2104],"f":1,"c":79,"A":1134,"B":840,"s":"Y4918","e":"B4966"},"2024-03-12_Tue_PM":{"h":647,"ls":[652,601,331,0,1584],"f":1,"c":0,"A":1013,"B":585,"s":"Z4936","e":"Z4936"},"2024-05-04_Sat_PM":{"h":311,"ls":[303,510,172,0,985],"f":1,"A":862,"B":459,"s":"J4950","e":"J4955"},"2024-07-18_Thu_PM":{"h":865,"ls":[864,647,383,0,1894],"f":1,"c":0,"A":943,"B":526,"s":"N4882","e":"N4915"},"2024-09-07_Sat_PM":{"h":774,"ls":[760,484,220,0,1464],"f":1,"c":124,"A":889,"B":392,"s":"N4684","e":"R4751"},"2024-09-21_Sat_AM":{"h":1127,"ls":[1130,914,413,0,2457],"f":1,"c":212,"A":970,"B":408,"s":"K4997","e":"R4944"},"2024-10-01_Tue_PM":{"h":690,"ls":[691,755,366,0,1812],"f":1,"c":0,"A":1035,"B":387,"s":"S4953","e":"S4953"},"2024-11-21_Thu_AM":{"h":1119,"ls":[1167,1100,524,0,2791],"f":1,"c":226,"A":941,"B":474,"s":"T4896","e":"B4996"},"2025-01-18_Sat_AM":{"h":865,"ls":[881,688,316,0,1885],"f":1,"c":0,"A":1043,"B":444,"s":"N5026","e":"N5026"},"2025-07-26_Sat_AM":{"h":753,"ls":[713,656,303,0,1672],"f":1,"c":0,"A":971,"B":399,"s":"D5025","e":"D5025"},"2026-01-12_Mon_AM":{"h":1401,"ls":[1407,495,489,0,2391],"f":1,"c":203,"A":1124,"B":597,"s":"L4878"},"2026-02-05_Thu_PM":{"h":153,"ls":[38,46,26,0,110],"f":1,"c":0,"A":963,"B":529,"sw":1,"s":"O4927","e":"O4927"},"2026-02-07_Sat_AM":{"h":1104,"ls":[1091,367,282,0,1740],"f":1,"c":0,"A":1117,"B":618,"s":"O5040","e":"O5040"},"2026-03-14_Sat_AM":{"h":868,"ls":[836,370,275,0,1481],"f":1,"c":0,"A":1120,"B":530,"s":"A4855","e":"A4855"},"2026-03-15_Sun_AM":{"h":778,"ls":[779,296,220,0,1295],"f":1,"c":0,"A":1078,"B":563,"s":"A4855","e":"A4855"},"2026-04-29_Wed_PM":{"h":1019,"ls":[1003,548,392,0,1943],"f":1,"c":0,"A":957,"B":484,"s":"D4898","e":"D4956"},"2026-05-06_Wed_AM":{"h":1177,"ls":[1127,590,488,0,2205],"f":1,"c":0,"A":1063,"B":660,"s":"V4939","e":"V4939"},"2026-05-14_Thu_AM":{"h":1084,"ls":[1102,755,480,0,2337],"f":1,"c":1,"A":984,"B":599,"s":"K4886","e":"K4974"},"2026-06-23_Tue_AM":{"h":1016,"ls":[1016,848,481,0,2345],"f":1,"c":110,"A":882,"B":507,"s":"E4959","e":"I5030"},"2026-06-30_Tue_AM":{"h":1065,"ls":[1034,744,441,0,2219],"f":1,"c":0,"A":1127,"B":474,"s":"F4976","e":"F4976"},"2026-07-21_Tue_PM":{"h":900,"ls":[897,795,391,0,2083],"f":1,"c":110,"A":983,"B":250,"s":"T4504","e":"V5054"},"2026-08-02_Sun_AM":{"h":1136,"ls":[1136,583,302,0,2021],"f":1,"c":197,"A":1060,"B":305,"s":"D5041","e":"I4946"},"2026-09-01_Tue_AM":{"h":1405,"ls":[1405,907,490,0,2802],"f":1,"c":459,"A":1017,"B":346,"s":"D4993","e":"P4893"},"2026-09-01_Tue_PM":{"h":957,"ls":[947,943,410,0,2300],"f":1,"c":250,"A":890,"B":224,"s":"P4894","e":"V4968"},"2026-09-23_Wed_AM":{"h":990,"ls":[989,1034,470,0,2493],"f":1,"c":237,"A":900,"B":366,"s":"R5005","e":"X5054"},"2026-09-23_Wed_PM":{"h":844,"ls":[838,950,380,0,2168],"f":1,"c":246,"A":839,"B":259,"s":"X5055","e":"E4871"},"2026-09-24_Thu_AM":{"h":1394,"ls":[1397,1012,490,0,2899],"f":1,"c":537,"A":916,"B":364,"s":"E4872","e":"R5000"},"2026-09-24_Thu_PM":{"h":1063,"ls":[1054,762,405,0,2221],"f":1,"c":319,"A":907,"B":259,"s":"R5001","e":"A4996"},"2026-09-25_Fri_AM":{"h":1569,"ls":[1569,919,491,0,2979],"f":1,"c":617,"A":975,"B":394,"s":"A4997","e":"Q4946"},"2026-09-25_Fri_PM":{"h":1009,"ls":[990,731,373,0,2094],"f":1,"c":304,"A":934,"B":251,"s":"Q4947","e":"C5053"},"2026-09-26_Sat_AM":{"h":1284,"ls":[1296,670,428,0,2394],"f":1,"c":242,"A":1023,"B":362,"s":"C5054","e":"I5039"},"2026-09-26_Sat_PM":{"h":1014,"ls":[1000,525,278,0,1803],"f":1,"c":344,"A":893,"B":202,"s":"I5040","e":"R4911"},"2026-09-27_Sun_AM":{"h":941,"ls":[941,816,339,0,2096],"f":1,"c":314,"A":829,"B":296,"s":"R4912","e":"A4463"},"2026-09-27_Sun_PM":{"h":646,"ls":[638,664,243,0,1545],"f":0,"s":"A4464"},"2026-09-29_Tue_AM":{"h":1423,"ls":[1485,932,535,63,2889],"f":1,"c":403,"A":1010,"B":403,"s":"U4918","e":"F4889"},"2026-09-30_Wed_AM":{"h":1252,"ls":[1265,1069,512,13,2833],"f":1,"c":356,"A":907,"B":379,"s":"N4950","e":"W4846"},"2026-10-01_Thu_AM":{"h":1229,"ls":[1429,1108,479,193,2823],"f":1,"c":523,"A":858,"B":284,"s":"D5051","e":"R4884"},"2026-10-01_Thu_PM":{"h":85,"ls":[102,73,74,0,249],"f":1,"c":70,"A":863,"B":262,"sw":1,"s":"R4885","e":"T5029"},"2026-10-02_Fri_AM":{"h":1197,"ls":[1596,1038,514,398,2750],"f":1,"c":405,"A":886,"B":368,"s":"T5030","e":"H4956"},"2026-10-02_Fri_PM":{"h":1234,"ls":[1484,689,456,269,2360],"f":1,"c":443,"A":1044,"B":294,"s":"H4957","e":"T4842"},"2026-10-03_Sat_AM":{"h":1070,"ls":[1412,815,456,335,2348],"f":1,"c":348,"A":961,"B":329,"s":"T4843","e":"C4979"},"2026-10-03_Sat_PM":{"h":990,"ls":[982,641,294,0,1917],"f":1,"c":447,"A":869,"B":193,"s":"C4980","e":"O5049"},"2026-10-04_Sun_AM":{"h":1333,"ls":[1333,809,364,0,2506],"f":1,"c":565,"A":880,"B":314,"s":"O5050"},"2026-10-04_Sun_PM":{"h":982,"ls":[974,655,290,0,1919],"f":1,"c":429,"A":861,"B":224,"s":"O5050","e":"N4881"},"2026-10-05_Mon_AM":{"h":1617,"ls":[1755,547,467,139,2630],"f":1,"c":477,"A":1228,"B":438,"s":"N4882","e":"B4922"},"2026-10-05_Mon_PM":{"h":1251,"ls":[1245,494,401,0,2140],"f":0,"s":"B4923"},"2026-10-06_Tue_AM":{"h":1124,"ls":[1460,798,497,287,2468],"f":0}};
+  const LS='shadowhook_ladder_calls';
+  const DOWS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const HL=10, HL_FAST=4, SH_DOW=8, SH_PH=30, LAP_CAP=24, JPL0=37, BETA_S0=-5, LAM_S=0.004;
+  const isoOf=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  const keyOf=(date,isAM)=>{ const d=new Date(date+'T12:00:00'); return date+'_'+DOWS[d.getDay()]+'_'+(isAM?'AM':'PM'); };
+  const days=(a,b)=>(new Date(a+'T12:00:00')-new Date(b+'T12:00:00'))/864e5;
+  const ord=(date,isAM)=>date+(isAM?'_1':'_2');
+  function phaseOf(date){ const d=new Date(date+'T12:00:00'), dim=new Date(d.getFullYear(),d.getMonth()+1,0).getDate(), dom=d.getDate();
+    return dom<=4?'early':(dim-dom<=5?'late':'mid'); }
+  function Phi(z){ const t=1/(1+0.2316419*Math.abs(z)), d=0.3989423*Math.exp(-z*z/2);
+    const p=d*t*(0.3193815+t*(-0.3565638+t*(1.781478+t*(-1.821256+t*1.330274)))); return z>0?1-p:p; }
+
+  /* ── one PMA sheet, live (pma_sheets) over the seed ── */
+  function pmaOf(key){
+    const p=(window.PMA_DATA||{})[key];
+    let a=null, b=null;
+    if(p&&!p.held&&!p.tossed){
+      const T=p.los&&p.los['Total Longshore'];
+      const fin=p.ordered!=null||p.classA!=null||p.toCH!=null;
+      let c=(p.toCH!=null)?p.toCH:(p.lsFilled!=null?p.lsFilled:null);
+      if(c==null&&fin&&p.start&&p.start===p.end)c=0;
+      a={ h:(fin&&p.dispatched!=null)?p.dispatched:null,
+          nc:(T&&T.Total)?(T.Total.N-T.Total.C):null, ls:(T&&T.Total)?[T.Total.N,T.Total.B,T.Total.S,T.Total.C,T.Total.T]:null,
+          early:(p.dispatched!=null&&!fin)?p.dispatched:null,
+          c:c, A:(p.classA!=null?p.classA:null), B:(p.classB!=null?p.classB:null), f:fin, sw:T?!!(!T.Vessel&&!T.Dock):null, los:!!T, live:true };
+    }
+    const s=SEED[key];
+    if(s)b={ h:s.f?s.h:null, nc:s.ls?s.ls[0]-s.ls[3]:null, ls:s.ls||null, early:s.f?null:s.h, c:(s.c!=null?s.c:null),
+             A:(s.A!=null?s.A:null), B:(s.B!=null?s.B:null), f:!!s.f, sw:!!s.sw, los:!!s.ls, live:false };
+    if(!a)return b;
+    if(b){ /* a sheet on the wire that predates the labor-order reader borrows the seed's copy of the same sheet */
+      ['h','nc','ls','c','A','B','sw'].forEach(f=>{ if(a[f]==null)a[f]=b[f]; });
+      if(b.f&&!a.f){ a.f=true; a.early=null; }
+      a.los=a.los||b.los; }
+    a.sw=!!a.sw;
+    return a;
+  }
+  function unionTotal(key){
+    try{ const dd=(typeof DISPATCH_DATA!=='undefined')?DISPATCH_DATA[key]:null; const t=(dd&&typeof sheetGrandTotal==='function')?sheetGrandTotal(dd):null;
+      return (t>0)?t:null; }catch(e){ return null; }
+  }
+  function pmaKeys(){ const ks=new Set(Object.keys(SEED)); try{ Object.keys(window.PMA_DATA||{}).forEach(k=>ks.add(k)); }catch(e){} return [...ks]; }
+
+  /* ── the record: every sealed board, both slots, on the hall-jobs scale ── */
+  let _rows=null, _rowsSig='';
+  function rawLog(isAM){ try{ return (typeof V4!=='undefined'&&V4._log)?V4._log(isAM):[]; }catch(e){ return []; } }
+  function rowsAll(){
+    const la=rawLog(true), lp=rawLog(false);
+    const sig=la.length+'|'+lp.length+'|'+(la.length?la[la.length-1][8]:'')+'|'+(lp.length?lp[lp.length-1][8]:'')+'|'+Object.keys(window.PMA_DATA||{}).length+'|'+(typeof DISPATCH_DATA!=='undefined'?Object.keys(DISPATCH_DATA).length:0);
+    if(_rows&&sig===_rowsSig)return _rows;
+    const cut=isoOf(new Date(Date.now()-400*864e5));
+    const out=[];
+    [[la,true],[lp,false]].forEach(([L,isAM])=>{ L.forEach(r=>{ const date=r[8]; if(!date||date<cut)return;
+      const key=keyOf(date,isAM), pm=pmaOf(key), un=unionTotal(key);
+      out.push({key:key,date:date,isAM:isAM,o:ord(date,isAM),ch:r[0],tot:r[1],act:r[3],dow:new Date(date+'T12:00:00').getDay(),
+        pmH:pm?(pm.h!=null?pm.h:pm.nc):null, unH:un, pm:pm});
+    }); });
+    /* boards PMA has that the log doesn't (yet): PMA's own start and end cards say how many letters it walked */
+    const have=new Set(out.map(r=>r.key)), AZ='ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    pmaKeys().forEach(k=>{ if(have.has(k))return; const date=k.slice(0,10); if(date<cut)return;
+      const pm=pmaOf(k); if(!pm||!pm.f)return;
+      const p=(window.PMA_DATA||{})[k]||{}, sd=SEED[k]||{};
+      const s0=String(p.start||sd.s||''), e0=String(p.end||sd.e||'');
+      if(!/^[A-Z]\d+$/.test(s0)||!/^[A-Z]\d+$/.test(e0))return;
+      let act=(AZ.indexOf(e0[0])-AZ.indexOf(s0[0])+26)%26; if(act===0&&s0!==e0&&pm.c>0)act=26;
+      const isAM=k.endsWith('AM');
+      out.push({key:k,date:date,isAM:isAM,o:ord(date,isAM),ch:null,tot:pm.ls?pm.ls[4]:null,act:act,dow:new Date(date+'T12:00:00').getDay(),pmH:pm.h!=null?pm.h:pm.nc,unH:unionTotal(k),pm:pm,fromPma:true}); });
+    out.sort((a,b)=>a.o<b.o?-1:a.o>b.o?1:0);
+    /* κ — the log's count over hall jobs, from boards that have both */
+    const ks=[]; out.forEach(r=>{ const H=r.pmH||r.unH; if(H>300&&r.ch>0){ const k=r.ch/H; if(k>0.5&&k<1.2)ks.push(k); } });
+    ks.sort((a,b)=>a-b); const kappa=ks.length>=5?ks[Math.floor(ks.length/2)]:0.82;
+    out.forEach(r=>{ let H=r.pmH, src='pma';
+      if(!(H>0)&&r.unH>0&&r.ch>0&&r.ch/r.unH>0.5&&r.ch/r.unH<1.2){ H=r.unH; src='union'; }
+      if(!(H>0)&&r.ch>0){ H=r.ch/kappa; src='log'; }
+      r.H=H; r.Hsrc=src;
+      r.ok=(H>300)&&!(r.pm&&r.pm.sw)&&(r.tot==null||r.tot>800);
+      r.st=(r.pm&&r.pm.ls&&r.pm.ls[4]>0)?r.pm.ls[2]/r.pm.ls[4]:null; });
+    _rows=out; _rowsSig=sig; _rows.kappa=kappa; _fitCache={};
+    return out;
+  }
+
+  /* ── the union-turnout watch: B checked in jumping means the ladder changed ── */
+  function turnout(asOfO){
+    const L=pmaKeys().map(k=>{ const p=pmaOf(k); const isAM=k.endsWith('AM'); return p&&p.A>0&&p.B>0?{k:k,date:k.slice(0,10),isAM:isAM,o:ord(k.slice(0,10),isAM),A:p.A,B:p.B}:null; })
+      .filter(Boolean).filter(x=>!asOfO||x.o<asOfO).sort((a,b)=>a.o<b.o?-1:1);
+    if(!L.length)return null;
+    const last=L[L.length-1];
+    const prior=L.filter(x=>x!==last&&x.isAM===last.isAM&&days(last.date,x.date)<=28&&days(last.date,x.date)>0);
+    let alert=null;
+    /* a real change (a new group registered into B, or another class moving up) holds shift after shift — one busy
+       Monday doesn't count: the last TWO sheets of the slot both have to sit 100+ men (and 25%) off the four weeks before */
+    const same=L.filter(x=>x.isAM===last.isAM), prev=same.length>=2?same[same.length-2]:null;
+    if(prior.length>=3&&prev){ const base=prior.filter(x=>x!==prev); const mb=(base.length?base:prior).reduce((s,x)=>s+x.B,0)/(base.length||prior.length);
+      const d=last.B-mb, d2=prev.B-mb, th=Math.max(100,0.25*mb);
+      if(Math.abs(d)>=th&&Math.abs(d2)>=th&&Math.sign(d)===Math.sign(d2))alert={dir:d>0?'up':'down',from:Math.round(mb),to:last.B,date:last.date,key:last.k}; }
+    return {last:last,alert:alert};
+  }
+
+  /* ── the fit: base rate + effects, as of a point in time ── */
+  let _fitCache={};
+  function fitAsOf(isAM,asOfO,asOfDate,fast){
+    const ck=(isAM?'A':'P')+asOfO+(fast?'f':'');
+    if(_fitCache[ck])return _fitCache[ck];
+    const all=rowsAll().filter(r=>r.ok&&r.o<asOfO);
+    const S=all.filter(r=>r.isAM===isAM&&days(asOfDate,r.date)<=200);
+    const hl=fast?HL_FAST:HL;
+    /* each board's residual against the base it would have had */
+    const hist=[];
+    for(let i=0;i<S.length;i++){
+      const x=S[i]; let sw=0,sr=0;
+      for(let j=Math.max(0,i-60);j<i;j++){ const h=S[j]; const w=Math.pow(0.5,days(x.date,h.date)/HL); sw+=w; sr+=w*Math.min(h.act,LAP_CAP)/h.H; }
+      if(sw>0.05&&i>=5){ const base=x.H*sr/sw; hist.push({x:x,res:Math.log((Math.min(x.act,26)+1)/(base+1))}); }
+    }
+    let sw=0,sr=0; const tail=S.slice(-60);
+    tail.forEach(h=>{ const w=Math.pow(0.5,days(asOfDate,h.date)/hl); sw+=w; sr+=w*Math.min(h.act,LAP_CAP)/h.H; });
+    const rate=sw>0?sr/sw:null;
+    /* backfit: weekday, month phase */
+    const eD={},eP={}; const gD=h=>h.x.dow, gP=h=>phaseOf(h.x.date);
+    for(let it=0;it<3;it++){
+      const aD={},nD={}; hist.forEach(h=>{ const g=gD(h); aD[g]=(aD[g]||0)+h.res-(eP[gP(h)]||0); nD[g]=(nD[g]||0)+1; });
+      Object.keys(aD).forEach(g=>{ eD[g]=aD[g]/(nD[g]+SH_DOW); });
+      const aP={},nP={}; hist.forEach(h=>{ const g=gP(h); aP[g]=(aP[g]||0)+h.res-(eD[gD(h)]||0); nP[g]=(nP[g]||0)+1; });
+      Object.keys(aP).forEach(g=>{ eP[g]=aP[g]/(nP[g]+SH_PH); });
+    }
+    /* steady share — boards with PMA's labor order; slope shrunk toward the prior */
+    const sv=hist.filter(h=>h.x.st!=null); let beta=BETA_S0, stMean=0.172;
+    if(sv.length){ stMean=sv.reduce((s,h)=>s+h.x.st,0)/sv.length;
+      let num=LAM_S*BETA_S0, den=LAM_S; sv.forEach(h=>{ const dx=h.x.st-stMean; const r=h.res-(eD[gD(h)]||0)-(eP[gP(h)]||0); num+=dx*r; den+=dx*dx; });
+      beta=Math.max(-15,Math.min(5,num/den)); }
+    /* spread: robust, last 80 residuals after effects */
+    const rr=hist.slice(-80).map(h=>h.res-(eD[gD(h)]||0)-(eP[gP(h)]||0)).sort((a,b)=>a-b);
+    let sigma=0.45; if(rr.length>=15){ const med=rr[Math.floor(rr.length/2)]; const ad=rr.map(v=>Math.abs(v-med)).sort((a,b)=>a-b); sigma=Math.max(0.3,Math.min(0.8,1.4826*ad[Math.floor(ad.length/2)])); }
+    /* jobs per letter — PMA's casual count over the record's letters, laps out */
+    let jw=3,js=3*JPL0; all.forEach(r=>{ const c=r.pm&&r.pm.c; if(c>0&&r.act>=1&&r.act<=23){ const w=Math.pow(0.5,days(asOfDate,r.date)/30); const v=Math.max(15,Math.min(70,c/r.act)); jw+=w; js+=w*v; } });
+    const fit={rate:rate,eD:eD,eP:eP,beta:beta,stMean:stMean,sigma:sigma,jpl:js/jw,n:S.length,nHist:hist.length,nSteady:sv.length};
+    _fitCache[ck]=fit; return fit;
+  }
+
+  /* ── hall jobs for the board being called ── */
+  function hallFor(key,isAM,asOfO){
+    const pm=pmaOf(key);
+    if(pm&&pm.nc>0)return {H:pm.nc,src:'PMA labor order',pm:pm};
+    if(pm&&pm.early>0)return {H:pm.early,src:'PMA early sheet',pm:pm};
+    if(pm&&pm.h>0)return {H:pm.h,src:'PMA',pm:pm};
+    const un=unionTotal(key); if(un>0)return {H:un,src:'union sheet',pm:pm};
+    /* nothing posted yet: the last four of the same weekday and slot */
+    const dow=new Date(key.slice(0,10)+'T12:00:00').getDay();
+    const L=rowsAll().filter(r=>r.ok&&r.isAM===isAM&&r.dow===dow&&r.o<asOfO).slice(-4);
+    if(L.length>=2)return {H:L.reduce((s,r)=>s+r.H,0)/L.length,src:'estimate',est:true,pm:pm};
+    return null;
+  }
+
+  function pmfOf(L,sigma){
+    const mu=Math.log(L+1), p=new Array(27).fill(0); let prev=0;
+    for(let k=0;k<26;k++){ const c=Phi((Math.log(k+1.5)-mu)/sigma); p[k]=c-prev; prev=c; }
+    p[26]=1-prev; return p;
+  }
+  const STOP=()=>{ const p=new Array(27).fill(0); p[0]=0.85; p[1]=0.1; p[2]=0.05; return p; };
+
+  /* ── the call ── */
+  function forecast(key,isAM,opt){
+    opt=opt||{};
+    if(opt.cats&&opt.cats.shutdown)return null;            /* V4's holiday no-work call stands */
+    const date=key.slice(0,10), o=ord(date,isAM);
+    const hall=hallFor(key,isAM,o); if(!hall)return null;
+    const pm=hall.pm;
+    const to=turnout(o);
+    const fast=!!(to&&to.alert&&days(date,to.alert.date)<=10);
+    /* stop-work: only Rail on the labor order, or an order a quarter of normal */
+    const fit=fitAsOf(isAM,o,date,fast);
+    if(fit.rate==null||fit.n<10)return null;
+    const norm=rowsAll().filter(r=>r.ok&&r.isAM===isAM&&r.o<o).slice(-14); const nH=norm.length?norm.reduce((s,r)=>s+r.H,0)/norm.length:null;
+    const stop=!!((pm&&pm.sw)||(!hall.est&&nH&&hall.H<0.25*nH));
+    if(stop)return {pmf:STOP(),stop:true,H:Math.round(hall.H),Hsrc:hall.src,L:0,casual:0,turnout:to};
+    const dow=new Date(date+'T12:00:00').getDay(), ph=phaseOf(date);
+    const eD=fit.eD[dow]||0, eP=fit.eP[ph]||0;
+    const st=(pm&&pm.ls&&pm.ls[4]>0)?pm.ls[2]/pm.ls[4]:null;
+    const eS=(st!=null)?Math.max(-0.15,Math.min(0.15,fit.beta*(st-fit.stMean))):0;   /* capped: a steady share past anything on file doesn't get to run away */
+    const base=hall.H*fit.rate;
+    let L=Math.max(0,(base+1)*Math.exp(eD+eP+eS)-1);
+    if(opt.dropTot>0)L=Math.max(L,opt.dropTot/fit.jpl);   /* the drop log during the window: what came down already is a floor */
+    const sigma=fit.sigma*(hall.est?1.25:1);
+    return {pmf:pmfOf(L,sigma),L:L,casual:Math.round(L*fit.jpl),jpl:fit.jpl,H:Math.round(hall.H),Hsrc:hall.src,est:!!hall.est,
+            rate:fit.rate,eff:{dow:+eD.toFixed(3),phase:+eP.toFixed(3),phaseName:ph,steady:+eS.toFixed(3),st:st},
+            sigma:sigma,fast:fast,turnout:to,n:fit.n,kappa:_rows&&_rows.kappa,stop:false};
+  }
+
+  /* ── the blend with V4: whichever has been closer lately gets more say ── */
+  function loadCalls(){ try{ return JSON.parse(localStorage.getItem(LS)||'{}')||{}; }catch(e){ return {}; } }
+  function medOf(p){ if(!p)return null; let c=0; for(let i=0;i<p.length;i++){ c+=p[i]; if(c>=0.5)return i; } return p.length-1; }
+  function weight(hasCount){
+    const C=loadCalls(); let eL=0,eV=0,n=0;
+    try{ (typeof RECENT!=='undefined'?RECENT:[]).filter(r=>r&&typeof r.act==='number').slice(-40).forEach(r=>{
+      const c=C[r.date+'_'+r.slot]; if(!c||c.l==null||c.v==null)return; const a=Math.min(r.act,26);
+      eL+=Math.abs(c.l-a); eV+=Math.abs(c.v-a); n++; }); }catch(e){}
+    let w=hasCount?0.6:0.45;
+    if(n>=5){ w=w+0.08*((eV-eL)/n)*Math.min(1,n/20); }
+    return {w:Math.max(0.3,Math.min(0.85,w)),n:n,eL:n?eL/n:null,eV:n?eV/n:null};
+  }
+  function blend(key,isAM,v4pmf,opt){
+    const f=forecast(key,isAM,opt); if(!f)return null;
+    const wt=weight(!f.est);
+    let pmf=f.pmf;
+    if(f.stop){ pmf=f.pmf; wt.w=1; }
+    else if(v4pmf&&v4pmf.length===27){ pmf=f.pmf.map((x,i)=>wt.w*x+(1-wt.w)*(v4pmf[i]||0)); }
+    else wt.w=1;
+    try{ const C=loadCalls(); C[key]={l:medOf(f.pmf),v:medOf(v4pmf),at:Date.now()};
+      const ks=Object.keys(C).sort(); while(ks.length>120)delete C[ks.shift()];
+      localStorage.setItem(LS,JSON.stringify(C)); }catch(e){}
+    f.w=wt; f.blendMed=medOf(pmf); f.ladderMed=medOf(f.pmf); f.v4Med=medOf(v4pmf);
+    return {pmf:pmf,info:f};
+  }
+  window.PMALAD={forecast:forecast,blend:blend,pmaOf:pmaOf,turnout:turnout,rows:rowsAll,fit:fitAsOf,seed:SEED,weight:weight,
+    reset:function(){ _rows=null; _fitCache={}; }};
+}catch(e){ try{ console.warn('PMALAD failed',e); }catch(_){} }})();
 </script>
 <script>
 /* ═══ #kmtodo(oct5) — THE KEYMASTER'S TO-DO ═══════════════════════════════════════════════════════
