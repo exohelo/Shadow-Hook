@@ -8,8 +8,11 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct6noband';   /* oct 6 (38th) — the bot says the predicted stop without the band (F–N). */
-/* was: oct6botchat */
+window.SHK_BUILD='oct6bighall';   /* oct 6 (42nd) — the check-in spot reads BIG HALL CHECK-IN: how many people checked in at the big hall. */
+/* was: oct6gooalign */   /* oct 6 (41st) — the header's drips stay on the goo lip after tab switches and closing the profile (#gooalign). */
+/* was: oct6cktotal */   /* oct 6 (40th) — UNION CHECK-IN is one number: the total checked in at the big hall; the sheet shows UNION CHECKED IN; the band chip and the share card's band line are gone (#cktotal). */
+/* was: oct6mintonce */   /* oct 6 (39th) — one trip to the mint per tap; a call cut off by leaving for checkout is no longer filed as "bucks mint — Load failed" (#mintonce). */
+/* was: oct6noband */
 /* was: oct6ckin2 */   /* oct 6 (33rd) — UNION CHECK-IN gets its own spot in the Drop Log: A-book / B-book, +3 ⬡ the first report on a board; the middle report feeds the call (#ckin2). */
 /* was: oct6ckin */   /* oct 6 (32nd) — the Drop Log takes UNION CHECK-IN reports (A-book / B-book); the middle report replaces the check-in forecast for the board being dispatched and feeds the call's check-in route (#ckin). */
 /* was: oct6checkfix */   /* oct 6 (31st) — the app no longer balances a sheet's numbers on its own: disagreements are flagged, the Keymaster gets a ⚠ alert on the board, and ✓ CHECK & FIX shows the picture of the paper with every number to correct by hand (#nobalance #checkfix). */
@@ -5495,6 +5498,7 @@ html.daylight .cf-r em b{background:rgba(15,17,20,.08);color:var(--bone)}
 .ck-hd span{margin-left:auto;color:#cfff7a;letter-spacing:.06em}
 .ck-sub{font:500 12px Inter,sans-serif;color:var(--steel);margin:3px 0 8px}
 .ck-row{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end}
+.ck-row.ck-one{grid-template-columns:1fr auto}.ck-row.ck-one input{font-size:20px;padding:9px 6px}
 .ck-row label{font:700 10.5px 'Barlow Condensed',sans-serif;letter-spacing:.14em;color:var(--steel);display:flex;flex-direction:column;gap:4px}
 .ck-row input{width:100%;box-sizing:border-box;font:800 17px Inter,sans-serif;text-align:center;color:var(--bone);background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:8px 6px}
 .ck-row button{all:unset;cursor:pointer;padding:10px 14px;border-radius:10px;font:700 13px 'Barlow Condensed',sans-serif;letter-spacing:.12em;color:#0b0a16;background:linear-gradient(180deg,#6ff0ff,#2aa9c6)}
@@ -6933,11 +6937,11 @@ window.DEVLOG=(function(){
         </select></div>
       </div>
       <button class="dl-slam" id="dropAdd" type="button">⚡ LOG THE DROP</button>
-      <!-- #ckin2(oct6) — UNION CHECK-IN: how many A-book and B-book checked in, heard at the hall. +3 ⬡ once a board. -->
+      <!-- #cktotal(oct6) — BIG HALL CHECK-IN: the one number that matters — how many people checked in at the big hall. +3 ⬡ once a board. -->
       <div class="ck-box" id="ckBox">
-        <div class="ck-hd">👥 UNION CHECK-IN <span>+3 ⬡</span></div>
-        <div class="ck-sub">Heard how many union checked in? It sharpens the call for everyone.</div>
-        <div class="ck-row"><label>A-BOOK<input id="ckA" type="text" inputmode="numeric" placeholder="0"></label><label>B-BOOK<input id="ckB" type="text" inputmode="numeric" placeholder="0"></label><button type="button" id="ckAdd">LOG IT</button></div>
+        <div class="ck-hd">👥 BIG HALL CHECK-IN <span>+3 ⬡</span></div>
+        <div class="ck-sub">How many people checked in at the big hall? It sharpens the call for everyone.</div>
+        <div class="ck-row ck-one"><label>CHECKED IN AT THE BIG HALL<input id="ckT" type="text" inputmode="numeric" placeholder="0"></label><button type="button" id="ckAdd">LOG IT</button></div>
         <div class="ck-now" id="ckNow"></div>
       </div>
       <div id="dropList" class="dl-list"></div>
@@ -8201,11 +8205,21 @@ html.daylight .hm-lm .lk-g,html.daylight .hm-lm .lk-w{fill:#dfeaf7}
           :('book failed: '+String(e.message||'').replace(/</g,'&lt;'));
       }
     }
+    /* #mintonce(oct6) — ONE TRIP TO THE MINT PER TAP. The till takes about a second to open Stripe, the button
+       showed nothing in between, so members tapped again; the first answer sent the phone to checkout, and the
+       move away from the page killed the second, still-running call, which Safari reports as "Load failed" and
+       the alarm book filed as a jam (VEESONASTY 10/6, WILL_FELANDO 10/5 — both times the till answered 200 and
+       the checkout opened). Now a tap locks the packs until the answer lands, and a call cut off because the
+       phone is already leaving for checkout is never filed. */
+    let _bankBusy=false;
     async function bankBuy(id){
       const m=$('bankBuyMsg');
+      if(_bankBusy||window.__shkLeaving)return;
       if(!mintOpen()){ try{ toast('⚓ The mint isn’t open yet — the ⬡ you earn still count'); }catch(e){} return; }   /* #mintsoon — no call to the till while it's shut */
       if(!window.SB||!window.__shkUid){m.textContent='✗ claim your card and sign in first — the mint has to know whose stack to fill';return;}
       m.textContent='opening the mint…';
+      _bankBusy=true; const _bp=$('bankPacks'); if(_bp)_bp.style.cssText+=';opacity:.55;pointer-events:none';
+      const _unlock=()=>{ _bankBusy=false; if(_bp){ _bp.style.opacity=''; _bp.style.pointerEvents=''; } };
       try{
         /* #mintauth(aug12) — THE MINT IS ONLY EVER CALLED WITH A REAL SESSION.
            The button can be hit while the session is still being restored (cold
@@ -8219,15 +8233,18 @@ html.daylight .hm-lm .lk-g,html.daylight .hm-lm .lk-w{fill:#dfeaf7}
           try{const s=await window.SB.auth.getSession();if(s&&s.data&&s.data.session&&s.data.session.access_token)tok=s.data.session.access_token;}catch(e){}
           if(!tok)await new Promise(r2=>setTimeout(r2,500));
         }
-        if(!tok){m.textContent='✗ claim your card and sign in first — the mint has to know whose stack to fill';return;}
+        if(!tok){_unlock();m.textContent='✗ claim your card and sign in first — the mint has to know whose stack to fill';return;}
         const r=await fetch(String(window.SUPABASE_URL).replace(/\/+$/,'')+'/functions/v1/bucks-till',{method:'POST',
           headers:{'Content-Type':'application/json','apikey':window.SUPABASE_ANON_KEY||'','Authorization':'Bearer '+tok},
           body:JSON.stringify({action:'create',pack:id,return_url:location.origin+location.pathname})});
         const j=await r.json().catch(()=>null);
-        if(r.ok&&j&&j.url){location.href=j.url;return;}
+        if(r.ok&&j&&j.url){window.__shkLeaving=true; m.textContent='⬡ off to the checkout…'; setTimeout(()=>{ window.__shkLeaving=false; _unlock(); },8000); location.href=j.url;return;}
+        _unlock();
         m.textContent='✗ '+((j&&j.error)||'the mint isn’t wired yet — soon');
         try{if(window.shkAlert)shkAlert('bucks mint',(j&&j.error)||('bucks-till '+r.status));}catch(e){}
       }catch(e){
+        if(window.__shkLeaving)return;   /* the page is already on its way to checkout — a cut-off call, not a jam */
+        _unlock();
         m.textContent='✗ no wire to the mint — check your signal and try again';
         try{if(window.shkAlert)shkAlert('bucks mint',e);}catch(e2){}
       }
@@ -19500,7 +19517,7 @@ function xpSheet(d,label,key,noTiles){
       +'<span><em style="background:var(--neon-v,#7b5cff)"></em>come-backs<b>'+_n(L[1])+'</b></span>'
       +'<span><em style="background:var(--neon2,#ff4dd2)"></em>steady<b>'+_n(L[2])+'</b></span></div></div>';
   }
-  if(ci)h+='<div class="xs-lbl" style="justify-content:center">'+(ci.actual?'CHECK-IN':ci.crowd?'CHECK-IN · REPORTED':'CHECK-IN FORECAST')+'</div><div class="xs-ci"><span>A-BOOK<b>'+(ci.actual?'':'~')+_n(ci.A)+'</b></span><span>B-BOOK<b>'+(ci.actual?'':'~')+_n(ci.B)+'</b></span></div>';
+  if(ci)h+='<div class="xs-lbl" style="justify-content:center">'+(ci.actual?'CHECK-IN':ci.crowd?'CHECK-IN · REPORTED':'CHECK-IN FORECAST')+'</div><div class="xs-ci"><span>BIG HALL CHECK-IN<b>'+(ci.actual||ci.crowd?'':'~')+_n(ci.T||(ci.A+ci.B))+'</b></span></div>';
   if(t.casual.length||t.members.length){
     const max=Math.max(1,...rows.map(x=>x[1]));
     rows.forEach(([k,n])=>{const pct=Math.round(n/max*100);
@@ -19870,7 +19887,7 @@ function renderRecentBoards(){
         return {card:card,xp:mxp}; } }catch(e){ try{console.warn('mission',e);}catch(_){} }
       card.innerHTML='<div class="rb-glyph">▶</div><div class="rb-main">'
         +'<div class="rb-top">'+(live?'LIVE':'UP NEXT')+' · '+fmtD(pd)+' · '+callSlot.replace('_',' ')+(_hasSheet?' <span class="rb-sheet">▤ SHEET ▾</span>':'')+'</div>'
-        +'<div class="rb-stats">'+(lc?'<span class="rb-chip">stop ~'+lc.stop+'</span><span class="rb-chip">band '+lc.lo+'–'+lc.hi+'</span>'+(lc.pmove<85?'<span class="rb-chip att">'+(100-lc.pmove)+'% may hold</span>':'')+'':'<span class="rb-chip">the wire is open</span>')+'</div></div>'
+        +'<div class="rb-stats">'+(lc?'<span class="rb-chip">stop ~'+lc.stop+'</span>'+(lc.pmove<85?'<span class="rb-chip att">'+(100-lc.pmove)+'% may hold</span>':'')+'':'<span class="rb-chip">the wire is open</span>')+'</div></div>'
         +'<span class="pill '+(live?'grn':'gold')+'">'+(live?'LIVE':'NEXT')+'</span>';
       let xp=null;
       if(_hasSheet){ card.style.cursor='pointer';
@@ -20713,7 +20730,7 @@ function botFacts(){
     if(f&&f.stop)F.push('tonight\'s a <b>stop-work</b> sheet — don\'t count on casual work');
     else if(f&&f.casual!=null)F.push('the call says about <b>'+n(f.casual)+'</b> jobs reach casuals'+(f.H?' — that\'s '+Math.round(f.casual/f.H*100)+'% of the '+n(f.H)+' hall jobs':''));
     if(lc&&lc.stop)F.push('predicted stop is <b>'+lc.stop+'</b>');
-    if(f&&f.checkin&&!f.checkin.actual)F.push('I\'m guessing about <b>'+n(f.checkin.A)+'</b> A-book and <b>'+n(f.checkin.B)+'</b> B-book check in');
+    if(f&&f.checkin&&!f.checkin.actual)F.push(f.checkin.crowd?'word is <b>'+n(f.checkin.T||(f.checkin.A+f.checkin.B))+'</b> checked in at the big hall':'I\'m guessing about <b>'+n(f.checkin.A+f.checkin.B)+'</b> check in at the big hall');
   }catch(e){}
   try{ const w=botWeather(nowLA()); if(w)F.push(w.text); }catch(e){}
   try{ const ff=window.pmaFunFacts?window.pmaFunFacts(nowLA(),_bfMood):[]; (ff||[]).slice(0,4).forEach(x=>F.push(String(x).replace(/^📄\s*/,''))); }catch(e){}
@@ -20880,11 +20897,11 @@ function finRecord(id,v){
    drop claws its pay back, and the crown can void a row off the wire. */
 function dropPhase(ts){var d=nowLA(ts||Date.now()),m=d.getHours()*60+d.getMinutes();if(m>=NIGHT_OPEN)return m<17*60?"FLEX":(m<18*60?"1ST":"2ND");return m<7*60?"FLEX":(m<8*60?"1ST":"2ND");}
 const DROP_WAVE={FLEX:"Flex","1ST":"1st","2ND":"2nd"};
-const DROP_CATS={CKA:"A-book check-in",CKB:"B-book check-in",UTR:"UTR",FLEX:"Flex",HOOTS:"Hoots",HOLD:"Hold",KH:"Key Hold",SWING:"Swing",SL:"Swing Lash",LASH:"Lash",DOCK:"Dock",CRANE:"Crane",TOP:"Top Pick",SIDE:"Side Pick",RAIL:"Rail",BULL:"Bull",DSIG:"Dock Signal",HL:"Heavy Lift",AUTO:"Autos",JIT:"Jitney",CY:"CY",SWMP:"Swamper",GEAR:"Gear",KEYS:"Keys",BCLK:"Basic Clerk",CLK:"Clerk","?":"they didn't say",EST:"estimate"};
-function dropWaves(list){var w={FLEX:0,"1ST":0,"2ND":0},est=0;list.forEach(function(x){if(/^CK[AB]$/.test(x.cat))return;if(x.cat==="EST"){est=Math.max(est,x.n);return;}var p=x.ph||dropPhase(x.ts);if(w[p]==null)p="2ND";w[p]+=x.n;});return {FLEX:w.FLEX,"1ST":w["1ST"],"2ND":w["2ND"],est:est};}
+const DROP_CATS={CKT:"big hall check-in",CKA:"A-book check-in",CKB:"B-book check-in",UTR:"UTR",FLEX:"Flex",HOOTS:"Hoots",HOLD:"Hold",KH:"Key Hold",SWING:"Swing",SL:"Swing Lash",LASH:"Lash",DOCK:"Dock",CRANE:"Crane",TOP:"Top Pick",SIDE:"Side Pick",RAIL:"Rail",BULL:"Bull",DSIG:"Dock Signal",HL:"Heavy Lift",AUTO:"Autos",JIT:"Jitney",CY:"CY",SWMP:"Swamper",GEAR:"Gear",KEYS:"Keys",BCLK:"Basic Clerk",CLK:"Clerk","?":"they didn't say",EST:"estimate"};
+function dropWaves(list){var w={FLEX:0,"1ST":0,"2ND":0},est=0;list.forEach(function(x){if(/^CK[ABT]$/.test(x.cat))return;if(x.cat==="EST"){est=Math.max(est,x.n);return;}var p=x.ph||dropPhase(x.ts);if(w[p]==null)p="2ND";w[p]+=x.n;});return {FLEX:w.FLEX,"1ST":w["1ST"],"2ND":w["2ND"],est:est};}
 function dropData(){try{const d=JSON.parse(localStorage.getItem(K("droplog"))||"{}");return d[dropKey()]||{drops:[],paid:0}}catch(e){return{drops:[],paid:0}}}
 function dropSave(o){try{const kk=K("droplog");const d=JSON.parse(localStorage.getItem(kk)||"{}");d[dropKey()]=o;localStorage.setItem(kk,JSON.stringify(d));return true}catch(e){return false}}
-function dropTotal(drops){let sum=0,est=0;drops.forEach(x=>{if(/^CK[AB]$/.test(x.cat))return;if(x.cat==="EST")est=Math.max(est,x.n);else sum+=x.n});return Math.max(sum,est)}
+function dropTotal(drops){let sum=0,est=0;drops.forEach(x=>{if(/^CK[ABT]$/.test(x.cat))return;if(x.cat==="EST")est=Math.max(est,x.n);else sum+=x.n});return Math.max(sum,est)}
 function dropRecompute(){
   const t=(typeof dropUnion==="function")?dropUnion().total:dropTotal(dropData().drops);
   try{const kk=K("downlog");const dl=JSON.parse(localStorage.getItem(kk)||"{}");
@@ -20978,7 +20995,8 @@ function dropUnion(){
   /* #ckin(oct6) — UNION CHECK-IN off the Drop Log: what casuals heard for A-book and B-book check-in; the middle
      report of each wins (one fat-fingered entry can't drag it) */
   const med=a=>{ if(!a.length)return null; a=a.slice().sort((x,y)=>x-y); return a[Math.floor(a.length/2)]; };
-  const ck={A:med(out.filter(x=>x.cat==='CKA').map(x=>x.n)),B:med(out.filter(x=>x.cat==='CKB').map(x=>x.n))};
+  const ck={A:med(out.filter(x=>x.cat==='CKA').map(x=>x.n)),B:med(out.filter(x=>x.cat==='CKB').map(x=>x.n)),T:med(out.filter(x=>x.cat==='CKT').map(x=>x.n))};
+  if(!ck.T&&ck.A&&ck.B)ck.T=ck.A+ck.B;   /* #cktotal — older A/B reports still count, as their sum */
   return {list:out,total:dropTotal(out),struck:struck,ck:ck};
 }
 /* #dlmine — put your own wire rows back into this phone's log. Runs off dwPull on a real
@@ -21162,7 +21180,7 @@ function renderDropLog(){
   window._dlN=u.list.length; window._dlTot=u.total;
   el.classList.toggle('fresh',grew);
   if(!u.list.length){el.innerHTML='<div class="dl-empty"><div class="dl-ear"><i></i><i></i><i></i><span>🎙</span></div><b>ALL QUIET… FOR NOW</b><span>first ear on the speaker takes the bucks ⬡</span></div>';return;}
-  const estOnly=u.list.filter(x=>!/^CK[AB]$/.test(x.cat)).every(x=>x.cat==="EST");
+  const estOnly=u.list.filter(x=>!/^CK[ABT]$/.test(x.cat)).every(x=>x.cat==="EST");
   const w=dropWaves(u.list);
   let h='<div class="dl-total'+(moved?' pop':'')+'"><div class="dl-tot-n">'+(estOnly?'~ ':'')+u.total.toLocaleString()+'</div><div class="dl-tot-k">came down so far'+(estOnly?' · estimated':'')+' · every ear on the wire</div></div>';
   if(!estOnly){
@@ -21185,9 +21203,9 @@ function renderDropLog(){
   const _tm=function(ts){const t=nowLA(ts);return (t.getHours()%12||12)+':'+String(t.getMinutes()).padStart(2,"0")+(t.getHours()<12?'a':'p');};
   h+=[...u.list].reverse().map(x=>{
     const wv=(x.cat==="EST")?null:(x.ph||dropPhase(x.ts));
-    const what=(x.cat==="EST"?'~ ':(/^CK[AB]$/.test(x.cat)?'👥 ':'+'))+x.n.toLocaleString()+' · '+(DROP_CATS[x.cat]||x.cat)+(wv?' · '+DROP_WAVE[wv]:'')+' · '+_tm(x.ts)
+    const what=(x.cat==="EST"?'~ ':(/^CK[ABT]$/.test(x.cat)?'👥 ':'+'))+x.n.toLocaleString()+' · '+(DROP_CATS[x.cat]||x.cat)+(wv?' · '+DROP_WAVE[wv]:'')+' · '+_tm(x.ts)
       +(x.backed?' · backed ×'+x.backed:'')+(x.by_handle&&!x.mine?' · '+x.by_handle:'');
-    return '<div class="dl-row"><span class="tm">'+_tm(x.ts)+'</span><span class="nn">'+(x.cat==="EST"?'~ ':(/^CK[AB]$/.test(x.cat)?'👥 ':'+'))+x.n.toLocaleString()+'</span><span class="meta">'+(DROP_CATS[x.cat]||x.cat)
+    return '<div class="dl-row"><span class="tm">'+_tm(x.ts)+'</span><span class="nn">'+(x.cat==="EST"?'~ ':(/^CK[ABT]$/.test(x.cat)?'👥 ':'+'))+x.n.toLocaleString()+'</span><span class="meta">'+(DROP_CATS[x.cat]||x.cat)
       +(wv?' · '+DROP_WAVE[wv]:'')
       +(x.backed?' · <span class="bk">backed ×'+x.backed+'</span>':'')
       +(!x.mine?' · <span class="by">'+String(x.by_handle||'a casual').replace(/</g,'')+'</span>':'')
@@ -21203,7 +21221,7 @@ function renderDropLog(){
     h+='<div class="dl-struck-h">off the count · '+u.struck.length+'</div>';
     h+=[...u.struck].reverse().map(x=>{
       const wv=(x.cat==="EST")?null:(x.ph||dropPhase(x.ts));
-      return '<div class="dl-row struck"><span class="tm">'+_tm(x.ts)+'</span><span class="nn">'+(x.cat==="EST"?'~ ':(/^CK[AB]$/.test(x.cat)?'👥 ':'+'))+x.n.toLocaleString()+'</span><span class="meta">'+(DROP_CATS[x.cat]||x.cat)
+      return '<div class="dl-row struck"><span class="tm">'+_tm(x.ts)+'</span><span class="nn">'+(x.cat==="EST"?'~ ':(/^CK[ABT]$/.test(x.cat)?'👥 ':'+'))+x.n.toLocaleString()+'</span><span class="meta">'+(DROP_CATS[x.cat]||x.cat)
         +(wv?' · '+DROP_WAVE[wv]:'')
         +' · <span class="vr">'+dlEsc(x.void_reason||'struck')+'</span>'
         +' · <span class="by">'+dlEsc(x.void_by||'the Keymaster')+'</span>'
@@ -21257,20 +21275,19 @@ window.buzz=buzz;
 /* #ckin2(oct6) — the check-in spot: each number rides the wire as its own drop row (CKA / CKB, kept out of the job
    count); +3 ⬡ the first time a member reports on a board, tagged on that row so striking it claws it back */
 function ckPaint(){ try{ const el=document.getElementById('ckNow'); if(!el)return; const u=dropUnion(), ck=u.ck||{};
-  const nA=u.list.filter(x=>x.cat==='CKA').reduce((a,x)=>a+(x.backed||1),0), nB=u.list.filter(x=>x.cat==='CKB').reduce((a,x)=>a+(x.backed||1),0);
-  el.innerHTML=(ck.A||ck.B)?'reported so far · A-book <b>'+(ck.A?ck.A.toLocaleString():'—')+'</b>'+(nA>1?' ('+nA+')':'')+' · B-book <b>'+(ck.B?ck.B.toLocaleString():'—')+'</b>'+(nB>1?' ('+nB+')':''):'nobody\'s reported it yet — be the first'; }catch(e){} }
+  const nT=u.list.filter(x=>/^CK[ABT]$/.test(x.cat)).reduce((a,x)=>a+(x.backed||1),0);
+  el.innerHTML=ck.T?'reported so far · <b>'+ck.T.toLocaleString()+'</b> checked in at the big hall'+(nT>1?' ('+nT+' reports)':''):'nobody\'s reported it yet — be the first'; }catch(e){} }
 document.getElementById('ckAdd').addEventListener('click',()=>{
   if(typeof guestWall==='function'&&guestWall())return;
-  const vals=[['CKA','ckA'],['CKB','ckB']].map(([c,id])=>{ const el=document.getElementById(id); const v=parseInt((el.value||'').replace(/\D/g,''),10); return {c:c,el:el,v:v}; });
-  const ok=vals.filter(x=>isFinite(x.v)&&x.v>=50&&x.v<=4000);
-  vals.forEach(x=>{ x.el.style.borderColor=(x.el.value&&!(isFinite(x.v)&&x.v>=50&&x.v<=4000))?'var(--ember)':''; });
-  if(!ok.length){ try{toast('Type how many A-book and/or B-book checked in');}catch(e){} return; }
-  const o=dropData(); const first=!o.ckPaid; let pushed=[];
-  ok.forEach((x,i)=>{ const d={n:x.v,cat:x.c,ph:dropPhase(Date.now()),ts:Date.now()+i,cid:Date.now().toString(36)+'-'+Math.floor(Math.random()*1e8).toString(36)};
-    if(first&&i===0){ d.earned=3; } o.drops.push(d); pushed.push(d); x.el.value=''; });
-  if(first){ o.ckPaid=1; addCredits(3,'union check-in reported'); try{rainCoins(5);}catch(e){} }
+  const el=document.getElementById('ckT'), v=parseInt((el.value||'').replace(/\D/g,''),10), good=isFinite(v)&&v>=100&&v<=6000;
+  el.style.borderColor=(el.value&&!good)?'var(--ember)':'';
+  if(!good){ try{toast(el.value?'That doesn\'t look right — type how many checked in at the big hall':'Type how many checked in at the big hall');}catch(e){} return; }
+  const o=dropData(); const first=!o.ckPaid;
+  const d={n:v,cat:'CKT',ph:dropPhase(Date.now()),ts:Date.now(),cid:Date.now().toString(36)+'-'+Math.floor(Math.random()*1e8).toString(36)};
+  if(first)d.earned=3; o.drops.push(d); el.value='';
+  if(first){ o.ckPaid=1; addCredits(3,'big hall check-in reported'); try{rainCoins(5);}catch(e){} }
   try{toast('✓ Check-in logged'+(first?' · +3 ⬡':' — thanks'));}catch(e){}
-  dropSave(o); dropRecompute(); renderDropLog(); pushed.forEach(d=>{ try{dwPush(d);}catch(e){} });
+  dropSave(o); dropRecompute(); renderDropLog(); try{dwPush(d);}catch(e){}
   ckPaint(); try{repredict();}catch(e){}
 });
 setInterval(()=>{ try{ const c=document.getElementById('dropCard'); if(c&&c.style.display!=='none')ckPaint(); }catch(e){} },5000);
@@ -40442,7 +40459,8 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
     if(!forecastOnly&&pm&&pm.A>0&&pm.B>0)return {A:pm.A,B:pm.B,actual:true,pools:pools};
     /* #ckin — casuals' check-in reports from the Drop Log for the board being dispatched (not when grading the past) */
     if(!forecastOnly){ try{ if(typeof dropKey==='function'&&dropKey()===key){ const ck=dropUnion().ck||{};
-      if(ck.A>0||ck.B>0){ const f=checkinFor(key,true)||{}; return {A:ck.A>0?ck.A:f.A,B:ck.B>0?ck.B:f.B,actual:false,crowd:true,pools:pools}; } } }catch(e){} }
+      if(ck.T>0){ const f=checkinFor(key,true)||{}; const fa=f.A>0&&f.B>0?f.A/(f.A+f.B):0.78;   /* #cktotal — the hall's total, split A/B the way the forecast sees it */
+        const A=Math.round(ck.T*fa); return {A:A,B:ck.T-A,T:ck.T,actual:false,crowd:true,pools:pools}; } } }catch(e){} }
     const L=pmaKeys().filter(k=>k.endsWith(isAM?'AM':'PM')).map(k=>{ const p=pmaOf(k); return p&&p.A>0&&p.B>0&&!p.sw?{date:k.slice(0,10),o:ord(k.slice(0,10),isAM),A:p.A,B:p.B,H:(p.h||p.nc),dow:new Date(k.slice(0,10)+'T12:00:00').getDay()}:null; })
       .filter(x=>x&&x.o<o&&days(date,x.date)<=60);
     if(L.length<3)return null;
@@ -48061,6 +48079,26 @@ window.SEASON_DECOR={
           document.querySelectorAll('.nav').forEach(function(n){ var r=n.getBoundingClientRect(); if(r.height>20&&r.top>window.innerHeight*.5)top=r.top; });   /* the visible tab bar */
           L.style.setProperty('--land',(top/z-3)+'px'); L.style.setProperty('--cx',(window.innerWidth/2/z)+'px'); }catch(e){} };   /* sits IN the slime lip (#landlow(sep28): was -7, the splat floated a hair above the goo) */
       land(); window.addEventListener('resize',land); setTimeout(land,600); setTimeout(land,2500);
+      /* #gooalign(oct6) — THE DRIPS STAY ON THE LIP. Reported: after switching tabs or closing the profile, the header's
+         drops hung ~35px below the goo, detached. Two guards: (1) the layer measures where the header REALLY ends (its
+         box on screen, in the layer's own zoomed units) and pins its own --tbH to that, so a stale or zoom-skewed page
+         figure can't push the drips down; (2) each drip's neck and bulb run two separate animations — if a busy moment
+         (a tab switch, a sheet closing, the phone napping) lets one slip, the neck is snapped back onto the bulb's clock.
+         Cheap: one box read every 2 s while visible, writes only when something actually moved. */
+      var _gaTop=-1;
+      var gooAlign=function(){ try{ if(document.hidden||!L.isConnected)return;
+          var t=document.querySelector('.topbar'); if(t){ var r=t.getBoundingClientRect(), z=parseFloat(getComputedStyle(document.body).zoom)||1;
+            if(r.height>10){ var v=Math.round(r.bottom/z*10)/10; if(Math.abs(v-_gaTop)>.5){ _gaTop=v; L.style.setProperty('--tbH',v+'px'); } } }
+          var C=L.querySelectorAll('.sn-cone'), D=L.querySelectorAll('.sn-drop');
+          for(var i=0;i<Math.min(C.length,D.length);i++){ var ca=C[i].getAnimations?C[i].getAnimations()[0]:null, da=D[i].getAnimations?D[i].getAnimations()[0]:null;
+            if(ca&&da&&da.currentTime!=null&&ca.currentTime!=null&&Math.abs(ca.currentTime-da.currentTime)>40)ca.currentTime=da.currentTime; }
+        }catch(e){} };
+      setTimeout(gooAlign,700); setInterval(gooAlign,2000);
+      window.addEventListener('resize',function(){ setTimeout(gooAlign,150); });
+      document.addEventListener('visibilitychange',function(){ if(!document.hidden)setTimeout(gooAlign,200); });
+      window.addEventListener('pageshow',function(){ setTimeout(gooAlign,200); });
+      document.addEventListener('click',function(){ setTimeout(gooAlign,450); },true);   /* tab taps, sheets closing */
+      window.gooAlign=gooAlign;
       /* #goosplash — the moment a drop lands (its animation loops), a splash jumps up OFF the
          bar, drawn above the tab bar so it can't hide behind it: a ring, a pop, and beads flung
          up that fall back into the goo. Dark-rimmed so it reads on the lime. */
@@ -50576,6 +50614,7 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
         return;
       }
       if(!window.SB||!window.__shkUid)return;
+      if(window.__shkLeaving&&/Load failed|Failed to fetch|NetworkError|network connection was lost|cancelled|aborted/i.test(msg))return;   /* #mintonce — leaving the page cuts calls off; not a fault */
       window.__errN=(window.__errN||0)+1; if(window.__errN>6)return;
       const acct=(typeof loadAcct==='function'?(loadAcct()||{}):{});
       /* #alarmwhere — carry the file:line. "Cannot set properties of null" tells
@@ -50584,6 +50623,8 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
       window.SB.from('error_log').insert({where_at:where,message:full,handle:((acct.handle||'').toUpperCase())||null,page:location.pathname}).then(()=>{},()=>{});
     }catch(e){}
   };
+  window.addEventListener('pagehide',function(){ window.__shkLeaving=true; });
+  window.addEventListener('pageshow',function(){ window.__shkLeaving=false; });
   window.addEventListener('error',function(e){
     try{shkAlert('uncaught',(e&&(e.message||e.error))||'?',e&&e.filename?(e.filename+(e.lineno?':'+e.lineno:'')):'');}catch(_){}});
   window.addEventListener('unhandledrejection',function(e){
@@ -51978,7 +52019,7 @@ async function shareCall(){
     x.fillText(o.med<=0?('likely HOLDS on '+startL):('runs '+o.med+' — '+startL+' → '+stopL),W/2,760);
     // band + odds
     x.fillStyle=DIM; x.font=mono(30);
-    x.fillText('band '+AZ[(o.base+o.lo+26)%26]+' – '+AZ[(o.base+o.hi)%26]+'   ·   '+o.pmove+'% chance it moves',W/2,830);
+    /* #noband(oct6) — the band and move odds left the share card */
     // meter
     const mw=680,mh=26,mx0=(W-mw)/2,my=880;
     x.fillStyle=arcade?'rgba(123,92,255,.16)':'rgba(220,214,201,.12)'; x.fillRect(mx0,my,mw,mh);
