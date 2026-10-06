@@ -8,7 +8,9 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct6ckin2';   /* oct 6 (33rd) — UNION CHECK-IN gets its own spot in the Drop Log: A-book / B-book, +3 ⬡ the first report on a board; the middle report feeds the call (#ckin2). */
+window.SHK_BUILD='oct6weekfull';   /* oct 6 (35th) — THIS WEEK on the console opens the whole week, every board with its line. */
+/* was: oct6ilwu */
+/* was: oct6ckin2 */   /* oct 6 (33rd) — UNION CHECK-IN gets its own spot in the Drop Log: A-book / B-book, +3 ⬡ the first report on a board; the middle report feeds the call (#ckin2). */
 /* was: oct6ckin */   /* oct 6 (32nd) — the Drop Log takes UNION CHECK-IN reports (A-book / B-book); the middle report replaces the check-in forecast for the board being dispatched and feeds the call's check-in route (#ckin). */
 /* was: oct6checkfix */   /* oct 6 (31st) — the app no longer balances a sheet's numbers on its own: disagreements are flagged, the Keymaster gets a ⚠ alert on the board, and ✓ CHECK & FIX shows the picture of the paper with every number to correct by hand (#nobalance #checkfix). */
 /* was: oct6mcsheet */   /* oct 6 (30th) — the full dispatch sheet is back under the Up Next console: open by default once the sheet's in, ▤ FULL DISPATCH SHEET at the console's foot opens/closes it (#mcsheet). */
@@ -5275,7 +5277,11 @@ html.daylight .mc-up .mc-bd div i{background:linear-gradient(0deg,rgba(176,32,12
 html.daylight .mc-up .mc-wk .up b,html.daylight .mc-up .mc-mvr .d.up{color:#3e7030}html.daylight .mc-up .mc-wk .dn b,html.daylight .mc-up .mc-mvr .d.dn{color:#b0207e}
 html.daylight .mc-up .mc-mvr .cmp .c{background:var(--copper);box-shadow:none}
 </style>
-<style>.mc-up .mc-full .wk-sum,.mc-up .mc-full .wk-rng-tot{display:none!important}</style>
+<style>.mc-up .mc-full .wk-sum,.mc-up .mc-full .wk-rng-tot{display:none!important}
+.mc-up .mc-full .wk-grid{grid-template-columns:minmax(0,74px) minmax(0,1fr) 36px auto;column-gap:8px}
+.mc-up .mc-full .wk-nm{max-width:74px;font-size:13px}.mc-up .mc-full .wk-n{font-size:16px}
+.mc-up .mc-full .wk-av{min-width:0;font-size:12px}.mc-up .mc-full .wk-av .wr-flag small{display:none}
+.mc-up .mc-full .wk-av .wr-flag{font-size:10.5px}.mc-up .mc-full .xp-docks-body{margin-top:2px}</style>
 
 <style>
 /* ═══ #botfloat(oct6) ═══ */
@@ -19746,10 +19752,7 @@ function mcConsole(key,dd,lc,live,pd){
     h+='<div class="mc-pane" data-p="sheet"'+(tab==='sheet'?'':' hidden')+'>'+p+'</div>'; }
   /* week pane */
   if(W){ let p='<div class="mc-wk"><div><b>'+n(W.last)+'</b><span>LAST SHEET</span></div><div class="'+(W.pct>0?'up':W.pct<0?'dn':'')+'"><b>'+(W.pct>0?'▲ ':W.pct<0?'▼ ':'')+Math.abs(W.pct)+'%</b><span>VS '+n(W.avg)+' AVG</span></div><div><b>'+esc(W.busy)+'</b><span>BUSIEST</span></div></div>';
-    const top=W.mv.slice(0,4);
-    p+='<div class="mc-mvs">'+top.map(m=>{ const mx=Math.max(m.cur,m.avg)*1.15||1;
-      return '<div class="mc-mvr"><span class="nm">'+esc(m.n)+'</span><span class="cmp"><i class="a" style="width:'+(m.avg/mx*100).toFixed(1)+'%"></i><i class="c" style="width:'+(m.cur/mx*100).toFixed(1)+'%"></i></span><b>'+n(m.cur)+'</b><span class="d '+(m.d>=0?'up':'dn')+(m.avg&&m.cur>m.avg*1.6?' hot':'')+'">'+(m.d>=0?'▲ ':'▼ ')+Math.abs(m.d)+'</span></div>'; }).join('')+'</div>';
-    if(W.mv.length>4)p+='<button type="button" class="mc-more">All '+W.mv.length+' boards with the week\'s lines ▾</button><div class="mc-full" hidden></div>';
+    p+='<div class="mc-full jobxp"></div>';   /* #weekfull(oct6) — THIS WEEK opens the whole week: every board with its line, no fold */
     h+='<div class="mc-pane" data-p="week"'+(tab==='week'?'':' hidden')+'>'+p+'</div>'; }
   return h;
 }
@@ -19759,11 +19762,17 @@ function mcWire(card){
   card.querySelectorAll('.mc-seg button[data-t]').forEach(b=>b.addEventListener('click',ev=>{ ev.stopPropagation();
     MC_TAB=b.getAttribute('data-t'); try{ localStorage.setItem('shadowhook_mc_tab',MC_TAB); }catch(e){}
     card.querySelectorAll('.mc-seg button').forEach(x=>x.classList.toggle('on',x===b));
-    card.querySelectorAll('.mc-pane').forEach(p=>{ const on=p.getAttribute('data-p')===MC_TAB; if(on&&p.hidden){ p.hidden=false; if(p.animate)p.animate([{opacity:0,transform:'translateY(-6px)'},{opacity:1,transform:'none'}],{duration:240,easing:'ease-out'}); } else if(!on)p.hidden=true; }); }));
-  const more=card.querySelector('.mc-more'), full=card.querySelector('.mc-full');
-  if(more&&full)more.addEventListener('click',ev=>{ ev.stopPropagation();
-    if(full.hidden){ if(!full.innerHTML){ full.className='mc-full jobxp'; full.innerHTML=xpWeekAvg(String(callSlot).endsWith('AM')?'AM':'PM'); const hd=full.querySelector('.xp-docks-h'), bd=full.querySelector('.xp-docks-body'); if(hd)hd.style.display='none'; if(bd)bd.style.display='block'; full.querySelectorAll('.wk-hide.off').forEach(x=>x.classList.remove('off')); full.querySelectorAll('.wk-more').forEach(x=>x.remove()); }
-      full.hidden=false; more.textContent='Fewer ▴'; } else { full.hidden=true; more.textContent=more.textContent.replace('Fewer ▴','All boards with the week\'s lines ▾'); } });
+    card.querySelectorAll('.mc-pane').forEach(p=>{ const on=p.getAttribute('data-p')===MC_TAB; if(on&&p.hidden){ p.hidden=false; if(p.animate)p.animate([{opacity:0,transform:'translateY(-6px)'},{opacity:1,transform:'none'}],{duration:240,easing:'ease-out'}); } else if(!on)p.hidden=true; }); mcWeekFill(card); }));
+  mcWeekFill(card);
+}
+function mcWeekFill(card){
+  const pane=card&&card.querySelector('.mc-pane[data-p="week"]'), full=pane&&pane.querySelector('.mc-full');
+  if(!full||pane.hidden||full.innerHTML)return;
+  const slot=String(callSlot).endsWith('AM')?'AM':'PM';
+  try{ full.innerHTML=xpWeekAvg(slot); }catch(e){ return; }
+  const hd=full.querySelector('.xp-docks-h'), bd=full.querySelector('.xp-docks-body'); if(hd)hd.remove(); if(bd)bd.style.display='block';
+  full.querySelectorAll('.wk-hide.off').forEach(x=>x.classList.remove('off')); full.querySelectorAll('.wk-more').forEach(x=>x.remove());
+  try{ wkRangeLoad(slot); }catch(e){}
 }
 function renderRecentBoards(){
   if(typeof rb==="undefined"||!rb)return;
@@ -19812,7 +19821,7 @@ function renderRecentBoards(){
           mxp=document.createElement('div'); mxp.className='jobxp rbg-sheet mc-sheet'; mxp.dataset.wk='1'; mxp.style.display='none';
           mxp.innerHTML='<div class="g-tear"></div>'+((dd.total||dd.boards)?xpSheet(dd,'DISPATCH SHEET'+(finalOf(dd)?' — FINAL':''),key,true):'')+(dd.early?xpSheet(dd.early,'THE EARLY LOOK (posted ~11 AM)',key,true):'');
           card.insertAdjacentHTML('beforeend',checkFixAlert(key));
-          card.insertAdjacentHTML('beforeend','<button type="button" class="mc-fullsheet">▤ FULL DISPATCH SHEET <span>▾</span></button>');
+          card.insertAdjacentHTML('beforeend','<button type="button" class="mc-fullsheet">▤ ILWU DISPATCH SHEET <span>▾</span></button>');
           card.querySelector('.mc-fullsheet').addEventListener('click',ev=>{ ev.stopPropagation(); const op=(mxp.style.display==='none'); rbXpToggle(mxp,op);
             if(op)delete window._pendClosed.sheet; else window._pendClosed.sheet=true; mcSheetState(card,op); });
         }
