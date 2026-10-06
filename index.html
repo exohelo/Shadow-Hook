@@ -8,7 +8,11 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct5nomydock';   /* oct 5 (4th) — the MY DOCK card is off the Ports tab (#nomydock). */
+window.SHK_BUILD='oct5nocyc';   /* oct 5 (8th) — a dispatch summary posted before the casual dispatch finished no longer marks the board HELD; Sun 10/4 day reads as the cycle it was (#nocycfix). */
+/* was: oct5hallmove */   /* oct 5 (7th) — THE HALL moves into the open dispatch sheet, where SHIPS ON DECK used to be (#hallmove). */
+/* was: oct5sizelock */   /* oct 5 (6th) — the app's text size is LOCKED: two fingers no longer resize it by accident; Profile → Text size has − / + and a Pinch to resize switch (off by default) (#sizelock). */
+/* was: oct5nodeck */   /* oct 5 (5th) — SHIPS ON DECK is off the dispatch sheet; the finish-up read stays on the Job Log (#nodeck). */
+/* was: oct5nomydock */   /* oct 5 (4th) — the MY DOCK card is off the Ports tab (#nomydock). */
 /* was: oct5jobx3 */   /* oct 5 (3rd) — the ship's shifts around yours become a little bar chart (yours lit, ✓ where she finished), and the row of the job you're on reads TODAY / TONIGHT (#jobx3). */
 /* was: oct5jobx2 */   /* oct 5 (2nd) — THE BUTTONS GO ON TOP: To the Gate and Yard Map are the first thing under the row you tap, never in the middle of the card, and a job opened low on the screen slides up just enough to clear the tab bar (#jobx2); a redraw (a sync, a seal, the yard maps arriving) keeps open the jobs you had open instead of folding them (#keepopen). */
 /* was: oct5jobx */   /* oct 5 — THE JOB LOG, TIDIED: an open job is one clean card — the pay, THE DOCK (berth · start · where you're working, the gate you go in, the two buttons), THE SHIP — split by hairlines, no box inside a box, nothing said twice; a row is a date tile, the dock, ship · shift · berth, the job code and the pay, with 🏁 Finish-up on it when the official sheets call it (#jobx). Rides with the day's official-sheet work: #official, #dkship, #finishoff, #nohalltime. */
@@ -3234,6 +3238,15 @@ html.daylight .bday-spot.me .bs-wish{background:rgba(255,240,220,.7)}
   position:relative;cursor:pointer;transition:.18s;padding:0}
 .alsw i{position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:var(--steel);transition:.18s}
 .alsw.on{border-color:rgba(238,180,107,.6);background:var(--sel)}
+/* #hallmove — The Hall inside the dispatch sheet: no second card shadow, flush with the sheet */
+.xp-hall-slot{margin-top:14px}
+.xp-hall-slot .ph-card{margin:0;box-shadow:none}
+/* #sizelock — the − / + stepper */
+.szc{flex:none;display:flex;align-items:center;gap:8px}
+.szc b{min-width:48px;text-align:center;font-family:'Barlow Condensed',system-ui,sans-serif;font-size:19px;font-weight:700;color:var(--copper-hi)}
+.szb{flex:none;min-width:44px;height:38px;padding:0 10px;border-radius:10px;border:1px solid var(--line);background:var(--plate-2);color:var(--bone);font-family:'Barlow Condensed',system-ui,sans-serif;font-size:17px;font-weight:700;cursor:pointer}
+.szb:active{transform:translateY(1px)}
+.szb.szr{font-size:15px;letter-spacing:.06em;text-transform:uppercase;color:var(--steel)}
 .alsw.on i{left:20px;background:var(--copper-hi)}
 .alsw:disabled{opacity:.4;cursor:default}
 .btn-logout{cursor:pointer;width:100%;border:1px solid rgba(179,85,42,.7);border-radius:10px;padding:15px;
@@ -8755,6 +8768,22 @@ html.daylight .hm-lm .lk-g,html.daylight .hm-lm .lk-w{fill:#dfeaf7}
              and everything grows; pinch and it shrinks. The phone remembers. -->
       </div>
 
+      <!-- #sizelock(oct5) — TEXT SIZE, LOCKED. Two fingers used to resize the whole app anywhere, and a
+           stray pinch (a phone in a glove, a thumb and a palm) changed it by accident. Now the size is set
+           here with − / +, and the pinch only works when this phone turns it back on. -->
+      <div class="albox" id="sizeBox">
+        <h4>🔠 Text size</h4>
+        <div class="alrow" style="align-items:center"><div class="alm">
+            <div class="alt">Size of everything in the app</div>
+            <div class="als">Locked where you set it. Tap − or + to change it.</div>
+          </div><div class="szc"><button type="button" class="szb" id="szDn" aria-label="Smaller">A−</button><b id="szVal">115%</b><button type="button" class="szb" id="szUp" aria-label="Bigger">A+</button></div></div>
+        <div class="alrow"><div class="alm">
+            <div class="alt">Pinch to resize</div>
+            <div class="als">Off: two fingers never change the size. On: spread or pinch anywhere to size the app.</div>
+          </div><button class="alsw" id="szPinch" type="button" role="switch" aria-label="Pinch to resize"><i></i></button></div>
+        <div class="alrow" style="align-items:center"><div class="alm"><div class="als" style="margin:0">Back to the normal size</div></div><button type="button" class="szb szr" id="szReset">Reset</button></div>
+      </div>
+
       <!-- #sharepf(aug31) — SPREAD THE WORD on the profile, by request. The same four roads
            as the card on the Social tab; both copies share one set of bindings (data-share). -->
       <div class="albox" id="shareBox">
@@ -12181,22 +12210,30 @@ function dockKey(h){ const t=((h&&h.textContent)||'').toUpperCase();
   return t.indexOf('WEEK')>=0?'week':(t.indexOf('SHIP')>=0?'ships':null); }
 function openPendingSheet(){
   const rbEl=document.getElementById('recentBoards'); if(!rbEl)return;
-  const sheets=rbEl.querySelectorAll('.jobxp'); if(!sheets.length)return;
+  const sheets=rbEl.querySelectorAll('.jobxp');
+  /* #hallmove — The Hall's home on the Wire, kept so it can go back when no dispatch sheet is up */
+  const hEl=window._hallEl||document.getElementById('pmaHall'); let seated=false;
+  if(hEl&&!window._hallHome){ window._hallEl=hEl; window._hallHome={p:hEl.parentNode,n:hEl.nextSibling}; }
+  const hallHome=()=>{ try{ const H=window._hallHome; if(hEl&&H&&H.p&&hEl.parentNode!==H.p)H.p.insertBefore(hEl,(H.n&&H.n.parentNode===H.p)?H.n:null); }catch(e){} };
+  if(!sheets.length){ hallHome(); return; }
   sheets.forEach(xp=>{
     const card=xp.previousElementSibling;
     const isPending=!!(card&&card.classList&&card.classList.contains('up'));   // the UP NEXT board only
     if(!isPending) return;   // every past sheet stays exactly as built (folded)
     /* inject SHIPS ON DECK + THE WEEK'S AVERAGES once — off the PENDING board's OWN sheet.
        #data(jul23) — never the carried-over sample; a board with no sheet says so. */
-    if(!xp.querySelector('.xp-docks-h')){
+    /* #hallmove(oct5) — THE HALL lives in the open dispatch sheet now, where SHIPS ON DECK sat (the Keymaster).
+       The card element is kept by reference and re-seated in every rebuild of the sheet. */
+    if(!xp.querySelector('.xp-hall-slot'))xp.insertAdjacentHTML('beforeend','<div class="xp-hall-slot"></div>');
+    try{ if(hEl){ xp.querySelector('.xp-hall-slot').appendChild(hEl); seated=true; } }catch(e){}
+    if(!xp.querySelector('.xp-docks-h')&&!xp.dataset.wk){ xp.dataset.wk='1';   /* #hallmove — once per sheet (SHIPS ON DECK used to be the guard) */
       let ships=[], pk='';
       try{
         pk=(nd2.getFullYear()+"-"+String(nd2.getMonth()+1).padStart(2,"0")+"-"+String(nd2.getDate()).padStart(2,"0"))+"_"+callSlot;
         const dd=DISPATCH_DATA[pk]||{};
         ships=(dd.ships&&dd.ships.length)?dd.ships:((dd.early&&dd.early.ships&&dd.early.ships.length)?dd.early.ships:[]);
       }catch(e){}
-      if(ships.length) xp.insertAdjacentHTML('beforeend', xpShips(ships,pk));
-      else xp.insertAdjacentHTML('beforeend','<div class="xp-mem" style="text-align:left;margin-top:12px">⚓ No ship sheet for this board yet — the bot is watching for it; ships land here the moment the sheet drops.</div>');
+      /* #nodeck — no ships list and no "no ship sheet yet" line any more; The Hall sits here instead */
       try{ const wk=xpWeekAvg(String(callSlot).endsWith('AM')?'AM':'PM'); if(wk) xp.insertAdjacentHTML('beforeend', wk); }catch(e){}   // #data — the week's averages, off real sheets only
     }
     /* apply the launch-open state (default open; a manual close this session sticks) */
@@ -12211,6 +12248,7 @@ function openPendingSheet(){
       const c=h.querySelector('.xp-docks-caret'); if(c)c.textContent=open?'▴':'▾';
     });
   });
+  if(!seated)hallHome();   /* #hallmove — no dispatch sheet up: The Hall goes back to its place on the Wire */
 }
 
 /* ================= HELPERS ================= */
@@ -18890,6 +18928,10 @@ function xpSheet(d,label){
 /* #93 — ON THE DOCKS: the vessels working the board, folded into the dispatch sheet
    (used to live in a separate card — now it rides here, off the OCR'd ship sheet). */
 function xpShips(ships,key){
+  /* #nodeck(oct5) — RETIRED by the Keymaster: SHIPS ON DECK came off the dispatch sheet ("just taking up
+     space"). The finish-up read it carried (#finish / #finishoff) lives on, on the docket's ship card in
+     the Job Log and on the 🏁 Finish-up row flag. */
+  return '';
   ships=Array.isArray(ships)?ships:[];
   if(!ships.length)return '';
   const working=ships.filter(s=>!s.cancelled).slice().sort((a,c)=>((c.crew||0)-(a.crew||0)));
@@ -38244,7 +38286,12 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
       if(!r._pma){ r._pma=true; ch=true; }
     }
     if(_cd!=null){
-      if(!p.end&&p.cyc!=null&&r.cyc!==p.cyc){ r.cyc=p.cyc; ch=true; }
+      /* #nocycfix(oct5) — the Keymaster: "it cycled, why does it say held?" A sheet with no end card was posted
+         before the casual dispatch finished, so its "Cycled: No" is a mid-dispatch reading, not the answer.
+         Sun 10/4 day (O5051 → O5049, 583 came down) was marked HELD off exactly that. A no-end sheet no
+         longer sets the cycled flag, and a "held" it set earlier is lifted when jobs came down — a held
+         board has nothing come down (the record's own rule, boardEvidence). */
+      if(!p.end&&r.cyc===false&&_cd>0){ delete r.cyc; r._cycLift=true; ch=true; }
       if(r.down!==_cd){ r.down=_cd; ch=true; }
       if(r.ch!==_cd){ r.ch=_cd; ch=true; }
     } else if(p.end&&p.toCH!=null&&r.ch!==p.toCH){ r.ch=p.toCH; ch=true; }
@@ -38253,6 +38300,7 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
     try{ const st=_brStore(); const keep={date:r.date,slot:r.slot,start:r.start};
       if(p.end)Object.assign(keep,{end:r.end,act:r.act,cyc:r.cyc,ch:r.ch,_pma:true});
       if(_cd!=null)Object.assign(keep,{down:r.down,ch:r.ch,cyc:r.cyc},r.end?{act:r.act}:{});
+      if(r._cycLift){ delete keep.cyc; if(st[key])delete st[key].cyc; delete r._cycLift; }   /* #nocycfix */
       st[key]=Object.assign(st[key]||{},keep); localStorage.setItem(K('boardresults'),JSON.stringify(st)); }catch(e){}
     return true;
   }
@@ -39442,7 +39490,7 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
     return h;
   }
   function renderHall(){
-    const el=document.getElementById('pmaHall'); if(!el)return;
+    const el=window._hallEl||document.getElementById('pmaHall'); if(!el)return; window._hallEl=el;   /* #hallmove — it lives inside the dispatch sheet */
     const now=NOW(), ws=weekStart(now), lw=new Date(ws); lw.setDate(lw.getDate()-7);
     const W=weekStats(ws), L=weekStats(lw), B=bestDays();
     const tabs=[]; if(W)tabs.push(['week','This week']); if(L)tabs.push(['last','Last week']); if(B.n)tabs.push(['best','Best days']);
@@ -45148,9 +45196,24 @@ html.arcade.daylight .btn-line.red:active{box-shadow:none;transform:translateY(3
   /* migration: a phone that had SMALL or LARGE keeps that look */
   try{ if(localStorage.getItem(KEY)==null){ var kf=(typeof K==='function')?K('textsize'):'tsh_textsize'; var old=localStorage.getItem(kf); if(old==='sm')cur=1; else if(old==='lg')cur=1.3; } }catch(e){}
   function put(v){ cur=Math.max(MIN,Math.min(MAX,v)); document.documentElement.style.setProperty('--appfs',cur.toFixed(3)); return cur; }
-  function save(){ try{ localStorage.setItem(KEY,cur.toFixed(3)); }catch(e){} put(cur); try{ window.dispatchEvent(new Event('resize')); }catch(e){} }
+  function save(){ try{ localStorage.setItem(KEY,cur.toFixed(3)); }catch(e){} put(cur); try{ window.dispatchEvent(new Event('resize')); }catch(e){} try{ paint(); }catch(e){} }
   put(cur);
   window.setAppScale=function(v){ put(v==null?DEF:+v); save(); return Math.round(cur*100)+'%'; };   /* console: setAppScale() puts it back */
+  /* #sizelock(oct5) — the size is LOCKED unless this phone turns the pinch on (Profile → Text size) */
+  var PK='shadowhook_appfs_pinch', told=false;
+  function pinchOn(){ try{ return localStorage.getItem(PK)==='1'; }catch(e){ return false; } }
+  function paint(){ try{ var v=document.getElementById('szVal'); if(v)v.textContent=Math.round(cur*100)+'%';
+    var sw=document.getElementById('szPinch'); if(sw){ sw.classList.toggle('on',pinchOn()); sw.setAttribute('aria-checked',pinchOn()?'true':'false'); } }catch(e){} }
+  function step(d){ put(Math.round((cur+d)*20)/20); save(); }
+  function wire(){ try{
+    var dn=document.getElementById('szDn'), up=document.getElementById('szUp'), sw=document.getElementById('szPinch'), rs=document.getElementById('szReset');
+    if(dn)dn.addEventListener('click',function(){ step(-.05); });
+    if(up)up.addEventListener('click',function(){ step(.05); });
+    if(rs)rs.addEventListener('click',function(){ put(DEF); save(); });
+    if(sw)sw.addEventListener('click',function(){ try{ localStorage.setItem(PK,pinchOn()?'0':'1'); }catch(e){} paint();
+      try{ toast(pinchOn()?'🤏 Pinch to resize is on':'🔒 Text size locked'); }catch(e){} });
+    paint(); }catch(e){} }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wire); else wire();
   function own(t){   /* something under the fingers that runs its own pinch? */
     try{ for(var el=t; el&&el!==document.body; el=el.parentElement){
       if(el.id==='chatFeed'||el.id==='dmFeed'||el.tagName==='CANVAS'||el.tagName==='VIDEO')return true;
@@ -45163,6 +45226,8 @@ html.arcade.daylight .btn-line.red:active{box-shadow:none;transform:translateY(3
   document.addEventListener('touchstart',function(e){
     if(e.touches.length!==2){ live=false; return; }
     if(own(e.target))return;
+    if(!pinchOn()){ e.preventDefault();   /* #sizelock — locked: two fingers do nothing (no app resize, no page zoom) */
+      if(!told){ told=true; try{ toast('🔒 Text size is locked · change it in Profile → Text size'); }catch(_){} } return; }
     d0=dist(e.touches); s0=cur; live=true; e.preventDefault();
   },{passive:false});
   document.addEventListener('touchmove',function(e){
