@@ -5836,7 +5836,7 @@ window.DEVLOG=(function(){
         <div class="wire-srcline"><span class="wire-src est" id="wSrc">—</span></div>
         <!-- #hallsay(sep14) — the phone line's own words, and the ▶ that reads the call aloud -->
         <div class="hall-say" id="hallSay" style="display:none"></div>
-        <!-- #hallclock(oct5) — while the board is live: when the casual hall usually wraps (PMA's finish times; filled by #pmaplus) -->
+        <!-- #hallclock(oct5) — stood down (#nohalltime): the slot stays hidden -->
         <div class="wire-wrapdone" id="wWrapDone" style="display:none"></div>
         <div class="wire-stage">
           <div class="wire-stoplbl">PREDICTED STOP</div>
@@ -15695,6 +15695,11 @@ const FINISH=(function(){
   }
   /* a pill for a board row — '' when the model has nothing to say */
   function pill(key,ship,company){
+    /* #finishoff(oct5) — when the official sheets have called it, that's the pill */
+    try{ const o=window.pmaFinishCall?window.pmaFinishCall(key,ship,company):null;
+      if(o&&o.official){ const e2=v=>String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+        const yes=o.state!=='more', txt=o.state==='finishing'?'🏁 FINISHING':(o.state==='more'?'⏩ MORE WORK':'🏁 FINISHED');
+        return '<span class="pill'+(yes?' grn':'')+'" style="cursor:pointer" title="'+e2(o.why)+'" data-ship="'+e2(ship)+'" data-co="'+e2(company||'')+'" onclick="event.stopPropagation();try{window.pmaFinishShow(\''+e2(key)+'\',this)}catch(e){}">'+txt+'</span>'; } }catch(e){}
     const a=ask(key,ship,company); if(!a) return '';
     const cls=a.level==='likely'?'pill gold':(a.level==='maybe'?'pill':'pill');
     const dim=a.level==='no'?'opacity:.55':'';
@@ -20813,6 +20818,10 @@ function renderDockets(){
       +'</div>';
     }
     det+=_actions;   // #jobport — the action buttons ride BELOW the port intel card
+    /* #dkship(oct5) — THE SHIP: what the official sheet for this docket's dispatch says about the ship worked
+       (or, for dock work, what was working at the dock) — filled by #pmaplus, under the buttons */
+    try{ const _w=(typeof docketWin==='function')?docketWin(j):null;
+      if(_w&&window.pmaShipKey)det+='<div class="jl-ship" data-k="'+esc(window.pmaShipKey(_w.iso,_w.win))+'" data-ship="'+esc((j.ship&&j.ship!=='\u2014'&&j.ship!=='—')?j.ship:'')+'" data-op="'+esc(t?t.operator:(j.terminal||''))+'"></div>'; }catch(e){}
     // Row title = the port/terminal identity; sub-line carries the ship name.
     const portLabel = t
       ? [t.aka, t.operator, t.berths].filter(Boolean).join(" · ")
@@ -20822,6 +20831,7 @@ function renderDockets(){
     while(_bench.firstChild)_hold.appendChild(_bench.firstChild);   /* #logonce */
   });
   el.appendChild(_hold);   /* #logonce — one attach for the whole log */
+  try{ if(window.pmaShipFill)window.pmaShipFill(el,false); }catch(e){}   /* #dkship — the ships the phone already has */
   // #38/#108 retired — new dockets no longer auto-expand. A fresh entry lands folded
   // like every other row (newest date on top), easy to spot; tap it to open by hand.
   try{refreshShipLines()}catch(e){}   // #40 — upgrade ship lines to the live feed when configured
@@ -20843,7 +20853,8 @@ function renderDockets(){
     row.addEventListener('pointerup',e=>{if(e.pointerType==='mouse')end()});
     row.addEventListener('pointerleave',e=>{if(e.pointerType==='mouse')end()});
     row.addEventListener('contextmenu',e=>e.preventDefault());
-    row.addEventListener('click',()=>{if(held){held=false;return}const d=row.nextElementSibling;d.classList.toggle('on');row.classList.toggle('lit',d.classList.contains('on'))}); /* #dock3 — the row lights while its record is open */
+    row.addEventListener('click',()=>{if(held){held=false;return}const d=row.nextElementSibling;d.classList.toggle('on');row.classList.toggle('lit',d.classList.contains('on'));
+      if(d.classList.contains('on')){ try{ if(window.pmaShipFill)window.pmaShipFill(d,true); }catch(e){} }}); /* #dock3 — the row lights while its record is open · #dkship — opening it can fetch its sheet */
   });
 }
 /* #47 — open a saved docket photo in the viewer */
@@ -38184,17 +38195,15 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
     const p=D[key]; if(!p||p.tossed)return '';
     if(p.held)return window.__isKM?'<div class="xp-h">OFFICIAL SHEET · ON HOLD</div><div class="xp-mem" style="color:var(--ember)">&#9888; Waiting on your check in the To-Do: '+esc((p.held.why||[]).join('; '))+'</div>':'';   /* #pmaguard */
     const x=window.pmaDelta(key);
-    let h='<div class="xp-h">OFFICIAL · SHIFT '+esc(p.shift)+(p.done?' · dispatch done '+esc(t12(p.done)):'')+'</div>';
+    let h='<div class="xp-h">OFFICIAL · SHIFT '+esc(p.shift)+'</div>';   /* #nohalltime */
     h+='<div class="xp-tot">Ordered <b>'+n(p.ordered)+'</b> · Dispatched <b>'+n(p.dispatched)+'</b>'
       +(p.toCH!=null?' · To the casual hall <b style="color:var(--copper-hi)">'+n(p.toCH)+'</b>':'')+'</div>';
     if(x){ const moved=window.pmaMoved(x);
       h+='<div class="xp-mem"'+(moved?' style="color:var(--ember)"':'')+'>Union sheet <b>'+n(x.u)+'</b> → official order <b>'+n(x.ord)+'</b> ('
         +(x.d>0?'+':'')+x.d.toLocaleString()+')'+(moved?' — the final order differed from the union sheet':' — matches the union sheet')+'</div>'; }
     if(p.start||p.end){
-      let _u=null; try{ _u=window.pmaUsualWrap?window.pmaUsualWrap(key.slice(-2)):null; }catch(e){}
       h+='<div class="xp-mem">Casual hall <b>'+esc(p.start||'—')+'</b> → <b>'+esc(p.end||(pmaDone(p)?'no end card on the official sheet':'not finished when posted'))+'</b>'
-        +(p.cyc!=null?' · cycled '+(p.cyc?'<b style="color:var(--ember)">YES</b>':'no'):'')
-        +(p.lsDone?' · done <b>'+esc(t12(p.lsDone))+'</b>'+(_u&&_u.n>=3?' (usually ~'+esc(t12(_u.t))+')':''):'')+'</div>'; }
+        +(p.cyc!=null?' · cycled '+(p.cyc?'<b style="color:var(--ember)">YES</b>':'no'):'')+'</div>'; }   /* #nohalltime — no "done" time */
     /* #pmaclerk — what the casual hall filled: longshore + clerk */
     { const _ls=(p.lsFilled!=null?p.lsFilled:p.toCH);
       if(pmaDone(p)&&_ls!=null)h+='<div class="xp-mem">The casual hall filled <b>'+n(_ls)+'</b> longshore'+(p.clerk>0?' + <b>'+n(p.clerk)+'</b> clerk = <b style="color:var(--copper-hi)">'+n(_ls+p.clerk)+'</b> jobs':' jobs')+'</div>'; }
@@ -38211,7 +38220,7 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
     const p=D[key]; if(!p||p.held||p.tossed||!pmaDone(p))return '';
     const v=(p.lsFilled!=null?p.lsFilled:p.toCH), bits=[];
     if(v!=null)bits.push(p.clerk>0?'<b>'+n(v)+'</b> longshore + <b>'+n(p.clerk)+'</b> clerk':'<b>'+n(v)+'</b> to the casual hall');
-    if(p.lsDone)bits.push('hall done <b>'+esc(t12(p.lsDone))+'</b>');
+    /* #nohalltime — the sheet's L/S Dispatch Completed isn't when the casual hall is done; not shown */
     return bits.length?'<div class="rb-pmal">'+bits.map((x,i)=>'<span style="white-space:nowrap">'+(i?'':'📋 Official · ')+x+'</span>').join(' · ')+'</div>':'';
   };
   /* the pill on the record row */
@@ -38439,6 +38448,10 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
   window.PMA_API={
     missing:()=>window.pmaMissing(),
     partial:k=>!!(D[k]&&!pmaDone(D[k])),
+    /* #finishoff — tonight's sheet, from 11:30 AM until the night board is over, when nothing for it is on file yet */
+    early:()=>{ const now=new Date(), m=now.getHours()*60+now.getMinutes(); if(m<690||m>=1170)return null;
+      const iso=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0'), k=iso+'_'+DOW[now.getDay()]+'_PM';
+      return D[k]?null:k; },
     /* #pmaguard — sheets waiting on the Keymaster's check, and the two answers */
     held:()=>Object.keys(D).filter(k=>D[k]&&D[k].held).sort().reverse(),
     why:k=>(D[k]&&D[k].held&&D[k].held.why)||[],
@@ -38762,6 +38775,10 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
       out.push({id:'pmaheld|'+k+'|'+why.join('|').length,kind:'pmaheld',key:k,pri:0,ring:true,
         title:'Check the official sheet for '+bName(k),
         sub:'It’s on hold and not on the record, because '+why.join('; ')+'. Compare it with the PDF, then use it or toss it.'}); }); }catch(e){}
+    /* #finishoff — tonight's sheet goes up before the night dispatch with tonight's orders on it */
+    try{ const A=window.PMA_API, ek=A&&A.early?A.early():null; if(ek)out.push({id:'pmaearly|'+ek,kind:'pma',key:ek,pri:3,ring:true,
+      title:'Tonight’s official sheet, early',
+      sub:'It goes up before the night dispatch with tonight’s orders on it. On file early, it tells the day crews whether their ship has more work tonight, and it flags tonight’s finish-ups.'}); }catch(e){}
     /* #pmaships — a sheet read before the update: adding the same PDF again fills in its ships and clerk jobs (no pop-up) */
     try{ const A=window.PMA_API; if(A&&A.old)A.old().forEach(k=>out.push({id:'pmaold|'+k,kind:'pma',key:k,pri:5,ring:false,
       title:'Re-add the official sheet for '+bName(k),
@@ -38960,7 +38977,7 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
   const statOf=s=>{ const x=String(s&&s.s||'');
     if(/^NMP/i.test(x))return ['nmp','no manpower'];
     if(/^Wrkng/i.test(x))return ['work',/Finish|St\/Fin/i.test(x)?'finishing':/Cut/i.test(x)?'gangs cut':'working'];
-    if(/Finished/i.test(x))return ['done','finished'];
+    if(/Finished|St\/Fin/i.test(x))return ['done','finished'];   /* "Idle-St/Fin" — in and out on one shift, and done */
     if(/^Idle\/Cn/i.test(x))return ['cn','order cancelled'];
     if(/^Idle/i.test(x))return ['idle','idle'];
     if(/En Route/i.test(x))return ['route','on the way'];
@@ -39082,15 +39099,13 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
     busy:{up:['⚓ {T} is the busy one — {G} gangs on {N} ships 💪','⚓ busiest dock {W2}: {T}, {G} gangs'],
           dry:['⚓ {T}: {G} gangs. busiest dock. somebody’s tired.'],
           zzz:['⚓ {T}… {G} gangs… they’re busy, i’m not 😴']},
-    wrap:{up:['⏱ the casual hall wrapped at {T} on {B}','⏱ {B}: the hall was done by {T} ☕'],
-          dry:['⏱ casual hall closed up at {T} on {B}. riveting.','⏱ {B} wrapped at {T}. anyway.'],
-          zzz:['⏱ {B}… hall done by {T}… back to bed 💤']},
     clerk:{up:['📋 {N} clerk jobs went through the casual hall on {B} too ✨','📋 bonus: {N} clerk jobs at the casual hall on {B}'],
            dry:['📋 also {N} clerk jobs at the casual hall on {B}. paperwork 🙄'],
            zzz:['📋 {N} clerk jobs on {B}… *yawn*']},
     best:{up:['🏆 best board this week: {B} — {C} jobs to the casual hall!','🏆 {B} is leading the week: {C} casual hall jobs 🙌'],
           dry:['🏆 {B}: {C} jobs to the casual hall. best this week. fine. 😒'],
           zzz:['🏆 best board so far… {B}… {C} jobs… zzz']},
+    finishing:{up:['🏁 finish-ups {W2}: {S}','🏁 {S} finishing up {W2} ✨'],dry:['🏁 finishing {W2}: {S}. good for them.'],zzz:['🏁 {S}… finishing {W2}… 😴']},
     weekend:{up:['📊 weekends so far: {P}% of the order lands at the casual hall (weekdays {Q}%)','📊 fun fact: weekends send {P}% of the jobs to the casual hall'],
              dry:['📊 weekends: {P}% to the casual hall. weekdays: {Q}%. numbers 🥱'],
              zzz:['📊 weekends… {P}%… casual hall… zzz']}
@@ -39109,10 +39124,12 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
         else if(P.cruise.length===1)say('cruise1',P.date,{S:nice(P.cruise[0].v),W:W});
         const nw=P.fresh[0]; if(nw)say(gOf(nw)>0?'newship':'newship0',nw.v,{V:nice(nw.v),T:coName(nw.c),G:gOf(nw)});
         if(P.working.length)say('harbor',P.k,{N:P.working.length,G:fmt(P.gangs),W2:W2});
+        const fu=P.ships.filter(s=>/^Wrkng/i.test(String(s.s||''))&&/Finish|St\/Fin/i.test(String(s.s||''))).slice(0,3);   /* #finishoff */
+        if(fu.length)say('finishing',P.k,{S:andList(fu.map(s=>nice(s.v)+' ('+coName(s.c)+')')),W2:W2});
         if(P.busiest&&Object.keys(P.byCo).length>1){ const b=P.byCo[P.busiest]; say('busy',P.k,{T:coName(P.busiest),G:b.g,N:b.n,W2:W2}); }
       }
       const D=DATA(), recent=Object.keys(D).filter(k=>(k.slice(0,10)===today||k.slice(0,10)===yday)&&done(D[k])).sort().reverse();
-      const w=recent.find(k=>D[k].lsDone); if(w)say('wrap',w,{T:t12(D[w].lsDone),B:bTalk(w)});
+      /* #nohalltime — no "hall wrapped at" fact */
       const c=recent.find(k=>+D[k].clerk>0); if(c)say('clerk',c,{N:D[c].clerk,B:bTalk(c)});
       const wk=weekStats(weekStart(now)); if(wk&&wk.boards>=3&&wk.best)say('best',wk.best.k,{B:bTalk(wk.best.k),C:fmt(wk.best.v)});
       const bd=bestDays(), we=bd.grp.we, wd=bd.grp.wd;
@@ -39174,6 +39191,23 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
     +'.wire-wrapdone b{color:var(--copper-hi);font-weight:700}.wire-wrapdone .wd-ic{margin-right:2px}'
     +'.wire-wrapdone small{display:block;margin-top:2px;font-size:10.5px;color:var(--steel)}'
     +'html.daylight .wire-wrapdone{background:#fff4e8;border-color:#e3bb92}'
+    +'.jl-fin{position:relative;z-index:1;margin:10px 0 2px;padding:9px 11px;border-radius:11px;border:1px solid var(--line);background:rgba(255,255,255,.03);text-align:center}'
+    +'.jl-fin b{display:block;font:800 13px Inter,system-ui,sans-serif;letter-spacing:.06em;color:var(--bone)}'
+    +'.jl-fin span{display:block;margin-top:3px;font:500 11.5px/1.45 Inter,system-ui,sans-serif;color:var(--steel)}'
+    +'.jl-fin.yes{border-color:rgba(127,174,106,.6);background:rgba(127,174,106,.1)}.jl-fin.yes b{color:#9fd18a}'
+    +'.jl-fin.no{border-color:rgba(143,199,240,.55);background:rgba(143,199,240,.08)}.jl-fin.no b{color:#8fc7f0}'
+    +'.jl-fin.lean b{color:var(--copper-hi)}.jl-fin.lean.yes b{color:#9fd18a}'
+    +'html.daylight .jl-fin.yes b{color:#2f7a32}html.daylight .jl-fin.no b{color:#1f527f}html.daylight .jl-fin{background:#fff}'
+    +'.jl-ship-card{margin-top:12px}.jl-ship-card .jl-port-lbl{white-space:nowrap}.jl-ship-card .jl-port-pill{min-width:0;overflow:hidden;text-overflow:ellipsis}'
+    +'.jl-ship-hero{position:relative;z-index:1;text-align:center;font-family:Anton,"Barlow Condensed",sans-serif;font-size:27px;line-height:1.05;margin:8px 0 3px;letter-spacing:.02em;word-break:break-word;background:linear-gradient(180deg,#e2f1ff,#8fc7f0 58%,#4f86b8);-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent}'
+    +'html.daylight .jl-ship-hero{background:none;color:#1f527f;-webkit-text-fill-color:#1f527f}'
+    +'.jl-ship-line{position:relative;z-index:1;margin-top:9px;font:500 12.5px/1.5 Inter,system-ui,sans-serif;color:var(--bone)}'
+    +'.jl-ship-line b{color:var(--copper-hi);font-weight:700}.jl-ship-line i{font-style:normal;color:var(--steel)}'
+    +'.jl-ship-k{color:var(--steel);font-size:11px;white-space:nowrap}'
+    +'.jl-ship-hist{position:relative;z-index:1;display:flex;flex-wrap:wrap;gap:5px;margin-top:10px}'
+    +'.jl-ship-hist span{font:600 11px Inter,system-ui,sans-serif;padding:3px 9px;border-radius:99px;border:1px solid var(--line);color:var(--steel);white-space:nowrap}'
+    +'.jl-ship-hist span b{color:var(--bone)}.jl-ship-hist span.me{border-color:rgba(238,180,107,.65);color:var(--copper-hi)}.jl-ship-hist span.me b{color:var(--copper-hi)}'
+    +'.jl-ship-foot{position:relative;z-index:1;margin-top:10px;text-align:center;font:500 10.5px Inter,system-ui,sans-serif;color:var(--steel)}'
     +'#recentBoards .rb-pmal{font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:11px;color:var(--steel);margin-top:4px;line-height:1.4}'
     +'#recentBoards .rb-pmal b{color:var(--bone);font-weight:700}'
     +'html.daylight .pt-new{color:#2f7a32;border-color:#9cc79a}'
@@ -39198,6 +39232,8 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
       +'<div><b>'+P.car.length+'</b><span>car ship'+(P.car.length===1?'':'s')+'</span></div></div>';
     if(P.fresh.length){ const f=P.fresh.slice(0,4);
       h+='<div class="pt-line"><span class="pt-k">Just in</span>'+f.map(s=>esc(nice(s.v))+' <i>'+esc(coName(s.c))+'</i>').join(' · ')+(P.fresh.length>4?' <i>+'+(P.fresh.length-4)+' more</i>':'')+'</div>'; }
+    const finUp=P.ships.filter(s=>/^Wrkng/i.test(String(s.s||''))&&/Finish|St\/Fin/i.test(String(s.s||'')));   /* #finishoff */
+    if(finUp.length)h+='<div class="pt-line"><span class="pt-k">🏁 Finishing</span>'+finUp.map(s=>esc(nice(s.v))+' <i>'+esc(coName(s.c))+'</i>').join(' · ')+'</div>';
     if(P.cruise.length)h+='<div class="pt-line"><span class="pt-k">🛳 Cruise</span>'+P.cruise.map(s=>esc(nice(s.v))).join(' · ')+'</div>';
     if(P.car.length)h+='<div class="pt-line"><span class="pt-k">🚗 Car ships</span>'+P.car.map(s=>esc(nice(s.v))+' <i>'+esc(coName(s.c))+'</i>').join(' · ')+'</div>';
     if(P.soon.length)h+='<div class="pt-line"><span class="pt-k">On the way</span>'+P.soon.slice(0,4).map(s=>esc(nice(s.v))).join(' · ')+'</div>';
@@ -39243,13 +39279,12 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
     h+='<div class="pt-tiles ph-tiles">'
       +'<div><b>'+(W.best?fmt(W.best.v):'—')+'</b><span>best board · '+(W.best?esc(bShort(W.best.k)):'—')+'</span></div>'
       +'<div><b>'+pct+'</b><span>of the order</span></div>'
-      +'<div><b>'+(W.wrapDay?esc(W.wrapDay):'—')+'</b><span>hall done · day</span></div>'
-      +'<div><b>'+(W.wrapNight?esc(W.wrapNight):'—')+'</b><span>hall done · night</span></div></div>';
+      +'<div><b>'+fmt(Math.round(W.total/Math.max(1,W.boards)))+'</b><span>average per board</span></div>'
+      +(W.shipSheets?'<div><b>'+fmt(W.worked)+'</b><span>ships worked</span></div>':'<div><b>'+W.boards+'</b><span>boards on file</span></div>')+'</div>';   /* #nohalltime */
     h+='<div class="ph-rows">';
     if(W.from&&W.to)h+='<div><span>The board</span><b>'+esc(W.from.c)+' → '+esc(W.to.c)+'</b></div>';
     if(W.clerk)h+='<div><span>Clerk jobs in that count</span><b>'+fmt(W.clerk)+'</b></div>';
-    if(W.shipSheets){ h+='<div><span>Ships worked</span><b>'+fmt(W.worked)+'</b></div>';
-      h+='<div><span>Cruise ship calls</span><b>'+fmt(W.cruise)+'</b></div>'; }
+    if(W.shipSheets)h+='<div><span>Cruise ship calls</span><b>'+fmt(W.cruise)+'</b></div>';
     h+='</div>';
     h+='<button type="button" class="ph-share" data-w="'+which+'">📤 Share '+(which==='last'?'last week':'this week')+'</button>';
     h+='<div class="ph-foot">From the official dispatch summaries. Casual hall jobs = longshore + clerk jobs the hall filled. “Of the order” = the share of the longshore order that came down to the casual hall.</div>';
@@ -39270,8 +39305,7 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
     const we=B.grp.we, wd=B.grp.wd;
     if(we.ord&&wd.ord)h+='<div class="ph-note">Weekends so far: <b>'+Math.round(we.ch/we.ord*100)+'%</b> of the order came down to the casual hall. Weekdays: <b>'+Math.round(wd.ch/wd.ord*100)+'%</b>.</div>';
     h+='<div class="ph-note" style="color:var(--steel)">Casuals get the jobs left after Class A and Class B take theirs, so when fewer A and B check in, more of the order reaches the casual hall.</div>';
-    const a=window.pmaUsualWrap('AM'), p=window.pmaUsualWrap('PM');
-    if(a||p)h+='<div class="ph-note">The hall usually wraps around '+(a?'<b>'+t12(a.t)+'</b> (day)':'')+(a&&p?' and ':'')+(p?'<b>'+t12(p.t)+'</b> (night)':'')+'.</div>';
+    /* #nohalltime — the "usually wraps" line is gone: the sheet's time isn't when the hall is done */
     h+='<div class="ph-foot">Average casual hall jobs per board (longshore + clerk) and the share of the order, from the official sheets · '+B.n+' board'+(B.n===1?'':'s')+' so far — fills in as the sheets come in.</div>';
     return h;
   }
@@ -39304,7 +39338,7 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
   }
 
   /* ═══ 5 · the picture ═══ */
-  function sig(W){ return W?[W.id,W.total,W.boards,W.clerk,W.best&&W.best.k,W.wrapDay,W.wrapNight,W.worked,W.cruise].join('|'):''; }
+  function sig(W){ return W?[W.id,W.total,W.boards,W.clerk,W.best&&W.best.k,W.share,W.worked,W.cruise].join('|'):''; }
   function rr(g,x,y,w,h,r){ g.beginPath(); g.moveTo(x+r,y); g.arcTo(x+w,y,x+w,y+h,r); g.arcTo(x+w,y+h,x,y+h,r); g.arcTo(x,y+h,x,y,r); g.arcTo(x,y,x+w,y,r); g.closePath(); }
   function fitText(g,txt,max,font,size){ let s=size; g.font=font.replace('{S}',s); while(s>18&&g.measureText(txt).width>max){ s-=2; g.font=font.replace('{S}',s); } return s; }
   async function draw(W){
@@ -39324,15 +39358,15 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
     const tiles=[
       ['BEST BOARD',W.best?fmt(W.best.v):'—',W.best?bLong(W.best.k):''],
       ['OF THE ORDER',W.share!=null?Math.round(W.share*100)+'%':'—','came down to the casual hall'],
-      ['HALL DONE · DAY',W.wrapDay||'—',''],
-      ['HALL DONE · NIGHT',W.wrapNight||'—','']];
+      ['AVERAGE PER BOARD',fmt(Math.round(W.total/Math.max(1,W.boards))),'jobs to the casual hall'],
+      (W.shipSheets?['SHIPS WORKED',fmt(W.worked),W.cruise?W.cruise+' cruise ship call'+(W.cruise===1?'':'s'):'']:['BOARDS ON FILE',String(W.boards),''])];   /* #nohalltime */
     tiles.forEach((t,i)=>{ const x=86+(i%2)*462, y=660+Math.floor(i/2)*232, w=446, h=212;
       g.fillStyle='rgba(255,255,255,.045)'; rr(g,x,y,w,h,26); g.fill(); g.strokeStyle='rgba(220,214,201,.16)'; g.lineWidth=2; rr(g,x,y,w,h,26); g.stroke();
       g.fillStyle='#8f979e'; g.font='700 26px '+IN; g.fillText(t[0],x+28,y+50);
       g.fillStyle='#dcd6c9'; fitText(g,t[1],w-56,'700 {S}px '+BC,88); g.fillText(t[1],x+26,y+140);
       if(t[2]){ g.fillStyle='#8f979e'; fitText(g,t[2],w-56,'500 {S}px '+IN,26); g.fillText(t[2],x+28,y+184); } });
     let yy=1168; g.font='600 34px '+IN;
-    const rows=[]; if(W.from&&W.to)rows.push('The board: '+W.from.c+' → '+W.to.c); if(W.shipSheets&&W.cruise)rows.push(W.cruise+' cruise ship call'+(W.cruise===1?'':'s')+' · '+W.worked+' ships worked');
+    const rows=[]; if(W.from&&W.to)rows.push('The board: '+W.from.c+' → '+W.to.c);
     rows.slice(0,2).forEach(r=>{ g.fillStyle='#dcd6c9'; fitText(g,r,904,'600 {S}px '+IN,34); g.fillText(r,90,yy); yy+=50; });
     g.fillStyle='#8f979e'; fitText(g,'From the official dispatch summaries · theshadowhook.com',904,'500 {S}px '+IN,26); g.fillText('From the official dispatch summaries · theshadowhook.com',90,1278);
     return await new Promise(res=>{ try{ c.toBlob(b=>res(b),'image/png'); }catch(e){ res(null); } });
@@ -39361,6 +39395,9 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
      the window can run on for a 2nd call — and the moment the board is sealed. */
   function renderWrap(){
     const el=document.getElementById('wWrapDone'); if(!el)return;
+    /* #nohalltime(oct5) — STOOD DOWN. It counted down to the sheet's L/S Dispatch Completed time, which is not when
+       the casual hall is done (the hall runs on past it). The slot stays hidden until there's a time that's right. */
+    el.style.display='none'; return;
     let w=null; try{ w=(typeof liveWindow==='function')?liveWindow():null; }catch(e){}
     const u=w?window.pmaUsualWrap(w==='DAY'?'AM':'PM'):null;
     if(!w||!u||u.n<2){ el.style.display='none'; return; }
@@ -39373,14 +39410,164 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
     el.style.display='';
   }
   window.pmaRenderWrap=renderWrap;
-  setInterval(function(){ if(!document.hidden){ try{ renderWrap(); }catch(e){} } },30000);
+  /* #nohalltime — no 30-second tick while the countdown stands down */
+
+
+  /* ═══ #dkship(oct5) — THE SHIP, ON THE DOCKET ═══════════════════════════════════════════════════════
+     Open a docket in the Job Log and, under its buttons, the official sheet for that docket's own dispatch
+     (docketWin: day → that day's sheet, night → that night's, a hoot → the night before) says what it
+     knows about the ship worked: gangs on her that shift, gangs worked so far, how long she's been in,
+     where she ranked in the harbor, her gangs shift by shift around yours, who else was working the same
+     dock, and what that board sent to the casual hall. Dock or rail work (no ship) shows what was working
+     at that dock instead. The ship is matched by name (the slip's "Seattle" finds CMA CGM SEATTLE), with
+     the dock's company as the tiebreaker. A sheet the phone no longer keeps is fetched once, when that
+     docket is opened, and only then. */
+  const OPCO={TTI:'TOTAL',FMS:'FENIX',ETS:'EVERPORT',YTI:'YUSEN',APM:'APM',LBCT:'LBCT',SSA:'SSA',TP:'TRA',ITS:'ITS',MET:'METRO'};
+  const BRAND=new Set(['ONE','MSC','CMA','CGM','OOCL','EVER','MAERSK','COSCO','YM','ZIM','HMM','APL','CSCL','SM','NYK','MOL','WAN','HAI','GRAND','STAR','CARNIVAL','PRINCESS','SEAS','ACE']);
+  const normS=s=>String(s||'').toUpperCase().replace(/[^A-Z0-9 ]+/g,' ').replace(/\s+/g,' ').trim();
+  window.pmaShipKey=function(iso,win){ try{ return iso+'_'+DOW[new Date(iso+'T12:00:00').getDay()]+'_'+(String(win).toUpperCase()==='DAY'?'AM':'PM'); }catch(e){ return ''; } };
+  const SHIPCACHE={};            /* key → a sheet fetched on demand (never written to the phone's store) · null = none on file */
+  function sheetOf(k){ const D=DATA(); if(D[k]&&Array.isArray(D[k].ships))return D[k]; const c=SHIPCACHE[k]; return (c&&Array.isArray(c.ships))?c:null; }
+  function shipKeys(){ const D=DATA(), s={}; Object.keys(D).forEach(k=>{ if(Array.isArray(D[k].ships))s[k]=1; }); Object.keys(SHIPCACHE).forEach(k=>{ if(SHIPCACHE[k]&&Array.isArray(SHIPCACHE[k].ships))s[k]=1; }); return Object.keys(s).sort(); }
+  function findShip(ships,name,op){
+    const q=normS(name); if(q.length<3)return null;
+    const qt=q.split(' ').filter(w=>w.length>=3), co=OPCO[String(op||'').toUpperCase()]||null, solo=(qt.length<=1&&BRAND.has(q));
+    let best=null, bs=0;
+    (ships||[]).forEach(s=>{ const v=normS(s.v); let sc=0;
+      if(v===q)sc=100;
+      else if(!solo&&q.replace(/ /g,'')===v.replace(/ /g,''))sc=95;
+      else if(!solo&&q.length>=4&&(v.endsWith(' '+q)||v.startsWith(q+' ')))sc=90;
+      else if(!solo&&qt.length&&qt.every(w=>v.split(' ').indexOf(w)>=0))sc=80;
+      if(!sc)return;
+      if(co&&s.c===co)sc+=10;
+      if(sc>bs){ bs=sc; best=s; } });
+    return bs>=80?best:null;
+  }
+  const ord=n=>n+(n%100>=11&&n%100<=13?'th':({1:'st',2:'nd',3:'rd'}[n%10]||'th'));
+  function shipCard(k,shipName,op){
+    const p=sheetOf(k); if(!p)return '';
+    const d=kd(k), when=isAM(k)?'that day':'that night';
+    const pill=esc(DOW[d.getDay()].toUpperCase()+' '+(isAM(k)?'DAY':'NIGHT'));   /* the date is on the docket row already */
+    const s=shipName?findShip(p.ships,shipName,op):null;
+    const co=s?s.c:(OPCO[String(op||'').toUpperCase()]||null);
+    const mates=co?p.ships.filter(x=>x.c===co&&(!s||x.v!==s.v)&&gOf(x)>0).sort((a,b)=>gOf(b)-gOf(a)):[];
+    const mateLine=list=>list.slice(0,5).map(x=>esc(nice(x.v))+' <b>'+gOf(x)+'</b>').join(' · ');
+    const board=(function(){ const B=DATA()[k]||SHIPCACHE[k]; if(!B||!done(B))return ''; const c=came(B); if(c==null)return '';
+      return '<div class="jl-ship-line">📋 That board: the casual hall filled <b>'+fmt(c)+'</b> jobs</div>'; })();   /* #nohalltime */
+    if(!s){                       /* dock or rail work, or a ship the sheet doesn't list — what was working at the dock */
+      if(!mates.length)return '';
+      return '<div class="jl-port jl-ship-card"><div class="jl-port-top"><span class="jl-port-lbl">🚢 AT YOUR DOCK</span><span class="jl-port-pill">'+pill+'</span></div>'
+        +'<div class="jl-ship-line">Working at <b>'+esc(coName(co))+'</b> '+when+': '+mateLine(mates)+(mates.length>5?' <i>+'+(mates.length-5)+' more</i>':'')+' <span class="jl-ship-k">gangs</span></div>'
+        +board+'<div class="jl-ship-foot">From the official dispatch summary</div></div>';
+    }
+    const g=gOf(s), st=statOf(s), K=kindOf(s);
+    const working=p.ships.filter(x=>gOf(x)>0).sort((a,b)=>gOf(b)-gOf(a)), rank=g>0?working.findIndex(x=>x.v===s.v)+1:0;
+    let since='', day=null;
+    if(s.a){ const a=new Date(s.a); if(!isNaN(a)){ const a0=new Date(a.getFullYear(),a.getMonth(),a.getDate()), d0=new Date(d.getFullYear(),d.getMonth(),d.getDate());
+      day=Math.round((d0-a0)/864e5)+1; since=DOW[a.getDay()]+' '+md(a)+(s.a.length>10?', '+t12(s.a.slice(11,16)):''); } }
+    const typ={box:'Container ship',cruise:'Cruise ship',car:'Car ship',bulk:'Bulk ship',gen:'Break-bulk ship',barge:'Barge',other:esc(s.t||'Ship')}[K];
+    /* her shifts around yours: every sheet this phone can see that lists her */
+    const hist=shipKeys().map(x=>{ const q=sheetOf(x), y=q&&q.ships.find(z=>z.v===s.v); return y?{k:x,g:gOf(y),st:statOf(y),cut:+y.x||0}:null; }).filter(Boolean);
+    const at=hist.findIndex(h=>h.k===k), win=hist.slice(Math.max(0,at-3),at+3);
+    const fin=hist.find(h=>h.k>k&&h.st[0]==='done');
+    let h='<div class="jl-port jl-ship-card"><div class="jl-port-top"><span class="jl-port-lbl">🚢 THE SHIP</span><span class="jl-port-pill">'+pill+'</span></div>'
+      +'<div class="jl-ship-hero">'+esc(s.v)+'</div>'
+      +'<div class="jl-port-sub">'+typ+' · '+esc(coName(s.c))+(since?' · in since '+esc(since):'')+'</div>'
+      +finishBanner(k,shipName,op,s)   /* #finishoff */
+      +'<div class="jl-port-tiles">'
+        +'<div class="jl-tile"><b>'+(g>0?g:'—')+'</b><span>GANGS ON HER</span></div>'
+        +'<div class="jl-tile"><b>'+(s.w!=null?fmt(s.w):'—')+'</b><span>WORKED SO FAR</span></div>'
+        +'<div class="jl-tile"><b>'+(day!=null&&day>0?'Day '+day:'—')+'</b><span>IN PORT</span></div></div>';
+    if(rank>0&&rank<=5&&working.length>1)h+='<div class="jl-ship-line">'+(rank<=3?'🔥 ':'')+(rank===1?'The busiest ship in the harbor '+when:'The '+ord(rank)+' busiest ship in the harbor '+when)+' <span class="jl-ship-k">of '+working.length+' working</span></div>';
+    const _fc=finishCall(k,shipName,op), _called=!!(_fc&&_fc.official&&_fc.state!=='more');   /* #finishoff — the banner already said it */
+    if((st[0]!=='work'||st[1]!=='working'||(+s.x||0)>0)&&!(_called&&st[1]==='finishing'))
+      h+='<div class="jl-ship-line">'+({nmp:'⚠ No manpower for her that shift',done:'✓ Finished that shift',cn:'Her order was cancelled that shift',idle:'Idle that shift',route:'Still on the way'}[st[0]]||(st[1]==='finishing'?'⏱ Finishing up that shift':(st[1]==='gangs cut'?'✂ Gangs cut that shift':'')))
+        +((+s.x||0)>0?' <span class="jl-ship-k">'+s.x+' gang'+(s.x>1?'s':'')+' cut</span>':'')+'</div>';
+    if((+s.f||0)>0)h+='<div class="jl-ship-line">About <b>'+fmt(s.f)+'</b> gangs of work left on her <span class="jl-ship-k">per the sheet</span></div>';
+    if(win.length>1)h+='<div class="jl-ship-hist">'+win.map(x=>'<span'+(x.k===k?' class="me"':'')+'>'+esc(bShort(x.k))+' <b>'+(x.st[0]==='done'?'✓':x.g)+'</b>'+(x.k===k?' ← you':'')+'</span>').join('')+'</div>';
+    if(fin&&!_called)h+='<div class="jl-ship-line">✓ Listed as finished on the '+esc(bShort(fin.k))+' sheet</div>';
+    if(mates.length)h+='<div class="jl-ship-line">Also at '+esc(coName(co))+' '+when+': '+mateLine(mates)+(mates.length>5?' <i>+'+(mates.length-5)+' more</i>':'')+' <span class="jl-ship-k">gangs</span></div>';
+    h+=board+'<div class="jl-ship-foot">From the official dispatch summary</div></div>';
+    return h;
+  }
+
+  /* ═══ #finishoff(oct5) — FINISH-UP OR NOT, OFF THE OFFICIAL SHEETS ═══════════════════════════════════
+     The #finish model leans on the union's sheets ("FINISH 65%"). The official sheets say it outright:
+       · this shift's sheet marks her "Wrkng-Finishing" (or "St/Fin", in and out the same shift) → FINISH-UP;
+       · the NEXT shift's sheet orders gangs on her → MORE TO COME (she isn't done after this shift);
+       · the next sheet lists her finished, or she's off it altogether → she finished on this shift.
+     The night sheet goes up before the night dispatch with the night's orders on it, so once it's on file
+     a day crew knows by mid-shift whether their ship has more work tonight. With nothing official to go
+     on, the #finish lean stands. */
+  function finishCall(k,shipName,op){
+    const p=sheetOf(k); if(!p||!shipName)return null;
+    const s=findShip(p.ships,shipName,op); if(!s)return null;
+    const st=String(s.s||''), g=gOf(s);
+    if(/^Wrkng/i.test(st)&&/Finish|St\/Fin/i.test(st))
+      return {state:'finishing',official:true,ship:s,why:'The official sheet for '+bShort(k)+' has her '+(/St\/Fin/i.test(st)?'starting and finishing on the same shift':'finishing')+'.'};
+    const nk=nbr(k,1), q=sheetOf(nk);
+    if(q){
+      const y=q.ships.find(z=>z.v===s.v), gy=y?gOf(y):0;
+      if(y&&gy>0)return {state:'more',official:true,ship:s,next:nk,g:gy,why:'The '+bShort(nk)+' sheet has '+gy+' gang'+(gy===1?'':'s')+' ordered on her, so there’s more work after '+bShort(k)+'.'};
+      if(g>0&&y&&/Finished|St\/Fin/i.test(String(y.s||'')))return {state:'finished',official:true,ship:s,next:nk,why:'The '+bShort(nk)+' sheet lists her as finished.'};
+      if(g>0&&!y)return {state:'gone',official:true,ship:s,next:nk,why:'She’s off the '+bShort(nk)+' sheet altogether, so she was done after '+bShort(k)+'.'};
+    }
+    return {state:'unknown',official:false,ship:s};
+  }
+  window.pmaFinishCall=function(k,shipName,op){ try{ return finishCall(k,shipName,op); }catch(e){ return null; } };
+  window.pmaFinishShow=function(k,el){ try{ const d=(el&&el.dataset)||{}, o=finishCall(k,d.ship,d.co); if(!o||!o.official)return;
+    const head=o.state==='more'?'More work after this shift':(o.state==='finishing'?'Finishing this shift':'Finished on this shift');
+    const msg=nice(o.ship.v)+' — '+head.toLowerCase()+'\n\n'+o.why+'\n\nFrom the official dispatch summaries.';
+    if(typeof shAlert==='function')shAlert(msg,{title:'Finish-up?',icon:'🏁',okText:'Got it'}); }catch(e){} };
+  /* the docket's finish-up line: the official call, or the #finish lean */
+  function finishBanner(k,shipName,op,s){
+    const fc=finishCall(k,shipName,op);
+    if(fc&&fc.official){
+      if(fc.state==='finishing')return '<div class="jl-fin yes"><b>🏁 FINISH-UP</b><span>'+esc(fc.why)+'</span></div>';
+      if(fc.state==='more')return '<div class="jl-fin no"><b>⏩ MORE TO COME</b><span>'+esc(fc.why)+'</span></div>';
+      return '<div class="jl-fin yes"><b>🏁 SHE FINISHED ON YOUR SHIFT</b><span>'+esc(fc.why)+'</span></div>';
+    }
+    let a=null; try{ if(window.FINISH){ a=FINISH.ask(k,(s&&s.v)||shipName,op)||(s?FINISH.ask(k,shipName,op):null); } }catch(e){}
+    if(a)return '<div class="jl-fin lean'+(a.level==='likely'?' yes':'')+'"><b>⏱ '+esc(a.label)+' · '+a.pct+'%</b><span>A lean from past hall sheets — the official sheet hasn’t called it yet.</span></div>';
+    return '';
+  }
+  const _fetching={};
+  async function fetchSheets(keys){
+    if(!window.SB)return false;
+    const need=keys.filter(k=>k&&!sheetOf(k)&&!(k in SHIPCACHE)&&!_fetching[k]); if(!need.length)return false;
+    need.forEach(k=>{ _fetching[k]=1; });
+    try{ const r=await window.SB.from('pma_sheets').select('key,data').in('key',need);
+      const got={}; if(r&&!r.error)(r.data||[]).forEach(x=>{ if(x&&x.key&&x.data&&!x.data.held&&!x.data.tossed)got[x.key]=x.data; });
+      need.forEach(k=>{ SHIPCACHE[k]=got[k]||null; });
+      return Object.keys(got).length>0;
+    }catch(e){ return false; } finally{ need.forEach(k=>{ delete _fetching[k]; }); }
+  }
+  const nbr=(k,n)=>{ const iso=k.slice(0,10), am=isAM(k); let x=new Date(iso+'T12:00:00'), a=am;   /* step n sheets (day ↔ night) */
+    for(let i=0;i<Math.abs(n);i++){ if(n>0){ if(a)a=false; else { a=true; x.setDate(x.getDate()+1); } } else { if(!a)a=true; else { a=false; x.setDate(x.getDate()-1); } } }
+    return window.pmaShipKey(iso8(x),a?'DAY':'NIGHT'); };
+  const iso8=x=>x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');
+  window.pmaShipFill=function(root,allowFetch){
+    try{ (root||document).querySelectorAll('.jl-ship[data-k]').forEach(el=>{
+      const k=el.getAttribute('data-k'), ship=el.getAttribute('data-ship')||'', op=el.getAttribute('data-op')||'';
+      const paint=()=>{ let html=shipCard(k,ship,op);
+        if(!html&&ship){ const fb=finishBanner(k,ship,op,null);   /* #finishoff — no official sheet yet: the lean, on its own */
+          if(fb)html='<div class="jl-port jl-ship-card"><div class="jl-port-top"><span class="jl-port-lbl">⏱ FINISH-UP?</span></div>'+fb+'</div>'; }
+        if(html&&el.getAttribute('data-sig')!==html.length+'|'+k){ el.innerHTML=html; el.setAttribute('data-sig',html.length+'|'+k); } return !!html; };
+      paint();
+      if(!allowFetch||k.slice(0,10)<iso8(new Date(Date.now()-180*864e5)))return;
+      /* opened: fetch, once, whichever of this sheet and the one either side the phone doesn't keep — the
+         card shows her shifts around yours — then paint again */
+      fetchSheets([k,nbr(k,-1),nbr(k,1)]).then(ok=>{ if(ok)paint(); });
+    }); }catch(e){}
+  };
 
   /* ═══ when to draw ═══ */
   let _rq=0;
   function render(){ if(_rq)return; _rq=setTimeout(function(){ _rq=0;
     try{ renderPort(); }catch(e){ try{ console.error('pmaplus port',e); }catch(_){} }
     try{ renderHall(); }catch(e){ try{ console.error('pmaplus hall',e); }catch(_){} }
-    try{ renderWrap(); }catch(e){} },120); }
+    try{ renderWrap(); }catch(e){}
+    try{ window.pmaShipFill(document.getElementById('docketList'),false); }catch(e){} },120); }   /* #dkship — open dockets catch up when a sheet lands */
   window.pmaPlusRender=function(){ render(); try{ loadStats(); }catch(e){} };
   setTimeout(window.pmaPlusRender,2600); setTimeout(window.pmaPlusRender,7000);
   setInterval(function(){ if(!document.hidden)render(); },60000);
