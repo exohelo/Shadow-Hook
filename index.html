@@ -58038,11 +58038,10 @@ function preHTML(k,room){
   const S=V.start;
   const Y=youPre(k);
   const fin=V.finishes?V.finishes.v:[];
-  const KB=kbyg(), hasPh=Array.isArray(KB.phones)&&KB.phones.length, hall=KB.hall&&(KB.hall.addr||KB.hall.phone);
+  const KB=kbyg(), hall=KB.hall&&(KB.hall.addr||KB.hall.phone);
   let kb='';
   if(webUrl(KB.safety))kb+='<a class="dp-kb" href="'+h(webUrl(KB.safety))+'" target="_blank" rel="noopener">'+IC.shield+'<span>Safety codes</span></a>';
-  if(webUrl(KB.directions))kb+='<a class="dp-kb" href="'+h(webUrl(KB.directions))+'" target="_blank" rel="noopener">'+IC.nav+'<span>Directions</span></a>';
-  if(hasPh)kb+='<button type="button" class="dp-kb" data-dp="phones">'+IC.phone+'<span>Phone numbers</span></button>';
+  /* (oct 7) Directions and Phone numbers came off the post by the Keymaster's word — their rows stay on file in _kbyg */
   if(hall)kb+='<button type="button" class="dp-kb" data-dp="phones" data-hall="1">'+IC.pin+'<span>Casual Hall</span></button>';
   const ck=ckHTML(k,B);
   return '<div class="dp-count"><div class="l"><span class="k">GOES LIVE IN</span><b class="v" data-dpcd="'+(f?Math.round(realTs(f)/1000)*1000:0)+'">'+(f?hms(f-la()):'—')+'</b></div>'
@@ -58943,7 +58942,6 @@ function openEdit(k){
   const app=(function(){ try{ return startOf(k,null)||''; }catch(e){ return ''; } })();
   const c=(function(){ try{ return callFor(k); }catch(e){ return null; } })();
   const fin=(Array.isArray(F.finishes)?F.finishes:String(F.finishes||'').split(/\n/)).map(x=>String(x).trim()).filter(Boolean).join('\n');
-  const ph=(Array.isArray(KB.phones)?KB.phones:[]).map(p=>(p.l||'')+' | '+(p.n||'')).join('\n');
   const inp=(f,lab,v,o)=>'<label class="dp-ed-f'+((o&&o.wide)?' wide':'')+'"><span>'+lab+(o&&o.em?' <em>'+o.em+'</em>':'')+'</span><input type="text" data-f="'+f+'" value="'+h(v==null?'':v)+'"'+((o&&o.num)?' inputmode="numeric" maxlength="6"':'')+((o&&o.ph)?' placeholder="'+h(o.ph)+'"':'')+((o&&o.max)?' maxlength="'+o.max+'"':'')+((o&&o.caps)?' autocapitalize="characters"':'')+' autocomplete="off"></label>';
   /* #prefill — a number the sheets already carry is shown locked, with where it came from: the fix goes on the sheet */
   const src=a=>(a.src==='PMA'?'PMA':(a.src==='early sheet'?'early sheet':'sheet'));
@@ -58968,8 +58966,6 @@ function openEdit(k){
       :'<label class="dp-ed-f wide"><span>SCHEDULED FINISHES <em>one per line</em></span><textarea data-f="finishes" rows="4" placeholder="CSCL SUMMER&#10;PLUMERIA LEADER st/fin">'+h(fin)+'</textarea></label>')
     +'<details class="dp-ed-kb"><summary>KNOW BEFORE YOU GO <em>· rides every board</em></summary>'
       +inp('k_safety','SAFETY CODES LINK',KB.safety,{wide:true,ph:'https://…'})
-      +inp('k_directions','DIRECTIONS LINK',KB.directions,{wide:true,ph:'https://…'})
-      +'<label class="dp-ed-f wide"><span>PHONE NUMBERS <em>label | number · one per line</em></span><textarea data-f="k_phones" rows="5">'+h(ph)+'</textarea></label>'
       +inp('k_hname','THE HALL',H.name,{wide:true,ph:'name'})
       +inp('k_haddr','ADDRESS',H.addr,{wide:true,ph:'street, city'})
       +inp('k_hphone','HALL PHONE',H.phone,{wide:true,ph:'(310) …'})
@@ -58999,8 +58995,8 @@ async function saveEdit(k,s,btn){
   /* the know-before-you-go row — only written when it actually changed */
   const url=v=>(!v||/^https?:\/\/\S+$/i.test(v))?v:'https://'+v.replace(/^\/+/,'');
   const KB0=kbyg();
-  const phones=val('k_phones').split(/\n/).map(x=>x.trim()).filter(Boolean).slice(0,20).map(x=>{ const m=x.split('|'); return m.length>1?{l:m[0].trim().slice(0,60),n:m.slice(1).join('|').trim().slice(0,30)}:{l:'',n:x.slice(0,30)}; }).filter(p=>p.n);
-  const KB={safety:url(val('k_safety')),directions:url(val('k_directions')),phones:phones,hall:{name:val('k_hname').slice(0,60),addr:val('k_haddr').slice(0,120),phone:val('k_hphone').slice(0,30)}};
+  /* directions + phone numbers are off the post (oct 7) — whatever is on file rides along untouched */
+  const KB={safety:url(val('k_safety')),directions:KB0.directions||'',phones:Array.isArray(KB0.phones)?KB0.phones:[],hall:{name:val('k_hname').slice(0,60),addr:val('k_haddr').slice(0,120),phone:val('k_hphone').slice(0,30)}};
   const kbChanged=JSON.stringify({safety:KB0.safety||'',directions:KB0.directions||'',phones:KB0.phones||[],hall:Object.assign({name:'',addr:'',phone:''},KB0.hall||{})})!==JSON.stringify(KB);
   if(!(window.SB&&me())){ bad('Sign in first — the pre-post rides your key'); return; }
   btn.disabled=true; if(msg){ msg.className='dp-ed-msg'; msg.textContent='Saving…'; }
