@@ -7849,7 +7849,11 @@ html.daylight .hm-lm .lk-g,html.daylight .hm-lm .lk-w{fill:#dfeaf7}
         <div class="card-b" id="dmInbox"><p class="sub">Opening the book…</p></div>
         <!-- #burn(aug29) — a shortcut to the wires row of the profile's BURN THE LOG hub -->
         <div class="card-b" style="border-top:1px solid var(--line-soft);padding-top:13px">
-          <button class="btn-line" id="dmWipeBtn" type="button" style="width:100%">🧹 BURN MY DIRECT MESSAGES</button>
+          <!-- (oct 7) SEEN ALL sits to the right of BURN: hides every conversation at once (UNDO brings them back) -->
+          <div style="display:flex;gap:8px">
+            <button class="btn-line" id="dmWipeBtn" type="button" style="flex:1;min-width:0">🧹 BURN MY DIRECT MESSAGES</button>
+            <button class="btn-line" id="dmSeenAllBtn" type="button" style="flex:none;white-space:nowrap" onclick="dmSeenAll()">👁 SEEN ALL</button>
+          </div>
         </div>
       </div>
       <!-- #dupefix(sep01) — the "Casual · online now" card was cut by request: it repeated
@@ -31238,6 +31242,17 @@ function dmIsHidden(u){ const m=dmHideMap(); if(!m[u])return false;
   if(dmLastAt(u)>String(m[u])){ delete m[u]; dmHideSave(m); return false; }   // something new was said: it comes back
   return true; }
 window.dmUnhideAll=function(){ dmHideSave({}); dmRenderAll(); };
+/* (oct 7) SEEN ALL — every conversation on the list is marked seen and swiped away in one tap; a new message brings its thread back, same as a single hide */
+let _dmSeenAllPrev=null;
+window.dmSeenAll=function(){
+  const allU=Object.keys(DM.threads||{}).filter(u=>!dmIsHidden(u));
+  if(!allU.length){ try{ if(typeof toast==='function')toast('Nothing to clear — you’re all caught up'); }catch(e){} return; }
+  const prev=dmHideMap(), m=Object.assign({},prev);
+  allU.forEach(u=>{ m[u]=dmLastAt(u)||new Date().toISOString(); try{ if(typeof dmMarkSeen==='function')dmMarkSeen(u); }catch(e){} });
+  dmHideSave(m); _dmSeenAllPrev=prev; dmRenderAll();
+  dmUndoBar('*all*');
+  const tx=document.getElementById('dmUndoTx'); if(tx)tx.textContent='Hid '+allU.length+' conversation'+(allU.length===1?'':'s');
+};
 let _dmUndo=null;
 function dmHide(u){
   const m=dmHideMap(); m[u]=dmLastAt(u)||new Date().toISOString(); dmHideSave(m);
@@ -31250,9 +31265,11 @@ function dmUndoBar(u){
     bar.innerHTML='<span id="dmUndoTx"></span><button type="button" id="dmUndoBtn">UNDO</button><i id="dmUndoT"></i>';
     document.body.appendChild(bar);
     bar.querySelector('#dmUndoBtn').addEventListener('click',()=>{ const id=bar.dataset.uid; if(!id)return;
-      const m=dmHideMap(); delete m[id]; dmHideSave(m); bar.classList.remove('on'); clearTimeout(_dmUndo); dmRenderAll(); }); }
+      if(id==='*all*'){ if(_dmSeenAllPrev)dmHideSave(_dmSeenAllPrev); _dmSeenAllPrev=null; }
+      else { const m=dmHideMap(); delete m[id]; dmHideSave(m); }
+      bar.classList.remove('on'); clearTimeout(_dmUndo); dmRenderAll(); }); }
   bar.dataset.uid=u;
-  bar.querySelector('#dmUndoTx').textContent='Hid '+dmPeerName(u);
+  bar.querySelector('#dmUndoTx').textContent=(u==='*all*')?'Hid them all':'Hid '+dmPeerName(u);
   const t=bar.querySelector('#dmUndoT'); t.style.animation='none'; void t.offsetWidth; t.style.animation='';
   bar.classList.add('on'); clearTimeout(_dmUndo);
   _dmUndo=setTimeout(()=>{ bar.classList.remove('on'); bar.dataset.uid=''; },2000);
