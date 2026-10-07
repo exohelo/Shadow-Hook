@@ -8,7 +8,9 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct6bighall';   /* oct 6 (42nd) — the check-in spot reads BIG HALL CHECK-IN: how many people checked in at the big hall. */
+window.SHK_BUILD='oct6liveanchor';   /* oct 6 (44th) — during dispatch the call follows the live board: letters run so far ÷ the share a board has usually run by that minute, blended with the engine; pulls back as the clock runs with no new scans (#liveanchor). */
+/* was: oct6hdrfit */   /* oct 6 (43rd) — the header's left column fits at the 13px floor: a pulsing dot + NIGHT · 1ST, then the three call times with the one being called lit and the called ones struck (#hdrfit). */
+/* was: oct6bighall */   /* oct 6 (42nd) — the check-in spot reads BIG HALL CHECK-IN: how many people checked in at the big hall. */
 /* was: oct6gooalign */   /* oct 6 (41st) — the header's drips stay on the goo lip after tab switches and closing the profile (#gooalign). */
 /* was: oct6cktotal */   /* oct 6 (40th) — UNION CHECK-IN is one number: the total checked in at the big hall; the sheet shows UNION CHECKED IN; the band chip and the share card's band line are gone (#cktotal). */
 /* was: oct6mintonce */   /* oct 6 (39th) — one trip to the mint per tap; a call cut off by leaving for checkout is no longer filed as "bucks mint — Load failed" (#mintonce). */
@@ -5357,6 +5359,20 @@ html.daylight #botFloat .bf-x{color:#222;background:rgba(15,17,20,.08)}
 html.daylight #botFloat .bf-ln{color:#17141f!important;background:rgba(255,255,255,.72)!important;border-color:rgba(15,17,20,.12)!important;box-shadow:0 4px 14px rgba(15,17,20,.14)}
 html.daylight #botFloat .bf-typ{background:rgba(255,255,255,.72);border-color:rgba(15,17,20,.12)}html.daylight #botFloat .bf-typ i{background:#555}
 @media (prefers-reduced-motion:reduce){#botFloat .bf-ln{animation:none}#botFloat .bf-typ i{animation:none}}
+</style>
+<style>
+/* #hdrfit(oct6) — the dispatch name + the three call times, all at the 13px floor, inside the header's left column */
+.hdr-console #dispName,.hdr-console #dispLabel{overflow:visible!important;text-overflow:clip!important}
+.hdr-console #dispName{display:flex;align-items:center;gap:4px}
+.dlive{flex:none;width:7px;height:7px;border-radius:50%;background:#e0492e;box-shadow:0 0 0 2px rgba(224,73,46,.25);animation:pulse 1.4s ease-in-out infinite}
+.hdr-console .dname{font-size:13px!important;letter-spacing:.03em;white-space:nowrap}
+.dsteps{display:inline-flex;align-items:center;gap:1px;margin-top:2px;margin-left:-3px}
+.hdr-console .hc-board{overflow:visible!important}
+.dst{font:700 13px/1 'Barlow Condensed',sans-serif;letter-spacing:0;padding:2px 3px;border-radius:5px;color:var(--bone)}
+.dst.done{filter:opacity(.4);text-decoration:line-through;text-decoration-thickness:1.5px}
+.dst.now{background:var(--copper-hi);color:#140b05!important;box-shadow:0 0 10px rgba(255,160,77,.55)}
+html.season-halloween .topbar .dline .dst.now{background:#1a0633;color:#b6ff3d!important;box-shadow:0 0 8px rgba(26,6,51,.35)}
+html.daylight .dst.now{background:var(--copper);color:#fff!important;box-shadow:none}
 </style>
 <style>
 /* #moveless */
@@ -13321,15 +13337,18 @@ function tickDisp(){
     clkEl.classList.remove('standby');
     if(lblEl)lblEl.textContent="NEXT DISPATCH";
   }
-  const seg=(txt,live)=>live?'<b class="live">'+txt+'</b>':txt;
-  document.getElementById('dispName').innerHTML=
-    (phase>0?'<span class="live-badge">LIVE</span>':'')+  /* #31 — dispatch is happening right now */
-    '<span class="dname">'+b.name+(b.tom?" (TOMORROW)":"")+'</span>';
-  document.getElementById('dispLabel').innerHTML=
-    seg("Flex "+b.ft,phase===1)+" · "+
-    seg("1st "+b.t1,phase===2)+" · "+
-    seg("2nd "+b.t2,phase===3)+
-    '';
+  /* #hdrfit(oct6) — THE LEFT COLUMN FITS. "● LIVE NIGHT DISPA…" and "Flex 4:30 · 1st 5:00 · 2nd …" were cut off in
+     ~100px. Now: the name is short while live (the clock beside it already says DISPATCH LIVE), and the three call
+     times sit as a tiny step row — label over time — the live step lit, the ones already called faded. */
+  const short=b.name.replace(' DISPATCH',''), STEP=['','FLEX','1ST','2ND'];
+  /* everything here clears the 13px text floor, so the room is spent on what matters: a pulsing dot instead of the
+     LIVE word (the clock beside it already says DISPATCH LIVE), the board, the step being called, and the three times */
+  const nmHtml=(phase>0?'<i class="dlive"></i>':'')+'<span class="dname">'+short+(phase>0?' · '+STEP[phase]:(b.tom?' · TMRW':''))+'</span>';
+  const st=(t,i)=>'<span class="dst'+(phase===i?' now':(phase>i?' done':''))+'">'+t+'</span>';
+  const lbHtml='<span class="dsteps">'+st(b.ft,1)+st(b.t1,2)+st(b.t2,3)+'</span>';
+  const _dn=document.getElementById('dispName'), _dl=document.getElementById('dispLabel');
+  if(_dn.__h!==nmHtml){ _dn.__h=nmHtml; _dn.innerHTML=nmHtml; }
+  if(_dl.__h!==lbHtml){ _dl.__h=lbHtml; _dl.innerHTML=lbHtml; }
 }
 tickDisp();setInterval(tickDisp,1000);
 
@@ -14061,7 +14080,7 @@ function _minuteRecalc(force){
   try{ live=!!liveWindow();
     const k=_predKey();
     sig=JSON.stringify([k, pendingStartCard(), (k===dropKey()?((dropUnion().total||0)+'|'+JSON.stringify(dropUnion().ck||{})):0), Object.keys(DISPATCH_DATA).length,
-      live, (typeof startConfirmed==='function'?!!startConfirmed():1), callSlot]);
+      live, (typeof startConfirmed==='function'?!!startConfirmed():1), callSlot, (live&&lastCall?lastCall.pos:0)]);   /* #liveanchor — a new board position re-figures the call within the minute */
   }catch(e){ sig='x'+Date.now(); }
   const safety=(live?3:15)*60000;
   if(!force&&sig===_mrSig&&Date.now()-_mrAt<safety)return;
@@ -14793,7 +14812,7 @@ function renderWireStage(o){
   set('predStop', cyc?'CYCLE':stopL);
   if(cyc){ set('wMoves','likely <b>cycles</b> &middot; '+startL+' &rarr; around the book'); }
   else set('wMoves', o.med<=0 ? ('likely <b>holds</b> on '+startL)
-    : ('runs <b>'+o.med+' letter'+(o.med===1?'':'s')+'</b> · '+startL+' &rarr; <b>'+stopL+'</b>'));   /* #letters — the wire counts letters, never cards */
+    : ('runs <b>'+o.med+' letter'+(o.med===1?'':'s')+'</b> · '+startL+' &rarr; <b>'+stopL+'</b>'+((window._liveAnchor&&window._liveAnchor.pos)?' · <span style="opacity:.8">board on '+window._liveAnchor.pos[0]+'</span>':'')));   /* #letters — the wire counts letters, never cards · #liveanchor — says the call is following the board */
   /* the board — a dispatch-letter ladder from the start card
      #ladder — a long call (a night that opens into thin letters) needs more than 16
      rungs, so the ladder is allowed the whole book and wraps to a second row past 16. */
@@ -16672,6 +16691,36 @@ function publishCall(){
     window._v4dbg.ladder=ladder?{thinW:+ladder.thinW.toFixed(2),att:(ladder.att!=null?+ladder.att.toFixed(3):null),base:+ladder.base.toFixed(3),firstThin:ladder.firstThin,firstFresh:ladder.firstFresh,resting:ladder.resting,keep:+ladKeep.toFixed(2),bias:(ladBias!=null?+ladBias.toFixed(1):null)}:null;
     window._v4dbg.reg=window._v4reg||null;
   } }catch(_de){}
+  /* ═══ #liveanchor(oct6) — ONCE THE BOARD IS MOVING, THE CALL WATCHES IT ═══
+     Asked: "415 already came down and it's on X — why move the call to B?" Until now the live call only heard the
+     Drop Log's COUNT; it never looked at where the board actually is. Backtest on 67 boards (Aug 18 – Oct 6): the reel
+     (members' scanned dockets) sits at a steady share of the board's final run by the clock — about a third at
+     flex+40 min, 60% at +50, 75% at +60, 83% at +75, 86% at +90 — because the 1st call's tail and the 2nd call are
+     still to come and the scans trail the board. So: live estimate = letters run so far ÷ that share, blended with the
+     engine (more weight on the board as the night goes: 40% at +40 → 75% by +75). Live MAE 2.0 letters at +60 and
+     1.5 at +75, against ~2.7 for the count alone; and with no new scans, the call pulls back toward the board as the
+     clock runs instead of sitting on an old number. Never calls a stop behind the board. */
+  window._liveAnchor=null;
+  try{
+    const _lc=(typeof lastCall!=='undefined')?lastCall:null;
+    if(live && _lc && _lc.pos && _lc.win===winKey() && /^[A-Z]\d+$/.test(_lc.pos)){
+      const _b0=AZ.indexOf(lastStart[0]), _cur=(AZ.indexOf(_lc.pos[0])-_b0+26)%26;
+      const _n=nowLA(), _fx=new Date(_n); _fx.setHours(isAM?6:16,30,0,0); const _mins=(_n-_fx)/60000;
+      const LS=[[30,.25],[40,.333],[50,.60],[60,.75],[75,.833],[90,.857],[105,.857],[150,.90]];
+      const lsh=m=>{ if(m<=LS[0][0])return LS[0][1]; for(let i=1;i<LS.length;i++){ if(m<=LS[i][0]){ const a=LS[i-1],b=LS[i]; return a[1]+(b[1]-a[1])*(m-a[0])/(b[0]-a[0]); } } return LS[LS.length-1][1]; };
+      if(_cur>=1 && _cur<20 && _mins>=35){
+        const L=(_cur+1)/lsh(_mins);
+        const lm=_mins<50?3.3:_mins<60?2.3:_mins<75?2.0:1.55, em=2.7, w=(em*em)/(em*em+lm*lm);
+        const _c0=[]; let _a=0; pmf.forEach(x=>{_a+=x;_c0.push(_a);}); const engMed=_c0.findIndex(x=>x>=0.5);
+        let T=Math.round(w*L+(1-w)*engMed); T=Math.max(T,_cur);
+        const sh=T-engMed;
+        if(sh!==0){ const np=new Array(pmf.length).fill(0);
+          pmf.forEach((x,i)=>{ let j=Math.max(_cur,Math.min(pmf.length-1,i+sh)); np[j]+=x; });
+          pmf=np; }
+        window._liveAnchor={pos:_lc.pos,cur:_cur,mins:Math.round(_mins),share:+lsh(_mins).toFixed(3),live:+L.toFixed(1),eng:engMed,w:+w.toFixed(2),call:T};
+      }
+    }
+  }catch(_lae){ window._liveAnchor=null; }
   SH_PMF=pmf; SH_PMF_RAW=pmfRaw;   /* #ffsync — the forecast's pending cell reads both */
   const cum=[]; let c=0; pmf.forEach(x=>{c+=x;cum.push(c);});
   const q=t=>cum.findIndex(x=>x>=t);
