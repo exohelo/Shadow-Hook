@@ -8,7 +8,10 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct7holdcall';   /* oct 7 (51st) — STICK TO YOUR GUNS: once dispatch starts, the predicted stop holds at the last call made before the flex call — drops, the live anchor and the clock no longer move it; a phone opening mid-dispatch figures once without the live read and holds that (#holdcall — CALL_HOLD brings the moving call back). */
+window.SHK_BUILD='oct7mediaretry';   /* oct 7 (54th) — a photo or clip on the Dispatch Post no longer dies on one signal blip: the upload and the post each try three times, an upload that landed but lost its answer counts as done, and the alarm says which step failed (#mediaretry). */
+/* was: oct7nodirections */   /* oct 7 (53rd) — the Casual Hall sheet on the Dispatch Post shows the address and the phone only; Terminal directions is off it (#nodirections). */
+/* was: oct7nostart */   /* oct 7 (52nd) — NO SEAL, NO STARTING CARD: the Dispatch Post's STARTING tile stays blank ("waiting on the day board's end") until the board before it is sealed, and the "N letters from the start" line waits with it (#nostart). */
+/* was: oct7holdcall */   /* oct 7 (51st) — STICK TO YOUR GUNS: once dispatch starts, the predicted stop holds at the last call made before the flex call — drops, the live anchor and the clock no longer move it; a phone opening mid-dispatch figures once without the live read and holds that (#holdcall — CALL_HOLD brings the moving call back). */
 /* was: oct7nojobs */   /* oct 7 (50th) — JOBS EXPECTED IS OFF FOR NOW: the desk no longer shows "~N jobs expected for casuals", its share-of-the-hall bar or the chips that moved it, and the Dispatch Bot stops quoting it; PMA's total stays on its own line (#nojobs — MC_SHOW_JOBS brings it back). */
 /* was: oct7freezefix */   /* oct 7 (49th) — FOUR FREEZES OFF THE ALARMS: the camera's light/glare meter shrinks the frame on the GPU, backs off when slow and stops at the shutter (3 s stalls on iPhone, #meterlite); the board alert speaks through the Dispatch Bot when the app's on screen instead of calling the phone's notifier, which froze Safari 5.6 s (#quietbuzz); the PMA redraw runs its six jobs as separate steps and the record draws only on the Wire (2.4 s on the Order tab, #redrawsplit). */
 /* was: oct7onenum */   /* oct 7 (48th) — ONE NUMBER PER BOARD: the day sheet no longer shows "you actually get a job" beside the board's reach (it was reach × the share of called cards that came down, mostly no-shows, so it read 100% next to 11%); each board shows the chance it calls your card (#onenum). */
@@ -57961,6 +57964,12 @@ function boardPos(k,B){
 function startOf(k,B){
   const r=rec(k); if(r&&r.start)return String(r.start);
   if(B&&B.marks&&B.marks.length)return null;   /* the first mark says where it began — callers fall back to it */
+  /* #nostart(oct7) — NO SEAL, NO STARTING CARD. Before the board ahead of this one is sealed, the "start" is only
+     the card that board started on, carried over — the post showed it as STARTING (A4972 on the 10/7 night post
+     while the day board was still open) and measured "D4928 · 3 letters from the start" off it. The Wire already
+     holds its call for the same reason (#pending); the post now says the same: no card until the seal lands. */
+  let ok=true; try{ ok=(typeof startConfirmed!=='function')||!!startConfirmed(); }catch(e){}
+  if(!ok)return null;
   try{ const pk=_predKey(); if(pk===k){ const s=pendingStartCard(); if(s)return s; } }catch(e){}
   try{ if(k===dropKey())return OPENP(); }catch(e){}
   return null;
@@ -57984,9 +57993,9 @@ function youLive(sL,pos){
   }
   const d=oy-op; return {my:my,text:d+' letter'+(d===1?'':'s')+' away'};
 }
-function youPre(k){
+function youPre(k,given){
   const my=myCard(); if(!my)return null;
-  const s=startOf(k,null); if(!s)return {my:my,text:'the opening card isn’t set yet'};
+  const s=(given&&/^[A-Z]\d{4}$/.test(given))?given:startOf(k,null); if(!s)return {my:my,text:'waiting on the opening card'};   /* #nostart — a card from PMA or the council counts too */
   const sL=s.charAt(0), d=ordFrom(sL,my), c=callFor(k);
   if(c&&c.stop){ const dc=ordFrom(sL,c.stop);
     if(d>dc)return {my:my,text:(d-dc)+' letter'+((d-dc)===1?'':'s')+' past the call'};
@@ -58367,7 +58376,7 @@ function preHTML(k,room){
   const pred=V.pred?tile('PREDICTION','<span class="verdict">'+h(String(V.pred).toUpperCase())+'</span>','good',c&&c.stop?'app: '+c.stop+(rng&&c.lo!==c.hi?' · '+c.lo+'–'+c.hi:''):'the council')
     :(c&&c.stop?tile('PREDICTION','<b class="v pos lt" aria-label="the call: letter '+h(c.stop)+'">'+h(c.stop)+'</b>','',rng,true):tile('PREDICTION','<b class="v blank">—</b>'));
   const S=V.start;
-  const Y=youPre(k);
+  const Y=youPre(k,S&&S.v);
   const fin=V.finishes?V.finishes.v:[];
   const KB=kbyg(), hall=KB.hall&&(KB.hall.addr||KB.hall.phone);
   let kb='';
@@ -58377,7 +58386,7 @@ function preHTML(k,room){
   return '<div class="dp-count"><div class="l"><span class="k">GOES LIVE IN</span><b class="v" data-dpcd="'+(f?Math.round(realTs(f)/1000)*1000:0)+'">'+(f?hms(f-la()):'—')+'</b></div>'
       +'<div class="dp-times"><span class="f">FLEX '+h(t[0])+'</span><span class="a">1ST '+h(t[1])+'</span><span class="b">2ND '+h(t[2])+'</span></div></div>'
     +'<div class="dp-tiles">'
-      +tile('STARTING',S?'<b class="v pos">'+h(S.v)+'</b>':'<b class="v blank">—</b>','on',S?S.src:'',!!(S&&S.src==='PMA'))
+      +tile('STARTING',S?'<b class="v pos">'+h(S.v)+'</b>':'<b class="v blank">—</b>','on',S?S.src:('waiting on the '+(/PM$/.test(k)?'day':'night')+' board’s end'),!!(S&&S.src==='PMA'))   /* #nostart */
       +tv('CASUAL',V.final)
       +pred
       +tv('COMEBACKS',V.comebacks)
@@ -59403,8 +59412,8 @@ function openPhones(hall){
   let body='';
   if(hall){
     body=(H.addr?'<a class="dp-phrow" href="https://maps.google.com/?q='+encodeURIComponent(H.addr)+'" target="_blank" rel="noopener">'+IC.pin+'<span><b>'+h(H.addr)+'</b><em>open it in maps</em></span>'+IC.chev+'</a>':'')
-      +(H.phone?'<a class="dp-phrow" href="'+h(tel(H.phone))+'">'+IC.phone+'<span><b>'+h(H.phone)+'</b><em>call the hall</em></span>'+IC.chev+'</a>':'')
-      +(webUrl(KB.directions)?'<a class="dp-phrow" href="'+h(webUrl(KB.directions))+'" target="_blank" rel="noopener">'+IC.nav+'<span><b>Terminal directions</b><em>every gate, every pier</em></span>'+IC.chev+'</a>':'');
+      +(H.phone?'<a class="dp-phrow" href="'+h(tel(H.phone))+'">'+IC.phone+'<span><b>'+h(H.phone)+'</b><em>call the hall</em></span>'+IC.chev+'</a>':'');
+    /* #nodirections(oct7) — the "Terminal directions · every gate, every pier" row is off the hall sheet by request (the link stays on file in _kbyg) */
   }else{
     body=(Array.isArray(KB.phones)?KB.phones:[]).map(p=>'<a class="dp-phrow" href="'+h(tel(p.n))+'">'+IC.phone+'<span><b>'+h(p.l||p.n)+'</b><em>'+h(p.n)+'</em></span>'+IC.chev+'</a>').join('');
   }
@@ -59473,22 +59482,45 @@ function composeMedia(k,file,kind){
   });
   s.classList.add('on');
 }
+/* #mediaretry — a network blip ("Failed to fetch", "Load failed", "NetworkError", a timeout) gets two more tries */
+const mediaNetErr=e=>/failed to fetch|load failed|networkerror|network request failed|timed? ?out|aborted|err_|connection/i.test(String((e&&(e.message||e.error||e.name))||e||''));
+async function mediaTry(fn,okIf){
+  let last=null;
+  for(let i=0;i<3;i++){
+    if(i){ if(navigator.onLine===false)await new Promise(r=>{ const t=setTimeout(r,15000); window.addEventListener('online',()=>{ clearTimeout(t); r(); },{once:true}); });
+           await new Promise(r=>setTimeout(r,i===1?2000:5000)); }
+    try{ const res=await fn(); if(!(res&&res.error)||(okIf&&okIf(res))||!mediaNetErr(res.error))return res; last=res; }
+    catch(e){ if(!mediaNetErr(e))throw e; last={error:e}; }
+    if(i===0)try{ say('Weak signal — trying again…'); }catch(_){}
+  }
+  return last;
+}
 async function uploadMedia(k,file,kind,cap,blob){
   const t=DP.talk[k]||(DP.talk[k]={rows:[],at:0});
   const tmp={id:'tmp'+Date.now(),owner:me(),by:myHandle(),body:cap,ts:Date.now(),kind:kind,url:blob,local:true};
   t.rows.push(tmp); dpRefresh(); try{ if(roomIsOpen())roomPaint(); }catch(e){}
   say(kind==='video'?'Sending the clip up…':'Sending the shot up…');
+  let step='prep';
   try{
     const ext=((file.name||'').split('.').pop()||(kind==='video'?'mp4':'jpg')).toLowerCase().replace(/[^a-z0-9]/g,'')||(kind==='video'?'mp4':'jpg');
     const id=(typeof chatUUID==='function')?chatUUID():('m'+Date.now().toString(36)+Math.random().toString(36).slice(2,8));
     const path='dispatch/'+k.replace(/[^A-Za-z0-9_-]/g,'_')+'/'+id+'.'+ext;
     const body=(typeof typedUploadBody==='function')?typedUploadBody(file,ext,kind):file;
     const type=(typeof mediaMime==='function')?mediaMime(file,ext,kind):(file.type||(kind==='video'?'video/mp4':'image/jpeg'));
-    const up=await window.SB.storage.from('chat-media').upload(path,body,{contentType:type,cacheControl:'31536000'});
-    if(up.error)throw up.error;
+    /* #mediaretry(oct7) — THE ALARMS, oct 7 10:38 AM (EX0): "dispatch-media · image image/jpeg 410k → Failed to fetch".
+       "Failed to fetch" is the browser saying the request never made it — a signal drop, a cell handoff, the phone
+       locking mid-send — not anything wrong with the picture. One blip used to throw the shot away. Now each step
+       tries up to three times (2 s, then 5 s apart, waiting for the signal to come back if the phone knows it's
+       offline); an upload that DID land but lost its answer comes back "already exists" and counts as done. The
+       alarm only goes off if all three fail, and says which step and whether the phone thought it was online. */
+    step='upload';
+    const up=await mediaTry(()=>window.SB.storage.from('chat-media').upload(path,body,{contentType:type,cacheControl:'31536000'}),
+      r=>!!(r&&r.error&&/exist|duplicate|409/i.test(String(r.error.message||r.error.statusCode||r.error.error||''))));
+    if(up.error&&!/exist|duplicate|409/i.test(String(up.error.message||up.error.statusCode||up.error.error||'')))throw up.error;
     const pub=window.SB.storage.from('chat-media').getPublicUrl(path), url=pub&&pub.data&&pub.data.publicUrl;
     if(!url)throw new Error('no public url');
-    const r=await window.SB.from('story_comments').insert({story_id:sid(k),owner:me(),by_id:(typeof ACCT_ID==='string'?ACCT_ID:''),by_handle:myHandle(),body:cap,kind:kind,url:url});
+    step='post';
+    const r=await mediaTry(()=>window.SB.from('story_comments').insert({story_id:sid(k),owner:me(),by_id:(typeof ACCT_ID==='string'?ACCT_ID:''),by_handle:myHandle(),body:cap,kind:kind,url:url}));
     if(r.error)throw r.error;
     t.rows=t.rows.filter(x=>x!==tmp);
     say(kind==='video'?'🎬 Your clip is in the gallery':'📸 Your shot is in the gallery');
@@ -59500,7 +59532,7 @@ async function uploadMedia(k,file,kind,cap,blob){
   }catch(e){
     t.rows=t.rows.filter(x=>x!==tmp);
     const m=String((e&&(e.message||e.error))||e||'');
-    try{ if(typeof shkAlert==='function')shkAlert('dispatch-media',kind+' '+((file&&file.type)||'?')+' '+Math.round(((file&&file.size)||0)/1024)+'k → '+m.slice(0,150),''); }catch(_){}
+    try{ if(typeof shkAlert==='function')shkAlert('dispatch-media',kind+' '+((file&&file.type)||'?')+' '+Math.round(((file&&file.size)||0)/1024)+'k · '+step+' · 3 tries'+(navigator.onLine===false?' · offline':'')+' → '+m.slice(0,140),''); }catch(_){}   /* #mediaretry */
     say(/mime|not supported|415/i.test(m)?'That file type won’t go up — a JPEG or an MP4 will'
       :/too large|413|exceed|maximum|size/i.test(m)?'That one’s too big to send — try a shorter clip'
       :'That didn’t go up — check your signal and try again');
