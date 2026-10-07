@@ -57188,6 +57188,10 @@ html.daylight{--dp-hi:var(--copper-hi);--dp-uvi:var(--neon2,#5c1f96);--dp-ink:#f
 .dp-tile .v.lt{font-family:var(--dp-inter);font-weight:800;letter-spacing:0}   /* a lone letter in Anton reads as a zero — Inter's O is round */
 .dp-tile .verdict{align-self:flex-start;max-width:100%;margin-top:2px;padding:1px 6px;border-radius:7px;background:color-mix(in srgb,var(--dp-live) 12%,transparent);border:1px solid color-mix(in srgb,var(--dp-live) 60%,transparent);font-family:'Anton',sans-serif;font-size:clamp(14px,4.4vw,18px);line-height:1.15;letter-spacing:.02em;color:var(--dp-live)}
 .dp-tile .src{font-family:var(--dp-inter);font-size:13px;color:var(--steel);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* (oct 7) the check-in inside the LOG JOBS / MARK sheets */
+.dp-sheetck:empty{display:none}
+.dp-sheetck{margin-top:14px}
+.dp-sheetck .dp-ck{margin:0}
 /* #prefill — a number that rides the sheets wears a small live dot: it changes by itself when the sheet does */
 .dp-tile.auto .src::before{content:"";display:inline-block;width:6px;height:6px;margin-right:5px;border-radius:50%;vertical-align:1px;background:var(--dp-live);box-shadow:0 0 6px color-mix(in srgb,var(--dp-live) 70%,transparent)}
 .dp-you{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:12px;background:color-mix(in srgb,var(--dp-live) 6%,transparent);border:1px solid color-mix(in srgb,var(--dp-live) 30%,transparent)}
@@ -58118,8 +58122,8 @@ function liveMeta(k){
 function liveHTML(k,room){
   const B=boardData(k), P=boardPos(k,B);
   /* nobody's said the check-in yet and it's still the flex call: ask on the post itself (the room's JOBS tab always asks) */
-  let ck=''; try{ if(!room&&!(B.drops.ck&&B.drops.ck.T)&&dropPhase(Date.now())==='FLEX')ck=ckHTML(k,B); }catch(e){}
-  return statsLive(k,B,P)+whereHTML(k,B,P)+railHTML(k,B,P,true)+ck+(room?'':dropsHTML(k,B,3));
+  /* (oct 7) the check-in moved off the post into the LOG JOBS and MARK sheets — it rides with the job drops and board marks */
+  return statsLive(k,B,P)+whereHTML(k,B,P)+railHTML(k,B,P,true)+(room?'':dropsHTML(k,B,3));
 }
 /* the Big Hall check-in: open on the board the clock is on (from 2:30 PM for nights, after midnight for days) */
 function ckHTML(k,B){
@@ -58147,19 +58151,17 @@ function preHTML(k,room){
   if(webUrl(KB.safety))kb+='<a class="dp-kb" href="'+h(webUrl(KB.safety))+'" target="_blank" rel="noopener">'+IC.shield+'<span>Safety codes</span></a>';
   /* (oct 7) Directions and Phone numbers came off the post by the Keymaster's word — their rows stay on file in _kbyg */
   if(hall)kb+='<button type="button" class="dp-kb" data-dp="phones" data-hall="1">'+IC.pin+'<span>Casual Hall</span></button>';
-  const ck=ckHTML(k,B);
   return '<div class="dp-count"><div class="l"><span class="k">GOES LIVE IN</span><b class="v" data-dpcd="'+(f?Math.round(realTs(f)/1000)*1000:0)+'">'+(f?hms(f-la()):'—')+'</b></div>'
       +'<div class="dp-times"><span class="f">FLEX '+h(t[0])+'</span><span class="a">1ST '+h(t[1])+'</span><span class="b">2ND '+h(t[2])+'</span></div></div>'
     +'<div class="dp-tiles">'
       +tile('STARTING',S?'<b class="v pos">'+h(S.v)+'</b>':'<b class="v blank">—</b>','on',S?S.src:'',!!(S&&S.src==='PMA'))
-      +tv('FINAL',V.final)
+      +tv('CASUAL',V.final)
       +pred
       +tv('COMEBACKS',V.comebacks)
       +tv('BIG HALL',V.bighall)
       +tv('TOTAL',V.total)
     +'</div>'
     +(Y?'<div class="dp-you"><i></i><span><b>'+h(Y.my)+'</b> · '+h(Y.text)+'</span></div>':'')
-    +ck
     +(fin.length?'<div class="dp-sect"><span class="k">SCHEDULED FINISHES</span><div class="dp-chips">'+fin.map(s=>{ const m=/^(.*?)(\s+st\/fin)$/i.exec(s); return '<span class="dp-chip">'+(m?h(m[1])+' <em>st/fin</em>':h(s))+'</span>'; }).join('')+'</div></div>':'')
     +(kb?'<div class="dp-sect"><span class="k">KNOW BEFORE YOU GO</span><div class="dp-kbyg">'+kb+'</div></div>':'')
     +((!V.final&&!V.bighall&&!V.comebacks&&!V.total&&!V.pred&&isKm()&&!room)?'<button type="button" class="dp-fill" data-dp="edit" data-k="'+h(k)+'">'+IC.pen+'<span>FILL IN THE PRE-POST</span></button>':'');
@@ -58410,7 +58412,7 @@ document.addEventListener('click',function(e){
   else if(a==='media'){ const u=mediaUrl(b.getAttribute('data-url')), kd=b.getAttribute('data-kind'); if(!u)return; if(kd==='video')openClip(u); else { try{ if(window.lbOpen)window.lbOpen(u,''); else window.open(u,'_blank','noopener'); }catch(err){} } }
   else if(a==='edit'){ openEdit(k); }
   else if(a==='phones'){ openPhones(!!b.getAttribute('data-hall')); }
-  else if(a==='ck'){ const inp=(b.closest('.dp-ck')||document).querySelector('[data-dpck]'); let r={ok:false}; try{ r=ckReport(inp?inp.value:''); }catch(err){} if(r&&r.ok&&inp)inp.value=''; else if(inp&&r&&r.why==='n')inp.classList.add('bad'); dpRefresh(); }
+  else if(a==='ck'){ const inp=(b.closest('.dp-ck')||document).querySelector('[data-dpck]'); let r={ok:false}; try{ r=ckReport(inp?inp.value:''); }catch(err){} if(r&&r.ok&&inp)inp.value=''; else if(inp&&r&&r.why==='n')inp.classList.add('bad'); dpRefresh(); try{ if(logIsOpen())logPaint(); }catch(err){} try{ if(markIsOpen())markHeader(); }catch(err){} }
   else if(a==='mark'){ openMark(); }
   else if(a==='log'){ openLog('num'); }
   else if(a==='click'){ openLog('clk'); }
@@ -58548,8 +58550,7 @@ function roomPaint(force){
     const want={all:['mark','drop','ck','struck','draw','talk','photo'],count:['mark','draw'],jobs:['drop','ck','struck'],talk:['talk']}[R.tab]||[];
     const sel=rows.filter(r=>want.indexOf(r.type)>=0).slice(0,240);
     const ctx={cur:T.cur,km:T.km,me:T.me,live:T.live};
-    list=((R.tab==='jobs'&&ph==='live')?ckHTML(k,B):'')
-      +(sel.length?'<div class="dp-tl'+(R.tab==='jobs'?' dp-jobs':'')+'">'+sel.map(r=>rowHTML(r,ctx,pos&&pos.pos)).join('')+'</div>'
+    list=(sel.length?'<div class="dp-tl'+(R.tab==='jobs'?' dp-jobs':'')+'">'+sel.map(r=>rowHTML(r,ctx,pos&&pos.pos)).join('')+'</div>'
       :'<div class="dp-empty">'+(R.tab==='talk'?IC.talk+'<b>QUIET SO FAR</b><span>say the first word about the night</span>':(R.tab==='jobs'?IC.zap+'<b>NO JOBS LOGGED</b><span>'+(ph==='live'?'tap LOG JOBS when the speaker calls a number':'nobody logged this board')+'</span>':IC.target+'<b>NOTHING YET</b><span>'+(ph==='live'?'MARK the board when it moves':'this board left no marks')+'</span>'))+'</div>');
   }
   const head=(ph==='live')?liveHTML(k,true)+dropsHTML(k,B,2):(ph==='pre'?preHTML(k,true):recHTML(k,true)+railHTML(k,B,pos,false));
@@ -58722,7 +58723,8 @@ function buildMark(s){
     +'<div class="dp-nudges"><button type="button" data-mk="p1">+1 CARD</button><button type="button" data-mk="p5">+5 CARDS</button><button type="button" data-mk="nl">NEXT LETTER</button><button type="button" data-mk="back" class="ghost">BACK</button></div>'
     +'<div class="dp-tags"><button type="button" data-mktag="@ the window">@ THE WINDOW</button><button type="button" data-mktag="last job">LAST JOB</button><button type="button" data-mktag="skipped some">SKIPPED SOME</button></div>'
     +'<button type="button" class="dp-go" id="dpMkGo">'+IC.target+'<span id="dpMkGoT">MARK</span></button>'
-    +'<div class="dp-recent" id="dpMkRecent"></div></div>';
+    +'<div class="dp-recent" id="dpMkRecent"></div>'
+    +'<div class="dp-sheetck" id="dpMkCk"></div></div>';
   MK.cols=Array.prototype.map.call(s.querySelectorAll('.dp-drum'),d=>({el:d,rows:Array.prototype.slice.call(d.querySelectorAll('.row'))}));
   MK.cols.forEach((c,i)=>{
     c.el.addEventListener('pointerdown',e=>mkDown(i,e));
@@ -58743,6 +58745,7 @@ function buildMark(s){
 }
 function markHeader(){
   const sub=document.getElementById('dpMkSub'); if(!sub)return;
+  sheetCkPaint('dpMkCk');
   const cur=curBoard();
   const dr=(window.PAY&&PAY.DRAW)||20;
   const sh=(cur?'The board’s on <b>'+h(cur)+'</b>. Flick to the card at the window now.':'No mark yet — set the card at the window and MARK it.')
@@ -58942,6 +58945,7 @@ function buildLog(s){
     +'<button type="button" class="dp-go" id="dpLgGo">'+IC.zap+'<span id="dpLgGoT">HOW MANY CAME DOWN?</span></button>'
     +'<div class="dp-lg-note" id="dpLgNote" aria-live="polite"></div>'
     +'<div class="dp-lg-yours" id="dpLgYours"></div>'
+    +'<div class="dp-sheetck" id="dpLgCk"></div>'
     +'</div>';
   s.addEventListener('click',function(e){
     const x=e.target.closest('button.dl-x'); if(x){ lgStrike(x); return; }   /* take a call back: UNDO, or a ✕ on YOURS */
@@ -58977,6 +58981,13 @@ function lgStrike(x){
   LG.earned=Math.max(0,LG.earned-paid);
   lgFlash('ok','Taken back — it’s off the count'+(paid?' · −'+paid+' ⬡':''),3200);
   dpRefresh();
+}
+/* the Big Hall check-in rides in the LOG JOBS and MARK sheets (oct 7) — repainted unless someone's typing in it */
+function sheetCkPaint(id){
+  const el=document.getElementById(id); if(!el)return;
+  const inp=el.querySelector('[data-dpck]'); if(inp&&(inp.value||document.activeElement===inp))return;
+  let html=''; try{ const k=lgKey(); if(k)html=ckHTML(k,boardData(k)); }catch(e){ html=''; }
+  if(el._h!==html){ el.innerHTML=html; el._h=html; }
 }
 function logPaint(full){
   const s=document.getElementById('dpLog'); if(!s||!s.firstChild)return;
@@ -59025,6 +59036,7 @@ function logPaint(full){
     const yh=mine.length?'<span class="k">YOURS</span><div class="dp-yours">'+mine.map(x=>{ const t=(x.cat==='EST'?'~':'+')+fmt(x.n);
       return '<span class="dp-ych"><b>'+t+'</b>'+h(kname(x.cat))+'<button type="button" class="dl-x x" data-di="'+(x.di!=null?x.di:-1)+'" data-cid="'+h(x.myCid||x.cid||'')+'" aria-label="Take back '+h(t+' '+kname(x.cat))+'">'+IC.x+'</button></span>'; }).join('')+'</div>':'';
     if(yr._h!==yh){ yr.innerHTML=yh; yr._h=yh; } }
+  sheetCkPaint('dpLgCk');
 }
 function lgGo(){
   if(guest())return;
@@ -59085,7 +59097,7 @@ function openEdit(k){
       :'The numbers fill in by themselves once the dispatch sheet and PMA’s summary land. Until then, type what you know — every phone sees it the moment you save.')+'</p>'
     +'<div class="dp-ed-grid">'
       +fld('start','STARTING',F.start,{ph:app||'Z4890',max:6,caps:true})
-      +fld('final','FINAL',F.final,{num:true})
+      +fld('final','CASUAL',F.final,{num:true})
       +fld('comebacks','COMEBACKS',F.comebacks,{num:true})
       +fld('bighall','BIG HALL',F.bighall,{num:true})
       +fld('total','TOTAL',F.total,{num:true})
