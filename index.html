@@ -8,7 +8,7 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct7prefill';   /* oct 7 (46th) — THE PRE-POST FILLS ITSELF: Final / Comebacks / Big Hall / Total / the scheduled finishes / the start card ride the dispatch sheet and PMA's summary (a correction on the sheet repaints the post on every phone), the prediction is the app's call (#prefill); THE COUNT slides to the new card instead of jumping; every entry can be taken back (UNDO + ✕ on your own jobs, marks, check-ins, talk and photos; the council strikes anything); the spin wheel's drums carry like a clock (A4999 → A5001, a letter's last card → the next letter's first); the post no longer blinks off and on when it repaints (its fade-in plays once). */
+window.SHK_BUILD='oct7prefill';   /* oct 7 (46th) — THE PRE-POST FILLS ITSELF: Final / Comebacks / Big Hall / Total / the scheduled finishes / the start card ride the dispatch sheet and PMA's summary (a correction on the sheet repaints the post on every phone), the prediction is the app's call (#prefill); THE COUNT slides to the new card instead of jumping; every entry can be taken back (UNDO + ✕ on your own jobs, marks, check-ins, talk and photos; the council strikes anything); the spin wheel's drums carry like a clock (A4999 → A5001, a letter's last card → the next letter's first); the post no longer blinks off and on when it repaints (its fade-in plays once); ONE dispatch post rides the Board — on top while ON AIR, filed like any post while on deck so newer posts push it down, every older board a tap away in its room (#onepost). */
 /* was: oct6dispatchpost */   /* oct 6 (45th) — THE DISPATCH POST: the Drop Log and the Big Hall check-in move off the Wire into The Hall as one live post per dispatch — the pre-post on deck, ON AIR at the flex call (the count, THE RAIL of marks, what came down, LOG JOBS on a number pad or a clicker, the spin wheel MARK with a 20 ⬡ draw every 5 minutes), then the record; photos + 10-second clips on every post; drops pay 3; the log counts on PMA's scale; a MARK is exact in the live anchor (#dispatchpost). */
 /* was: oct6liveanchor */   /* oct 6 (44th) — during dispatch the call follows the live board: letters run so far ÷ the share a board has usually run by that minute, blended with the engine; pulls back as the clock runs with no new scans (#liveanchor). */
 /* was: oct6hdrfit */   /* oct 6 (43rd) — the header's left column fits at the 13px floor: a pulsing dot + NIGHT · 1ST, then the three call times with the one being called lit and the called ones struck (#hdrfit). */
@@ -32925,17 +32925,19 @@ function boardSectionHTML(step){
     +'<button type="button" class="bc-ic" data-bnew="link" aria-label="Paste a link">🔗</button>'
   +'</div>';
   try{ html+=storyUploadsHTML(); }catch(e){}   /* #upbar — posts on their way up */
-  /* #dispatchpost(oct6) — THE DISPATCH POST rides The Board: the board on deck (or on air) pinned under the composer,
-     and the last few boards' records folded in among the posts by the time they ended. */
+  /* #dispatchpost(oct6) — THE DISPATCH POST rides The Board. #onepost(oct7) — ONE of it (every board before it is in its
+     room): ON AIR it sits on top under the composer; ON DECK it's filed by the moment it went on deck, so the posts that
+     come after it push it down — until the flex call puts it back on top. */
   let DPF=null; try{ if(window.DP&&typeof window.DP.feed==='function')DPF=window.DP.feed(); }catch(e){ DPF=null; }
-  const dpRecs=((DPF&&DPF.recs)||[]).slice().sort((a,b)=>b.ts-a.ts);
-  if(DPF&&DPF.pin)html+=DPF.pin;
-  if(!posts.length&&!dpRecs.length){
-    if(!(DPF&&DPF.pin))html+='<div class="bpost empty"><div class="bp-empty-ic">📣</div><b>THE BOARD’S BLANK</b><span>news, a clip, a photo, or just something to say — the first post is yours</span></div>';
+  const dpPin=(DPF&&DPF.pin)||'', dpTop=!!(dpPin&&DPF.top), dpAt=+(DPF&&DPF.ts)||Date.now();
+  let dpPut=!dpPin;
+  if(dpTop){ html+=dpPin; dpPut=true; }
+  if(!posts.length){
+    if(!dpPut){ html+=dpPin; dpPut=true; }
+    if(!dpPin)html+='<div class="bpost empty"><div class="bp-empty-ic">📣</div><b>THE BOARD’S BLANK</b><span>news, a clip, a photo, or just something to say — the first post is yours</span></div>';
   }else{
-    let ri=0;
-    posts.forEach((s,i)=>{ while(ri<dpRecs.length&&dpRecs[ri].ts>=(+s.ts||0))html+=dpRecs[ri++].html; html+=boardPostHTML(s,i,step); });
-    while(ri<dpRecs.length)html+=dpRecs[ri++].html;
+    posts.forEach((s,i)=>{ if(!dpPut&&dpAt>=(+s.ts||0)){ html+=dpPin; dpPut=true; } html+=boardPostHTML(s,i,step); });
+    if(!dpPut)html+=dpPin;
   }
   html+='</div>';
   return html;
@@ -57579,7 +57581,9 @@ try{
        down. Tap in for the live room: the timeline, the job log (a number pad or a clicker), the spin wheel
        (three drums → MARK), the talk and the photos.
      · FINAL — after the window it settles into the record (the last job, the run, the count on PMA's scale,
-       the call against the end, how it came down) and the next board's pre-post takes the pin.
+       the call against the end, how it came down), kept in the room (‹ › walks every board), and the next
+       board's pre-post takes its place. ONE post rides the Board (#onepost, oct 7): on top while ON AIR; on deck
+       it's filed like any post, so newer posts push it down until the flex call puts it back on top.
    WHERE THINGS LIVE
      dispatch_posts  — the council's pre-post fields (k = board key) and the shared know-before-you-go (_kbyg)
      live_wire       — every board position; a MARK carries src 'mark', by_handle, a tag and its owner
@@ -57647,7 +57651,6 @@ function pinned(){
   try{ const f=k&&kFlex(k); if(k&&(sealed(k)||(f&&la()>=f)))k=kNext(k); }catch(e){}
   return {k:k,phase:'pre'};
 }
-function recordKeys(pin){ const out=[]; let k=pin&&pin.k; for(let i=0;i<4&&k;i++){ k=kPrev(k); if(k)out.push(k); } return out; }
 
 /* ── the drops and the marks for a board ── */
 function unionRows(rows){
@@ -57832,7 +57835,7 @@ DP.loadPosts=async function(force){
   if(!force&&DP._postsAt&&Date.now()-DP._postsAt<60000)return;
   DP._postsAt=Date.now();
   const P=DP.pin||pinned()||{};
-  const keys=['_kbyg'].concat(P.k?[P.k,kNext(P.k)]:[],recordKeys(P)).filter(Boolean);
+  const keys=['_kbyg'].concat(P.k?[P.k,kNext(P.k)]:[]).filter(Boolean);
   try{
     const r=await window.SB.from('dispatch_posts').select('k,fields,updated_by,updated_at').in('k',keys).limit(20);
     if(r.error||!Array.isArray(r.data))return;
@@ -58127,10 +58130,17 @@ function postHTML(k,phase){
   return '<div class="bpost dp-post dp-'+phase+'" id="'+(phase==='rec'?'dpRec_'+h(k):'dpPost')+'" data-dpk="'+h(k)+'" data-phase="'+phase+'"'+(phase==='rec'?' data-rec="1"':'')+' data-sid="'+h(sid(k))+'">'
     +headHTML(k,meta,pillHTML(phase),extra)+inner+stripHTML(k,8)+footHTML(k,right)+'</div>';
 }
-/* what boardSectionHTML asks for: the pinned post, and the records to fold in among the stories by time */
-function hasData(k){ const B=boardData(k); return !!(B.drops.total||B.marks.length||photosOf(k).length||sealed(k)); }
-/* which past boards ride the feed as records: loaded (or the one that just ended) and with something on them */
-function recKeysFor(P){ return recordKeys(P).filter(k=>{ try{ return !!((DP.rec[k]||(k===kPrev(P.k)&&P.phase==='pre'))&&hasData(k)); }catch(e){ return false; } }); }
+/* ── #onepost(oct7) — ONE DISPATCH POST ON THE BOARD, by the Keymaster's call. Every board before it is a tap away in
+   its room (‹ ›), so the Board carries only the board that's coming up or running:
+     · ON AIR — on top, under the composer, from the flex call until the window closes;
+     · ON DECK — a post like any other, filed at the moment it went on deck (when the board before it closed), so
+       whatever the casuals post after that lands above it and it drops — until the flex call puts it back on top. */
+function deckAt(k){
+  const pk=kPrev(k), e=pk&&kEnd(pk); let t=e?Math.round(realTs(e)/60000)*60000:0;   /* on the minute: realTs reads two clocks a moment apart */
+  /* the council posting (or re-posting) the pre-post files it again, like any post — its header says "posted …" */
+  try{ const u=DP.posts[k]&&DP.posts[k].updated_at?new Date(DP.posts[k].updated_at).getTime():0; if(u>t)t=u; }catch(e){}
+  return t;
+}
 DP.feed=function(){
   const P=pinned(); DP.pin=P;
   let prevRails=null; try{ prevRails=railState(feedHost()); }catch(e){}   /* where the strips stood before this rebuild */
@@ -58140,13 +58150,12 @@ DP.feed=function(){
   /* a post fades in the first time it shows (or when it changes phase) — every rebuild after that lands still */
   const seen=DP._seen||(DP._seen={});
   const still=(x,key)=>{ const was=!!seen[key]; seen[key]=1; return was?x.replace('class="bpost dp-post ','class="bpost dp-post dp-still '):x; };
-  const keys=recKeysFor(P), recs=[];
-  keys.forEach(k=>{ try{ const e=kEnd(k), x=postHTML(k,'rec'); H[k]=x; recs.push({ts:e?realTs(e):0,html:still(x,k+'|rec'),k:k}); }catch(e){ try{ console.warn('[dispatch post] record',k,e); }catch(_){} } });
   if(pin&&P.k)pin=still(pin,P.k+'|'+P.phase);
-  DP._recSig=keys.join(','); DP._dirty=false;
+  DP._dirty=false;
   Promise.resolve().then(function(){ try{ railCarry(prevRails,feedHost()); }catch(e){} });   /* right after the feed lands, before it paints */
   setTimeout(dpKick,0);
-  return {pin:pin,recs:recs};
+  const ts=deckAt(P.k); DP._deckTs=ts;
+  return {pin:pin,top:P.phase==='live',ts:ts,recs:[]};
 };
 
 /* ── repaint in place (throttled) — the feed is only rebuilt when the post changes phase or a record appears ── */
@@ -58164,8 +58173,8 @@ function busyIn(el){ const a=document.activeElement; return !!(a&&el&&el.contain
 function paint(){
   const P=pinned(), was=DP.pin, host=feedHost();
   const el=document.getElementById('dpPost');
-  const recSig=recKeysFor(P).join(',');
-  const changed=!was||was.k!==P.k||was.phase!==P.phase||(DP._recSig!=null&&recSig!==DP._recSig);
+  /* a new board or a new phase moves the post (#onepost) — and so does the council posting the pre-post again: rebuild once */
+  const changed=!was||was.k!==P.k||was.phase!==P.phase||(P.phase==='pre'&&DP._deckTs!=null&&deckAt(P.k)!==DP._deckTs);
   if(changed)DP._dirty=true;
   /* The Hall isn't on screen: no DOM work at all — it catches up the second it's opened (the 1 s clock) */
   if(host&&host.innerHTML&&!hallOnScreen()){ DP._stale=true; }   /* (the rails keep their place; they slide when the Hall is back) */
@@ -58238,9 +58247,8 @@ document.addEventListener('wheel',function(e){ const r=e.target&&e.target.closes
 /* the lazy loads — kicked by every feed build, each one cached so a busy Hall never hammers the wire */
 function dpKick(){
   const P=DP.pin||pinned(); if(!P||!P.k)return;
-  const keys=[P.k].concat(recordKeys(P));
+  const keys=[P.k];   /* #onepost — only the board on the Board; the room loads any other board when it's opened */
   try{ DP.loadPosts(false); }catch(e){}
-  try{ DP.loadRecords(recordKeys(P),false); }catch(e){}
   try{ DP.loadTalkMany(keys,false); }catch(e){}
   try{ if(P.phase==='live')DP.loadDraws(kLw(P.k),false); }catch(e){}
   try{ if(P.phase==='live'&&!liveOK())DP.loadRecords([P.k],false); }catch(e){}   /* past 9:00 / 7:00 the marks come off the wire's record */
