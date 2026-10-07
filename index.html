@@ -8,7 +8,9 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct7freezefix';   /* oct 7 (49th) — FOUR FREEZES OFF THE ALARMS: the camera's light/glare meter shrinks the frame on the GPU, backs off when slow and stops at the shutter (3 s stalls on iPhone, #meterlite); the board alert speaks through the Dispatch Bot when the app's on screen instead of calling the phone's notifier, which froze Safari 5.6 s (#quietbuzz); the PMA redraw runs its six jobs as separate steps and the record draws only on the Wire (2.4 s on the Order tab, #redrawsplit). */
+window.SHK_BUILD='oct7holdcall';   /* oct 7 (51st) — STICK TO YOUR GUNS: once dispatch starts, the predicted stop holds at the last call made before the flex call — drops, the live anchor and the clock no longer move it; a phone opening mid-dispatch figures once without the live read and holds that (#holdcall — CALL_HOLD brings the moving call back). */
+/* was: oct7nojobs */   /* oct 7 (50th) — JOBS EXPECTED IS OFF FOR NOW: the desk no longer shows "~N jobs expected for casuals", its share-of-the-hall bar or the chips that moved it, and the Dispatch Bot stops quoting it; PMA's total stays on its own line (#nojobs — MC_SHOW_JOBS brings it back). */
+/* was: oct7freezefix */   /* oct 7 (49th) — FOUR FREEZES OFF THE ALARMS: the camera's light/glare meter shrinks the frame on the GPU, backs off when slow and stops at the shutter (3 s stalls on iPhone, #meterlite); the board alert speaks through the Dispatch Bot when the app's on screen instead of calling the phone's notifier, which froze Safari 5.6 s (#quietbuzz); the PMA redraw runs its six jobs as separate steps and the record draws only on the Wire (2.4 s on the Order tab, #redrawsplit). */
 /* was: oct7onenum */   /* oct 7 (48th) — ONE NUMBER PER BOARD: the day sheet no longer shows "you actually get a job" beside the board's reach (it was reach × the share of called cards that came down, mostly no-shows, so it read 100% next to 11%); each board shows the chance it calls your card (#onenum). */
 /* was: oct7wiredesk */   /* oct 7 (47th) — THE DESK: on the Wire, the forecast, the week's calendar pages, the Up Next call and the ILWU/PMA dispatch sheet are one card — who's up, your odds, the call, the week ahead, the numbers, the paper — with the record below it (#wiredesk). The Dispatch Bot rides every tab: it slides in when it has something to say, stays as long as the words take to read (holds while you touch it), then leaves the screen; idle mumbling doesn't call it out (#botroam). */
 /* was: oct7prefill */   /* oct 7 (46th) — THE PRE-POST FILLS ITSELF: Final / Comebacks / Big Hall / Total / the scheduled finishes / the start card ride the dispatch sheet and PMA's summary (a correction on the sheet repaints the post on every phone), the prediction is the app's call (#prefill); THE COUNT slides to the new card instead of jumping; every entry can be taken back (UNDO + ✕ on your own jobs, marks, check-ins, talk and photos; the council strikes anything); the spin wheel's drums carry like a clock (A4999 → A5001, a letter's last card → the next letter's first); the post no longer blinks off and on when it repaints (its fade-in plays once); ONE dispatch post rides the Board — on top while ON AIR, filed like any post while on deck so newer posts push it down, every older board a tap away in its room (#onepost); the room's tabs read CHAT (this dispatch only) and PHOTO GALLERY — one shared wall of every dispatch's shots, rolling in a two-row marquee over a collage (#gallery). */
@@ -6984,6 +6986,7 @@ window.DEVLOG=(function(){
 #wireDesk .wd-lbl::after{content:"";flex:1;height:1px;order:2;background:linear-gradient(90deg,rgba(var(--wd-cy),.35),transparent)}
 #wireDesk .wd-lbl em{order:3;font:600 9.5px Inter,system-ui,sans-serif;letter-spacing:.1em;font-style:normal;color:var(--steel)}
 #wireDesk .wd-lbl.nums{margin-top:16px;margin-bottom:0}
+#wdUp .mc-up .mc-pmarow{padding:12px 16px 0}
 
 /* YOUR ODDS — the forecast strip, set as a readout right under who's up */
 #wireDesk .wd-you{padding:10px 16px 0}
@@ -16733,6 +16736,17 @@ async function dropScaleFetch(force){
 window.dropScaleFetch=dropScaleFetch;
 setTimeout(function(){ try{dropScaleFetch(false);}catch(e){} },9000);
 setInterval(function(){ try{ if(document.visibilityState==='visible')dropScaleFetch(false); }catch(e){} },30*60000);
+/* #holdcall(oct7) — the call that stands during dispatch (see publishCall) */
+const CALL_HOLD=true;
+function callHoldGet(key,start){ try{ const o=JSON.parse(localStorage.getItem('shadowhook_callhold')||'{}')[key];
+  return (o&&o.s===start&&Array.isArray(o.pmf)&&o.pmf.length)?o:null; }catch(e){ return null; } }
+function callHoldPut(key,start,pmf,raw,live){ try{
+  const all=JSON.parse(localStorage.getItem('shadowhook_callhold')||'{}');
+  if(live&&all[key]&&all[key].s===start)return;   /* never overwrite a held call from inside dispatch */
+  all[key]={s:start,pmf:pmf.map(x=>+x.toFixed(5)),raw:raw?raw.map(x=>+x.toFixed(5)):null,t:Date.now(),live:!!live};
+  const ks=Object.keys(all).sort(); while(ks.length>12)delete all[ks.shift()];
+  localStorage.setItem('shadowhook_callhold',JSON.stringify(all)); }catch(e){} }
+window.callHoldGet=callHoldGet;
 function publishCall(){
   /* #pending(aug10) — NO ANCHOR, NO CALL. Everything below measures FROM the
      opening card: the stop letter, the band, the ladder, the runaway odds, and
@@ -16870,7 +16884,7 @@ function publishCall(){
      them. Everything below — stop, band, move%, the personal odds, the forecast's
      pending cell — reads the stretched distribution. The raw one is kept for the
      dev log and the side-bet. */
-  const pmfRaw=pmf; let ladder=null;
+  let pmfRaw=pmf; let ladder=null;   /* #holdcall — let: a held call swaps it */
   try{ ladder=restLadder(lastStart); }catch(_le){ ladder=null; }
   /* #callbias(sep6) — THE LADDER ANSWERS TO THE SCORECARD. The regime factor inside
      V4.predict is calibrated on the record; the ladder's rest-zone discount is not
@@ -16901,9 +16915,17 @@ function publishCall(){
      1.5 at +75, against ~2.7 for the count alone; and with no new scans, the call pulls back toward the board as the
      clock runs instead of sitting on an old number. Never calls a stop behind the board. */
   window._liveAnchor=null;
+  /* ═══ #holdcall(oct7) — STICK TO YOUR GUNS. Asked after the 10/7 day board: "We had Q predicted… during dispatch it
+     started moving around. It's on S… it might end up on Q. Moving around is not a good idea." So once the flex call
+     goes out, the published call FREEZES at the last one made before dispatch: the drop count, the live anchor and
+     the clock no longer move it. The board's real position still shows everywhere it always did (the reel, the
+     marks, the Dispatch Post) — the call just stops chasing it. Kept per board (key + opening card) in localStorage;
+     a phone that first opens mid-dispatch, with no pre-run call on file, figures one WITHOUT the live anchor and
+     holds that. A new opening card (a late seal) releases it. CALL_HOLD=false brings the old moving call back. ═══ */
+  const _hold=CALL_HOLD&&live?callHoldGet(key,lastStart):null;
   try{
     const _lc=(typeof lastCall!=='undefined')?lastCall:null;
-    if(live && _lc && _lc.pos && _lc.win===winKey() && /^[A-Z]\d+$/.test(_lc.pos)){
+    if(!CALL_HOLD && live && _lc && _lc.pos && _lc.win===winKey() && /^[A-Z]\d+$/.test(_lc.pos)){
       const _b0=AZ.indexOf(lastStart[0]), _cur=(AZ.indexOf(_lc.pos[0])-_b0+26)%26;
       const _n=nowLA(), _fx=new Date(_n); _fx.setHours(isAM?6:16,30,0,0); const _mins=(_n-_fx)/60000;
       const LS=[[30,.25],[40,.333],[50,.60],[60,.75],[75,.833],[90,.857],[105,.857],[150,.90]];
@@ -16925,6 +16947,10 @@ function publishCall(){
       }
     }
   }catch(_lae){ window._liveAnchor=null; }
+  if(CALL_HOLD){ try{
+    if(_hold){ pmf=_hold.pmf.slice(); if(_hold.raw)pmfRaw=_hold.raw.slice(); }   /* #holdcall — dispatch is on: the pre-run call stands */
+    else callHoldPut(key,lastStart,pmf,pmfRaw,live);                            /* before dispatch the latest call is the one that will stand */
+  }catch(_he){} }
   SH_PMF=pmf; SH_PMF_RAW=pmfRaw;   /* #ffsync — the forecast's pending cell reads both */
   const cum=[]; let c=0; pmf.forEach(x=>{c+=x;cum.push(c);});
   const q=t=>cum.findIndex(x=>x>=t);
@@ -20039,6 +20065,9 @@ function mcWeek(slot){
     .filter(x=>x.cur||x.avg).sort((x,y)=>Math.abs(y.d)-Math.abs(x.d));
   return {n:days.length,last:last,avg:avg,pct:avg?Math.round((last-avg)/avg*100):0,busy:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][bd.getDay()]+' '+(bd.getMonth()+1)+'/'+bd.getDate(),mv:mv};
 }
+/* #nojobs(oct7) — by request, "~N JOBS EXPECTED FOR CASUALS" (with its share-of-the-hall bar and the chips that
+   moved it) is off the desk for now. Flip this to true to bring the whole block back exactly as it was. */
+const MC_SHOW_JOBS=false;
 function mcConsole(key,dd,lc,live,pd){
   const isAM=String(callSlot).endsWith('AM');
   let f=window._pmaLadder; if(!f||f._key!==key){ try{ f=window.PMALAD?PMALAD.forecast(key,isAM,{}):null; }catch(e){ f=null; } }
@@ -20048,6 +20077,10 @@ function mcConsole(key,dd,lc,live,pd){
   const D=new Date(pd+'T12:00:00'), lbl=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][D.getDay()]+' '+(D.getMonth()+1)+'/'+D.getDate()+' · '+(isAM?'Day':'Night');
   let h='<div class="mc-hd"><span class="mc-live"><i></i>'+(live?'LIVE':'UP NEXT')+'</span><span class="mc-when">· '+lbl+'</span>'+(lc&&lc.pmove<85?'<span class="mc-mv">'+(100-lc.pmove)+'% MAY HOLD</span>':'')+'</div>';
   if(f&&f.stop){ h+='<div class="mc-hero"><b>0</b><span>STOP-WORK SHEET<br>NO CASUAL WORK EXPECTED</span></div>'; }
+  else if(f&&!MC_SHOW_JOBS){   /* #nojobs(oct7) — jobs expected is off for now: PMA's total stays, on its own line */
+    let _pt=null; try{ const _pm=PMALAD.pmaOf(key); if(_pm&&_pm.ls&&_pm.ls[4]>0)_pt=_pm.ls[4]; }catch(e){}
+    if(_pt)h+='<div class="mc-pmarow"><div class="mc-pma"><small>PMA TOTAL</small><em>'+n(_pt)+'</em></div></div>';
+  }
   else if(f){ const pct=f.H?Math.min(100,Math.round(f.casual/f.H*100)):null;
     let _pt=null; try{ const _pm=PMALAD.pmaOf(key); if(_pm&&_pm.ls&&_pm.ls[4]>0)_pt=_pm.ls[4]; }catch(e){}   /* #mcpma(oct6) — PMA's total sits beside the casual number, the biggest number on the sheet */
     h+='<div class="mc-hero"><b>~'+n(f.casual)+'</b><div class="mc-hl"><span>JOBS EXPECTED<br>FOR CASUALS</span>'+(_pt?'<div class="mc-pma"><small>PMA TOTAL</small><em>'+n(_pt)+'</em></div>':'')+'</div></div>';
@@ -21021,7 +21054,7 @@ function botFacts(){
   const F=[], n=v=>Number(v).toLocaleString();
   try{ const f=window._pmaLadder, lc=window._lastCall;
     if(f&&f.stop)F.push('tonight\'s a <b>stop-work</b> sheet — don\'t count on casual work');
-    else if(f&&f.casual!=null)F.push('the call says about <b>'+n(f.casual)+'</b> jobs reach casuals'+(f.H?' — that\'s '+Math.round(f.casual/f.H*100)+'% of the '+n(f.H)+' hall jobs':''));
+    else if(f&&f.casual!=null&&(typeof MC_SHOW_JOBS==='undefined'||MC_SHOW_JOBS))F.push('the call says about <b>'+n(f.casual)+'</b> jobs reach casuals'+(f.H?' — that\'s '+Math.round(f.casual/f.H*100)+'% of the '+n(f.H)+' hall jobs':''));
     if(lc&&lc.stop)F.push('predicted stop is <b>'+lc.stop+'</b>');
     if(f&&f.checkin&&!f.checkin.actual)F.push(f.checkin.crowd?'word is <b>'+n(f.checkin.T||(f.checkin.A+f.checkin.B))+'</b> checked in at the big hall':'I\'m guessing about <b>'+n(f.checkin.A+f.checkin.B)+'</b> check in at the big hall');
   }catch(e){}
