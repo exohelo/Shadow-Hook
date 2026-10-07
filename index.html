@@ -8,7 +8,8 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct6liveanchor';   /* oct 6 (44th) — during dispatch the call follows the live board: letters run so far ÷ the share a board has usually run by that minute, blended with the engine; pulls back as the clock runs with no new scans (#liveanchor). */
+window.SHK_BUILD='oct6dispatchpost';   /* oct 6 (45th) — THE DISPATCH POST: the Drop Log and the Big Hall check-in move off the Wire into The Hall as one live post per dispatch — the pre-post on deck, ON AIR at the flex call (the count, THE RAIL of marks, what came down, LOG JOBS on a number pad or a clicker, the spin wheel MARK with a 20 ⬡ draw every 5 minutes), then the record; photos + 10-second clips on every post; drops pay 3; the log counts on PMA's scale; a MARK is exact in the live anchor (#dispatchpost). */
+/* was: oct6liveanchor */   /* oct 6 (44th) — during dispatch the call follows the live board: letters run so far ÷ the share a board has usually run by that minute, blended with the engine; pulls back as the clock runs with no new scans (#liveanchor). */
 /* was: oct6hdrfit */   /* oct 6 (43rd) — the header's left column fits at the 13px floor: a pulsing dot + NIGHT · 1ST, then the three call times with the one being called lit and the called ones struck (#hdrfit). */
 /* was: oct6bighall */   /* oct 6 (42nd) — the check-in spot reads BIG HALL CHECK-IN: how many people checked in at the big hall. */
 /* was: oct6gooalign */   /* oct 6 (41st) — the header's drips stay on the goo lip after tab switches and closing the profile (#gooalign). */
@@ -6932,6 +6933,9 @@ window.DEVLOG=(function(){
 
     <!-- #37/#dl2 — THE DROP LOG, arcade cut: a live speaker console. The wall of
          instructions became one rotating hint line; every drop is a slam + coin moment. -->
+    <!-- #dispatchpost(oct6) — the Drop Log lives on the Dispatch Post in The Hall now; this strip shows while the board
+         is ON AIR and opens it (painted by wireStrip() in the Dispatch Post module) -->
+    <button type="button" class="dp-wirestrip" id="dpWireStrip" style="display:none"></button>
     <div class="card drop-arena" id="dropCard" style="display:none">
       <div class="dl-head">
         <div class="dl-speaker"><i class="w"></i><i class="w w2"></i><i class="w w3"></i><span>📢</span></div>
@@ -8091,7 +8095,8 @@ html.daylight .hm-lm .lk-g,html.daylight .hm-lm .lk-w{fill:#dfeaf7}
       <p class="sub" style="margin:8px 0 12px">The Order pays for the work that keeps the tool sharp. What each action mints:</p>
       <table class="baseline-tbl" id="rateTbl">
         <tr><td>Seal a docket</td><td><b data-rate="DOCKET">+10</b> <span style="opacity:.7">· every saved docket counts; old boards need their slip</span></td></tr>
-        <tr><td>Log a drop on the wire</td><td><b data-rate="DROP">+5</b> <span style="opacity:.7">· every catch</span></td></tr>
+        <tr><td>Log a drop on the wire</td><td><b data-rate="DROP">+3</b> <span style="opacity:.7">· every catch</span></td></tr>
+        <tr><td>MARK the board during dispatch <span style="opacity:.7">· the Dispatch Post's spin wheel</span></td><td><b data-rate="DRAW">+20</b> <span style="opacity:.7">· a draw every 5 min — each MARK is a ticket</span></td></tr>
         <tr><td>Feed the live board during dispatch</td><td><b data-rate="CW">+5</b></td></tr>
         <tr><td>First to log today's board</td><td><b data-rate="SPIN">+10–50</b></td></tr>
         <tr><td>Send word — number, map, correction, idea <span style="opacity:.7">· with your docket attached</span></td><td><b data-rate="WORD">+10</b> <span style="opacity:.7">· 3 a day</span></td></tr>
@@ -10087,7 +10092,8 @@ const PAY = {
   DOCKET:     10,    // seal a docket — one board a day by rule, and a BACKLOG of
                      // saved dockets all pays (SEAL_PAY_CAP raised; dockets older
                      // than a week still need their slip photo — the fraud guard)
-  DROP:        5,    // log a drop on the wire (#nocap sep04: no per-board cap — every catch pays; a repeat of the same call in a wave still counts once and pays nothing)
+  DROP:        3,    // log a drop on the wire (#nocap sep04: no per-board cap — every catch pays; a repeat of the same call in a wave still counts once and pays nothing) · #dispatchpost(oct6): 5 → 3, the Keymaster's call
+  DRAW:       20,    // #dispatchpost(oct6) — the 5-minute MARK draw: every MARK that moves the board is a ticket and ONE ticket wins 20. Drawn and paid by the SERVER (mark_draw_tick); this number is only what the screens say.
   WORD:       10,    // send word to the Keymaster (cap WORD_PAY_CAP/day)
   MARK:       30,    // earn a new mark (107 payable marks: 3,210 ⬡ lifetime)
   SHARE:      25,    // unchanged — acquisition
@@ -10118,7 +10124,7 @@ function paintRateCard(){
     const sp=PAY.SPIN.map(t=>t[0]);
     const txt={
       DOCKET:'+'+PAY.DOCKET, DROP:'+'+PAY.DROP, WORD:'+'+PAY.WORD,
-      MARK:'+'+PAY.MARK, SHARE:'+'+PAY.SHARE,
+      MARK:'+'+PAY.MARK, SHARE:'+'+PAY.SHARE, DRAW:'+'+PAY.DRAW,
       CW: cwLo===cwHi ? ('+'+cwLo) : ('+'+cwLo+'–'+cwHi),
       SPIN:'+'+Math.min.apply(null,sp)+'–'+Math.max.apply(null,sp)
     };
@@ -11517,6 +11523,16 @@ function nextActive(pos,k){
   }
   return out;
 } // 5,540 casuals as one-way hashes — the list itself never ships
+/* #dispatchpost(oct6) — how far through its letter a card sits, 0…1, counted in casuals on the list (not in card
+   numbers): the Dispatch Post's progress bar, and the live anchor's reading of a MARK */
+function boardLetterFrac(pos){
+  try{ const p=String(pos||''), L=p.charAt(0).toUpperCase(), n=parseInt(p.slice(1),10), a=ACTIVE[L]||[];
+    if(!a.length||!isFinite(n))return 0.5;
+    let i=0; while(i<a.length&&a[i]<=n)i++;
+    return Math.max(0,Math.min(1,i/a.length));
+  }catch(e){ return 0.5; }
+}
+window.boardLetterFrac=boardLetterFrac;
 function fnv(s){let h=0xcbf29ce484222325n;const p=0x100000001b3n;
   for(const ch of s){h^=BigInt(ch.codePointAt(0));h=(h*p)&0xFFFFFFFFFFFFFFFFn;}
   return h.toString(16).padStart(16,"0").slice(0,12);}
@@ -13809,11 +13825,12 @@ function witnessBoard(key){
   }).catch(function(){});
 }
 window.fetchBoardSwipes=fetchBoardSwipes; window.witnessBoard=witnessBoard;
-function submitLiveCall(pos,src){ // the reel takes no identity — the TAPE does, and only the crown reads it
+function submitLiveCall(pos,src,note){ // the reel takes no identity — the TAPE does, and only the crown reads it (#dispatchpost: a MARK is the one exception — see lwPush)
   const _was=(lastCall&&lastCall.pos)||null;                    /* where the board stood when this landed */
-  const r=applyLiveCall(pos,Date.now(),'local');
+  const _sk=String(src||'scan'), _kind=/^mark/.test(_sk)?'mark':(/^hud/.test(_sk)?'hud':(/^docket/.test(_sk)?'docket':'scan'));
+  const r=applyLiveCall(pos,Date.now(),'local',_kind);
   try{ stPush(pos, r===true?'posted':(r==='far'?'held':(r==='behind'?'behind':(r==='same'?'same':'bad'))), _was, src||'scan'); }catch(e){}   /* #samecard */
-  if(r===true){ try{lwPush(lastCall.pos);}catch(e){}   /* #onewire — and every other phone hears it */
+  if(r===true){ try{lwPush(lastCall.pos,_kind,note||'');}catch(e){}   /* #onewire — and every other phone hears it */
     /* #marks2 — a call that actually MOVED the board is a board call on the record */
     try{ const n=tallyAdd('bcalls');
       if(n>=30)unlockBadge(bixLate("Watchman"));
@@ -13833,7 +13850,7 @@ function submitLiveCall(pos,src){ // the reel takes no identity — the TAPE doe
    unpaid. Paid now: a scan lands locally AND rides live_wire; every phone
    merges every call and the reel only ever moves FORWARD in board order —
    and (#lof) never further than the line of fire in a single hop. */
-function applyLiveCall(pos,ts,src){
+function applyLiveCall(pos,ts,src,kind){   /* #dispatchpost — kind: 'mark' (the spin wheel) · 'hud' · 'docket' · 'scan' */
   pos=String(pos||'').toUpperCase().trim();
   if(posVal(pos)<0)return false;
   /* #samecard(sep3) — THE TIE IS NOT A MISS. This was `<=`: a casual scanning the
@@ -13855,14 +13872,14 @@ function applyLiveCall(pos,ts,src){
     const wk=winKey();
     farHold=farHold.filter(h=>h.win===wk&&posVal(h.pos)>(lastCall?posVal(lastCall.pos):-1)); // stale windows + passed cards drop out
     if(!farHold.some(h=>h.pos===pos)){
-      farHold.push({pos:pos,ts:ts||Date.now(),win:wk,src:src||'wire'});
+      farHold.push({pos:pos,ts:ts||Date.now(),win:wk,src:src||'wire',kind:kind||''});
       farHold.sort((x,y)=>posVal(x.pos)-posVal(y.pos));
       if(farHold.length>12)farHold=farHold.slice(0,12);  // cap — a dozen held cards is already a very bad day
       try{DEVLOG.data('live board HELD (#lof)',{pos:pos,board:a,lettersOut:lofJump(a,pos),src:src||'wire'});}catch(e){}
     }
     return "far";
   }
-  lastCall={pos:pos,ts:ts||Date.now(),win:winKey()};
+  lastCall={pos:pos,ts:ts||Date.now(),win:winKey(),kind:kind||''};
   lofPromote();                        /* #lof — the board moved: a held card now inside the line posts */
   return true;
 }
@@ -13878,15 +13895,27 @@ function lofPromote(){ // a held call posts ONLY once the confirmed board walks 
       if(!next)break;
       const via=(cur&&lofJump(cur,next.pos)<=LOF_LETTERS)?'walk':(lofInReach(next.pos)?'reach':'agree');
       farHold=farHold.filter(h=>h.pos!==next.pos);
-      lastCall={pos:next.pos,ts:Date.now(),win:wk};
+      lastCall={pos:next.pos,ts:Date.now(),win:wk,kind:next.kind||''};
       try{DEVLOG.data('live board POSTED from hold (#lof)',{pos:next.pos,via:via});}catch(e){}
-      if(next.src==='local'){try{lwPush(next.pos);}catch(e){}}                   // it never rode the wire while held — it rides now
+      if(next.src==='local'){try{lwPush(next.pos,next.kind||'scan');}catch(e){}}                   // it never rode the wire while held — it rides now
     }
   }catch(e){}
 }
-function lwPush(pos){
+function lwPush(pos,src,note){
   try{ if(!window.SB||!liveWindow())return;
-    window.SB.from('live_wire').insert({k:winKey(),pos:pos,ts:Date.now()}).then(()=>{},()=>{});
+    /* #dispatchpost(oct6) — every call says how it was made: 'mark' (the Dispatch Post's spin wheel), 'hud' (dispatch
+       mode), 'docket' (a sealed docket's own card) or 'scan'. ONLY a MARK carries a name: it is a casual saying which
+       card is at the window — the card is the board's, not theirs — and the owner is what makes it a ticket in the
+       5-minute draw (mark_draw_tick, on the server). A docket's card IS the casual's own card, so it stays nameless,
+       exactly as the reel always was. A MARK can carry a tag (@ the window · last job · skipped some). */
+    const s=String(src||'scan'), kind=/^mark/.test(s)?'mark':(/^hud/.test(s)?'hud':(/^docket/.test(s)?'docket':'scan'));
+    const wk=winKey(), ts=Date.now(), mark=(kind==='mark');
+    let handle=null; if(mark){ try{ handle=String((typeof chatMyHandle==='function'&&chatMyHandle())||'').slice(0,40)||null; }catch(e){} }
+    const row={k:wk,pos:pos,ts:ts,src:kind,by_handle:handle,note:(mark&&note)?String(note).slice(0,24):null,owner:(mark&&window.__shkUid)||null};
+    try{ const L=(window.LW_ROWS=window.LW_ROWS||{}); (L[wk]=L[wk]||[]).push(Object.assign({id:null,local:true},row)); }catch(e){}   /* this phone sees its own call at once — the wire's copy replaces it */
+    window.SB.from('live_wire').insert(row).then(function(r){
+      if(r&&r.error&&/column|42703|schema cache/i.test(String(r.error.message||'')))return window.SB.from('live_wire').insert({k:wk,pos:pos,ts:ts});   /* an older table: the position still rides */
+    }).then(function(){ setTimeout(function(){ try{sbLoadLiveCalls();}catch(e){} },1200); },function(){});
   }catch(e){}
 }
 async function sbLoadLiveCalls(){
@@ -13900,8 +13929,29 @@ async function sbLoadLiveCalls(){
        dark on a board that had been walking all morning. Fetch newest-first (so a
        long window isn't truncated from the wrong end), then WALK them oldest to
        newest, which is what the line-of-fire gate was built to receive. */
-    const r=await window.SB.from('live_wire').select('pos,ts').eq('k',winKey()).order('id',{ascending:false}).limit(300);
-    if(r&&!r.error&&Array.isArray(r.data))r.data.slice().reverse().forEach(x=>{try{applyLiveCall(x.pos,+x.ts||Date.now());}catch(e){}});
+    const wk=winKey(), seq=(window._lwSeq=(window._lwSeq||0)+1);
+    let r=await window.SB.from('live_wire').select('id,pos,ts,src,by_handle,note,owner').eq('k',wk).order('id',{ascending:false}).limit(300);
+    if(r&&r.error&&/column|42703|schema cache/i.test(String(r.error.message||'')))r=await window.SB.from('live_wire').select('id,pos,ts').eq('k',wk).order('id',{ascending:false}).limit(300);
+    /* #dispatchpost(oct6) — pulls overlap (the room opening, a take-back, a new mark, the realtime coalesce): one that
+       lands after a newer one already did is stale, and replaying it could step the board back. */
+    if(seq<(window._lwDone||0))return;
+    window._lwDone=seq;
+    if(!(r&&!r.error&&Array.isArray(r.data))||winKey()!==wk)return;
+    const rows=r.data.slice().reverse(), full=r.data.length<300;
+    /* #dispatchpost(oct6) — THE WIRE IS THE RECORD OF THE BOARD. A mark taken back by the casual who made it, or
+       struck by the council, leaves live_wire — so when a call this phone had seen is gone, the reel steps back
+       and re-walks what is left, oldest first, the same way a phone that just opened would. (A full pull vouches
+       for every id; a pull cut at 300 only for the ids it reaches.) Swipes this phone is holding that never rode
+       the wire are kept. */
+    const ids={}; let minId=Infinity; rows.forEach(x=>{ if(x.id!=null){ ids[x.id]=1; minId=Math.min(minId,+x.id); } });
+    const seen=(window.LW_IDS||{})[wk]; let gone=false;
+    if(seen)for(const id in seen){ if(!ids[id]&&(full||+id>=minId)){ gone=true; break; } }
+    (window.LW_IDS=window.LW_IDS||{})[wk]=ids;
+    (window.LW_ROWS=window.LW_ROWS||{})[wk]=rows;
+    if(gone&&lastCall&&lastCall.win===wk){ lastCall=null; window._reelPos=null; farHold=farHold.filter(h=>h&&h.win===wk&&h.src==='local'); }
+    rows.forEach(x=>{try{applyLiveCall(x.pos,+x.ts||Date.now(),undefined,x.src||'');}catch(e){}});
+    if(gone){ try{repredict();}catch(e){} }
+    try{ if(window.dpRefresh)window.dpRefresh(); }catch(e){}
   }catch(e){}
 }
 setTimeout(function(){try{sbLoadLiveCalls();}catch(e){}},1500);   /* #onewire — a phone opened mid-dispatch catches up on where the board is */
@@ -14080,12 +14130,15 @@ function _minuteRecalc(force){
   try{ live=!!liveWindow();
     const k=_predKey();
     sig=JSON.stringify([k, pendingStartCard(), (k===dropKey()?((dropUnion().total||0)+'|'+JSON.stringify(dropUnion().ck||{})):0), Object.keys(DISPATCH_DATA).length,
-      live, (typeof startConfirmed==='function'?!!startConfirmed():1), callSlot, (live&&lastCall?lastCall.pos:0)]);   /* #liveanchor — a new board position re-figures the call within the minute */
+      live, (typeof startConfirmed==='function'?!!startConfirmed():1), callSlot, (live&&lastCall?lastCall.pos:0),   /* #liveanchor — a new board position re-figures the call within the minute */
+      (live&&(+window._pcMs||0)<1500?Math.floor(Date.now()/60000):0)]);   /* #dispatchpost(oct6) — and while the board is live, every minute: the live anchor reads the clock. A phone that needs 1.5 s+ to figure the call keeps the 3-minute safety instead (#minutecheap). */
   }catch(e){ sig='x'+Date.now(); }
   const safety=(live?3:15)*60000;
   if(!force&&sig===_mrSig&&Date.now()-_mrAt<safety)return;
   _mrSig=sig; _mrAt=Date.now();
+  const _pc0=(window.performance&&performance.now)?performance.now():Date.now();
   publishCall();
+  try{ window._pcMs=((window.performance&&performance.now)?performance.now():Date.now())-_pc0; }catch(e){}
 }
 document.addEventListener('visibilitychange',function(){
   if(document.visibilityState==='visible')setTimeout(function(){ try{_minuteRecalc();}catch(e){} },2000); });
@@ -16534,6 +16587,53 @@ function _earlyDrift(slotIsPM){
     return (r==null)?1:Math.max(0.9,Math.min(1.35,r));
   }catch(_e){return 1;}
 }
+/* ═══ #dispatchpost(oct6) — THE DROP LOG COUNTS HIGH. What the casuals log off the speaker runs above what PMA's
+   finished sheet says the casual hall filled (the same call heard twice in different words, ballpark estimates, union
+   jobs called in the same breath). The call now hears the log on PMA's scale: the middle ratio of PMA ÷ logged over
+   the recent boards that have both (four at least, each with 150+ logged), held between 0.55 and 1, and 0.8 until
+   there are enough. Measured again every 6 hours; a new scale re-figures the call. (Literal keys, no consts — these
+   can be reached during boot, #tdz2.) ═══ */
+function dropScale(){
+  try{ const o=JSON.parse(localStorage.getItem('shadowhook_dropscale')||'null'); if(o&&isFinite(o.s)&&o.s>0)return Math.max(0.55,Math.min(1,+o.s)); }catch(e){}
+  return 0.8;
+}
+window.dropScale=dropScale;
+async function dropScaleFetch(force){
+  if(window._dsBusy||!window.SB)return;
+  try{ const o=JSON.parse(localStorage.getItem('shadowhook_dropscale')||'null'); if(!force&&o&&Date.now()-(+o.at||0)<6*3600000)return; }catch(e){}
+  window._dsBusy=true;
+  try{
+    const P=window.PMA_DATA||{};
+    const keys=Object.keys(P).filter(function(k){ if(!/^\d{4}-\d{2}-\d{2}_[A-Za-z]{3}_(AM|PM)$/.test(k))return false; const p=P[k]; if(!p||p.held||p.tossed)return false;
+      const v=(p.lsFilled!=null?p.lsFilled:p.toCH); return v!=null&&+v>0; }).sort().slice(-14);
+    if(keys.length>=4){
+      const r=await window.SB.from('drop_wire').select('k,n,cat,ts,void_reason').in('k',keys).order('ts',{ascending:false}).limit(1000);
+      if(r&&!r.error&&Array.isArray(r.data)){
+        const by={}; r.data.forEach(function(x){ if(!x||x.void_reason)return; (by[x.k]=by[x.k]||[]).push(x); });
+        const ratios=[];
+        keys.forEach(function(k){ const rows=by[k]; if(!rows||!rows.length)return;
+          /* the board's own union: one call heard by many ears counts once (#dl2 · #dlwild) */
+          const u=[]; rows.slice().sort(function(a,b){return (+a.ts||0)-(+b.ts||0);}).forEach(function(d){
+            const ph=dropPhase(+d.ts||0), n=+d.n||0, t=+d.ts||0;
+            const dup=u.find(function(x){ return dropCatMatch(x.cat,d.cat)&&x.n===n&&x.ph===ph&&Math.abs(x.ts-t)<12*60000; });
+            if(dup){ if(dup.cat==='?'&&d.cat!=='?')dup.cat=d.cat; return; }
+            u.push({n:n,cat:d.cat,ph:ph,ts:t}); });
+          const logged=dropTotal(u); if(logged<150)return;   /* a thin log says more about who was listening than about the board */
+          const p=P[k], v=+(p.lsFilled!=null?p.lsFilled:p.toCH);
+          if(v>0)ratios.push(v/logged); });
+        const before=dropScale();
+        if(ratios.length>=4){ ratios.sort(function(a,b){return a-b;}); const s=Math.max(0.55,Math.min(1,ratios[Math.floor(ratios.length/2)]));
+          try{ localStorage.setItem('shadowhook_dropscale',JSON.stringify({s:+s.toFixed(3),n:ratios.length,at:Date.now()})); }catch(e){}
+          if(Math.abs(s-before)>0.01){ try{repredict();}catch(e){} } }
+        else { try{ localStorage.setItem('shadowhook_dropscale',JSON.stringify({s:before,n:ratios.length,at:Date.now(),thin:1})); }catch(e){} }
+      }
+    }
+  }catch(e){}
+  window._dsBusy=false;
+}
+window.dropScaleFetch=dropScaleFetch;
+setTimeout(function(){ try{dropScaleFetch(false);}catch(e){} },9000);
+setInterval(function(){ try{ if(document.visibilityState==='visible')dropScaleFetch(false); }catch(e){} },30*60000);
 function publishCall(){
   /* #pending(aug10) — NO ANCHOR, NO CALL. Everything below measures FROM the
      opening card: the stop letter, the band, the ladder, the runaway odds, and
@@ -16563,8 +16663,9 @@ function publishCall(){
   /* #liverecalc — the DROP LOG is the freshest count there is. Every drop logged
      (yours or any casual's on the wire) rides straight into the expected-count the
      engine predicts from — so the call MOVES as the speaker talks. */
-  let _dropTot=0;
-  try{ if(key===dropKey()){ _dropTot=(dropUnion().total||0); } }catch(e){}
+  let _dropTot=0, _dropRaw=0;
+  try{ if(key===dropKey()){ _dropRaw=(dropUnion().total||0); _dropTot=Math.round(_dropRaw*dropScale()); } }catch(e){}   /* #dispatchpost — on PMA's scale (dropScale) */
+  try{ window._dropScaled=_dropRaw?{raw:_dropRaw,scaled:_dropTot,scale:dropScale()}:null; }catch(e){}
   const isAM=callSlot.endsWith("AM");
   const dowIdx={Mon:0,Tue:1,Wed:2,Thu:3,Fri:4,Sat:5,Sun:6}[callSlot.slice(0,3)];
   let pmf,mom,source;
@@ -16709,15 +16810,19 @@ function publishCall(){
       const LS=[[30,.25],[40,.333],[50,.60],[60,.75],[75,.833],[90,.857],[105,.857],[150,.90]];
       const lsh=m=>{ if(m<=LS[0][0])return LS[0][1]; for(let i=1;i<LS.length;i++){ if(m<=LS[i][0]){ const a=LS[i-1],b=LS[i]; return a[1]+(b[1]-a[1])*(m-a[0])/(b[0]-a[0]); } } return LS[LS.length-1][1]; };
       if(_cur>=1 && _cur<20 && _mins>=35){
-        const L=(_cur+1)/lsh(_mins);
-        const lm=_mins<50?3.3:_mins<60?2.3:_mins<75?2.0:1.55, em=2.7, w=(em*em)/(em*em+lm*lm);
+        /* #dispatchpost(oct6) — a MARK is the card AT THE WINDOW, said by a casual standing there: the board is exactly
+           there, not trailing it the way a docket scan does. So a marked board counts the letters it has actually run (the
+           letters before it + how far through this one it is) and its read carries a little more weight. */
+        const _exact=(_lc.kind==='mark');
+        const L=(_exact?(_cur+boardLetterFrac(_lc.pos)):(_cur+1))/lsh(_mins);
+        const lm=(_mins<50?3.3:_mins<60?2.3:_mins<75?2.0:1.55)*(_exact?0.85:1), em=2.7, w=(em*em)/(em*em+lm*lm);
         const _c0=[]; let _a=0; pmf.forEach(x=>{_a+=x;_c0.push(_a);}); const engMed=_c0.findIndex(x=>x>=0.5);
         let T=Math.round(w*L+(1-w)*engMed); T=Math.max(T,_cur);
         const sh=T-engMed;
         if(sh!==0){ const np=new Array(pmf.length).fill(0);
           pmf.forEach((x,i)=>{ let j=Math.max(_cur,Math.min(pmf.length-1,i+sh)); np[j]+=x; });
           pmf=np; }
-        window._liveAnchor={pos:_lc.pos,cur:_cur,mins:Math.round(_mins),share:+lsh(_mins).toFixed(3),live:+L.toFixed(1),eng:engMed,w:+w.toFixed(2),call:T};
+        window._liveAnchor={pos:_lc.pos,cur:_cur,mins:Math.round(_mins),share:+lsh(_mins).toFixed(3),live:+L.toFixed(1),eng:engMed,w:+w.toFixed(2),call:T,exact:_exact};
       }
     }
   }catch(_lae){ window._liveAnchor=null; }
@@ -21199,7 +21304,7 @@ function renderBabyFeed(){
        pointed at. The Drop Log is the only input left on the board, so the hint rides
        that window alone rather than promising a jackpot with no button to earn it. */
     if(typeof dropWindowOpen==="function"&&dropWindowOpen()){
-      t=' <b>Feed me:</b> the Drop Log is live below — every call you catch sharpens this call, and the wire pays ⬡.';
+      t=' <b>Feed me:</b> the Dispatch Post is live in The Hall — every call you log and every MARK sharpens this call, and the wire pays ⬡.';
     }
     bf.innerHTML=t;
   }catch(e){}
@@ -21218,7 +21323,11 @@ function renderDropLog(){
      rides the drop window alone. The board-sealed lookup and the button's own
      sealed/held wording went with it; the Recent Boards row is the record. */
   const _dw=dropWindowOpen();
-  card.style.display=_dw?'':'none';
+  /* #dispatchpost(oct6) — THE DROP LOG MOVED. It lives on the Dispatch Post in The Hall now (LOG JOBS · the clicker ·
+     the check-in), and the Wire keeps a slim ON AIR strip that opens it (#dpWireStrip). The card stays in the page,
+     folded away, so everything that renders into it (the list, the check-in line, the strikes) keeps working. */
+  card.style.display='none';
+  try{ if(window.dpRefresh)window.dpRefresh(); }catch(e){}
   try{Array.from(card.children).forEach(el=>{ el.style.display=_dw?'':'none'; });}catch(e){}
   if(!_dw)return;
   const el=document.getElementById('dropList');
@@ -21326,33 +21435,42 @@ window.buzz=buzz;
 function ckPaint(){ try{ const el=document.getElementById('ckNow'); if(!el)return; const u=dropUnion(), ck=u.ck||{};
   const nT=u.list.filter(x=>/^CK[ABT]$/.test(x.cat)).reduce((a,x)=>a+(x.backed||1),0);
   el.innerHTML=ck.T?'reported so far · <b>'+ck.T.toLocaleString()+'</b> checked in at the big hall'+(nT>1?' ('+nT+' reports)':''):'nobody\'s reported it yet — be the first'; }catch(e){} }
-document.getElementById('ckAdd').addEventListener('click',()=>{
-  if(typeof guestWall==='function'&&guestWall())return;
-  const el=document.getElementById('ckT'), v=parseInt((el.value||'').replace(/\D/g,''),10), good=isFinite(v)&&v>=100&&v<=6000;
-  el.style.borderColor=(el.value&&!good)?'var(--ember)':'';
-  if(!good){ try{toast(el.value?'That doesn\'t look right — type how many checked in at the big hall':'Type how many checked in at the big hall');}catch(e){} return; }
+/* #dispatchpost(oct6) — the check-in is a function too: the Dispatch Post's pre-post takes the number now. */
+function ckReport(raw){
+  if(typeof guestWall==='function'&&guestWall())return {ok:false,why:'guest'};
+  const s=String(raw==null?'':raw), v=parseInt(s.replace(/\D/g,''),10), good=isFinite(v)&&v>=100&&v<=6000;
+  if(!good){ try{toast(s.trim()?'That doesn\'t look right — type how many checked in at the big hall':'Type how many checked in at the big hall');}catch(e){} return {ok:false,why:'n'}; }
   const o=dropData(); const first=!o.ckPaid;
   const d={n:v,cat:'CKT',ph:dropPhase(Date.now()),ts:Date.now(),cid:Date.now().toString(36)+'-'+Math.floor(Math.random()*1e8).toString(36)};
-  if(first)d.earned=3; o.drops.push(d); el.value='';
+  if(first)d.earned=3; o.drops.push(d);
   if(first){ o.ckPaid=1; addCredits(3,'big hall check-in reported'); try{rainCoins(5);}catch(e){} }
   try{toast('✓ Check-in logged'+(first?' · +3 ⬡':' — thanks'));}catch(e){}
   dropSave(o); dropRecompute(); renderDropLog(); try{dwPush(d);}catch(e){}
   ckPaint(); try{repredict();}catch(e){}
+  try{ if(window.dpRefresh)window.dpRefresh(); }catch(e){}
+  return {ok:true,d:d,first:first};
+}
+window.ckReport=ckReport;
+document.getElementById('ckAdd').addEventListener('click',()=>{
+  if(typeof guestWall==='function'&&guestWall())return;
+  const el=document.getElementById('ckT');
+  const r=ckReport(el.value);
+  el.style.borderColor=(r.why==='n'&&el.value)?'var(--ember)':'';
+  if(r.ok)el.value='';
 });
 setInterval(()=>{ try{ const c=document.getElementById('dropCard'); if(c&&c.style.display!=='none')ckPaint(); }catch(e){} },5000);
-document.getElementById('dropAdd').addEventListener('click',()=>{
-  if(typeof guestWall==='function'&&guestWall())return;   /* #guest — a drop is a post AND a payday */
-  const inp=document.getElementById('dropN');
-  const n=parseInt((inp.value||"").replace(/\D/g,""),10);
-  if(!isFinite(n)||n<1||n>5000){inp.focus();inp.style.borderColor="var(--ember)";return;}
-  inp.style.borderColor="";
-  /* #drop2 — the kind starts on "Select" now; a drop can't ride the wire untyped */
-  const sel=document.getElementById('dropCat');
-  if(!sel.value){sel.style.borderColor="var(--ember)";setTimeout(()=>{sel.style.borderColor="";},900);try{toast("Pick what kind first");}catch(e){}return;}
+/* #dispatchpost(oct6) — LOG THE DROP is a function now: the Dispatch Post's number pad and clicker call it, and so does
+   the old card's button below. Same rules, same pay, same wire. Returns {ok, why ('guest'|'n'|'cat'|'dup'), d}. */
+function dropReport(n,cat,opt){
+  opt=opt||{};
+  if(typeof guestWall==='function'&&guestWall())return {ok:false,why:'guest'};   /* #guest — a drop is a post AND a payday */
+  n=parseInt(String(n==null?'':n).replace(/\D/g,""),10);
+  if(!isFinite(n)||n<1||n>5000)return {ok:false,why:'n'};
+  if(!cat||!DROP_CATS[cat])return {ok:false,why:'cat'};
   const o=dropData();
-  const d={n:n,cat:sel.value,ph:dropPhase(Date.now()),ts:Date.now(),
+  const d={n:n,cat:cat,ph:dropPhase(Date.now()),ts:Date.now(),
     cid:Date.now().toString(36)+"-"+Math.floor(Math.random()*1e8).toString(36)};   // #118 — travels the wire under this id
-  if(o.drops.some(function(x){return x.cat===d.cat&&x.n===d.n&&(x.ph||dropPhase(x.ts))===d.ph&&Math.abs(x.ts-d.ts)<12*60000;})){toast("Already logged that call this wave (counted once)");inp.value="";return;}
+  if(o.drops.some(function(x){return x.cat===d.cat&&x.n===d.n&&(x.ph||dropPhase(x.ts))===d.ph&&Math.abs(x.ts-d.ts)<12*60000;})){ if(!opt.quiet)toast("Already logged that call this wave (counted once)"); return {ok:false,why:'dup'}; }
   o.drops.push(d);
   /* #fix2(bucks) — tag what this drop paid, the way a sealed docket tags j.earned, so
      striking it can claw the same amount back. Without it a member could log six
@@ -21361,7 +21479,7 @@ document.getElementById('dropAdd').addEventListener('click',()=>{
   /* #nocap(sep04) — every catch pays. The `if(o.paid<6)` gate that lived here is
      gone; o.paid still counts paid drops so the record of what a board paid stays
      readable, it just no longer decides anything. */
-  o.paid=(o.paid||0)+1;d.earned=PAY.DROP;addCredits(PAY.DROP,"drop logged on the wire");toast("✓ Drop logged · +"+PAY.DROP+" ⬡");try{buzz(30);}catch(e){}try{rainCoins(9);}catch(e){}   /* #dl2 — a paid catch sprinkles coins */
+  o.paid=(o.paid||0)+1;d.earned=PAY.DROP;addCredits(PAY.DROP,"drop logged on the wire",!!opt.quiet);if(!opt.quiet)toast("✓ Drop logged · +"+PAY.DROP+" ⬡");try{buzz(30);}catch(e){}try{rainCoins(9);}catch(e){}   /* #dl2 — a paid catch sprinkles coins */
   /* #dlmine — a full phone used to swallow this and the toast still said ✓: the drop rode
      the wire, paid, and never showed on the phone that logged it. Say it, once. */
   if(!dropSave(o))try{toast("\u26a0 Rode the wire, but this phone is out of storage \u2014 it'll show once the wire echoes it");}catch(e){}
@@ -21371,9 +21489,24 @@ document.getElementById('dropAdd').addEventListener('click',()=>{
   try{repredict();}catch(e){}                   // …and the predictions follow it
   /* #marks2 — Flop Watcher: 10 speaker calls logged to the Drop Log, lifetime */
   try{ if(tallyAdd('drops')>=10)unlockBadge(bixLate("Flop Watcher")); }catch(e){}
-  inp.value="";
+  try{ if(window.dpRefresh)window.dpRefresh(); }catch(e){}
+  return {ok:true,d:d};
+}
+window.dropReport=dropReport;
+document.getElementById('dropAdd').addEventListener('click',()=>{
+  if(typeof guestWall==='function'&&guestWall())return;   /* #guest — a drop is a post AND a payday */
+  const inp=document.getElementById('dropN');
+  const n=parseInt((inp.value||"").replace(/\D/g,""),10);
+  if(!isFinite(n)||n<1||n>5000){inp.focus();inp.style.borderColor="var(--ember)";return;}
+  inp.style.borderColor="";
+  /* #drop2 — the kind starts on "Select" now; a drop can't ride the wire untyped */
+  const sel=document.getElementById('dropCat');
+  if(!sel.value){sel.style.borderColor="var(--ember)";setTimeout(()=>{sel.style.borderColor="";},900);try{toast("Pick what kind first");}catch(e){}return;}
+  const r=dropReport(n,sel.value);
+  if(r.ok||r.why==='dup')inp.value="";
 });
-document.getElementById('dropList').addEventListener('click',e=>{
+/* #dispatchpost(oct6) — named, so the Dispatch Post's JOBS list strikes / voids / restores with the very same code */
+function dropListClick(e){
   /* #kmvoid — the crown's ☠ on another casual's row: pick a reason, then it comes off
      the count for every phone. Own rows keep the old self-strike below, unchanged. */
   const kb=e.target.closest('button[data-void]');
@@ -21426,7 +21559,10 @@ document.getElementById('dropList').addEventListener('click',e=>{
   try{dwDelete(b.dataset.cid);}catch(e){}       // #118 — struck drops leave the wire too
   try{renderRecentBoards();}catch(e){}
   try{repredict();}catch(e){}
-});
+  try{ if(window.dpRefresh)window.dpRefresh(); }catch(e){}
+}
+window.dropListClick=dropListClick;
+document.getElementById('dropList').addEventListener('click',dropListClick);
 renderDropLog();
 setInterval(renderDropLog,60000);   // card follows the dispatch windows on its own
 let CWme={acc:0.5, n:0, bad:0, mutedUntil:0};
@@ -32788,9 +32924,18 @@ function boardSectionHTML(step){
     +'<button type="button" class="bc-ic" data-bnew="link" aria-label="Paste a link">🔗</button>'
   +'</div>';
   try{ html+=storyUploadsHTML(); }catch(e){}   /* #upbar — posts on their way up */
-  if(!posts.length){
-    html+='<div class="bpost empty"><div class="bp-empty-ic">📣</div><b>THE BOARD’S BLANK</b><span>news, a clip, a photo, or just something to say — the first post is yours</span></div>';
-  }else posts.forEach((s,i)=>{ html+=boardPostHTML(s,i,step); });
+  /* #dispatchpost(oct6) — THE DISPATCH POST rides The Board: the board on deck (or on air) pinned under the composer,
+     and the last few boards' records folded in among the posts by the time they ended. */
+  let DPF=null; try{ if(window.DP&&typeof window.DP.feed==='function')DPF=window.DP.feed(); }catch(e){ DPF=null; }
+  const dpRecs=((DPF&&DPF.recs)||[]).slice().sort((a,b)=>b.ts-a.ts);
+  if(DPF&&DPF.pin)html+=DPF.pin;
+  if(!posts.length&&!dpRecs.length){
+    if(!(DPF&&DPF.pin))html+='<div class="bpost empty"><div class="bp-empty-ic">📣</div><b>THE BOARD’S BLANK</b><span>news, a clip, a photo, or just something to say — the first post is yours</span></div>';
+  }else{
+    let ri=0;
+    posts.forEach((s,i)=>{ while(ri<dpRecs.length&&dpRecs[ri].ts>=(+s.ts||0))html+=dpRecs[ri++].html; html+=boardPostHTML(s,i,step); });
+    while(ri<dpRecs.length)html+=dpRecs[ri++].html;
+  }
   html+='</div>';
   return html;
 }
@@ -37687,6 +37832,8 @@ function liveSync(){
       .on('postgres_changes',{event:'*',schema:'public',table:'gatherings'},      function(){try{socPullSoon();}catch(e){}})   // directory is shared:
       .on('postgres_changes',{event:'*',schema:'public',table:'gathering_rsvps'}, function(){try{socPullSoon();}catch(e){}})   // rooms/RSVPs land live
       .on('postgres_changes',{event:'*',schema:'public',table:'stories'},         function(){_rtCoalesce('st',sbLoadStories,6000);})   // #hub — the Stories wall lands live
+      .on('postgres_changes',{event:'*',schema:'public',table:'dispatch_posts'},  function(){ try{ if(window.DP&&window.DP.loadPosts)window.DP.loadPosts(true); }catch(e){} })   /* #dispatchpost — the council's pre-post lands live */
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'mark_draws'}, function(p){ try{ if(window.DP&&window.DP.onDraw)window.DP.onDraw(p&&p.new); }catch(e){} })   /* #dispatchpost — the 5-minute draw: the winner's phone rains coins */
       .subscribe(function(s){ _liveOn=(s==='SUBSCRIBED'); try{console.log('[live] order sync:',s);}catch(e){} try{DEVLOG.note('realtime: '+s);}catch(e){}
         if(_liveOn){try{liveRefreshAll();}catch(e){}} });   /* #noflop2 — the moment the wire (re)connects, catch up on everything missed */
   }catch(e){}
@@ -56865,6 +57012,1822 @@ html.daylight .screen-title .bb.out{animation:none}
   }
   (function loop(){ setTimeout(function(){ blink(); loop(); }, 9000+Math.random()*9000); })();   /* #badbulb3 — 9 to 18 s between failures (a failure itself runs 3–5 s) */
 }catch(e){} })();
+</script>
+<style id="dpCSS">
+/* ═══ #dispatchpost(oct6) — THE DISPATCH POST · its post in The Hall, the live room, the spin wheel, the job log ═══
+   Built on the theme's own tokens (copper / copper-hi / neon2 / neon3 / well / line …), so Halloween night runs orange
+   + violet + slime, the arcade skin runs cyan + magenta, and daylight drops the glow and inks everything dark. Nothing
+   here is under 13 px. */
+:root{
+  --dp-acc:var(--copper-hi);
+  --dp-uv:var(--neon2,#9d4edd);
+  --dp-live:var(--neon3,#b6ff3d);
+  --dp-hi:color-mix(in srgb,var(--copper-hi) 50%,#fff);
+  --dp-uvi:color-mix(in srgb,var(--neon2,#9d4edd) 62%,#fff);
+  --dp-ink:#130a03;
+  --dp-glow:color-mix(in srgb,var(--copper-hi) 60%,transparent);
+  --dp-glow2:color-mix(in srgb,var(--copper-hi) 22%,transparent);
+  --dp-bad:#ff6b8b;
+  --dp-inter:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --dp-read:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+}
+html.daylight{--dp-hi:var(--copper-hi);--dp-uvi:var(--neon2,#5c1f96);--dp-ink:#fff;--dp-glow:transparent;--dp-glow2:transparent;--dp-bad:#c0301c}
+@keyframes dpPulse{0%,100%{opacity:1}50%{opacity:.35}}
+@keyframes dpCaret{0%,100%{opacity:1}50%{opacity:0}}
+@keyframes dpHit{0%{transform:scale(.92)}100%{transform:scale(1)}}
+@keyframes dpIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.dp-post svg,.dp-sh svg,.dp-wirestrip svg{width:16px;height:16px;flex:none}
+
+/* ── the post ── */
+#socialFeed .dp-post{position:relative;gap:11px;padding:13px 13px 12px;border-radius:16px;overflow:hidden;cursor:pointer;
+  background:linear-gradient(180deg,var(--plate-3),var(--void));
+  background:linear-gradient(180deg,color-mix(in srgb,var(--plate-3) 95%,transparent),color-mix(in srgb,var(--void) 97%,transparent));
+  border:1px solid var(--line);box-shadow:0 18px 40px rgba(0,0,0,.45);animation:dpIn .3s ease-out}
+#socialFeed .dp-post::before{content:"";position:absolute;left:16px;right:16px;top:0;height:2px;background:linear-gradient(90deg,transparent,var(--dp-acc),var(--dp-live),transparent);opacity:.9}
+#socialFeed .dp-post.dp-live{border-color:var(--dp-acc);border-color:color-mix(in srgb,var(--dp-acc) 55%,transparent);
+  box-shadow:0 0 0 1px color-mix(in srgb,var(--dp-acc) 12%,transparent),0 0 30px var(--dp-glow2),0 18px 40px rgba(0,0,0,.5)}
+#socialFeed .dp-post.dp-pre{border-color:color-mix(in srgb,var(--dp-uv) 55%,transparent);box-shadow:0 0 0 1px color-mix(in srgb,var(--dp-uv) 12%,transparent),0 0 28px color-mix(in srgb,var(--dp-uv) 22%,transparent),0 18px 40px rgba(0,0,0,.5)}
+#socialFeed .dp-post.dp-pre::before{background:linear-gradient(90deg,transparent,var(--dp-uv),var(--dp-acc),transparent)}
+#socialFeed .dp-post.dp-rec::before{opacity:.35}
+.dp-head{display:flex;align-items:center;gap:10px;min-width:0}
+.dp-av{flex:none;width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--dp-acc);
+  background:radial-gradient(circle at 34% 26%,color-mix(in srgb,var(--dp-acc) 38%,transparent),rgba(0,0,0,.55));border:1px solid color-mix(in srgb,var(--dp-acc) 60%,transparent);box-shadow:0 0 14px var(--dp-glow2)}
+.dp-pre .dp-av{background:radial-gradient(circle at 34% 26%,color-mix(in srgb,var(--dp-uv) 42%,transparent),rgba(0,0,0,.55));border-color:color-mix(in srgb,var(--dp-uvi) 55%,transparent)}
+.dp-av svg{width:20px;height:20px}
+.dp-who{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.dp-who b{font-family:'Anton',sans-serif;font-weight:400;font-size:18px;letter-spacing:.03em;color:var(--dp-acc);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2}
+.dp-who span{font-family:var(--dp-inter);font-size:13px;color:var(--steel);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dp-pill{flex:none;display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border-radius:99px;font-family:var(--dp-inter);font-size:13px;font-weight:800;letter-spacing:.12em;line-height:1;white-space:nowrap}
+.dp-pill.live{color:var(--dp-live);border:1px solid color-mix(in srgb,var(--dp-live) 55%,transparent);background:color-mix(in srgb,var(--dp-live) 9%,transparent)}
+.dp-pill.live i{width:7px;height:7px;border-radius:50%;background:var(--dp-live);box-shadow:0 0 8px var(--dp-live);animation:dpPulse 1.4s ease-in-out infinite}
+.dp-pill.deck{color:var(--dp-uvi);border:1px solid color-mix(in srgb,var(--dp-uvi) 55%,transparent);background:color-mix(in srgb,var(--dp-uv) 12%,transparent)}
+.dp-pill.final{color:var(--steel);border:1px solid var(--line)}
+.dp-edit{flex:none;width:36px;height:36px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--steel);display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer}
+.dp-k,.dp-railhd .t,.dp-stat .k,.dp-tile .k,.dp-count .k,.dp-hero .k,.dp-sect>.k,.dp-ck .k,.dp-lg-sec .k,.dp-lg-call .k,.dp-drumcol .k{font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;letter-spacing:.12em;color:var(--steel);white-space:nowrap}
+
+/* the three numbers */
+.dp-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+.dp-stat{display:flex;flex-direction:column;align-items:center;gap:1px;padding:8px 4px 7px;border-radius:12px;background:var(--well);border:1px solid var(--line);min-width:0}
+.dp-stat.on{border-color:color-mix(in srgb,var(--dp-acc) 40%,transparent);box-shadow:inset 0 0 18px color-mix(in srgb,var(--dp-acc) 12%,transparent)}
+.dp-stat.good{border-color:color-mix(in srgb,var(--dp-live) 45%,transparent)}
+.dp-stat .v{font-family:'Anton',sans-serif;font-weight:400;font-size:clamp(23px,7.4vw,31px);line-height:1.1;color:var(--bone);white-space:nowrap}   /* no overflow clip: it would cut the glow into a box */
+.dp-stat .v.acc{color:var(--dp-acc);text-shadow:0 0 18px var(--dp-glow)}
+.dp-stat .v.pos{color:var(--dp-hi);text-shadow:0 0 18px var(--dp-glow)}
+.dp-stat .s{font-family:var(--dp-inter);font-size:13px;color:var(--steel);white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.dp-stat .s.up{color:var(--dp-live);font-weight:600}
+
+/* where the board is, in letters */
+.dp-where{display:flex;flex-direction:column;gap:8px;padding:10px 11px 9px;border-radius:12px;background:var(--well);border:1px solid var(--line)}
+.dp-letters{display:flex;align-items:center;gap:5px;min-width:0}
+.dp-lt{flex:none;width:26px;height:26px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-family:'Anton',sans-serif;font-size:15px;color:var(--steel);opacity:.6;border:1px solid var(--line)}
+.dp-lt.walk{opacity:.42}
+.dp-lt.now{opacity:1;color:var(--dp-ink);background:var(--dp-acc);border-color:var(--dp-acc);box-shadow:0 0 14px var(--dp-glow)}
+.dp-lt.call{opacity:1;color:var(--dp-acc);border-color:color-mix(in srgb,var(--dp-acc) 45%,transparent);background:color-mix(in srgb,var(--dp-acc) 10%,transparent)}
+.dp-lt.you{opacity:1;color:var(--dp-live);border-color:color-mix(in srgb,var(--dp-live) 60%,transparent);background:color-mix(in srgb,var(--dp-live) 10%,transparent);box-shadow:0 0 10px color-mix(in srgb,var(--dp-live) 30%,transparent)}
+.dp-letters .note{margin-left:auto;padding-left:6px;font-family:var(--dp-inter);font-size:13px;color:var(--steel);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.dp-lbar{position:relative;height:8px;margin:3px 0 1px;border-radius:99px;background:var(--bubble)}
+.dp-lbar i{position:absolute;left:0;top:0;bottom:0;border-radius:99px;background:linear-gradient(90deg,var(--dp-uv),var(--dp-acc));box-shadow:0 0 12px var(--dp-glow2)}
+.dp-lbar b{position:absolute;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;background:var(--dp-hi);box-shadow:0 0 12px var(--dp-glow)}
+.dp-lbar u{position:absolute;top:-4px;bottom:-4px;width:3px;margin-left:-1.5px;border-radius:2px;background:var(--dp-live);box-shadow:0 0 8px var(--dp-live)}
+.dp-wline{display:flex;align-items:center;gap:8px;font-family:var(--dp-inter);font-size:13px;color:var(--steel);min-width:0}
+.dp-wline>span:first-child{white-space:nowrap}
+.dp-wline .you{margin-left:auto;color:var(--dp-live);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.dp-wline .you.past{color:var(--steel);font-weight:600}
+
+/* THE RAIL — every mark left to right, the card at the window lit, the next cards after it */
+.dp-railbox{display:flex;flex-direction:column;gap:8px;min-width:0}
+.dp-railhd{display:flex;align-items:center;gap:7px;min-width:0}
+.dp-railhd .dot{flex:none;width:7px;height:7px;border-radius:50%;background:var(--dp-live);box-shadow:0 0 8px var(--dp-live);animation:dpPulse 1.4s ease-in-out infinite}
+.dp-railhd .r{margin-left:auto;font-family:var(--dp-inter);font-size:13px;color:var(--steel);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.dp-rail{position:relative;display:flex;align-items:center;gap:10px;height:98px;padding:0 calc(50% - 46px);overflow-x:auto;overflow-y:hidden;scroll-behavior:smooth;-webkit-overflow-scrolling:touch;scrollbar-width:none;border-radius:12px;border:1px solid var(--line);
+  background:linear-gradient(90deg,transparent,var(--dp-acc) 50%,var(--line) 50%,transparent) 12px 50%/calc(100% - 24px) 2px no-repeat,var(--well);
+  -webkit-mask-image:linear-gradient(90deg,transparent,#000 34px,#000 calc(100% - 34px),transparent);mask-image:linear-gradient(90deg,transparent,#000 34px,#000 calc(100% - 34px),transparent)}
+.dp-rail::-webkit-scrollbar{display:none}
+.dp-rail.empty{justify-content:center;padding:0 16px;-webkit-mask-image:none;mask-image:none;background:var(--well)}
+.dp-rail-wait{font-family:var(--dp-inter);font-size:14px;line-height:1.4;color:var(--steel);text-align:center}
+.dp-rail-wait b{color:var(--dp-hi)}
+.dp-rc{flex:none;position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;padding:5px 4px;border-radius:10px;background:var(--well)}
+.dp-rc b{font-family:'Anton',sans-serif;font-weight:400;font-size:17px;line-height:1.1;letter-spacing:.02em;color:var(--bone)}
+.dp-rc span{font-family:var(--dp-inter);font-size:13px;color:var(--steel);white-space:nowrap}
+.dp-rc.past{opacity:.72}
+.dp-rc.past b{color:var(--steel);text-decoration:line-through;text-decoration-thickness:1.5px}
+.dp-rc.now{padding:8px 11px 6px;border-radius:12px;border:1.5px solid var(--dp-acc);border-color:color-mix(in srgb,var(--dp-acc) 80%,transparent);
+  background:linear-gradient(color-mix(in srgb,var(--dp-acc) 15%,transparent),color-mix(in srgb,var(--dp-acc) 15%,transparent)),var(--well);box-shadow:0 0 22px var(--dp-glow2)}
+.dp-rc.now b{font-size:30px;line-height:1;color:var(--dp-hi);text-shadow:0 0 14px var(--dp-glow)}
+.dp-rc.now span{font-weight:800;letter-spacing:.1em;color:var(--dp-live)}
+.dp-rc.next b{font-size:18px}
+.dp-rc.next.n1{opacity:.68}
+.dp-rc.next.n2{opacity:.42}
+
+/* what came down */
+.dp-drops{display:flex;flex-direction:column;gap:5px;min-width:0}
+.dp-drow{display:flex;align-items:baseline;gap:7px;padding:3px 7px;border-radius:8px;border:1px solid transparent;min-width:0}
+.dp-drow.new{background:color-mix(in srgb,var(--dp-uv) 14%,transparent);border-color:color-mix(in srgb,var(--dp-uv) 42%,transparent)}
+.dp-drow .n{flex:none;font-family:'Anton',sans-serif;font-size:18px;color:var(--dp-acc)}
+.dp-drow .c{font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:600;color:var(--bone);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.dp-drow .w,.dp-drow .t{flex:none;font-family:var(--dp-inter);font-size:13px;color:var(--steel)}
+.dp-drow .bk{flex:none;font-family:var(--dp-inter);font-size:13px;font-weight:700;color:var(--ok)}
+.dp-drow .t{margin-left:auto}
+.dp-drow.new .t{color:var(--dp-uvi);font-weight:700}
+.dp-quiet{font-family:var(--dp-inter);font-size:14px;color:var(--steel);padding:2px 2px 4px}
+.dp-calls{display:flex;gap:3px;height:9px;margin-top:4px}
+.dp-calls i{display:block;border-radius:2px}
+.dp-calls i:first-child{border-top-left-radius:99px;border-bottom-left-radius:99px}
+.dp-calls i:last-child{border-top-right-radius:99px;border-bottom-right-radius:99px}
+.dp-calls .f,.dp-bars .f{background:var(--dp-uv);box-shadow:0 0 10px color-mix(in srgb,var(--dp-uv) 55%,transparent)}
+.dp-calls .a,.dp-bars .a{background:var(--dp-acc);box-shadow:0 0 10px var(--dp-glow2)}
+.dp-calls .b,.dp-bars .b{background:var(--dp-live);box-shadow:0 0 10px color-mix(in srgb,var(--dp-live) 40%,transparent)}
+.dp-callk{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-family:var(--dp-inter);font-size:13px;color:var(--steel)}
+.dp-callk b{font-weight:800}
+.dp-callk b.f{color:var(--dp-uvi)} .dp-callk b.a{color:var(--dp-acc)} .dp-callk b.b{color:var(--dp-live)}
+.dp-callk .ears{margin-left:auto}
+
+/* ON DECK — the pre-post */
+.dp-count{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;background:var(--well);border:1px solid var(--line)}
+.dp-count .l{display:flex;flex-direction:column;gap:1px;min-width:0}
+.dp-count .v{font-family:var(--dp-inter);font-size:28px;font-weight:800;line-height:1.15;letter-spacing:.02em;color:var(--dp-acc);text-shadow:0 0 16px var(--dp-glow);font-variant-numeric:tabular-nums}
+.dp-count .call{font-family:var(--dp-inter);font-size:13px;color:var(--steel)}
+.dp-count .call b{color:var(--dp-hi)}
+.dp-times{margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.dp-times span{padding:2px 8px;border-radius:7px;font-family:var(--dp-inter);font-size:13px;font-weight:700;white-space:nowrap;border:1px solid var(--line)}
+.dp-times .f{color:var(--dp-uvi);border-color:color-mix(in srgb,var(--dp-uv) 35%,transparent)}
+.dp-times .a{color:var(--dp-acc);border-color:color-mix(in srgb,var(--dp-acc) 35%,transparent)}
+.dp-times .b{color:var(--dp-live);border-color:color-mix(in srgb,var(--dp-live) 30%,transparent)}
+.dp-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+.dp-tile{display:flex;flex-direction:column;gap:2px;padding:8px 9px;border-radius:12px;background:var(--well);border:1px solid var(--line);min-width:0}
+.dp-tile.on{border-color:color-mix(in srgb,var(--dp-acc) 36%,transparent)}
+.dp-tile.good{border-color:color-mix(in srgb,var(--dp-live) 40%,transparent)}
+.dp-tile .v{font-family:'Anton',sans-serif;font-weight:400;font-size:clamp(20px,6.2vw,24px);line-height:1.1;color:var(--bone);white-space:nowrap}
+.dp-tile .v.pos{color:var(--dp-hi);text-shadow:0 0 14px var(--dp-glow)}
+.dp-tile .v.blank{color:var(--steel);opacity:.5}
+.dp-tile .verdict{align-self:flex-start;max-width:100%;margin-top:2px;padding:1px 6px;border-radius:7px;background:color-mix(in srgb,var(--dp-live) 12%,transparent);border:1px solid color-mix(in srgb,var(--dp-live) 60%,transparent);font-family:'Anton',sans-serif;font-size:clamp(14px,4.4vw,18px);line-height:1.15;letter-spacing:.02em;color:var(--dp-live)}
+.dp-tile .src{font-family:var(--dp-inter);font-size:13px;color:var(--steel);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dp-you{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:12px;background:color-mix(in srgb,var(--dp-live) 6%,transparent);border:1px solid color-mix(in srgb,var(--dp-live) 30%,transparent)}
+.dp-you i{flex:none;width:10px;height:10px;transform:rotate(45deg);background:var(--dp-live);box-shadow:0 0 10px color-mix(in srgb,var(--dp-live) 80%,transparent)}
+.dp-you span{font-family:var(--dp-inter);font-size:14px;line-height:1.35;color:var(--bone)}
+.dp-you b{color:var(--dp-live)}
+.dp-ck{display:flex;flex-direction:column;gap:7px;padding:10px 11px;border-radius:12px;background:var(--well);border:1px dashed color-mix(in srgb,var(--dp-acc) 45%,transparent)}
+.dp-ck .row{display:flex;gap:8px}
+.dp-ck input{flex:1;min-width:0;height:44px;padding:0 12px;border-radius:10px;border:1px solid var(--line);background:var(--plate);color:var(--bone);font-family:'Anton',sans-serif;font-size:20px;letter-spacing:.04em;outline:none}
+.dp-ck input::placeholder{font-family:var(--dp-inter);font-size:16px;letter-spacing:0;color:var(--steel);opacity:.8}
+.dp-ck input:focus{border-color:color-mix(in srgb,var(--dp-acc) 70%,transparent)}
+.dp-ck input.bad{border-color:var(--dp-bad)}
+.dp-ck button{flex:none;height:44px;padding:0 16px;border-radius:10px;border:1px solid color-mix(in srgb,var(--dp-acc) 60%,transparent);background:color-mix(in srgb,var(--dp-acc) 12%,transparent);color:var(--dp-acc);font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;letter-spacing:.08em;cursor:pointer}
+.dp-ck .s{font-family:var(--dp-inter);font-size:13px;color:var(--steel)}
+.dp-ck .s b{color:var(--dp-hi)}
+.dp-sect{display:flex;flex-direction:column;gap:6px;min-width:0}
+.dp-chips{display:flex;flex-wrap:wrap;gap:6px}
+.dp-chip{padding:5px 10px;border-radius:9px;background:color-mix(in srgb,var(--dp-acc) 8%,transparent);border:1px solid color-mix(in srgb,var(--dp-acc) 30%,transparent);font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:600;letter-spacing:.04em;color:var(--bone)}
+.dp-chip em{font-style:normal;color:var(--dp-acc)}
+.dp-kbyg{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.dp-kb{display:flex;align-items:center;gap:8px;padding:10px;border-radius:10px;background:var(--well);border:1px solid var(--line);text-decoration:none;color:var(--bone);font-family:var(--dp-inter);font-size:14px;font-weight:600;letter-spacing:normal;text-transform:none;cursor:pointer;text-align:left;min-width:0}
+.dp-kb svg{color:var(--dp-acc)}
+.dp-kb span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dp-fill{display:flex;align-items:center;justify-content:center;gap:8px;height:46px;border-radius:12px;border:1px dashed color-mix(in srgb,var(--dp-acc) 60%,transparent);background:color-mix(in srgb,var(--dp-acc) 8%,transparent);color:var(--dp-acc);font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;letter-spacing:.08em;cursor:pointer}
+
+/* FINAL — the record */
+.dp-hero{display:flex;align-items:stretch;gap:10px;padding:10px 12px;border-radius:12px;background:var(--well);border:1px solid var(--line)}
+.dp-hero .l{flex:1;display:flex;flex-direction:column;gap:1px;min-width:0}
+.dp-hero .big{font-family:'Anton',sans-serif;font-weight:400;font-size:40px;line-height:1.05;letter-spacing:.02em;color:var(--dp-hi);text-shadow:0 0 18px var(--dp-glow)}
+.dp-hero .s{font-family:var(--dp-inter);font-size:13px;color:var(--steel)}
+.dp-hero .r{flex:none;display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:1px;padding-left:12px;border-left:1px solid var(--line)}
+.dp-hero .r b{font-family:'Anton',sans-serif;font-weight:400;font-size:22px;color:var(--bone)}
+.dp-hero .r .w{font-family:var(--dp-inter);font-size:13px;font-weight:700;color:var(--dp-acc)}
+.dp-chart{display:flex;flex-direction:column;gap:6px}
+.dp-bands{position:relative;height:22px}
+.dp-bands span{position:absolute;top:0;height:22px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;overflow:hidden;border-radius:6px;background:color-mix(in srgb,var(--dp-uv) 14%,transparent);border:1px solid color-mix(in srgb,var(--dp-uv) 35%,transparent);font-family:'Anton',sans-serif;font-size:13px;color:var(--bone)}
+.dp-bars{position:relative;height:62px;border-bottom:1px solid var(--line)}
+.dp-bars i{position:absolute;bottom:0;width:5px;margin-left:-2.5px;border-radius:2px 2px 0 0}
+.dp-axis{display:flex;justify-content:space-between;font-family:var(--dp-inter);font-size:13px;color:var(--steel)}
+.dp-kinds{display:flex;flex-wrap:wrap;gap:6px}
+.dp-kc{padding:4px 9px;border-radius:99px;border:1px solid var(--line);font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:600;color:var(--steel)}
+.dp-kc b{margin-left:2px;font-family:'Anton',sans-serif;font-weight:400;color:var(--bone)}
+
+/* photos + clips of the night */
+.dp-photos{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.dp-photos::-webkit-scrollbar{display:none}
+.dp-ph{position:relative;flex:none;width:84px;height:84px;padding:0;border-radius:11px;overflow:hidden;border:1px solid var(--line);background:var(--well);cursor:pointer}
+.dp-ph img,.dp-ph video{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}
+.dp-ph .pl,.dp-tmedia .pl{position:absolute;left:6px;bottom:6px;width:24px;height:24px;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;display:flex;align-items:center;justify-content:center;padding-left:2px;box-sizing:border-box}
+.dp-ph .pl svg,.dp-tmedia .pl svg{width:12px;height:12px}
+.dp-ph.add{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border-style:dashed;border-color:color-mix(in srgb,var(--dp-acc) 50%,transparent);color:var(--dp-acc)}
+.dp-ph.add svg{width:20px;height:20px}
+.dp-ph.add span{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;letter-spacing:.05em;white-space:nowrap}
+.dp-pgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.dp-pgrid .dp-ph{width:auto;height:auto;aspect-ratio:1/1}
+
+/* the foot: like · talk · camera · the way in */
+#socialFeed .dp-post .dp-foot{display:flex;align-items:center;gap:6px;margin-top:0}
+#socialFeed .dp-post .dp-foot button{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:99px;border:1px solid var(--line);background:transparent;color:var(--steel);font-family:var(--dp-inter);font-size:13px;font-weight:600;cursor:pointer}
+#socialFeed .dp-post .dp-foot .ic{display:inline-flex}
+#socialFeed .dp-post .dp-foot .ic svg{width:15px;height:15px}
+#socialFeed .dp-post .dp-foot .dp-like.on{color:#ff5c7c;border-color:rgba(254,44,85,.45)}
+#socialFeed .dp-post .dp-foot .dp-cta{margin-left:auto;padding:7px 12px;gap:5px;border-color:color-mix(in srgb,var(--dp-acc) 60%,transparent);background:color-mix(in srgb,var(--dp-acc) 12%,transparent);color:var(--dp-acc);font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;letter-spacing:.08em;box-shadow:0 0 14px var(--dp-glow2);white-space:nowrap}
+#socialFeed .dp-post .dp-foot .dp-cta svg{width:14px;height:14px}
+#socialFeed .dp-post .dp-foot .dp-cta.quiet{border-color:var(--line);background:transparent;color:var(--bone);box-shadow:none}
+.dp-soon{margin-left:auto;font-family:var(--dp-inter);font-size:13px;color:var(--steel);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+
+/* ── the Wire tab's live strip ── */
+.dp-wirestrip{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap;width:100%;box-sizing:border-box;margin:0 0 12px;padding:11px 14px;border-radius:14px;cursor:pointer;text-align:left;font-family:var(--dp-inter);color:var(--bone);
+  border:1px solid color-mix(in srgb,var(--dp-acc) 55%,transparent);background:linear-gradient(90deg,color-mix(in srgb,var(--dp-acc) 14%,var(--plate)),var(--plate));box-shadow:0 0 18px var(--dp-glow2)}
+.dp-wirestrip .dot{flex:none;width:9px;height:9px;border-radius:50%;background:var(--dp-live);box-shadow:0 0 10px var(--dp-live);animation:dpPulse 1.4s ease-in-out infinite}
+.dp-wirestrip .t{font-size:14px;font-weight:600;white-space:nowrap}
+.dp-wirestrip .t b{font-weight:800;letter-spacing:.1em;color:var(--dp-live)}
+.dp-wirestrip .s{font-size:13px;color:var(--steel);white-space:nowrap}
+.dp-wirestrip .s b{color:var(--dp-hi)}
+.dp-wirestrip .go{margin-left:auto;display:inline-flex;align-items:center;gap:4px;font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;letter-spacing:.08em;color:var(--dp-acc)}
+.dp-wirestrip .go svg{width:14px;height:14px}
+
+/* ── the sheets: shared parts ── */
+.dp-sh .sheet-card{max-height:calc(100% - 14px);max-height:calc(100% - max(14px,env(safe-area-inset-top)));text-align:left;max-width:480px;background:linear-gradient(184deg,var(--plate-2),var(--plate) 62%);border-color:var(--line);border-top-color:color-mix(in srgb,var(--dp-acc) 50%,transparent);box-shadow:0 -10px 40px var(--dp-glow2)}
+.dp-mk-card,.dp-lg-card,.dp-ed-card,.dp-ph-card,.dp-pc-card{display:flex;flex-direction:column;gap:11px;padding:10px 16px calc(16px + env(safe-area-inset-bottom))}
+.dp-grip{flex:none;align-self:center;width:42px;height:5px;border-radius:99px;background:var(--line);margin-bottom:-2px}
+.dp-mk-hd{display:flex;align-items:center;gap:10px;min-width:0}
+.dp-mk-hd .t{font-family:'Anton',sans-serif;font-size:25px;letter-spacing:.04em;color:var(--bone);white-space:nowrap;line-height:1.15}
+.dp-paypill{margin-left:auto;flex:none;display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:99px;border:1px solid color-mix(in srgb,var(--dp-live) 55%,transparent);background:color-mix(in srgb,var(--dp-live) 10%,transparent);font-family:var(--dp-inter);font-size:13px;font-weight:800;letter-spacing:.06em;color:var(--dp-live);white-space:nowrap}
+.dp-paypill svg{width:15px;height:15px}
+.dp-go{width:100%;height:58px;flex:none;display:flex;align-items:center;justify-content:center;gap:10px;padding:0 12px;border-radius:16px;cursor:pointer;touch-action:manipulation;
+  border:1px solid color-mix(in srgb,var(--dp-acc) 80%,#fff);background:linear-gradient(184deg,var(--copper-hi),var(--copper));color:var(--dp-ink);font-family:'Anton',sans-serif;font-size:21px;letter-spacing:.05em;box-shadow:0 0 24px var(--dp-glow)}
+.dp-go svg{width:21px;height:21px}
+.dp-go span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dp-go:disabled{opacity:.42;box-shadow:none;cursor:default}
+.dp-go:active:not(:disabled){transform:scale(.985)}
+.dp-linkish{align-self:flex-start;display:inline-flex;align-items:center;gap:5px;background:none;border:0;padding:0;color:var(--dp-acc);font-family:var(--dp-inter);font-size:14px;font-weight:700;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.dp-close{width:100%;margin-top:-4px;padding:12px 0;border:0!important;background:none!important;box-shadow:none!important;color:var(--steel)!important;font-family:var(--dp-inter);font-size:15px;cursor:pointer}
+.dp-empty{display:flex;flex-direction:column;align-items:center;gap:6px;padding:26px 16px;text-align:center;border:1px dashed var(--line);border-radius:14px}
+.dp-empty svg{width:28px;height:28px;color:var(--steel);opacity:.75}
+.dp-empty b{font-family:'Anton',sans-serif;font-weight:400;font-size:16px;letter-spacing:.06em;color:var(--bone)}
+.dp-empty span{font-family:var(--dp-inter);font-size:14px;line-height:1.45;color:var(--steel);max-width:280px}
+.dp-addph{margin-top:6px;height:42px;padding:0 18px;border-radius:99px;border:1px solid color-mix(in srgb,var(--dp-acc) 60%,transparent);background:color-mix(in srgb,var(--dp-acc) 12%,transparent);color:var(--dp-acc);font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;letter-spacing:.08em;cursor:pointer}
+
+/* ── THE LIVE ROOM ── */
+#dpRoom.sheet{align-items:flex-end}
+/* the app runs under body{zoom} (#textsize), where 100dvh overshoots the screen — so the room is sized against
+   its own fixed sheet (which already gives the keyboard its room) instead of the viewport */
+#dpRoom .dp-room-card{display:flex;flex-direction:column;padding:0;max-width:520px;overflow:hidden;
+  height:calc(100% - 14px);height:calc(100% - max(14px,env(safe-area-inset-top)));max-height:none}
+.dp-rm-top{flex:none;display:flex;align-items:center;gap:10px;padding:12px 14px 10px;border-bottom:1px solid var(--line-soft)}
+.dp-rm-x{flex:none;width:42px;height:42px;border-radius:12px;border:1px solid var(--line);background:var(--bubble);color:var(--bone);display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer}
+.dp-rm-x svg{width:18px;height:18px}
+.dp-rm-nav{flex:none;display:flex;gap:4px}
+.dp-rm-nav button{width:34px;height:34px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--steel);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.dp-rm-nav button svg{width:16px;height:16px}
+.dp-rm-body{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:12px 14px 18px;display:flex;flex-direction:column;gap:10px}
+.dp-rm-body>*{flex:none}
+.dp-rm-dock{flex:none;display:flex;gap:8px;padding:10px 14px calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--line-soft);background:var(--plate)}
+.dp-dk{flex:1;min-width:0;height:56px;border-radius:15px;display:flex;align-items:center;justify-content:center;gap:8px;padding:0 6px;cursor:pointer;touch-action:manipulation;border:1px solid var(--line);background:var(--bubble);color:var(--bone);font-family:'Anton',sans-serif;font-size:18px;letter-spacing:.05em;white-space:nowrap}
+.dp-dk svg{width:20px;height:20px}
+.dp-dk.log{flex:1.3;border-color:color-mix(in srgb,var(--dp-acc) 75%,#fff);background:linear-gradient(184deg,var(--copper-hi),var(--copper));color:var(--dp-ink);box-shadow:0 0 22px var(--dp-glow2)}
+.dp-dk.mark{flex:1.1;border-color:color-mix(in srgb,var(--dp-live) 60%,transparent);background:color-mix(in srgb,var(--dp-live) 10%,var(--plate));color:var(--dp-live)}
+.dp-dk.click{flex:.85;font-size:16px;color:var(--steel)}
+.dp-dk:disabled{opacity:.4;cursor:default;box-shadow:none}
+.dp-say{flex:1;display:flex;align-items:center;gap:8px;min-width:0}
+.dp-say .cam{flex:none;width:46px;height:46px;border-radius:12px;border:1px solid color-mix(in srgb,var(--dp-acc) 40%,transparent);background:transparent;color:var(--dp-acc);display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer}
+.dp-say .cam svg{width:20px;height:20px}
+.dp-say input{flex:1;min-width:0;height:46px;padding:0 16px;border-radius:99px;border:1px solid var(--line);background:var(--well);color:var(--bone);font-family:var(--dp-read);font-size:16px;outline:none}
+.dp-say input:focus{border-color:color-mix(in srgb,var(--dp-acc) 60%,transparent)}
+.dp-say .go{flex:none;width:46px;height:46px;border-radius:50%;border:0;background:linear-gradient(184deg,var(--copper-hi),var(--copper));color:var(--dp-ink);display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer}
+.dp-say .go svg{width:18px;height:18px}
+.dp-tabs{display:flex;gap:4px;padding:4px;border-radius:13px;background:var(--bubble);border:1px solid var(--line-soft);overflow-x:auto;scrollbar-width:none}
+.dp-tabs::-webkit-scrollbar{display:none}
+.dp-tab{flex:1 0 auto;height:36px;padding:0 10px;border-radius:9px;border:1px solid transparent;background:transparent;color:var(--steel);font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;letter-spacing:.06em;white-space:nowrap;cursor:pointer}
+.dp-tab.on{border-color:color-mix(in srgb,var(--dp-acc) 55%,transparent);background:color-mix(in srgb,var(--dp-acc) 14%,transparent);color:var(--dp-acc)}
+.dp-tl{display:flex;flex-direction:column;gap:6px}
+.dp-row{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:12px;background:var(--well);border:1px solid var(--line-soft);min-width:0}
+.dp-row .tm{flex:none;width:40px;font-family:var(--dp-inter);font-size:13px;font-weight:700;color:var(--steel)}
+.dp-row .ic{flex:none;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:1px solid var(--line)}
+.dp-row .ic svg{width:15px;height:15px}
+.dp-row .ic.mk{color:var(--dp-acc);background:color-mix(in srgb,var(--dp-acc) 8%,transparent);border-color:color-mix(in srgb,var(--dp-acc) 35%,transparent)}
+.dp-row .ic.dr{border-radius:9px;color:var(--dp-uvi);background:color-mix(in srgb,var(--dp-uv) 14%,transparent);border-color:color-mix(in srgb,var(--dp-uvi) 45%,transparent)}
+.dp-row .ic.ck{color:var(--dp-live);border-color:color-mix(in srgb,var(--dp-live) 40%,transparent)}
+.dp-row .ic.dw{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 45%,transparent);background:color-mix(in srgb,var(--warn) 10%,transparent)}
+.dp-row .ic.tk{color:var(--bone);background:color-mix(in srgb,var(--bone) 6%,transparent)}
+.dp-row .bd{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.dp-row .bd>b{font-family:'Anton',sans-serif;font-weight:400;font-size:20px;line-height:1.15;letter-spacing:.03em;color:var(--bone)}
+.dp-row .mt{font-family:var(--dp-inter);font-size:13px;color:var(--steel);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dp-row .mt em{font-style:normal;font-weight:700;color:var(--dp-acc)}
+.dp-row .bk{color:var(--ok);font-weight:700}
+.dp-row .dl{display:flex;align-items:baseline;gap:6px;min-width:0}
+.dp-row .dl b{flex:none;font-family:'Anton',sans-serif;font-weight:400;font-size:20px;color:var(--dp-acc)}
+.dp-row .dl .c{font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:600;color:var(--bone);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.dp-row p{margin:0;font-family:var(--dp-read);font-size:15px;line-height:1.4;color:var(--bone);word-break:break-word}
+.dp-row.now{background:color-mix(in srgb,var(--dp-acc) 8%,var(--well));border-color:color-mix(in srgb,var(--dp-acc) 45%,transparent)}
+.dp-row.now .tm{color:var(--dp-acc)}
+.dp-row.now .bd>b{color:var(--dp-hi);text-shadow:0 0 12px var(--dp-glow)}
+.dp-row .dp-nowtag{flex:none;padding:3px 8px;border-radius:99px;background:color-mix(in srgb,var(--dp-live) 12%,transparent);border:1px solid color-mix(in srgb,var(--dp-live) 50%,transparent);font-family:var(--dp-inter);font-size:13px;font-weight:800;letter-spacing:.1em;color:var(--dp-live)}
+.dp-row .x,.dp-row .dl-x.x{flex:none;width:34px;height:34px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--steel);display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer;font-size:15px;line-height:1}
+.dp-row .x svg{width:14px;height:14px}
+.dp-row .dl-x.x{color:var(--dp-bad);border-color:color-mix(in srgb,var(--dp-bad) 40%,transparent)}
+.dp-row .dl-x.km.x{color:var(--dp-acc);border-color:color-mix(in srgb,var(--dp-acc) 45%,transparent)}
+.dp-row .dl-x.back.x{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 45%,transparent)}
+.dp-row .x.arm{color:var(--dp-bad);border-color:var(--dp-bad);background:color-mix(in srgb,var(--dp-bad) 12%,transparent)}
+.dp-row.struck{opacity:.55}
+.dp-row.struck .dl b{text-decoration:line-through}
+.dp-row.draw{border-color:color-mix(in srgb,var(--warn) 32%,transparent)}
+.dp-row.draw .dl b{color:var(--warn)}
+.dp-row.draw .dl{flex-wrap:wrap;row-gap:0}
+.dp-row.draw .dl .c,.dp-row.draw .mt{white-space:normal}
+.dp-row .mk{display:flex;align-items:center;gap:8px;min-width:0}
+.dp-row .mk b{font-family:'Anton',sans-serif;font-weight:400;font-size:20px;line-height:1.15;letter-spacing:.03em;color:var(--bone)}
+.dp-row.now .mk b{color:var(--dp-hi);text-shadow:0 0 12px var(--dp-glow)}
+.dp-row .mk .nt{flex:none;padding:2px 8px;border-radius:99px;border:1px solid color-mix(in srgb,var(--dp-acc) 50%,transparent);background:color-mix(in srgb,var(--dp-acc) 10%,transparent);font-style:normal;font-family:var(--dp-inter);font-size:13px;font-weight:700;color:var(--dp-acc);white-space:nowrap}
+.dp-row.draw.won{background:color-mix(in srgb,var(--warn) 10%,var(--well));border-color:color-mix(in srgb,var(--warn) 60%,transparent)}
+.dp-row.talk{align-items:flex-start}
+.dp-row.talk .tm{padding-top:6px}
+.dp-row.talk .bd{gap:5px;padding-top:2px}
+.dp-row.talk.mine{border-color:color-mix(in srgb,var(--dp-acc) 30%,transparent)}
+.dp-tmedia{position:relative;display:block;width:100%;max-width:190px;aspect-ratio:4/3;padding:0;border-radius:10px;overflow:hidden;border:1px solid var(--line);background:var(--well);cursor:pointer}
+.dp-tmedia img,.dp-tmedia video{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}
+
+/* ── THE SPIN WHEEL ── */
+.dp-mk-sub{margin-top:-6px;font-family:var(--dp-inter);font-size:14px;line-height:1.35;color:var(--steel)}
+.dp-mk-sub b{color:var(--dp-hi)}
+.dp-drums{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.dp-drumcol{display:flex;flex-direction:column;gap:5px;min-width:0}
+.dp-drumcol .k{text-align:center}
+.dp-drum{position:relative;height:240px;border-radius:14px;overflow:hidden;background:var(--well);border:1px solid var(--line);touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;cursor:grab;outline:none}
+.dp-drum:active{cursor:grabbing}
+.dp-drum:focus-visible{box-shadow:0 0 0 2px color-mix(in srgb,var(--dp-acc) 70%,transparent)}
+.dp-drum .win{position:absolute;left:5px;right:5px;top:96px;height:48px;box-sizing:border-box;border-radius:10px;border:1.5px solid color-mix(in srgb,var(--dp-acc) 85%,transparent);background:color-mix(in srgb,var(--dp-acc) 12%,transparent);box-shadow:0 0 18px color-mix(in srgb,var(--dp-acc) 35%,transparent);pointer-events:none}
+.dp-drum .row{position:absolute;left:0;right:0;top:0;height:48px;display:flex;align-items:center;justify-content:center;font-family:'Anton',sans-serif;font-size:24px;letter-spacing:.03em;color:var(--bone);pointer-events:none;will-change:transform}
+.dp-drum .row.sel{font-size:31px;color:var(--dp-hi);text-shadow:0 0 14px var(--dp-glow)}
+.dp-drum .fade{position:absolute;left:0;right:0;height:80px;pointer-events:none}
+.dp-drum .fade.t{top:0;background:linear-gradient(180deg,var(--well) 10%,color-mix(in srgb,var(--well) 0%,transparent))}
+.dp-drum .fade.b{bottom:0;background:linear-gradient(0deg,var(--well) 10%,color-mix(in srgb,var(--well) 0%,transparent))}
+.dp-mk-status{min-height:20px;font-family:var(--dp-inter);font-size:14px;font-weight:600;line-height:1.4;color:var(--steel)}
+.dp-mk-status.ok{color:var(--dp-live)}
+.dp-mk-status.warn{color:var(--warn)}
+.dp-mk-status.bad{color:var(--dp-bad)}
+.dp-mk-status .dp-linkish{display:inline;font-size:14px}
+.dp-nudges{display:grid;grid-template-columns:1fr 1.1fr 1.35fr .85fr;gap:6px}
+.dp-nudges button{height:44px;padding:0 2px;border-radius:11px;border:1px solid color-mix(in srgb,var(--dp-uv) 36%,transparent);background:color-mix(in srgb,var(--dp-uv) 12%,transparent);color:var(--bone);font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;letter-spacing:.02em;white-space:nowrap;overflow:hidden;cursor:pointer;touch-action:manipulation}
+.dp-nudges button.ghost{background:transparent;color:var(--steel)}
+.dp-tags{display:flex;flex-wrap:wrap;gap:6px}
+.dp-mk-draw{display:block;margin-top:3px;color:var(--steel)}
+.dp-mk-draw b{color:var(--dp-live)}
+.dp-tags button{height:36px;padding:0 11px;border-radius:99px;border:1px solid var(--line);background:transparent;color:var(--steel);font-family:var(--dp-inter);font-size:13px;font-weight:700;letter-spacing:.04em;cursor:pointer}
+.dp-tags button.on{border-color:color-mix(in srgb,var(--dp-acc) 60%,transparent);background:color-mix(in srgb,var(--dp-acc) 14%,transparent);color:var(--dp-acc)}
+.dp-recent{display:flex;gap:6px;overflow:hidden}
+.dp-recent span{flex:none;display:inline-flex;align-items:baseline;gap:6px;padding:5px 9px;border-radius:10px;border:1px solid var(--line);background:var(--well);font-family:var(--dp-inter);font-size:13px;color:var(--steel);white-space:nowrap}
+.dp-recent b{font-family:'Anton',sans-serif;font-weight:400;font-size:16px;letter-spacing:.03em;color:var(--bone)}
+.dp-recent span.top{border-color:color-mix(in srgb,var(--dp-acc) 45%,transparent)}
+.dp-recent span.top b{color:var(--dp-hi)}
+
+/* ── LOG JOBS: the pad, the clicker ── */
+.dp-lg-tot{font-family:var(--dp-inter);font-size:14px;color:var(--steel);white-space:nowrap}
+.dp-lg-tot b{margin-left:2px;font-family:'Anton',sans-serif;font-weight:400;font-size:20px;color:var(--dp-acc)}
+.dp-seg{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;border-radius:13px;background:var(--well);border:1px solid var(--line)}
+.dp-seg button{height:36px;border-radius:10px;border:1px solid transparent;background:transparent;color:var(--steel);font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;letter-spacing:.08em;cursor:pointer}
+.dp-seg button.on{border-color:color-mix(in srgb,var(--dp-live) 55%,transparent);background:color-mix(in srgb,var(--dp-live) 10%,transparent);color:var(--dp-live)}
+.dp-lg-pad{flex:none;display:flex;flex-direction:column;height:240px;
+  height:clamp(188px,calc(100vh / var(--appz,var(--appfs,1.15)) - 500px),280px);height:clamp(188px,calc(100dvh / var(--appz,var(--appfs,1.15)) - 500px),280px)}
+.dp-lg-numwrap,.dp-lg-clkwrap{flex:1;min-height:0;display:flex;flex-direction:column;gap:8px}
+.dp-lg-clkwrap,.dp-lg-card.clk .dp-lg-numwrap{display:none}
+.dp-lg-card.clk .dp-lg-clkwrap{display:flex}
+.dp-lg-num{flex:none;height:58px;box-sizing:border-box;display:flex;align-items:center;gap:10px;padding:0 14px;border-radius:14px;background:var(--well);border:1px solid color-mix(in srgb,var(--dp-acc) 70%,transparent);box-shadow:0 0 16px var(--dp-glow2)}
+.dp-lg-num b{font-family:'Anton',sans-serif;font-weight:400;font-size:44px;line-height:1;color:var(--dp-hi);text-shadow:0 0 16px var(--dp-glow)}
+.dp-lg-num b.dim{color:var(--steel);text-shadow:none}
+.dp-lg-num .caret{flex:none;width:3px;height:34px;border-radius:2px;background:var(--dp-acc);animation:dpCaret 1s steps(1) infinite}
+.dp-lg-num span{margin-left:auto;font-family:var(--dp-inter);font-size:14px;color:var(--steel);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.dp-keys{flex:1;min-height:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:repeat(4,minmax(0,1fr));gap:6px}
+.dp-keys button{min-height:0;padding:0;border-radius:12px;border:1px solid color-mix(in srgb,var(--dp-uv) 30%,transparent);background:color-mix(in srgb,var(--dp-uv) 10%,transparent);color:var(--bone);font-family:'Anton',sans-serif;font-size:26px;letter-spacing:.04em;display:flex;align-items:center;justify-content:center;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.dp-keys button:active{background:color-mix(in srgb,var(--dp-acc) 22%,transparent)}
+.dp-keys button.c{font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;color:var(--steel)}
+.dp-keys button.del{color:var(--steel)}
+.dp-keys button.del svg{width:24px;height:24px}
+.dp-digits{flex:none;display:flex;align-items:center;justify-content:center;gap:6px}
+.dp-digits span{position:relative;width:46px;height:60px;border-radius:9px;display:flex;align-items:center;justify-content:center;border:1px solid var(--line);background:linear-gradient(180deg,var(--bubble) 50%,var(--well) 50%);font-family:'Anton',sans-serif;font-size:40px;color:var(--steel)}
+.dp-digits span::after{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:rgba(0,0,0,.5)}
+.dp-digits span.on{color:var(--dp-hi);text-shadow:0 0 16px var(--dp-glow)}
+.dp-clk{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;gap:18px}
+.dp-clk .sm{flex:none;width:60px;height:60px;border-radius:50%;border:1px solid color-mix(in srgb,var(--dp-uv) 30%,transparent);background:color-mix(in srgb,var(--dp-uv) 10%,transparent);color:var(--steel);font-family:'Anton',sans-serif;font-size:22px;padding:0;cursor:pointer;touch-action:manipulation}
+.dp-clk .sm[data-lg="reset"]{font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;letter-spacing:.06em}
+.dp-clk .sm.arm{border-color:var(--warn);color:var(--warn)}
+.dp-clk .big{flex:none;height:min(148px,100%);aspect-ratio:1/1;border-radius:50%;padding:0;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;border:3px solid color-mix(in srgb,var(--dp-hi) 90%,transparent);background:linear-gradient(184deg,var(--copper-hi),var(--copper));color:var(--dp-ink);box-shadow:0 0 0 8px color-mix(in srgb,var(--dp-acc) 12%,transparent),0 0 34px var(--dp-glow);transition:transform .08s}
+.dp-clk .big:active{transform:scale(.95)}
+.dp-clk .big.hit{animation:dpHit .18s ease-out}
+.dp-clk .big b{font-family:'Anton',sans-serif;font-weight:400;font-size:50px;line-height:1}
+.dp-clk .big span{margin-top:4px;font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;letter-spacing:.14em}
+.dp-lg-sec{display:flex;flex-direction:column;gap:6px}
+.dp-kindgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.dp-kindgrid button{height:38px;padding:0 4px;border-radius:10px;border:1px solid color-mix(in srgb,var(--dp-uv) 30%,transparent);background:transparent;color:var(--bone);font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;letter-spacing:.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;touch-action:manipulation}
+.dp-kindgrid.four button{font-size:15px;letter-spacing:0}
+.dp-kindgrid button.on{background:color-mix(in srgb,var(--dp-uv) 18%,transparent);border-color:color-mix(in srgb,var(--dp-uvi) 60%,transparent);color:var(--dp-uvi)}
+.dp-kindgrid button.dp-kpg{color:var(--steel)}
+.dp-kindgrid button.dp-kpg em{font-style:normal;color:var(--dp-uvi)}
+.dp-lg-call{display:flex;align-items:center;gap:8px;min-width:0}
+.dp-lg-call .segs{flex:1;min-width:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;padding:3px;border-radius:11px;background:var(--well);border:1px solid var(--line)}
+.dp-lg-call .segs span{height:30px;border-radius:8px;border:1px solid transparent;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;letter-spacing:.05em;color:var(--steel);white-space:nowrap;overflow:hidden}
+.dp-lg-call .segs span.on{background:color-mix(in srgb,var(--dp-live) 10%,transparent);border-color:color-mix(in srgb,var(--dp-live) 55%,transparent);color:var(--dp-live)}
+.dp-lg-call .by{flex:none;font-family:var(--dp-inter);font-size:13px;color:var(--steel);white-space:nowrap}
+.dp-lg-call.est .segs{opacity:.4}
+.dp-lg-card .dp-go:not(.ready){opacity:.55;box-shadow:none}
+.dp-lg-note{min-height:20px;font-family:var(--dp-inter);font-size:14px;font-weight:600;color:var(--steel);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dp-lg-note.ok{color:var(--dp-live)}
+.dp-lg-note.warn{color:var(--warn)}
+.dp-lg-note.bad{color:var(--dp-bad)}
+
+/* ── the council's pre-post sheet · the phones · a photo on its way up · a clip playing ── */
+.dp-ed-for{margin-left:auto;min-width:0;font-family:var(--dp-inter);font-size:13px;color:var(--steel);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dp-ed-sub{margin:-4px 0 0;font-family:var(--dp-inter);font-size:14px;line-height:1.45;color:var(--steel)}
+.dp-ed-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.dp-ed-f{display:flex;flex-direction:column;gap:4px;min-width:0}
+.dp-ed-f.wide{grid-column:1/-1}
+.dp-ed-f>span{font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;letter-spacing:.1em;color:var(--steel);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dp-ed-f em,.dp-ed-kb summary em{font-style:normal;font-family:var(--dp-inter);font-size:13px;font-weight:500;letter-spacing:0;opacity:.85}
+.dp-ed-f input,.dp-ed-f textarea{width:100%;box-sizing:border-box;min-width:0;padding:10px 11px;border-radius:10px;border:1px solid var(--line);background:var(--well);color:var(--bone);font-family:var(--dp-inter);font-size:16px;outline:none}
+.dp-ed-f textarea{resize:vertical;min-height:92px;line-height:1.4}
+.dp-ed-f input:focus,.dp-ed-f textarea:focus{border-color:color-mix(in srgb,var(--dp-acc) 70%,transparent)}
+.dp-ed-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:-3px}
+.dp-ed-chips button{height:36px;padding:0 13px;border-radius:99px;border:1px solid color-mix(in srgb,var(--dp-live) 50%,transparent);background:color-mix(in srgb,var(--dp-live) 10%,transparent);color:var(--dp-live);font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;letter-spacing:.08em;cursor:pointer}
+.dp-ed-kb{display:flex;flex-direction:column;gap:8px;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--well)}
+.dp-ed-kb summary{cursor:pointer;list-style:none;font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;letter-spacing:.1em;color:var(--bone)}
+.dp-ed-kb summary::-webkit-details-marker{display:none}
+.dp-ed-kb summary::before{content:"▸ ";color:var(--dp-acc)}
+.dp-ed-kb[open] summary::before{content:"▾ "}
+.dp-ed-kb .dp-ed-f input,.dp-ed-kb .dp-ed-f textarea{background:var(--plate)}
+.dp-ed-msg{min-height:18px;font-family:var(--dp-inter);font-size:14px;color:var(--steel)}
+.dp-ed-msg.bad{color:var(--dp-bad)}
+.dp-phlist{display:flex;flex-direction:column;gap:6px}
+.dp-phrow{display:flex;align-items:center;gap:12px;padding:12px;border-radius:12px;background:var(--well);border:1px solid var(--line);text-decoration:none;color:var(--bone);min-width:0}
+.dp-phrow>svg:first-child{width:18px;height:18px;color:var(--dp-acc)}
+.dp-phrow>svg:last-child{width:16px;height:16px;color:var(--steel);margin-left:auto}
+.dp-phrow span{display:flex;flex-direction:column;gap:1px;min-width:0}
+.dp-phrow b{font-family:var(--dp-inter);font-size:15px;font-weight:700;color:var(--bone);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dp-phrow em{font-style:normal;font-family:var(--dp-inter);font-size:13px;color:var(--steel)}
+.dp-pc-prev{border-radius:14px;overflow:hidden;background:#000;display:flex;align-items:center;justify-content:center;max-height:46vh}
+.dp-pc-prev img,.dp-pc-prev video{display:block;max-width:100%;max-height:46vh;object-fit:contain}
+.dp-pc-cap{width:100%;box-sizing:border-box;height:46px;padding:0 14px;border-radius:12px;border:1px solid var(--line);background:var(--well);color:var(--bone);font-family:var(--dp-read);font-size:16px;outline:none}
+.dp-clip-card{display:flex;flex-direction:column;gap:10px;background:#000!important;padding:12px 12px calc(14px + env(safe-area-inset-bottom))!important}
+.dp-clip-card video{width:100%;max-height:72vh;border-radius:12px;background:#000}
+.dp-clip-card .btn-ghost{color:#ddd}
+
+/* short phones: the wheel and the pad keep their LOG / MARK button on screen */
+@media (max-height:800px){   /* ≈ 700 px of room once the app's zoom is on */
+  .dp-mk-card,.dp-lg-card{gap:8px}
+  .dp-recent,.dp-mk-draw{display:none}
+  .dp-lg-num{height:50px}
+  .dp-lg-num b{font-size:38px}
+  .dp-kindgrid button{height:34px}
+  .dp-go{height:52px}
+}
+@media (max-width:360px){
+  .dp-times span{padding:2px 6px}
+  .dp-nudges button{font-size:15px;letter-spacing:0}
+  .dp-dk{font-size:16px}
+}
+
+/* ── DAYLIGHT: paper, ink, no neon fog ── */
+html.daylight #socialFeed .dp-post{background:var(--plate-2);box-shadow:0 10px 26px rgba(40,30,80,.10),inset 0 1px 0 rgba(255,255,255,.7)}
+html.daylight #socialFeed .dp-post.dp-live{border-color:color-mix(in srgb,var(--copper) 45%,transparent)}
+html.daylight #socialFeed .dp-post.dp-pre{border-color:color-mix(in srgb,var(--dp-uv) 35%,transparent)}
+html.daylight .dp-av{background:color-mix(in srgb,var(--copper) 9%,#fff);box-shadow:none}
+html.daylight .dp-stat,html.daylight .dp-where,html.daylight .dp-tile,html.daylight .dp-count,html.daylight .dp-hero,html.daylight .dp-kb,html.daylight .dp-ck,html.daylight .dp-rail,html.daylight .dp-rc,html.daylight .dp-row{box-shadow:none}
+html.daylight .dp-rail{background:linear-gradient(90deg,transparent,var(--copper) 50%,var(--line) 50%,transparent) 12px 50%/calc(100% - 24px) 2px no-repeat,var(--well)}
+html.daylight .dp-rail.empty{background:var(--well)}
+html.daylight .dp-rc.now{background:linear-gradient(color-mix(in srgb,var(--copper) 10%,transparent),color-mix(in srgb,var(--copper) 10%,transparent)),#fff}
+html.daylight .dp-lt.now{color:#fff;box-shadow:none}
+html.daylight .dp-pill.live{background:color-mix(in srgb,var(--dp-live) 10%,#fff);text-shadow:none}
+html.daylight .dp-lbar{background:color-mix(in srgb,var(--line) 70%,#fff)}
+html.daylight .dp-lbar b{background:var(--copper);box-shadow:0 0 0 3px #fff}
+html.daylight .dp-sh .sheet-card{background:#fff;border-top-color:var(--line);box-shadow:0 -8px 30px rgba(15,17,20,.14)}
+html.daylight .dp-drum,html.daylight .dp-lg-num,html.daylight .dp-seg,html.daylight .dp-lg-call .segs{background:#f6f5fb}
+html.daylight .dp-drum .fade.t{background:linear-gradient(180deg,#f6f5fb 10%,rgba(246,245,251,0))}
+html.daylight .dp-drum .fade.b{background:linear-gradient(0deg,#f6f5fb 10%,rgba(246,245,251,0))}
+html.daylight .dp-drum .win{background:color-mix(in srgb,var(--copper) 8%,#fff);box-shadow:none}
+html.daylight .dp-keys button,html.daylight .dp-nudges button,html.daylight .dp-clk .sm{background:#fff;border-color:var(--line)}
+html.daylight .dp-digits span{background:linear-gradient(180deg,#fff 50%,#f1f1f6 50%)}
+html.daylight .dp-digits span::after{background:var(--line)}
+html.daylight .dp-clk .big{border-color:color-mix(in srgb,var(--copper) 70%,#000);box-shadow:0 0 0 8px color-mix(in srgb,var(--copper) 10%,#fff),0 6px 18px rgba(40,30,80,.22)}
+html.daylight .dp-go,html.daylight .dp-dk.log{box-shadow:0 2px 10px rgba(40,30,80,.22);border-color:var(--copper)}
+html.daylight .dp-dk:not(.log){background:#fff}
+html.daylight .dp-dk.mark{background:color-mix(in srgb,var(--dp-live) 8%,#fff)}
+html.daylight .dp-rm-dock{background:#fff}
+html.daylight .dp-wirestrip{background:linear-gradient(90deg,color-mix(in srgb,var(--copper) 9%,#fff),#fff);box-shadow:0 4px 14px rgba(40,30,80,.10)}
+html.daylight .dp-row.now{background:color-mix(in srgb,var(--copper) 7%,#fff)}
+html.daylight .dp-row.draw.won{background:color-mix(in srgb,var(--warn) 9%,#fff)}
+
+</style>
+<script id="dpJS">
+(function(){'use strict';
+try{
+/* ═══ #dispatchpost(oct6) — THE DISPATCH POST: ONE LIVE POST PER DISPATCH, IN THE HALL ═══════════════════
+   By the Keymaster's design (oct 6). The hall's Facebook routine — a pre-post before every board, then a
+   volunteer typing each casual ID into the comments as the board walks — rebuilt in The Hall as ONE post
+   per dispatch with three lives:
+     · ON DECK — the pre-post. The council (anyone holding a key) types the numbers the casuals post every
+       board (Final · Prediction · Comebacks · Big Hall · Total) and the scheduled finishes; STARTING is the
+       app's own opening card; a know-before-you-go card (safety codes · directions · phone numbers · the
+       hall) rides every board. Members report the Big Hall check-in on it.
+     · ON AIR — at the flex call the same post goes live and pins: jobs down, where the board is, the call;
+       THE RAIL (every MARK left to right, the card at the window lit, the next cards after it); what came
+       down. Tap in for the live room: the timeline, the job log (a number pad or a clicker), the spin wheel
+       (three drums → MARK), the talk and the photos.
+     · FINAL — after the window it settles into the record (the last job, the run, the count on PMA's scale,
+       the call against the end, how it came down) and the next board's pre-post takes the pin.
+   WHERE THINGS LIVE
+     dispatch_posts  — the council's pre-post fields (k = board key) and the shared know-before-you-go (_kbyg)
+     live_wire       — every board position; a MARK carries src 'mark', by_handle, a tag and its owner
+     mark_draws      — the 5-minute draw: every MARK that moved the board is a ticket; the SERVER draws and pays
+     drop_wire       — the job log, unchanged (dropReport / ckReport in the main script)
+     story_comments  — the post's talk, photos and ten-second clips (story_id dispatch:<board key>); media under
+                       chat-media/dispatch/<board key>/, kept under 25 GB by the dispatch-janitor edge function
+     story_likes     — likes, same id
+   Rendering is surgical: the post repaints itself in place (dpRefresh, throttled) — the feed is rebuilt only
+   when the post changes phase or a record appears, so a busy dispatch never re-draws the whole Hall. */
+const DP=window.DP||(window.DP={});
+DP.posts={}; DP.rec={}; DP.talk={}; DP.draws={}; DP.meta={}; DP.room=null; DP.pin=null;
+
+const LS='ABCDEFGHIJKLMNOPQRSTUVWXYZ', DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const DOWFULL={Sun:'SUNDAY',Mon:'MONDAY',Tue:'TUESDAY',Wed:'WEDNESDAY',Thu:'THURSDAY',Fri:'FRIDAY',Sat:'SATURDAY'};
+const TIMES={AM:{flex:[6,30],end:[9,30],t:['6:30','7:00','8:10']},PM:{flex:[16,30],end:[19,0],t:['4:30','5:00','6:10']}};
+const WAVE={FLEX:'Flex','1ST':'1st','2ND':'2nd'};
+const KINDS_A=['UTR','?','KEYS','FLEX','BCLK','SWING','LASH','DSIG'];
+const KINDS_B=['HOOTS','DOCK','CLK','SL','AUTO','HOLD','CRANE','EST'];
+const KIND_NAME={'?':'Didn’t say',EST:'Estimate',BCLK:'Basic Clerk',DSIG:'Dock Signal',SL:'Swing Lash',AUTO:'Autos'};
+
+/* ── small tools ── */
+const h=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=n=>(n==null||!isFinite(n))?'—':Number(n).toLocaleString();
+function num(v){ const n=parseInt(String(v==null?'':v).replace(/[^\d]/g,''),10); return isFinite(n)?n:null; }
+function la(ts){ try{ return (ts==null)?nowLA():nowLA(ts); }catch(e){ return ts?new Date(ts):new Date(); } }
+function tm(ts){ const t=la(ts); return (t.getHours()%12||12)+':'+String(t.getMinutes()).padStart(2,'0')+(t.getHours()<12?'a':'p'); }
+function tmS(ts){ const t=la(ts); return (t.getHours()%12||12)+':'+String(t.getMinutes()).padStart(2,'0'); }
+function ago(ts){ const s=Math.max(0,(Date.now()-ts)/1000|0); return s<60?'just now':(s<3600?Math.floor(s/60)+'m ago':(s<86400?Math.floor(s/3600)+'h ago':Math.floor(s/86400)+'d ago')); }
+function hms(ms){ const s=Math.max(0,Math.floor(ms/1000)), H=Math.floor(s/3600), M=Math.floor(s/60)%60, S=s%60; return H+':'+String(M).padStart(2,'0')+':'+String(S).padStart(2,'0'); }
+function isKm(){ try{ return typeof prvKm==='function'&&!!prvKm(); }catch(e){ return false; } }
+function me(){ return window.__shkUid||null; }
+function myHandle(){ try{ const a=(typeof loadAcct==='function'&&loadAcct())||{}; return a.handle||(typeof chatMyHandle==='function'?chatMyHandle():'')||'a casual'; }catch(e){ return 'a casual'; } }
+function guest(){ try{ return typeof guestWall==='function'&&!!guestWall(); }catch(e){ return false; } }
+function say(m){ try{ toast(m); }catch(e){} }
+function sid(k){ return 'dispatch:'+k; }
+/* links and media from the wire only ever open as web pages or pictures — never as script */
+function webUrl(u){ u=String(u||'').trim(); return /^https?:\/\//i.test(u)?u:''; }
+function mediaUrl(u){ u=String(u||'').trim(); return /^(https?:\/\/|blob:|data:image\/)/i.test(u)?u:''; }
+function kname(c){ if(KIND_NAME[c])return KIND_NAME[c]; try{ const v=DROP_CATS[c]; if(v)return v.charAt(0).toUpperCase()+v.slice(1); }catch(e){} return String(c||''); }
+function wave(ph){ return WAVE[ph]||''; }
+function liveOK(){ try{ return !!liveWindow(); }catch(e){ return false; } }
+function dropOK(){ try{ return !!dropWindowOpen(); }catch(e){ return false; } }
+
+/* ── board keys: 2026-10-07_Wed_AM (the drop log's key) ⇄ "Wed Oct 07 2026_DAY" (the live wire's) ── */
+function kParse(k){ const m=/^(\d{4})-(\d{2})-(\d{2})_([A-Za-z]{3})_(AM|PM)$/.exec(String(k||'')); return m?{y:+m[1],mo:+m[2],d:+m[3],dow:m[4],ap:m[5],iso:m[1]+'-'+m[2]+'-'+m[3]}:null; }
+function kMake(dt,ap){ return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0')+'_'+DOW[dt.getDay()]+'_'+ap; }
+function kAt(k,hm){ const p=kParse(k); if(!p)return null; const t=la(); t.setFullYear(p.y,p.mo-1,p.d); t.setHours(hm[0],hm[1],0,0); return t; }
+function kFlex(k){ const p=kParse(k); return p?kAt(k,TIMES[p.ap].flex):null; }
+function kEnd(k){ const p=kParse(k); return p?kAt(k,TIMES[p.ap].end):null; }
+function kLw(k){ const p=kParse(k); return p?new Date(p.y,p.mo-1,p.d).toDateString()+'_'+(p.ap==='AM'?'DAY':'NIGHT'):null; }
+function kTitle(k){ const p=kParse(k); return p?(DOWFULL[p.dow]||p.dow.toUpperCase())+' '+(p.ap==='AM'?'DAYSIDE':'NIGHTSIDE'):'DISPATCH'; }
+function kDate(k){ const p=kParse(k); return p?p.mo+'/'+String(p.d).padStart(2,'0'):''; }
+function kTimes(k){ const p=kParse(k); return p?TIMES[p.ap].t:['','','']; }
+function kPrev(k){ const p=kParse(k); if(!p)return null; if(p.ap==='PM')return p.iso+'_'+p.dow+'_AM'; return kMake(new Date(p.y,p.mo-1,p.d-1),'PM'); }
+function kNext(k){ const p=kParse(k); if(!p)return null; if(p.ap==='AM')return p.iso+'_'+p.dow+'_PM'; return kMake(new Date(p.y,p.mo-1,p.d+1),'AM'); }
+function realTs(laDate){ return Date.now()+(laDate.getTime()-la().getTime()); }   /* an LA wall-clock moment → epoch ms */
+function rec(k){ try{ return RECENT.find(x=>x&&x.date+'_'+x.slot===k)||null; }catch(e){ return null; } }
+function sealed(k){ const r=rec(k); return !!(r&&(r.end||r.over)); }
+
+/* which post wears the pin: the board that's live, else the next one on deck */
+function pinned(){
+  try{ if(dropOK()){ const k=dropKey(); if(!sealed(k))return {k:k,phase:'live'}; } }catch(e){}
+  let k=null; try{ k=_predKey(); }catch(e){}
+  try{ const f=k&&kFlex(k); if(k&&(sealed(k)||(f&&la()>=f)))k=kNext(k); }catch(e){}
+  return {k:k,phase:'pre'};
+}
+function recordKeys(pin){ const out=[]; let k=pin&&pin.k; for(let i=0;i<4&&k;i++){ k=kPrev(k); if(k)out.push(k); } return out; }
+
+/* ── the drops and the marks for a board ── */
+function unionRows(rows){
+  const list=[], struck=[];
+  (rows||[]).slice().sort((a,b)=>(+a.ts||0)-(+b.ts||0)).forEach(r=>{
+    const d={n:+r.n||0,cat:r.cat,ph:dropPhase(+r.ts||0),ts:+r.ts||0,cid:r.cid,cids:r.cid?[r.cid]:[],by_handle:r.by_handle||'a casual',mine:!!(r.by&&typeof bwMe==='function'&&r.by===bwMe())};
+    if(r.void_reason){ struck.push(Object.assign(d,{void_reason:r.void_reason,void_by:r.void_by||'the Keymaster'})); return; }
+    const dup=list.find(x=>dropCatMatch(x.cat,d.cat)&&x.n===d.n&&x.ph===d.ph&&Math.abs(x.ts-d.ts)<12*60000);
+    if(dup){ dup.backed=(dup.backed||1)+1; if(dup.cat==='?'&&d.cat!=='?')dup.cat=d.cat; if(d.cid)dup.cids.push(d.cid); return; }
+    list.push(d);
+  });
+  const med=a=>{ if(!a.length)return null; a=a.slice().sort((x,y)=>x-y); return a[Math.floor(a.length/2)]; };
+  return {list:list,total:dropTotal(list),struck:struck,ck:{T:med(list.filter(x=>x.cat==='CKT').map(x=>x.n))}};
+}
+function boardData(k){
+  let drops=null, marks=null;
+  const r0=DP.rec[k];
+  /* the board the Drop Log is on reads the live union — unless this phone hasn't pulled it yet and the wire has */
+  try{ if(k===dropKey()){ const u=dropUnion(); if(u.list.length||(u.struck&&u.struck.length)||!(r0&&r0.drops&&r0.drops.list.length))drops={list:u.list,total:u.total,struck:u.struck||[],ck:u.ck||{}}; } }catch(e){}
+  const lwk=kLw(k);
+  try{ const L=window.LW_ROWS, wk=winKey(); if(L&&wk&&lwk===wk&&L[lwk]&&L[lwk].length)marks=L[lwk]; }catch(e){}   /* live rows only while the window is open — after it, the wire's record */
+  const r=DP.rec[k];
+  if(!drops&&r)drops=r.drops; if(!marks&&r)marks=r.marks;
+  marks=(marks||[]).slice().sort((a,b)=>(+a.ts||0)-(+b.ts||0));
+  return {drops:drops||{list:[],total:0,struck:[],ck:{}},marks:marks,draws:(DP.draws[lwk]||[])};
+}
+function jobsOnly(list){ return (list||[]).filter(x=>!/^CK[ABT]$/.test(x.cat)); }
+function boardPos(k,B){
+  try{ if(typeof lastCall!=='undefined'&&lastCall&&lastCall.pos&&typeof winKey==='function'&&lastCall.win===winKey()&&kLw(k)===winKey())
+    return {pos:lastCall.pos,ts:lastCall.ts,kind:lastCall.kind||''}; }catch(e){}
+  const m=B.marks; if(m.length){ const x=m[m.length-1]; return {pos:x.pos,ts:+x.ts||0,kind:x.src||''}; }
+  return null;
+}
+function startOf(k,B){
+  const r=rec(k); if(r&&r.start)return String(r.start);
+  if(B&&B.marks&&B.marks.length)return null;   /* the first mark says where it began — callers fall back to it */
+  try{ const pk=_predKey(); if(pk===k){ const s=pendingStartCard(); if(s)return s; } }catch(e){}
+  try{ if(k===dropKey())return OPENP(); }catch(e){}
+  return null;
+}
+function callFor(k){
+  try{ if(window._lastCall&&window._publishedKey===k)return window._lastCall; }catch(e){}
+  return null;
+}
+function ordFrom(sL,pos){ return ((LS.indexOf(String(pos).charAt(0))-LS.indexOf(sL))+26)%26; }
+function myCard(){ try{ return (typeof myBoardId==='function'&&myBoardId())||null; }catch(e){ return null; } }
+/* where you stand, in LETTERS (never a percentage — the Keymaster keeps the odds off the screen) */
+function youLive(sL,pos){
+  const my=myCard(); if(!my||!sL)return null;
+  if(!pos){ const d=ordFrom(sL,my); return {my:my,text:d===0?'your letter opens the board':d+' letter'+(d===1?'':'s')+' from the start'}; }
+  const op=ordFrom(sL,pos), oy=ordFrom(sL,my), pn=parseInt(pos.slice(1),10), yn=parseInt(my.slice(1),10);
+  if(oy<op||(oy===op&&yn<pn))return {my:my,text:'the board went past you',passed:true};
+  if(oy===op){
+    if(yn===pn)return {my:my,text:'you’re at the window',up:true};
+    let n=0; try{ n=(ACTIVE[pos.charAt(0)]||[]).filter(x=>x>pn&&x<=yn).length; }catch(e){}
+    return {my:my,text:n<=1?'you’re next':'same letter · '+n+' cards out',same:true,frac:boardLetterFracSafe(my)};
+  }
+  const d=oy-op; return {my:my,text:d+' letter'+(d===1?'':'s')+' away'};
+}
+function youPre(k){
+  const my=myCard(); if(!my)return null;
+  const s=startOf(k,null); if(!s)return {my:my,text:'the opening card isn’t set yet'};
+  const sL=s.charAt(0), d=ordFrom(sL,my), c=callFor(k);
+  if(c&&c.stop){ const dc=ordFrom(sL,c.stop);
+    if(d>dc)return {my:my,text:(d-dc)+' letter'+((d-dc)===1?'':'s')+' past the call'};
+    return {my:my,text:'inside the call · '+(d===0?'your letter opens it':d+' letter'+(d===1?'':'s')+' from the start')}; }
+  return {my:my,text:d===0?'your letter opens the board':d+' letter'+(d===1?'':'s')+' from the start'};
+}
+function boardLetterFracSafe(pos){ try{ return typeof boardLetterFrac==='function'?boardLetterFrac(pos):0.5; }catch(e){ return 0.5; } }
+function slotOf(ts){ return Math.floor((ts||Date.now())/300000)*300000; }   /* the 5-minute draw a moment belongs to (UTC-aligned, same as the server) */
+
+/* ── icons (stroke = currentColor) ── */
+const SV=(p,o)=>'<svg viewBox="0 0 24 24" fill="'+((o&&o.fill)||'none')+'" stroke="currentColor" stroke-width="'+((o&&o.w)||2)+'" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+p+'</svg>';
+const IC={
+  radar:SV('<circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49"/><path d="M7.76 16.24a6 6 0 0 1 0-8.49"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 19.07a10 10 0 0 1 0-14.14"/>',{w:1.9}),
+  target:SV('<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>'),
+  zap:SV('<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>'),
+  talk:SV('<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>',{w:1.9}),
+  heart:SV('<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>',{w:1.8}),
+  heartOn:SV('<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>',{w:1.8,fill:'currentColor'}),
+  cam:SV('<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',{w:1.9}),
+  chev:SV('<polyline points="9 18 15 12 9 6"/>',{w:2.4}),
+  back:SV('<polyline points="15 18 9 12 15 6"/>',{w:2.2}),
+  pen:SV('<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/>'),
+  shield:SV('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>'),
+  nav:SV('<polygon points="3 11 22 2 13 21 11 13 3 11"/>'),
+  phone:SV('<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>'),
+  pin:SV('<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>'),
+  plus:SV('<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>'),
+  x:SV('<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',{w:2.4}),
+  ticket:SV('<path d="M3 8a2 2 0 0 0 2-2h14a2 2 0 0 0 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 0-2 2H5a2 2 0 0 0-2-2v-2a2 2 0 0 0 0-4z"/><line x1="13" y1="7" x2="13" y2="17" stroke-dasharray="2 2"/>'),
+  play:'<svg viewBox="0 0 24 24" aria-hidden="true"><polygon points="8 5 19 12 8 19 8 5" fill="currentColor"/></svg>',
+  del:SV('<path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/>')
+};
+
+/* ── loading: the council's pre-posts, past boards, the talk, likes, the draws ── */
+const DPK='shadowhook_dp_posts';
+try{ const c=JSON.parse(localStorage.getItem(DPK)||'null'); if(c&&typeof c==='object')DP.posts=c; }catch(e){}
+function kbyg(){ return ((DP.posts._kbyg||{}).fields)||{}; }
+function postFields(k){ return ((DP.posts[k]||{}).fields)||{}; }
+DP.loadPosts=async function(force){
+  if(!window.SB)return;
+  if(!force&&DP._postsAt&&Date.now()-DP._postsAt<60000)return;
+  DP._postsAt=Date.now();
+  const P=DP.pin||pinned()||{};
+  const keys=['_kbyg'].concat(P.k?[P.k,kNext(P.k)]:[],recordKeys(P)).filter(Boolean);
+  try{
+    const r=await window.SB.from('dispatch_posts').select('k,fields,updated_by,updated_at').in('k',keys).limit(20);
+    if(r.error||!Array.isArray(r.data))return;
+    const o={}; r.data.forEach(x=>{ if(x&&x.k)o[x.k]=x; });
+    DP.posts=Object.assign({},DP.posts,o);
+    const keep={}; keys.forEach(k=>{ if(DP.posts[k])keep[k]=DP.posts[k]; });
+    try{ localStorage.setItem(DPK,JSON.stringify(keep)); }catch(e){}
+    dpRefresh();
+  }catch(e){}
+};
+/* past boards: their drops and marks come off the wire by key (the live board's come from the main loops) */
+DP.loadRecords=async function(keys,force){
+  if(!window.SB||!keys||!keys.length)return;
+  const need=keys.filter(k=>force||!DP.rec[k]||Date.now()-DP.rec[k].at>5*60000);
+  if(!need.length)return;
+  need.forEach(k=>{ DP.rec[k]=Object.assign(DP.rec[k]||{drops:unionRows([]),marks:[]},{at:Date.now()}); });
+  const lwk=need.map(kLw);
+  try{
+    const dw=window.SB.from('drop_wire').select('cid,k,n,cat,ts,by,by_handle,void_reason,void_by').in('k',need).order('ts',{ascending:false}).limit(1000);
+    let lw=window.SB.from('live_wire').select('id,k,pos,ts,src,by_handle,note,owner').in('k',lwk).order('id',{ascending:false}).limit(1000);
+    const md=window.SB.from('mark_draws').select('*').in('k',lwk).order('slot',{ascending:true}).limit(500);
+    const res=await Promise.all([dw,lw,md]);
+    let L=res[1];
+    if(L&&L.error&&/column|42703/i.test(L.error.message||''))L=await window.SB.from('live_wire').select('id,k,pos,ts').in('k',lwk).order('id',{ascending:false}).limit(1000);
+    const D=(res[0]&&!res[0].error&&res[0].data)||[], M=(L&&!L.error&&L.data)||[], X=(res[2]&&!res[2].error&&res[2].data)||[];
+    need.forEach(k=>{ const lk=kLw(k);
+      DP.rec[k]={drops:unionRows(D.filter(r=>r.k===k)),marks:M.filter(r=>r.k===lk),at:Date.now()};
+      DP.draws[lk]=X.filter(r=>r.k===lk);
+    });
+    dpRefresh();
+  }catch(e){}
+};
+/* the posts' talk, photos and clips — every post on screen in ONE round trip (45 s cache each) */
+DP.loadTalkMany=async function(keys,force){
+  if(!window.SB||!keys||!keys.length)return;
+  const now=Date.now(), need=keys.filter(k=>k&&(force||!DP.talk[k]||now-DP.talk[k].at>45000));
+  if(!need.length)return;
+  need.forEach(k=>{ DP.talk[k]=Object.assign(DP.talk[k]||{rows:[]},{at:now}); });
+  try{
+    const r=await window.SB.from('story_comments').select('id,story_id,owner,by_handle,body,created_at,kind,url').in('story_id',need.map(sid)).order('created_at',{ascending:false}).limit(1000);
+    if(!r.error&&Array.isArray(r.data)){
+      const by={}; r.data.slice().reverse().forEach(c=>{ (by[c.story_id]=by[c.story_id]||[]).push(c); });
+      need.forEach(k=>{ const rows=(by[sid(k)]||[]).map(c=>({id:c.id,owner:c.owner,by:c.by_handle||'a casual',body:c.body||'',ts:c.created_at?new Date(c.created_at).getTime():0,kind:c.kind||'text',url:c.url||''}));
+        DP.talk[k]={rows:rows,at:Date.now()};
+        DP.meta[k]=Object.assign(DP.meta[k]||{},{talk:rows.length,photos:rows.filter(x=>(x.kind==='image'||x.kind==='video')&&x.url).length}); });
+      dpRefresh();
+    }
+  }catch(e){}
+};
+DP.loadTalk=function(k,force){ return DP.loadTalkMany([k],force); };
+DP.loadDraws=async function(lwk,force){
+  if(!window.SB||!lwk)return;
+  const at=DP['_dr_'+lwk]; if(!force&&at&&Date.now()-at<60000)return; DP['_dr_'+lwk]=Date.now();
+  try{ const r=await window.SB.from('mark_draws').select('*').eq('k',lwk).order('slot',{ascending:true}).limit(200);
+    if(!r.error&&Array.isArray(r.data)){ DP.draws[lwk]=r.data; dpRefresh(); } }catch(e){}
+};
+/* likes for every dispatch post on screen (the talk counts ride the talk itself) */
+DP.loadMeta=async function(keys){
+  if(!window.SB||!keys||!keys.length)return;
+  try{ if(typeof likesLoad==='function')await likesLoad(keys.map(sid)); }catch(e){}
+  dpRefresh();
+};
+/* a draw lands (realtime): the winner's phone rains coins — the server has ALREADY paid; this only shows it */
+DP.onDraw=function(row){
+  if(!row||!row.k)return;
+  const L=(DP.draws[row.k]=DP.draws[row.k]||[]);
+  if(!L.some(x=>x.slot===row.slot))L.push(row);
+  const slotMs=new Date(row.slot).getTime();
+  if(row.winner&&row.winner===me()&&row.amount>0){
+    let seen=[]; try{ seen=JSON.parse(localStorage.getItem('shadowhook_dp_won')||'[]'); if(!Array.isArray(seen))seen=[]; }catch(e){ seen=[]; }
+    if(seen.indexOf(row.slot)<0){ seen.push(row.slot); try{ localStorage.setItem('shadowhook_dp_won',JSON.stringify(seen.slice(-60))); }catch(e){}
+      try{ if(typeof jackpot==='function')jackpot(row.amount,'the '+tmS(slotMs)+' mark draw'); else say('\u{1F39F} You won the '+tmS(slotMs)+' draw · +'+row.amount+' ⬡'); }catch(e){ say('\u{1F39F} You won the '+tmS(slotMs)+' draw · +'+row.amount+' ⬡'); }
+      try{ if(typeof tallyAdd==='function'){ const pz=tallyAdd('prize'); if(pz>=1&&typeof unlockBadge==='function')unlockBadge(bixLate('Jackpot')); } }catch(e){}
+      setTimeout(function(){ try{ if(typeof sbRefreshBucks==='function')sbRefreshBucks(); }catch(e){} },900);
+    }
+  }else if(row.amount>0&&DP._myTickets&&DP._myTickets[slotMs]){
+    say('\u{1F39F} The '+tmS(slotMs)+' draw went to '+(row.by_handle||'a casual')+' — the next one’s in 5');
+  }
+  dpRefresh();
+};
+
+/* ── painting the post ── */
+function headHTML(k,meta,pill,extra){
+  return '<div class="dp-head"><div class="dp-av">'+IC.radar+'</div>'
+    +'<div class="dp-who"><b>'+h(kTitle(k))+'</b><span>'+h(meta)+'</span></div>'+(extra||'')+pill+'</div>';
+}
+function pillHTML(phase){
+  if(phase==='live')return '<span class="dp-pill live"><i></i>ON AIR</span>';
+  if(phase==='pre')return '<span class="dp-pill deck">ON DECK</span>';
+  return '<span class="dp-pill final">FINAL</span>';
+}
+function footHTML(k,right){
+  const id=sid(k), liked=(function(){ try{ return storyLiked(id); }catch(e){ return false; } })();
+  const nl=(function(){ try{ return storyLikeCount(id); }catch(e){ return 0; } })();
+  const nt=(DP.meta[k]&&DP.meta[k].talk)||((DP.talk[k]&&DP.talk[k].rows.length)||0);
+  return '<div class="bp-foot dp-foot">'
+    +'<button type="button" class="bp-like dp-like'+(liked?' on':'')+'" data-dp="like" data-k="'+h(k)+'" aria-label="Like"><span class="ic">'+(liked?IC.heartOn:IC.heart)+'</span><span class="n">'+(nl?fmt(nl):'')+'</span></button>'
+    +'<button type="button" class="dp-talkb" data-dp="talk" data-k="'+h(k)+'" aria-label="Talk"><span class="ic">'+IC.talk+'</span><span class="n">'+(nt?fmt(nt):'')+'</span></button>'
+    +'<button type="button" class="dp-camb" data-dp="photo" data-k="'+h(k)+'" aria-label="Add a photo or a clip"><span class="ic">'+IC.cam+'</span></button>'
+    +right+'</div>';
+}
+function photosOf(k){ return ((DP.talk[k]&&DP.talk[k].rows)||[]).filter(c=>(c.kind==='image'||c.kind==='video')&&mediaUrl(c.url)); }
+function stripHTML(k,max){
+  const ph=photosOf(k); if(!ph.length)return '';
+  const shown=ph.slice(-(max||8)).reverse();
+  return '<div class="dp-photos" aria-label="Photos and clips from the night">'
+    +'<button type="button" class="dp-ph add" data-dp="photo" data-k="'+h(k)+'">'+IC.cam+'<span>ADD YOURS</span></button>'
+    +shown.map(c=>'<button type="button" class="dp-ph" data-dp="media" data-url="'+h(c.url)+'" data-kind="'+h(c.kind)+'" aria-label="Open the '+(c.kind==='video'?'clip':'photo')+' from '+h(c.by)+'">'
+      +(c.kind==='video'?'<video src="'+h(c.url)+'#t=0.1" muted playsinline preload="metadata"></video><span class="pl">'+IC.play+'</span>':'<img src="'+h(c.url)+'" alt="" loading="lazy">')+'</button>').join('')
+    +'</div>';
+}
+/* the letter strip + how far through the letter the board is */
+function whereHTML(k,B,P){
+  const pos=P&&P.pos, s=startOf(k,B)||(B.marks.length?B.marks[0].pos:null)||pos, sL=s?s.charAt(0):(pos?pos.charAt(0):null);
+  if(!pos||!sL)return '';
+  const c=callFor(k), my=myCard(), cL=LS.indexOf(pos.charAt(0));
+  let cells='';
+  for(let d=-1;d<=3;d++){
+    const L=LS[(cL+d+26)%26], o=ordFrom(sL,L), op=ordFrom(sL,pos);
+    let cls='dp-lt';
+    if(d===0)cls+=' now'; else if(o<op&&d<0)cls+=' walk';
+    if(c&&c.stop===L&&d!==0)cls+=' call';
+    if(my&&my.charAt(0)===L&&d!==0)cls+=' you';
+    cells+='<span class="'+cls+'"'+(c&&c.stop===L?' title="the call"':'')+'>'+L+'</span>';
+  }
+  const f=boardLetterFracSafe(pos), Y=youLive(sL,pos);
+  const youMark=(Y&&Y.same&&isFinite(Y.frac))?'<u style="left:'+(Y.frac*100).toFixed(1)+'%"></u>':'';
+  const half=f<.2?'just into '+pos.charAt(0):(f<.4?'a third through '+pos.charAt(0):(f<.6?'halfway through '+pos.charAt(0):(f<.85?'deep in '+pos.charAt(0):'end of '+pos.charAt(0))));
+  return '<div class="dp-where"><div class="dp-letters">'+cells+'<span class="note">started on '+h(s)+'</span></div>'
+    +'<div class="dp-lbar"><i style="width:'+(f*100).toFixed(1)+'%"></i><b style="left:'+(f*100).toFixed(1)+'%"></b>'+youMark+'</div>'
+    +'<div class="dp-wline"><span>'+h(half)+'</span>'+(Y?'<span class="you'+(Y.passed?' past':'')+'">you '+h(Y.my)+' · '+h(Y.text)+'</span>':'')+'</div></div>';
+}
+/* THE RAIL — the Keymaster's pick (idea A): every mark left to right, the card at the window lit, next cards after */
+function railHTML(k,B,P,live){
+  const marks=B.marks, pos=P&&P.pos;
+  const last=marks.length?marks[marks.length-1]:null;
+  let cells='';
+  if(!pos){
+    const st=startOf(k,B);
+    return '<div class="dp-railbox"><div class="dp-railhd"><span class="t">THE COUNT</span>'+(live?'<span class="dot"></span>':'')+'<span class="r">'+(live?'waiting on the first mark':'no marks on this board')+'</span></div>'
+      +'<div class="dp-rail empty"><span class="dp-rail-wait">'+(st?'the board opens near <b>'+h(st)+'</b> — MARK it when it moves':'MARK the board when it moves')+'</span></div></div>';
+  }
+  const past=marks.filter(m=>m.pos!==pos).slice(-24);
+  past.forEach(m=>{ cells+='<div class="dp-rc past"><b>'+h(m.pos)+'</b><span>'+h(tmS(+m.ts||0))+'</span></div>'; });
+  cells+='<div class="dp-rc now" data-now="1"><b>'+h(pos)+'</b><span>'+(live?'NOW':h(tmS(P.ts||0)))+'</span></div>';
+  if(live){ let nx=[]; try{ nx=nextActive(pos,3)||[]; }catch(e){}
+    nx.forEach((p,i)=>{ cells+='<div class="dp-rc next n'+i+'"><b>'+h(p)+'</b><span>'+(i===0?'next':'then')+'</span></div>'; }); }
+  const who=last?(h(tm(+last.ts||0))+' · '+h(last.by_handle||(last.src==='mark'?'a casual':'a scan'))):'';
+  return '<div class="dp-railbox"><div class="dp-railhd"><span class="t">THE COUNT</span>'+(live?'<span class="dot"></span>':'')+'<span class="r">'+who+'</span></div>'
+    +'<div class="dp-rail" data-rail="1">'+cells+'</div></div>';
+}
+function dropsHTML(k,B,n){
+  const L=jobsOnly(B.drops.list).slice().sort((a,b)=>b.ts-a.ts), w=dropWaves(B.drops.list);
+  const tot=(w.FLEX+w['1ST']+w['2ND'])||0;
+  const rows=L.slice(0,n||3).map((x,i)=>'<div class="dp-drow'+(i===0?' new':'')+'"><span class="n">'+(x.cat==='EST'?'~':'+')+fmt(x.n)+'</span><span class="c">'+h(kname(x.cat))+'</span><span class="w">'+h(wave(x.ph))+'</span>'+(x.backed>1?'<span class="bk">×'+x.backed+'</span>':'')+'<span class="t">'+h(tmS(x.ts))+'</span></div>').join('');
+  const ears=(function(){ const s={}; B.drops.list.forEach(x=>{ s[x.by_handle||(x.mine?'me':'?')]=1; }); B.marks.forEach(m=>{ if(m.by_handle)s[m.by_handle]=1; }); return Object.keys(s).length; })();
+  const bar=tot?'<div class="dp-calls">'+(w.FLEX?'<i class="f" style="flex:'+w.FLEX+'"></i>':'')+(w['1ST']?'<i class="a" style="flex:'+w['1ST']+'"></i>':'')+(w['2ND']?'<i class="b" style="flex:'+w['2ND']+'"></i>':'')+'</div>':'';
+  return '<div class="dp-drops"><div class="dp-railhd"><span class="t">WHAT CAME DOWN</span><span class="r">'+(L.length?L.length+' call'+(L.length===1?'':'s'):'nothing yet')+'</span></div>'
+    +(rows||'<div class="dp-quiet">all quiet… for now — the first ear on the speaker logs it</div>')
+    +bar+(tot?'<div class="dp-callk"><span><b class="f">FLEX</b> '+(w.FLEX?fmt(w.FLEX):'—')+'</span><span><b class="a">1ST</b> '+(w['1ST']?fmt(w['1ST']):'—')+'</span><span><b class="b">2ND</b> '+(w['2ND']?fmt(w['2ND']):'—')+'</span><span class="ears">'+ears+' on the wire</span></div>':'')
+    +'</div>';
+}
+function statsLive(k,B,P){
+  const L=jobsOnly(B.drops.list), last=L.length?L.reduce((a,b)=>b.ts>a.ts?b:a):null, c=callFor(k);
+  return '<div class="dp-stats">'
+    +'<div class="dp-stat"><span class="k">JOBS DOWN</span><b class="v acc">'+fmt(B.drops.total||0)+'</b><span class="s'+(last?' up':'')+'">'+(last?'+'+fmt(last.n)+' · '+h(ago(last.ts)):'none yet')+'</span></div>'
+    +'<div class="dp-stat on"><span class="k">BOARD ON</span><b class="v pos">'+(P?h(P.pos):'—')+'</b><span class="s">'+(P?(P.kind==='mark'?'marked ':'scanned ')+h(tmS(P.ts||0)):'no mark yet')+'</span></div>'
+    +'<div class="dp-stat"><span class="k">THE CALL</span><b class="v">'+(c&&c.stop?h(c.stop):'—')+'</b><span class="s">'+(c&&c.stop?(c.lo&&c.hi&&c.lo!==c.hi?h(c.lo)+'–'+h(c.hi):'stops in '+h(c.stop)):'holding')+'</span></div>'
+    +'</div>';
+}
+function liveMeta(k){
+  const f=kFlex(k), n=la(), mins=f?Math.max(0,Math.round((n-f)/60000)):0;
+  let ph='flex call'; try{ ph=({FLEX:'flex call','1ST':'1st call','2ND':'2nd call'})[dropPhase(Date.now())]||'live'; }catch(e){}
+  return kDate(k)+' · '+ph+' · '+(mins<60?mins+'m in':Math.floor(mins/60)+'h '+String(mins%60).padStart(2,'0')+'m in');
+}
+function liveHTML(k,room){
+  const B=boardData(k), P=boardPos(k,B);
+  /* nobody's said the check-in yet and it's still the flex call: ask on the post itself (the room's JOBS tab always asks) */
+  let ck=''; try{ if(!room&&!(B.drops.ck&&B.drops.ck.T)&&dropPhase(Date.now())==='FLEX')ck=ckHTML(k,B); }catch(e){}
+  return statsLive(k,B,P)+whereHTML(k,B,P)+railHTML(k,B,P,true)+ck+(room?'':dropsHTML(k,B,3));
+}
+/* the Big Hall check-in: open on the board the clock is on (from 2:30 PM for nights, after midnight for days) */
+function ckHTML(k,B){
+  const open=(function(){ try{ return dropKey()===k; }catch(e){ return false; } })(); if(!open)return '';
+  const crowdBH=(B&&B.drops&&B.drops.ck&&B.drops.ck.T)||null;
+  const paid=(function(){ try{ return !!dropData().ckPaid; }catch(e){ return false; } })();
+  return '<div class="dp-ck"><span class="k">CHECKED IN AT THE BIG HALL?</span><div class="row"><input type="text" inputmode="numeric" maxlength="5" placeholder="how many" aria-label="How many checked in at the big hall" data-dpck="'+h(k)+'"><button type="button" data-dp="ck" data-k="'+h(k)+'">LOG IT</button></div>'
+    +'<span class="s">'+(crowdBH?'reported so far · <b>'+fmt(crowdBH)+'</b>':'nobody’s reported it yet')+(paid?'':' · your first report pays +3 ⬡')+'</span></div>';
+}
+/* ── ON DECK ── */
+function preHTML(k,room){
+  const F=postFields(k), t=kTimes(k), f=kFlex(k), c=callFor(k), B=boardData(k);
+  const st=F.start||startOf(k,null)||'';
+  const crowdBH=(B.drops.ck&&B.drops.ck.T)||null;
+  const tile=(lab,val,cls,sub)=>'<div class="dp-tile'+(cls?' '+cls:'')+'"><span class="k">'+lab+'</span>'+val+(sub?'<span class="src">'+sub+'</span>':'')+'</div>';
+  const v=(x)=>(x!=null&&x!=='')?'<b class="v">'+h(typeof x==='number'?fmt(x):x)+'</b>':'<b class="v blank">—</b>';
+  const pred=F.pred?'<span class="verdict">'+h(String(F.pred).toUpperCase())+'</span>':'<b class="v blank">—</b>';
+  const bh=(F.bighall!=null&&F.bighall!=='')?v(num(F.bighall)):(crowdBH?v(crowdBH):v(null));
+  const Y=youPre(k);
+  const fin=(Array.isArray(F.finishes)?F.finishes:String(F.finishes||'').split(/\n|,/)).map(s=>String(s).trim()).filter(Boolean);
+  const KB=kbyg(), hasPh=Array.isArray(KB.phones)&&KB.phones.length, hall=KB.hall&&(KB.hall.addr||KB.hall.phone);
+  let kb='';
+  if(webUrl(KB.safety))kb+='<a class="dp-kb" href="'+h(webUrl(KB.safety))+'" target="_blank" rel="noopener">'+IC.shield+'<span>Safety codes</span></a>';
+  if(webUrl(KB.directions))kb+='<a class="dp-kb" href="'+h(webUrl(KB.directions))+'" target="_blank" rel="noopener">'+IC.nav+'<span>Directions</span></a>';
+  if(hasPh)kb+='<button type="button" class="dp-kb" data-dp="phones">'+IC.phone+'<span>Phone numbers</span></button>';
+  if(hall)kb+='<button type="button" class="dp-kb" data-dp="phones" data-hall="1">'+IC.pin+'<span>Casual Hall</span></button>';
+  const ck=ckHTML(k,B);
+  return '<div class="dp-count"><div class="l"><span class="k">GOES LIVE IN</span><b class="v" data-dpcd="'+(f?realTs(f):0)+'">'+(f?hms(f-la()):'—')+'</b>'
+      +(c&&c.stop?'<span class="call">THE CALL <b>'+h(c.stop)+'</b>'+(c.lo&&c.hi&&c.lo!==c.hi?' · '+h(c.lo)+'–'+h(c.hi):'')+'</span>':'')+'</div>'
+      +'<div class="dp-times"><span class="f">FLEX '+h(t[0])+'</span><span class="a">1ST '+h(t[1])+'</span><span class="b">2ND '+h(t[2])+'</span></div></div>'
+    +'<div class="dp-tiles">'
+      +tile('STARTING',st?'<b class="v pos">'+h(st)+'</b>':'<b class="v blank">—</b>','on',F.start?'':(st?'the app’s card':''))
+      +tile('FINAL',v(num(F.final)))
+      +tile('PREDICTION',pred,F.pred?'good':'')
+      +tile('COMEBACKS',v(num(F.comebacks)))
+      +tile('BIG HALL',bh,'',(F.bighall!=null&&F.bighall!=='')?'':(crowdBH?'members’ reports':''))
+      +tile('TOTAL',v(num(F.total)))
+    +'</div>'
+    +(Y?'<div class="dp-you"><i></i><span><b>'+h(Y.my)+'</b> · '+h(Y.text)+'</span></div>':'')
+    +ck
+    +(fin.length?'<div class="dp-sect"><span class="k">SCHEDULED FINISHES</span><div class="dp-chips">'+fin.map(s=>{ const m=/^(.*?)(\s+st\/fin)$/i.exec(s); return '<span class="dp-chip">'+(m?h(m[1])+' <em>st/fin</em>':h(s))+'</span>'; }).join('')+'</div></div>':'')
+    +(kb?'<div class="dp-sect"><span class="k">KNOW BEFORE YOU GO</span><div class="dp-kbyg">'+kb+'</div></div>':'')
+    +((!F.final&&!F.total&&!F.pred&&isKm()&&!room)?'<button type="button" class="dp-fill" data-dp="edit" data-k="'+h(k)+'">'+IC.pen+'<span>FILL IN THE PRE-POST</span></button>':'');
+}
+/* ── FINAL ── */
+function chartHTML(k,B){
+  const f=kFlex(k); if(!f)return '';
+  const t0=realTs(f), span=150*60000, Ld=jobsOnly(B.drops.list).filter(x=>x.cat!=='EST');
+  if(!Ld.length&&!B.marks.length)return '';
+  const mx=Math.max(1,...Ld.map(x=>x.n));
+  const bars=Ld.map(x=>{ const p=Math.max(0,Math.min(99.4,(x.ts-t0)/span*100)), hgt=Math.max(3,Math.round(x.n/mx*58));
+    return '<i class="'+(x.ph==='FLEX'?'f':(x.ph==='1ST'?'a':'b'))+'" style="left:'+p.toFixed(1)+'%;height:'+hgt+'px" title="+'+x.n+' '+h(kname(x.cat))+'"></i>'; }).join('');
+  /* the letters the board walked, as bands over the clock */
+  let bands='', seg=[];
+  B.marks.forEach(m=>{ const L=String(m.pos).charAt(0), p=Math.max(0,Math.min(100,((+m.ts||0)-t0)/span*100)); if(!seg.length||seg[seg.length-1].L!==L)seg.push({L:L,a:p,b:p}); else seg[seg.length-1].b=p; });
+  seg.forEach((s,i)=>{ const b=(i<seg.length-1)?seg[i+1].a:Math.max(s.b,s.a+4); bands+='<span style="left:'+s.a.toFixed(1)+'%;width:'+Math.max(4,b-s.a).toFixed(1)+'%">'+h(s.L)+'</span>'; });
+  const tt=kTimes(k), p=kParse(k), lab=p&&p.ap==='AM'?['6:30','7:00','7:30','8:00','8:30','9:00']:['4:30','5:00','5:30','6:00','6:30','7:00'];
+  return '<div class="dp-chart"><div class="dp-railhd"><span class="t">HOW IT CAME DOWN</span><span class="r">jobs per call · letters walked</span></div>'
+    +(bands?'<div class="dp-bands">'+bands+'</div>':'')
+    +'<div class="dp-bars">'+bars+'</div><div class="dp-axis">'+lab.map(x=>'<span>'+x+'</span>').join('')+'</div></div>';
+}
+function recHTML(k,room){
+  const B=boardData(k), r=rec(k)||{}, marks=B.marks;
+  const lastJob=marks.slice().reverse().find(m=>/last job/i.test(m.note||''));
+  const endPos=(r.end&&String(r.end))||(lastJob&&lastJob.pos)||(marks.length?marks[marks.length-1].pos:null);
+  const atWin=marks.find(m=>m.pos===endPos&&/window/i.test(m.note||''));
+  const endMark=marks.slice().reverse().find(m=>m.pos===endPos);
+  const startPos=(r.start&&String(r.start))||(marks.length?marks[0].pos:null);
+  const walked=(typeof r.act==='number')?r.act:(startPos&&endPos?ordFrom(startPos.charAt(0),endPos):null);
+  const tot=B.drops.total||0, P=(window.PMA_DATA||{})[k], pmaN=P&&!P.held&&!P.tossed?(P.lsFilled!=null?+P.lsFilled:(P.toCH!=null?+P.toCH:null)):null;
+  const scaled=tot?Math.round(tot*((typeof dropScale==='function')?dropScale():0.8)):0;
+  let callTxt='—', callSub='no call on file';
+  /* the call as it stood before the board ran — the same snapshot the bot's scorecard grades (#record) */
+  try{ const snap=(typeof _predLog==='function')?_predLog()[k]:null;
+    if(snap&&snap.p){ callTxt=snap.p;
+      if(endPos){ const d=ordFrom(snap.p,endPos); callSub=(d===0)?'called it':(d<=13?'ran '+d+' past it':'stopped '+(26-d)+' short'); }
+      else if(snap.off!=null)callSub=snap.off===0?'called it':snap.off+' letter'+(snap.off===1?'':'s')+' off'; } }catch(e){}
+  const ears=(function(){ const s={}; B.drops.list.forEach(x=>{ s[x.by_handle||'?']=1; }); marks.forEach(m=>{ if(m.by_handle)s[m.by_handle]=1; }); return Object.keys(s).length; })();
+  const kinds={}; jobsOnly(B.drops.list).forEach(x=>{ if(x.cat==='EST')return; kinds[x.cat]=(kinds[x.cat]||0)+x.n; });
+  const kchips=Object.keys(kinds).sort((a,b)=>kinds[b]-kinds[a]).map(c=>'<span class="dp-kc">'+h(kname(c))+' <b>'+fmt(kinds[c])+'</b></span>').join('');
+  const w=dropWaves(B.drops.list), my=myCard();
+  let yourLine='';
+  if(my&&endPos&&startPos){ const oy=ordFrom(startPos.charAt(0),my), oe=ordFrom(startPos.charAt(0),endPos);
+    if(oy<oe||(oy===oe&&parseInt(my.slice(1),10)<=parseInt(endPos.slice(1),10)))yourLine='the board reached you';
+    else if(oy===oe){ let n=0; try{ const pn=+endPos.slice(1), yn=+my.slice(1); n=(ACTIVE[endPos.charAt(0)]||[]).filter(x=>x>pn&&x<=yn).length; }catch(e){} yourLine='it stopped '+n+' card'+(n===1?'':'s')+' short of you'; }
+    else { const d=oy-oe; yourLine='it stopped '+d+' letter'+(d===1?'':'s')+' short of you'; } }
+  return '<div class="dp-hero"><div class="l"><span class="k">'+(lastJob?'LAST JOB':'ENDED ON')+'</span><b class="big">'+(endPos?h(endPos):'—')+'</b>'
+      +'<span class="s">'+(atWin?'at the window · ':'')+(endMark?h(tm(+endMark.ts||0)):(r.end?'sealed on the record':''))+'</span></div>'
+      +'<div class="r"><span class="s">started</span><b>'+(startPos?h(startPos):'—')+'</b>'+(walked!=null?'<span class="w">walked '+walked+' letter'+(walked===1?'':'s')+'</span>':'')+'</div></div>'
+    +'<div class="dp-stats">'
+      +'<div class="dp-stat"><span class="k">JOBS LOGGED</span><b class="v acc">'+fmt(tot)+'</b><span class="s">'+(pmaN!=null?'PMA '+fmt(pmaN):(tot?'≈'+fmt(scaled)+' PMA':'none logged'))+'</span></div>'
+      +'<div class="dp-stat'+(callSub==='called it'?' good':'')+'"><span class="k">THE CALL</span><b class="v">'+h(callTxt)+'</b><span class="s">'+h(callSub)+'</span></div>'
+      +'<div class="dp-stat"><span class="k">MARKS</span><b class="v">'+fmt(marks.length)+'</b><span class="s">'+ears+' on the wire</span></div>'
+    +'</div>'
+    +chartHTML(k,B)
+    +((w.FLEX||w['1ST']||w['2ND'])?'<div class="dp-callk"><span><b class="f">FLEX</b> '+fmt(w.FLEX)+'</span><span><b class="a">1ST</b> '+fmt(w['1ST'])+'</span><span><b class="b">2ND</b> '+fmt(w['2ND'])+'</span></div>':'')
+    +(kchips?'<div class="dp-kinds">'+kchips+'</div>':'')
+    +(yourLine?'<div class="dp-you"><i></i><span><b>'+h(my)+'</b> · '+h(yourLine)+'</span></div>':'');
+}
+function recMeta(k){ const B=boardData(k); const s=B.marks.length?B.marks[0]:null, e=B.marks.length?B.marks[B.marks.length-1]:null;
+  return kDate(k)+(s&&e?' · '+tm(+s.ts||0)+' → '+tm(+e.ts||0):'')+(B.marks.length?' · '+B.marks.length+' marks':''); }
+function preMeta(k){ const P=DP.posts[k]; return kDate(k)+' · '+(P&&P.updated_at?'posted '+ago(new Date(P.updated_at).getTime()):'on deck'); }
+
+function postHTML(k,phase){
+  if(!k)return '';
+  let inner='', meta='', right='', extra='';
+  if(phase==='live'){ meta=liveMeta(k); inner=liveHTML(k,false); right='<button type="button" class="dp-cta" data-dp="room" data-k="'+h(k)+'" data-phase="live">LOG + MARK '+IC.chev+'</button>'; }
+  else if(phase==='pre'){ meta=preMeta(k); inner=preHTML(k,false);
+    right=isKm()?'<button type="button" class="dp-cta quiet" data-dp="edit" data-k="'+h(k)+'" aria-label="Edit the pre-post">'+IC.pen+' EDIT</button>':'<span class="dp-soon">turns live at the flex call</span>'; }
+  else { meta=recMeta(k); inner=recHTML(k,false); right='<button type="button" class="dp-cta quiet" data-dp="room" data-k="'+h(k)+'" data-phase="rec">EVERY CALL '+IC.chev+'</button>'; }
+  return '<div class="bpost dp-post dp-'+phase+'" id="'+(phase==='rec'?'dpRec_'+h(k):'dpPost')+'" data-dpk="'+h(k)+'" data-phase="'+phase+'"'+(phase==='rec'?' data-rec="1"':'')+' data-sid="'+h(sid(k))+'">'
+    +headHTML(k,meta,pillHTML(phase),extra)+inner+stripHTML(k,8)+footHTML(k,right)+'</div>';
+}
+/* what boardSectionHTML asks for: the pinned post, and the records to fold in among the stories by time */
+function hasData(k){ const B=boardData(k); return !!(B.drops.total||B.marks.length||photosOf(k).length||sealed(k)); }
+/* which past boards ride the feed as records: loaded (or the one that just ended) and with something on them */
+function recKeysFor(P){ return recordKeys(P).filter(k=>{ try{ return !!((DP.rec[k]||(k===kPrev(P.k)&&P.phase==='pre'))&&hasData(k)); }catch(e){ return false; } }); }
+DP.feed=function(){
+  const P=pinned(); DP.pin=P;
+  let pin=''; try{ pin=postHTML(P.k,P.phase); }catch(e){ try{ console.warn('[dispatch post]',e); }catch(_){} }
+  DP._pinOk=!!pin;
+  const H=DP._html={}; if(pin&&P.k)H[P.k]=pin;
+  const keys=recKeysFor(P), recs=[];
+  keys.forEach(k=>{ try{ const e=kEnd(k), x=postHTML(k,'rec'); H[k]=x; recs.push({ts:e?realTs(e):0,html:x,k:k}); }catch(e){ try{ console.warn('[dispatch post] record',k,e); }catch(_){} } });
+  DP._recSig=keys.join(','); DP._dirty=false;
+  setTimeout(dpKick,0);
+  return {pin:pin,recs:recs};
+};
+
+/* ── repaint in place (throttled) — the feed is only rebuilt when the post changes phase or a record appears ── */
+let _rq=0;
+function dpRefresh(){ if(_rq)return; _rq=setTimeout(function(){ _rq=0; try{ paint(); }catch(e){ try{ console.warn('[dispatch post] paint',e); }catch(_){} } },140); }
+window.dpRefresh=dpRefresh; DP.refresh=dpRefresh;
+function feedHost(){ return document.getElementById('socialFeed'); }
+function hallOnScreen(){ const f=feedHost(); return !!(f&&f.offsetParent!==null&&document.visibilityState!=='hidden'); }
+function busyIn(el){ const a=document.activeElement; return !!(a&&el&&el.contains(a)&&/INPUT|TEXTAREA|SELECT/.test(a.tagName)); }
+function paint(){
+  const P=pinned(), was=DP.pin, host=feedHost();
+  const el=document.getElementById('dpPost');
+  const recSig=recKeysFor(P).join(',');
+  const changed=!was||was.k!==P.k||was.phase!==P.phase||(DP._recSig!=null&&recSig!==DP._recSig);
+  if(changed)DP._dirty=true;
+  /* The Hall isn't on screen: no DOM work at all — it catches up the second it's opened (the 1 s clock) */
+  if(host&&host.innerHTML&&!hallOnScreen()){ DP._stale=true; }
+  else if(host&&host.innerHTML&&(DP._dirty||(P.k&&!el&&DP._pinOk!==false))){
+    /* a new board, a new phase, or a record that wasn't there: rebuild the feed once (and never more than every 15 s for anything else) */
+    if(!(el&&busyIn(el))&&(DP._dirty||!DP._rbAt||Date.now()-DP._rbAt>15000)){ DP._dirty=false; DP._stale=false; DP._rbAt=Date.now(); try{ renderSocialFeed(); }catch(e){} }
+  }else if(el&&!busyIn(el)){
+    DP._stale=false;
+    const H=DP._html||(DP._html={});
+    const html=postHTML(P.k,P.phase);
+    if(H[P.k]!==html){ const tmp=document.createElement('div'); tmp.innerHTML=html; const nu=tmp.firstChild; if(nu){ el.replaceWith(nu); H[P.k]=html; } }
+    document.querySelectorAll('.dp-post[data-rec]').forEach(n=>{ if(busyIn(n))return; const k=n.getAttribute('data-dpk'), x=postHTML(k,'rec'); if(H[k]===x)return; const t=document.createElement('div'); t.innerHTML=x; if(t.firstChild){ n.replaceWith(t.firstChild); H[k]=x; } });
+  }
+  DP.pin=P;
+  centerRails();
+  try{ wireStrip(); }catch(e){}
+  try{ if(DP.room&&roomIsOpen())roomPaint(); }catch(e){}
+  try{ if(markIsOpen())markHeader(); }catch(e){}
+}
+function centerRails(root){
+  (root||document).querySelectorAll('.dp-rail[data-rail]').forEach(r=>{ const n=r.querySelector('[data-now]'); if(!n)return;
+    if(r._dpTouched&&Date.now()-r._dpTouched<20000)return;   /* someone's swiping back through the marks — leave it where they put it */
+    r.scrollLeft=Math.max(0,n.offsetLeft-(r.clientWidth-n.offsetWidth)/2); });
+}
+document.addEventListener('touchstart',function(e){ const r=e.target&&e.target.closest&&e.target.closest('.dp-rail'); if(r)r._dpTouched=Date.now(); },{passive:true});
+document.addEventListener('wheel',function(e){ const r=e.target&&e.target.closest&&e.target.closest('.dp-rail'); if(r)r._dpTouched=Date.now(); },{passive:true});
+/* the lazy loads — kicked by every feed build, each one cached so a busy Hall never hammers the wire */
+function dpKick(){
+  const P=DP.pin||pinned(); if(!P||!P.k)return;
+  const keys=[P.k].concat(recordKeys(P));
+  try{ DP.loadPosts(false); }catch(e){}
+  try{ DP.loadRecords(recordKeys(P),false); }catch(e){}
+  try{ DP.loadTalkMany(keys,false); }catch(e){}
+  try{ if(P.phase==='live')DP.loadDraws(kLw(P.k),false); }catch(e){}
+  try{ if(P.phase==='live'&&!liveOK())DP.loadRecords([P.k],false); }catch(e){}   /* past 9:00 / 7:00 the marks come off the wire's record */
+  if(!DP._metaAt||Date.now()-DP._metaAt>60000){ DP._metaAt=Date.now(); try{ DP.loadMeta(keys); }catch(e){} }
+}
+DP.kick=dpKick;
+/* clocks: the countdown every second; the relative times and a phase check every 30 s */
+setInterval(function(){
+  const now=Date.now();
+  document.querySelectorAll('[data-dpcd]').forEach(el=>{ const t=+el.getAttribute('data-dpcd'); if(t)el.textContent=hms(t-now); });
+  try{ const P=pinned(), was=DP.pin; if(was&&(was.k!==P.k||was.phase!==P.phase))dpRefresh(); }catch(e){}
+  try{ if((DP._dirty||DP._stale)&&hallOnScreen())dpRefresh(); }catch(e){}
+},1000);
+setInterval(function(){ if(hallOnScreen()||roomIsOpen()){ dpRefresh(); dpKick(); } else try{ wireStrip(); }catch(e){} },30000);
+document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='visible')setTimeout(function(){ dpRefresh(); dpKick(); },1500); });
+
+/* ── the Wire tab's live strip (the Drop Log's old spot) ── */
+function wireStrip(){
+  const el=document.getElementById('dpWireStrip'); if(!el)return;
+  const P=DP.pin||pinned();
+  if(!P||P.phase!=='live'){ if(el.style.display!=='none')el.style.display='none'; return; }
+  const B=boardData(P.k), pos=boardPos(P.k,B);
+  el.innerHTML='<span class="dot"></span><span class="t"><b>ON AIR</b> · '+h(kTitle(P.k))+'</span>'
+    +'<span class="s">'+fmt(B.drops.total||0)+' jobs down'+(pos?' · board on <b>'+h(pos.pos)+'</b>':'')+'</span><span class="go">OPEN '+IC.chev+'</span>';
+  el.setAttribute('aria-label','The dispatch is live — open the Dispatch Post');
+  el.style.display='';
+}
+DP.wireStrip=wireStrip;
+
+/* ── one delegated handler for everything the post, the room and the sheets do ── */
+function goHall(){ try{ if(typeof gotoTab==='function')gotoTab('order'); }catch(e){} try{ if(typeof setHallView==='function')setHallView('hall'); }catch(e){} }
+document.addEventListener('click',function(e){
+  const strip=e.target.closest&&e.target.closest('#dpWireStrip');
+  if(strip){ const P=DP.pin||pinned(); goHall(); openRoom(P.k,P.phase); return; }
+  const b=e.target.closest&&e.target.closest('[data-dp]');
+  if(!b){
+    const post=e.target.closest&&e.target.closest('.dp-post');
+    if(post&&!e.target.closest('a,button,input,textarea,label,.dp-rail,.dp-photos')){ openRoom(post.getAttribute('data-dpk'),post.getAttribute('data-phase')); }
+    return;
+  }
+  const a=b.getAttribute('data-dp'), k=b.getAttribute('data-k')||(b.closest('[data-dpk]')&&b.closest('[data-dpk]').getAttribute('data-dpk'))||(DP.room&&DP.room.k);
+  e.stopPropagation();
+  if(a==='room'){ openRoom(k,b.getAttribute('data-phase')||((DP.pin&&DP.pin.k===k)?DP.pin.phase:'rec')); }
+  else if(a==='like'){ if(guest())return; try{ toggleStoryLike(sid(k)); }catch(err){} try{ if(navigator.vibrate)navigator.vibrate(10); }catch(err){} dpRefresh(); }
+  else if(a==='talk'){ openRoom(k,(DP.pin&&DP.pin.k===k)?DP.pin.phase:'rec','talk'); }
+  else if(a==='photo'){ addMedia(k); }
+  else if(a==='media'){ const u=mediaUrl(b.getAttribute('data-url')), kd=b.getAttribute('data-kind'); if(!u)return; if(kd==='video')openClip(u); else { try{ if(window.lbOpen)window.lbOpen(u,''); else window.open(u,'_blank','noopener'); }catch(err){} } }
+  else if(a==='edit'){ openEdit(k); }
+  else if(a==='phones'){ openPhones(!!b.getAttribute('data-hall')); }
+  else if(a==='ck'){ const inp=(b.closest('.dp-ck')||document).querySelector('[data-dpck]'); let r={ok:false}; try{ r=ckReport(inp?inp.value:''); }catch(err){} if(r&&r.ok&&inp)inp.value=''; else if(inp&&r&&r.why==='n')inp.classList.add('bad'); dpRefresh(); }
+  else if(a==='mark'){ openMark(); }
+  else if(a==='log'){ openLog('num'); }
+  else if(a==='click'){ openLog('clk'); }
+  else if(a==='tab'){ if(DP.room){ DP.room.tab=b.getAttribute('data-tab'); roomPaint(true); } }
+  else if(a==='close-room'){ closeRoom(); }
+  else if(a==='undo'){ undoMark(b.getAttribute('data-id'),b); }
+  else if(a==='send'){ sendTalk(); }
+  else if(a==='prev'||a==='next'){ const kk=a==='prev'?kPrev(DP.room.k):kNext(DP.room.k); const P=DP.pin||pinned(); if(kk){ const ph=(kk===P.k)?P.phase:(kk>P.k?'pre':'rec'); if(ph!=='pre'||kk===P.k)openRoom(kk,ph,DP.room.tab); } }
+},false);
+document.addEventListener('keydown',function(e){
+  const t=e.target; if(!t||!t.getAttribute)return;
+  if(e.key==='Enter'&&t.hasAttribute('data-dpck')){ e.preventDefault(); const btn=t.closest('.dp-ck')&&t.closest('.dp-ck').querySelector('[data-dp="ck"]'); if(btn)btn.click(); }
+  else if(e.key==='Enter'&&t.id==='dpSay'){ e.preventDefault(); sendTalk(); }
+});
+document.addEventListener('input',function(e){ const t=e.target; if(t&&t.hasAttribute&&t.hasAttribute('data-dpck')){ t.classList.remove('bad'); t.value=t.value.replace(/[^\d]/g,'').slice(0,5); } });
+
+/* ── THE LIVE ROOM: the post, opened — timeline, the tools, the talk ── */
+function sheetEl(id,cls,z){
+  let s=document.getElementById(id);
+  if(!s){ s=document.createElement('div'); s.className='sheet dp-sh'+(cls?' '+cls:''); s.id=id; if(z)s.style.zIndex=String(z); document.body.appendChild(s);
+    s.addEventListener('click',function(e){ if(e.target===s)s.classList.remove('on'); }); }
+  return s;
+}
+function roomIsOpen(){ const s=document.getElementById('dpRoom'); return !!(s&&s.classList.contains('on')); }
+function openRoom(k,phase,tab){
+  if(!k)return;
+  const P=DP.pin||pinned();
+  if(k===P.k)phase=P.phase; else if(phase!=='pre')phase='rec';
+  DP.room={k:k,phase:phase,tab:tab||(phase==='pre'?'talk':'all'),dockSig:''};
+  const s=sheetEl('dpRoom','dp-room',70);
+  if(!s.firstChild){
+    s.innerHTML='<div class="sheet-card dp-room-card" role="dialog" aria-label="Dispatch Post">'
+      +'<div class="dp-rm-top" id="dpRoomTop"></div><div class="dp-rm-body" id="dpRoomBody"></div><div class="dp-rm-dock" id="dpRoomDock"></div></div>';
+    const body=s.querySelector('#dpRoomBody');
+    body.addEventListener('click',function(e){ const jl=e.target.closest('.dp-tl'); if(jl&&e.target.closest('button.dl-x')&&typeof window.dropListClick==='function'){ window.dropListClick(e); setTimeout(dpRefresh,300); } });
+  }
+  roomPaint(true);
+  s.classList.add('on');
+  try{ DP.loadTalk(k,true); }catch(e){}
+  if(phase!=='live'||!liveOK()){ try{ DP.loadRecords([k],false); }catch(e){} }
+  try{ DP.loadDraws(kLw(k),true); }catch(e){}
+  try{ if(phase==='live'&&typeof sbLoadLiveCalls==='function')sbLoadLiveCalls(); }catch(e){}
+}
+DP.openRoom=openRoom;
+function closeRoom(){ const s=document.getElementById('dpRoom'); if(s)s.classList.remove('on'); }
+function timeline(k,B){
+  const out=[], cur=(function(){ try{ return k===dropKey(); }catch(e){ return false; } })(), km=isKm(), mine=me();
+  const liveB=(function(){ try{ return kLw(k)===winKey(); }catch(e){ return false; } })();
+  B.marks.forEach(m=>out.push({t:+m.ts||0,type:'mark',m:m}));
+  jobsOnly(B.drops.list).forEach(d=>out.push({t:d.ts,type:'drop',d:d}));
+  (B.drops.list||[]).filter(d=>d.cat==='CKT').forEach(d=>out.push({t:d.ts,type:'ck',d:d}));
+  (B.drops.struck||[]).forEach(d=>out.push({t:d.ts,type:'struck',d:d}));
+  (B.draws||[]).forEach(x=>out.push({t:new Date(x.slot).getTime()+300000,type:'draw',x:x}));
+  ((DP.talk[k]&&DP.talk[k].rows)||[]).forEach(c=>out.push({t:c.ts,type:'talk',c:c}));
+  out.sort((a,b)=>b.t-a.t);
+  return {rows:out,cur:cur,km:km,me:mine,live:liveB};
+}
+function rowHTML(it,ctx,nowPos){
+  if(it.type==='mark'){ const m=it.m, own=!!(m.id&&ctx.me&&m.owner===ctx.me&&ctx.live), can=own||(ctx.km&&m.id);
+    const isNow=nowPos&&m.pos===nowPos;
+    return '<div class="dp-row'+(isNow?' now':'')+'"><span class="tm">'+h(tmS(it.t))+'</span><span class="ic mk">'+IC.target+'</span>'
+      +'<div class="bd"><span class="mk"><b>'+h(m.pos)+'</b>'+(m.note?'<em class="nt">'+h(m.note)+'</em>':'')+'</span><span class="mt">'+h(m.by_handle||(m.src==='mark'?'a casual':'a docket scan'))+(m.src&&m.src!=='mark'?' · '+h(m.src==='hud'?'dispatch mode':(m.src==='docket'?'docket':'scan')):'')+(m.local?' · sending…':'')+'</span></div>'
+      +(isNow?'<span class="dp-nowtag">NOW</span>':'')
+      +(can?'<button type="button" class="x" data-dp="undo" data-id="'+h(String(m.id))+'" aria-label="'+(own?'Take back this mark':'Strike this mark off the board')+'">'+(own?IC.x:'☠︎')+'</button>':'')+'</div>';
+  }
+  if(it.type==='drop'||it.type==='struck'){ const x=it.d, struck=it.type==='struck';
+    let ctl='';
+    if(ctx.cur&&!struck){
+      if(x.mine)ctl='<button type="button" class="dl-x x" data-di="'+(x.di!=null?x.di:-1)+'" data-cid="'+h(x.myCid||x.cid||'')+'" aria-label="Strike this drop">'+IC.x+'</button>';
+      else if(ctx.km)ctl='<button type="button" class="dl-x km x" data-void="'+h((x.cids||[x.cid]).filter(Boolean).join(','))+'" data-what="'+h('+'+x.n+' · '+kname(x.cat)+' · '+tm(x.ts))+'" aria-label="Strike this drop off the wire">☠︎</button>';
+    } else if(ctx.cur&&struck&&ctx.km)ctl='<button type="button" class="dl-x back x" data-unvoid="'+h(x.cid||'')+'" aria-label="Put this drop back on the count">↺</button>';
+    return '<div class="dp-row'+(struck?' struck':'')+'"><span class="tm">'+h(tmS(it.t))+'</span><span class="ic dr">'+IC.zap+'</span>'
+      +'<div class="bd"><span class="dl"><b>'+(x.cat==='EST'?'~':'+')+fmt(x.n)+'</b><span class="c">'+h(kname(x.cat))+(x.cat==='EST'?'':' · '+h(wave(x.ph)))+'</span></span>'
+      +'<span class="mt">'+(x.mine?'you':h(x.by_handle||'a casual'))+(x.backed>1?' · <span class="bk">backed ×'+x.backed+'</span>':'')+(struck?' · off the count · '+h(x.void_reason||'struck'):'')+'</span></div>'+ctl+'</div>';
+  }
+  if(it.type==='ck'){ const x=it.d; return '<div class="dp-row"><span class="tm">'+h(tmS(it.t))+'</span><span class="ic ck">'+IC.pin+'</span><div class="bd"><span class="dl"><b>'+fmt(x.n)+'</b><span class="c">checked in at the big hall</span></span><span class="mt">'+(x.mine?'you':h(x.by_handle||'a casual'))+(x.backed>1?' · <span class="bk">backed ×'+x.backed+'</span>':'')+'</span></div></div>'; }
+  if(it.type==='draw'){ const x=it.x, s=new Date(x.slot).getTime(), won=x.winner&&x.winner===ctx.me;
+    return '<div class="dp-row draw'+(won?' won':'')+'"><span class="tm">'+h(tmS(s+300000))+'</span><span class="ic dw">'+IC.ticket+'</span><div class="bd">'
+      +(x.amount>0?'<span class="dl"><b>+'+x.amount+' ⬡</b><span class="c">'+(won?'you won the '+h(tmS(s))+' draw':h(x.by_handle||'a casual')+' won the '+h(tmS(s))+' draw')+'</span></span><span class="mt">'+x.tickets+' ticket'+(x.tickets===1?'':'s')+' · '+x.people+' marker'+(x.people===1?'':'s')+(x.pos?' · winning mark '+h(x.pos):'')+'</span>'
+        :'<span class="dl"><span class="c">the '+h(tmS(s))+' draw — no winner</span></span><span class="mt">everyone with a ticket had hit the day’s 5 wins</span>')+'</div></div>';
+  }
+  if(it.type==='talk'){ const c=it.c, own=!!(ctx.me&&c.owner===ctx.me);
+    const media=(c.kind==='image'&&mediaUrl(c.url))?'<button type="button" class="dp-tmedia" data-dp="media" data-url="'+h(c.url)+'" data-kind="image" aria-label="Open the photo"><img src="'+h(c.url)+'" alt="" loading="lazy"></button>'
+      :(c.kind==='video'&&mediaUrl(c.url))?'<button type="button" class="dp-tmedia" data-dp="media" data-url="'+h(c.url)+'" data-kind="video" aria-label="Play the clip"><video src="'+h(c.url)+'#t=0.1" muted playsinline preload="metadata"></video><span class="pl">'+IC.play+'</span></button>':'';
+    return '<div class="dp-row talk'+(own?' mine':'')+'"><span class="tm">'+h(tmS(it.t))+'</span><span class="ic tk">'+(c.kind==='image'||c.kind==='video'?IC.cam:IC.talk)+'</span><div class="bd">'
+      +(c.body?'<p>'+h(c.body)+'</p>':'')+media+'<span class="mt">'+h(c.by)+'</span></div></div>';
+  }
+  return '';
+}
+function roomPaint(force){
+  const R=DP.room; if(!R)return;
+  const s=document.getElementById('dpRoom'); if(!s)return;
+  const top=s.querySelector('#dpRoomTop'), body=s.querySelector('#dpRoomBody'), dock=s.querySelector('#dpRoomDock');
+  const P=DP.pin||pinned();
+  if(R.k===P.k&&R.phase!==P.phase)R.phase=P.phase;   /* the flex call came while the room was open */
+  const k=R.k, ph=R.phase, B=boardData(k), pos=boardPos(k,B);
+  const meta=ph==='live'?liveMeta(k):(ph==='pre'?preMeta(k):recMeta(k));
+  const canPrev=true, canNext=(k!==P.k);
+  top.innerHTML='<button type="button" class="dp-rm-x" data-dp="close-room" aria-label="Back to The Hall">'+IC.back+'</button>'
+    +'<div class="dp-who"><b>'+h(kTitle(k))+'</b><span>'+h(meta)+'</span></div>'
+    +'<div class="dp-rm-nav">'+(canPrev?'<button type="button" data-dp="prev" aria-label="The board before">'+IC.back+'</button>':'')+(canNext?'<button type="button" data-dp="next" aria-label="The board after">'+IC.chev+'</button>':'')+'</div>'
+    +pillHTML(ph);
+  /* tabs + list */
+  const T=timeline(k,B), rows=T.rows;
+  const nMarks=rows.filter(r=>r.type==='mark').length, nJobs=rows.filter(r=>r.type==='drop').length, nTalk=rows.filter(r=>r.type==='talk').length, nPh=photosOf(k).length;
+  const tabs=(ph==='pre'?[['talk','TALK '+(nTalk||'')],['photos','PHOTOS '+(nPh||'')]]:[['all','ALL'],['count','COUNT '+(nMarks||'')],['jobs','JOBS '+(nJobs||'')],['talk','TALK '+(nTalk||'')],['photos','PHOTOS '+(nPh||'')]]);
+  if(!tabs.some(t=>t[0]===R.tab))R.tab=tabs[0][0];
+  let list='';
+  if(R.tab==='photos'){
+    const pp=photosOf(k).slice().reverse();
+    list=pp.length?'<div class="dp-pgrid">'+pp.map(c=>'<button type="button" class="dp-ph" data-dp="media" data-url="'+h(c.url)+'" data-kind="'+h(c.kind)+'" aria-label="Open">'+(c.kind==='video'?'<video src="'+h(c.url)+'#t=0.1" muted playsinline preload="metadata"></video><span class="pl">'+IC.play+'</span>':'<img src="'+h(c.url)+'" alt="" loading="lazy">')+'</button>').join('')+'</div>'
+      :'<div class="dp-empty">'+IC.cam+'<b>NO PHOTOS YET</b><span>a shot of the night on the job — or a 10-second clip</span><button type="button" class="dp-addph" data-dp="photo" data-k="'+h(k)+'">ADD ONE</button></div>';
+  }else{
+    const want={all:['mark','drop','ck','struck','draw','talk'],count:['mark','draw'],jobs:['drop','ck','struck'],talk:['talk']}[R.tab]||[];
+    const sel=rows.filter(r=>want.indexOf(r.type)>=0).slice(0,240);
+    const ctx={cur:T.cur,km:T.km,me:T.me,live:T.live};
+    list=((R.tab==='jobs'&&ph==='live')?ckHTML(k,B):'')
+      +(sel.length?'<div class="dp-tl'+(R.tab==='jobs'?' dp-jobs':'')+'">'+sel.map(r=>rowHTML(r,ctx,pos&&pos.pos)).join('')+'</div>'
+      :'<div class="dp-empty">'+(R.tab==='talk'?IC.talk+'<b>QUIET SO FAR</b><span>say the first word about the night</span>':(R.tab==='jobs'?IC.zap+'<b>NO JOBS LOGGED</b><span>'+(ph==='live'?'tap LOG JOBS when the speaker calls a number':'nobody logged this board')+'</span>':IC.target+'<b>NOTHING YET</b><span>'+(ph==='live'?'MARK the board when it moves':'this board left no marks')+'</span>'))+'</div>');
+  }
+  const head=(ph==='live')?liveHTML(k,true)+dropsHTML(k,B,2):(ph==='pre'?preHTML(k,true):recHTML(k,true)+railHTML(k,B,pos,false));
+  if(!force&&busyIn(body))return;   /* someone's typing the check-in — don't pull the box out from under them */
+  const html=head+'<div class="dp-tabs" role="tablist">'+tabs.map(t=>'<button type="button" role="tab" class="dp-tab'+(R.tab===t[0]?' on':'')+'" data-dp="tab" data-tab="'+t[0]+'" aria-selected="'+(R.tab===t[0])+'">'+h(t[1]).trim()+'</button>').join('')+'</div>'+list;
+  if(force||html!==R.bodyH){
+    const st=body.scrollTop;
+    body.innerHTML=html; R.bodyH=html;
+    if(!force)body.scrollTop=st;
+    centerRails(body);
+  }
+  /* the dock: the three tools while the board is live; the talk line otherwise (and on the TALK tab) */
+  const tools=(ph==='live'&&R.tab!=='talk');
+  const sig=(tools?'tools':'say')+'|'+k+'|'+(dropOK()?1:0)+(liveOK()?1:0);
+  if(force||sig!==R.dockSig){
+    R.dockSig=sig;
+    if(tools){
+      dock.innerHTML='<button type="button" class="dp-dk log" data-dp="log"'+(dropOK()?'':' disabled')+'>'+IC.zap+'<span>LOG JOBS</span></button>'
+        +'<button type="button" class="dp-dk mark" data-dp="mark"'+(liveOK()?'':' disabled')+'>'+IC.target+'<span>MARK</span></button>'
+        +'<button type="button" class="dp-dk click" data-dp="click"'+(dropOK()?'':' disabled')+'>'+IC.plus+'<span>CLICK</span></button>';
+    }else{
+      const keep=document.getElementById('dpSay'), v=keep?keep.value:'';
+      dock.innerHTML='<div class="dp-say"><button type="button" class="cam" data-dp="photo" data-k="'+h(k)+'" aria-label="Add a photo or a 10-second clip">'+IC.cam+'</button>'
+        +'<input id="dpSay" type="text" maxlength="300" autocomplete="off" placeholder="'+(ph==='pre'?'Say something before the call…':'Say something about the night…')+'" aria-label="Say something on the Dispatch Post">'
+        +'<button type="button" class="go" data-dp="send" aria-label="Send">'+IC.chev+'</button></div>';
+      if(v){ const n=document.getElementById('dpSay'); if(n)n.value=v; }
+    }
+  }
+}
+DP.roomPaint=roomPaint;
+async function sendTalk(){
+  const inp=document.getElementById('dpSay'), R=DP.room; if(!inp||!R)return;
+  const body=String(inp.value||'').trim().slice(0,300); if(!body)return;
+  if(guest())return;
+  if(!(window.SB&&me())){ say('Sign in first — the talk rides your account'); return; }
+  inp.value='';
+  const k=R.k, t=DP.talk[k]||(DP.talk[k]={rows:[],at:0});
+  t.rows.push({id:'tmp'+Date.now(),owner:me(),by:myHandle(),body:body,ts:Date.now(),kind:'text',url:''}); roomPaint();
+  try{ const r=await window.SB.from('story_comments').insert({story_id:sid(k),owner:me(),by_id:(typeof ACCT_ID==='string'?ACCT_ID:''),by_handle:myHandle(),body:body});
+    if(r.error)throw r.error; }
+  catch(e){ say('That didn’t send — check your signal'); t.rows=t.rows.filter(x=>x.body!==body||!/^tmp/.test(String(x.id))); }
+  DP.loadTalk(k,true);
+}
+async function undoMark(id,btn){
+  if(!id||!window.SB)return;
+  if(btn&&!btn.classList.contains('arm')){ btn.classList.add('arm'); setTimeout(function(){ if(btn.isConnected)btn.classList.remove('arm'); },2400); say(isKm()?'Tap again to strike that mark off the board':'Tap again to take your mark back'); return; }
+  try{ const r=await window.SB.from('live_wire').delete().eq('id',id).select('id');
+    if(r.error||!r.data||!r.data.length){ say('The wire kept it — '+((r.error&&r.error.message)||'only the marker or the council can take a mark back')); return; }
+    say(isKm()?'☠ Struck — the board steps back':'Mark taken back');
+    try{ if(typeof sbLoadLiveCalls==='function')await sbLoadLiveCalls(); }catch(e){}
+    try{ if(DP.room)DP.loadRecords([DP.room.k],true); }catch(e){}
+    try{ if(typeof repredict==='function')repredict(); }catch(e){}
+    dpRefresh();
+  }catch(e){ say('The wire kept it — check your signal'); }
+}
+/* run fn when a sheet loses .on — by its own button, the backdrop or the phone's Back */
+function whenClosed(s,fn){ if(s._dpObs)return; try{ const mo=new MutationObserver(function(){ if(!s.classList.contains('on'))fn(); }); mo.observe(s,{attributes:true,attributeFilter:['class']}); s._dpObs=mo; }catch(e){} }
+function stopMedia(s){ s.querySelectorAll('video').forEach(v=>{ try{ v.pause(); v.removeAttribute('src'); v.load(); }catch(e){} }); }
+function openClip(url){
+  url=mediaUrl(url); if(!url)return;
+  const s=sheetEl('dpClip','dp-clip',96);
+  whenClosed(s,function(){ stopMedia(s); s.innerHTML=''; });
+  s.innerHTML='<div class="sheet-card dp-clip-card"><video src="'+h(url)+'" controls autoplay playsinline></video><button type="button" class="btn-ghost" data-dpclose="1">Close</button></div>';
+  s.querySelector('[data-dpclose]').addEventListener('click',function(){ s.classList.remove('on'); s.innerHTML=''; });
+  s.classList.add('on');
+}
+
+/* ── THE SPIN WHEEL: three drums (letter · first two · last two) → MARK ──
+   Opens on where the board is, so the usual move is a flick or two and MARK. The drums ease onto real cards
+   (ACTIVE) when they settle — "use it anyway" keeps a card the list doesn't know. A MARK goes through
+   submitLiveCall(pos,'mark',tag), so it meets every gate a scan meets (behind · same · the line of fire) and
+   rides live_wire to every phone. Every MARK that moves the board is a ticket in the 5-minute draw. */
+const MK={L:0,hi:49,lo:14,off:0,dragI:-1,drag:null,timers:[0,0,0],note:'',hint:'',hintOff:null,allowOff:false,flash:null,ft:0,cols:[]};
+function markIsOpen(){ const s=document.getElementById('dpMark'); return !!(s&&s.classList.contains('on')); }
+function mkNorm(i,v){ return i===0?((v%26)+26)%26:(i===1?40+((((v-40)%11)+11)%11):((v%100)+100)%100); }
+function mkVal(i){ return i===0?MK.L:(i===1?MK.hi:MK.lo); }
+function mkSetV(i,v){ v=mkNorm(i,v); if(i===0)MK.L=v; else if(i===1)MK.hi=v; else MK.lo=v; }
+function mkLabel(i,v){ v=mkNorm(i,v); return i===0?LS[v]:(i===1?String(v):(v<10?'0'+v:String(v))); }
+function mkPos(){ return LS[MK.L]+(MK.hi*100+MK.lo); }
+function isCard(L,n){ try{ const a=ACTIVE[L]; return !!(a&&a.indexOf(n)>=0); }catch(e){ return true; } }
+function nearestCard(L,n){ for(let d=0;d<=160;d++){ if(n+d<=5099&&isCard(L,n+d))return n+d; if(d&&n-d>=4000&&isCard(L,n-d))return n-d; } return n; }
+function curBoard(){ try{ if(typeof lastCall!=='undefined'&&lastCall&&lastCall.pos&&lastCall.win===winKey())return lastCall.pos; }catch(e){} return null; }
+function mkSetPos(pos){ const m=/^([A-Z])(\d{4})$/.exec(String(pos||'')); if(!m)return; MK.L=LS.indexOf(m[1]); const n=+m[2]; MK.hi=Math.max(40,Math.min(50,Math.floor(n/100))); MK.lo=n%100; }
+function openMark(){
+  if(guest())return;
+  if(!liveOK()){ say('Marks open with the flex call — the board isn’t moving yet'); return; }
+  const s=sheetEl('dpMark','dp-marksheet',74);
+  if(!s.firstChild)buildMark(s);
+  const cur=curBoard(); let start=cur;
+  if(!start){ try{ start=OPENP(); }catch(e){} }
+  mkSetPos(start||'A4900'); MK.note=''; MK.hint=''; MK.allowOff=false; MK.flash=null; MK.dragI=-1; MK.off=0;
+  markHeader(); mkPaint(); s.classList.add('on');
+}
+DP.openMark=openMark;
+function closeMark(){ const s=document.getElementById('dpMark'); if(s)s.classList.remove('on'); }
+function buildMark(s){
+  s.innerHTML='<div class="sheet-card dp-mk-card" role="dialog" aria-label="Mark the board">'
+    +'<div class="dp-grip"></div>'
+    +'<div class="dp-mk-hd"><span class="t">MARK THE BOARD</span><span class="dp-paypill">'+IC.ticket+'<span>'+((window.PAY&&PAY.DRAW)||20)+' ⬡ DRAW</span></span></div>'
+    +'<span class="dp-mk-sub" id="dpMkSub"></span>'
+    +'<div class="dp-drums">'+['LETTER','FIRST TWO','LAST TWO'].map((n,i)=>'<div class="dp-drumcol"><span class="k">'+n+'</span><div class="dp-drum" data-drum="'+i+'" role="spinbutton" aria-label="'+n.toLowerCase()+'" tabindex="0"><div class="win"></div>'
+      +'<div class="row"></div><div class="row"></div><div class="row"></div><div class="row"></div><div class="row"></div><div class="row"></div><div class="row"></div>'
+      +'<div class="fade t"></div><div class="fade b"></div></div></div>').join('')+'</div>'
+    +'<div class="dp-mk-status" id="dpMkStatus" aria-live="polite"></div>'
+    +'<div class="dp-nudges"><button type="button" data-mk="p1">+1 CARD</button><button type="button" data-mk="p5">+5 CARDS</button><button type="button" data-mk="nl">NEXT LETTER</button><button type="button" data-mk="back" class="ghost">BACK</button></div>'
+    +'<div class="dp-tags"><button type="button" data-mktag="@ the window">@ THE WINDOW</button><button type="button" data-mktag="last job">LAST JOB</button><button type="button" data-mktag="skipped some">SKIPPED SOME</button></div>'
+    +'<button type="button" class="dp-go" id="dpMkGo">'+IC.target+'<span id="dpMkGoT">MARK</span></button>'
+    +'<div class="dp-recent" id="dpMkRecent"></div></div>';
+  MK.cols=Array.prototype.map.call(s.querySelectorAll('.dp-drum'),d=>({el:d,rows:Array.prototype.slice.call(d.querySelectorAll('.row'))}));
+  MK.cols.forEach((c,i)=>{
+    c.el.addEventListener('pointerdown',e=>mkDown(i,e));
+    c.el.addEventListener('pointermove',e=>mkMove(i,e));
+    c.el.addEventListener('pointerup',e=>mkUp(i,e,false));
+    c.el.addEventListener('pointercancel',e=>mkUp(i,e,true));
+    c.el.addEventListener('wheel',e=>{ e.preventDefault(); mkWheel(i,e); },{passive:false});
+    c.el.addEventListener('keydown',e=>{ if(e.key==='ArrowUp'){ e.preventDefault(); mkSpin(i,mkVal(i),-1,mkSettle); } else if(e.key==='ArrowDown'){ e.preventDefault(); mkSpin(i,mkVal(i),1,mkSettle); } });
+  });
+  s.addEventListener('click',e=>{
+    const n=e.target.closest('[data-mk]'); if(n){ mkNudge(n.getAttribute('data-mk')); return; }
+    const t=e.target.closest('[data-mktag]'); if(t){ const v=t.getAttribute('data-mktag'); MK.note=(MK.note===v)?'':v; mkPaintStatus(); return; }
+    if(e.target.closest('#dpMkGo')){ doMark(); return; }
+    if(e.target.closest('[data-mkoff]')){ const o=MK.hintOff; if(o){ MK.allowOff=true; mkSetPos(o); MK.hint=''; mkPaint(); } return; }
+  });
+}
+function markHeader(){
+  const sub=document.getElementById('dpMkSub'); if(!sub)return;
+  const cur=curBoard();
+  const dr=(window.PAY&&PAY.DRAW)||20;
+  sub.innerHTML=(cur?'The board’s on <b>'+h(cur)+'</b>. Flick to the card at the window now.':'No mark yet — set the card at the window and MARK it.')
+    +' <span class="dp-mk-draw">Every MARK that moves the board is a ticket: one wins <b>'+dr+' ⬡</b> every 5 minutes.</span>';
+  const rc=document.getElementById('dpMkRecent');
+  if(rc){ const P=DP.pin||pinned(); const B=boardData(P.k); const m=B.marks.slice(-3).reverse();
+    rc.innerHTML=m.map((x,i)=>'<span class="'+(i===0?'top':'')+'"><b>'+h(x.pos)+'</b>'+h(tmS(+x.ts||0))+' · '+h(x.by_handle||'a scan')+'</span>').join(''); }
+}
+function mkPaint(){ for(let i=0;i<3;i++)mkPaintDrum(i); mkPaintStatus(); }
+function mkPaintDrum(i){
+  const c=MK.cols[i]; if(!c)return;
+  const v=mkVal(i), off=(MK.dragI===i?MK.off:0), base=v+off, fl=Math.floor(base), fr=base-fl;
+  for(let r=0;r<7;r++){ const kk=r-3, el=c.rows[r], dist=Math.abs(kk-fr);
+    el.textContent=mkLabel(i,fl+kk);
+    el.style.transform='translateY('+Math.round(96+(kk-fr)*48)+'px)';
+    el.style.opacity=Math.max(.12,1-dist*.36).toFixed(2);
+    el.classList.toggle('sel',dist<.5);
+  }
+  c.el.setAttribute('aria-valuetext',mkLabel(i,v));
+}
+function mkPaintStatus(){
+  const st=document.getElementById('dpMkStatus'), go=document.getElementById('dpMkGo'), gt=document.getElementById('dpMkGoT'); if(!st)return;
+  const pos=mkPos(), cur=curBoard(), f=MK.flash;
+  let txt='', cls='';
+  if(f){ txt=f.txt; cls=f.cls; }
+  else if(MK.hint){ txt=MK.hint; cls='warn'; }
+  else if(cur&&pos===cur){ txt='That’s where the board is — flick forward'; }
+  else if(cur&&posValSafe(pos)<posValSafe(cur)){ txt='Behind the board ('+cur+') — it only moves forward'; cls='bad'; }
+  else if(!isCard(pos.charAt(0),+pos.slice(1))&&!MK.allowOff){ txt=pos+' isn’t on the list — let go and it eases to a card'; cls='warn'; }
+  else if(cur){ const b=cardsBetween(cur,pos); txt=(b<=1?'next card after '+cur:b+' cards past '+cur); cls='ok'; }
+  else { txt='Opening the board on '+pos; cls='ok'; }
+  st.className='dp-mk-status '+cls; st.innerHTML=h(txt)+(MK.hintOff&&MK.hint?' <button type="button" class="dp-linkish" data-mkoff="1">use '+h(MK.hintOff)+' anyway</button>':'');
+  const same=!!(cur&&pos===cur), back=!!(cur&&posValSafe(pos)<posValSafe(cur));
+  if(gt)gt.textContent=same?'ON '+pos:('MARK '+pos+(MK.note?' · '+MK.note.toUpperCase():''));
+  if(go)go.disabled=!!(same||back);
+  document.querySelectorAll('#dpMark [data-mktag]').forEach(b=>b.classList.toggle('on',b.getAttribute('data-mktag')===MK.note));
+}
+function posValSafe(p){ try{ return posVal(p); }catch(e){ return 0; } }
+function cardsBetween(a,b){ try{ const L=nextActive(a,400)||[]; const i=L.indexOf(b); return i<0?L.filter(x=>posValSafe(x)<=posValSafe(b)).length:i+1; }catch(e){ return 0; } }
+function mkSpin(i,from,steps,done){
+  if(MK.timers[i]){ clearTimeout(MK.timers[i]); MK.timers[i]=0; }
+  const dir=steps>=0?1:-1, total=Math.min(Math.abs(steps),40), start=from+(Math.abs(steps)-total)*dir;
+  MK.flash=null;
+  if(!total){ mkSetV(i,from); mkPaintDrum(i); mkPaintStatus(); if(done)setTimeout(done,30); return; }
+  let k=0;
+  const tick=function(){ k++; mkSetV(i,start+dir*k); mkPaintDrum(i);
+    try{ if(navigator.vibrate&&k%3===0)navigator.vibrate(3); }catch(e){}
+    if(k>=total){ MK.timers[i]=0; mkPaintStatus(); if(done)setTimeout(done,40); return; }
+    const p=k/total; MK.timers[i]=setTimeout(tick,18+70*p*p); };
+  tick();
+}
+function mkSettle(){
+  MK.allowOff=false;
+  const L=LS[MK.L], n=MK.hi*100+MK.lo;
+  if(isCard(L,n)){ MK.hint=''; MK.hintOff=null; mkPaintStatus(); return; }
+  const m=nearestCard(L,n); if(m===n){ mkPaintStatus(); return; }
+  MK.hint=L+n+' isn’t on the list — eased to '+L+m; MK.hintOff=L+n;
+  if(Math.floor(m/100)===MK.hi)mkSpin(2,MK.lo,(m%100)-MK.lo,null);
+  else { MK.hi=Math.floor(m/100); MK.lo=m%100; mkPaint(); }
+  mkPaintStatus();
+}
+function mkDown(i,e){
+  if(MK.timers[i]){ clearTimeout(MK.timers[i]); MK.timers[i]=0; }
+  const el=e.currentTarget; try{ el.setPointerCapture(e.pointerId); }catch(x){}
+  const r=el.getBoundingClientRect(), sc=r.height>0?r.height/240:1;
+  MK.drag={i:i,y0:e.clientY,v0:mkVal(i),lastY:e.clientY,lastT:Date.now(),vel:0,moved:false,top:r.top,sc:sc};
+  MK.dragI=i; MK.off=0; MK.flash=null; MK.hint='';
+}
+function mkMove(i,e){
+  const d=MK.drag; if(!d||d.i!==i)return;
+  const t=Date.now(), dy=(e.clientY-d.y0)/d.sc;
+  if(Math.abs(dy)>4)d.moved=true;
+  const dt=t-d.lastT; if(dt>0){ d.vel=0.7*(((e.clientY-d.lastY)/d.sc)/dt)+0.3*d.vel; d.lastY=e.clientY; d.lastT=t; }
+  MK.off=-dy/48; mkPaintDrum(i);
+}
+function mkUp(i,e,cancel){
+  const d=MK.drag; if(!d||d.i!==i)return;
+  MK.drag=null;
+  let v=d.v0, steps=0;
+  if(!d.moved&&!cancel){ steps=Math.round(((e.clientY-d.top)/d.sc-120)/48); }
+  else { v=d.v0+Math.round(MK.off||0); if(Date.now()-d.lastT<90&&Math.abs(d.vel)>0.3)steps=Math.round(-d.vel*7); }
+  MK.dragI=-1; MK.off=0;
+  mkSetV(i,v); mkPaintDrum(i);
+  mkSpin(i,v,Math.max(-40,Math.min(40,steps)),mkSettle);
+}
+function mkWheel(i,e){ const t=Date.now(); if(MK._wt&&t-MK._wt<70)return; MK._wt=t; mkSpin(i,mkVal(i),e.deltaY>0?1:-1,mkSettle); }
+function mkGoTo(pos){
+  const m=/^([A-Z])(\d{4})$/.exec(String(pos||'')); if(!m)return;
+  const li=LS.indexOf(m[1]), n=+m[2], tHi=Math.floor(n/100), tLo=n%100;
+  const fwd=posValSafe(pos)>=posValSafe(mkPos());
+  let dL=(((li-MK.L)%26)+26)%26; if(dL>13)dL-=26;
+  const dH=fwd?(((tHi-MK.hi)%11)+11)%11:-((((MK.hi-tHi)%11)+11)%11);
+  const dLo=fwd?(((tLo-MK.lo)%100)+100)%100:-((((MK.lo-tLo)%100)+100)%100);
+  MK.hint=''; MK.hintOff=null; MK.allowOff=false;
+  mkSpin(0,MK.L,dL); mkSpin(1,MK.hi,dH); mkSpin(2,MK.lo,dLo);
+}
+function mkNudge(a){
+  const pos=mkPos();
+  if(a==='p1'||a==='p5'){ let nx=[]; try{ nx=nextActive(pos,a==='p1'?1:5)||[]; }catch(e){} if(nx.length)mkGoTo(nx[nx.length-1]); }
+  else if(a==='nl'){ const L=LS[(MK.L+1)%26]; let a1=null; try{ const arr=ACTIVE[L]; a1=arr&&arr.length?arr[0]:4800; }catch(e){ a1=4800; } mkGoTo(L+a1); }
+  else if(a==='back'){ const cur=curBoard(); let p=cur; if(!p){ try{ p=OPENP(); }catch(e){} } if(p)mkGoTo(p); }
+}
+function mkFlash(cls,txt,ms){ MK.flash={cls:cls,txt:txt}; mkPaintStatus(); clearTimeout(MK.ft); MK.ft=setTimeout(function(){ MK.flash=null; mkPaintStatus(); },ms||3200); }
+function doMark(){
+  if(guest())return;
+  if(!liveOK()){ mkFlash('bad','The board is closed for marks right now'); return; }
+  const pos=mkPos(), cur=curBoard();
+  if(cur&&cur===pos){ mkFlash('','The board is already on '+pos); return; }
+  if(cur&&posValSafe(pos)<posValSafe(cur)){ mkFlash('bad','That’s behind the board ('+cur+') — a bad mark? Take yours back from the timeline, or the council strikes it.',5200); return; }
+  if(!isCard(pos.charAt(0),+pos.slice(1))&&!MK.allowOff){ mkSettle(); return; }
+  const tag=MK.note||'';
+  let r=false; try{ r=submitLiveCall(pos,'mark',tag); }catch(e){}
+  if(r===true){
+    MK.note=''; const slot=slotOf(Date.now()), ticket=!!me();   /* the server only draws marks that carry an owner */
+    if(ticket)(DP._myTickets=DP._myTickets||{})[slot]=true;
+    mkFlash('ok','MARKED '+pos+(tag?' · '+tag:'')+(ticket?' · you’re in the '+tmS(slot)+' draw':' · sign in to ride the draw'),4000);
+    try{ if(typeof buzz==='function')buzz(25); }catch(e){}
+    try{ if(typeof tallyAdd==='function')tallyAdd('marks_board'); }catch(e){}
+    dpRefresh(); markHeader();
+    setTimeout(function(){ if(MK.flash&&MK.flash.cls==='ok')closeMark(); },1500);
+  }
+  else if(r==='far'){ mkFlash('warn','HELD — '+pos+' is past the line of fire. It posts if the board works up close.',5200); }
+  else if(r==='same'){ mkFlash('','The board is already on '+pos); }
+  else if(r==='behind'){ mkFlash('bad','The board is already past '+pos); }
+  else { mkFlash('bad',pos+' isn’t a card the board can be on'); }
+}
+
+/* ── LOG JOBS: the number pad (what most people use) and the clicker (one tap per job, like the hand
+   counters some casuals carry at the hall). Either one ends in the same LOG: dropReport(n,kind) in the main
+   script — the Drop Log's own path, so the pay (+PAY.DROP), the one-call-a-wave rule, the wire and the call
+   all behave exactly as they always have. The clicker's count lives on this phone per board (K('dpclick')),
+   so closing the sheet mid-call doesn't lose it. ── */
+const LG={mode:'num',num:'',kind:null,page:0,flash:null,ft:0,earned:0,ek:''};
+const LG_PAGES=[
+  {cols:3,k:KINDS_A,nav:'MORE ▾'},
+  {cols:3,k:KINDS_B,nav:'MORE ▾'},
+  {cols:4,k:['KH','TOP','SIDE','RAIL','BULL','HL','JIT','CY','SWMP','GEAR'],nav:'◂ BACK'}
+];
+function logIsOpen(){ const s=document.getElementById('dpLog'); return !!(s&&s.classList.contains('on')); }
+function lgKey(){ try{ return dropKey(); }catch(e){ return ''; } }
+function clickKey(){ try{ return K('dpclick'); }catch(e){ return 'shadowhook_dpclick'; } }
+function clickGet(){ try{ const o=JSON.parse(localStorage.getItem(clickKey())||'null'); if(o&&o.k===lgKey())return Math.max(0,Math.min(9999,+o.n||0)); }catch(e){} return 0; }
+function clickSet(n){ try{ localStorage.setItem(clickKey(),JSON.stringify({k:lgKey(),n:Math.max(0,Math.min(9999,n|0))})); }catch(e){} }
+function lgCount(){ return LG.mode==='clk'?clickGet():(parseInt(LG.num||'0',10)||0); }
+function lgPay(){ try{ return (window.PAY&&PAY.DROP)||3; }catch(e){ return 3; } }
+function openLog(mode){
+  if(guest())return;
+  if(!dropOK()){ say('The job log opens with the flex call'); return; }
+  const s=sheetEl('dpLog','dp-logsheet',74);
+  if(!s.firstChild)buildLog(s);
+  if(LG.ek!==lgKey()){ LG.ek=lgKey(); LG.earned=0; }
+  LG.mode=(mode==='clk')?'clk':'num'; LG.flash=null;
+  logPaint(true); s.classList.add('on');
+}
+DP.openLog=openLog;
+function closeLog(){ const s=document.getElementById('dpLog'); if(s)s.classList.remove('on'); }
+function buildLog(s){
+  const keys=['1','2','3','4','5','6','7','8','9','C','0','DEL'];
+  s.innerHTML='<div class="sheet-card dp-lg-card" role="dialog" aria-label="Log jobs">'
+    +'<div class="dp-grip"></div>'
+    +'<div class="dp-mk-hd"><span class="t">LOG JOBS</span><span class="dp-lg-tot">down so far <b id="dpLgTot">0</b></span><span class="dp-paypill" id="dpLgPay"></span></div>'
+    +'<div class="dp-seg" role="tablist"><button type="button" role="tab" data-lg="tab" data-m="num">NUMBER PAD</button><button type="button" role="tab" data-lg="tab" data-m="clk">CLICKER</button></div>'
+    +'<div class="dp-lg-pad">'
+      +'<div class="dp-lg-numwrap"><div class="dp-lg-num"><b id="dpLgNum">0</b><i class="caret"></i><span>how many came down</span></div>'
+        +'<div class="dp-keys">'+keys.map(k=>'<button type="button" data-lg="key" data-v="'+k+'" class="'+(k==='C'?'c':(k==='DEL'?'del':''))+'" aria-label="'+(k==='C'?'Clear':(k==='DEL'?'Delete':k))+'">'+(k==='C'?'CLEAR':(k==='DEL'?IC.del:k))+'</button>').join('')+'</div></div>'
+      +'<div class="dp-lg-clkwrap"><div class="dp-digits" id="dpLgDig" aria-live="polite"></div>'
+        +'<div class="dp-clk"><button type="button" class="sm" data-lg="minus" aria-label="Take one back">−1</button>'
+        +'<button type="button" class="big" data-lg="plus" aria-label="Count one job"><b>+1</b><span>TAP PER JOB</span></button>'
+        +'<button type="button" class="sm" data-lg="reset" aria-label="Reset the clicker">RESET</button></div></div>'
+    +'</div>'
+    +'<div class="dp-lg-sec"><span class="k">WHAT KIND</span><div class="dp-kindgrid" id="dpLgKinds"></div></div>'
+    +'<div class="dp-lg-call" id="dpLgCall"></div>'
+    +'<button type="button" class="dp-go" id="dpLgGo">'+IC.zap+'<span id="dpLgGoT">HOW MANY CAME DOWN?</span></button>'
+    +'<div class="dp-lg-note" id="dpLgNote" aria-live="polite"></div>'
+    +'</div>';
+  s.addEventListener('click',function(e){
+    const b=e.target.closest('[data-lg]'); if(!b)return;
+    const a=b.getAttribute('data-lg');
+    if(a==='tab'){ LG.mode=b.getAttribute('data-m')==='clk'?'clk':'num'; LG.flash=null; logPaint(true); }
+    else if(a==='key')lgKeyPress(b.getAttribute('data-v'));
+    else if(a==='kind'){ const v=b.getAttribute('data-v'); LG.kind=(LG.kind===v)?null:v; LG.flash=null; logPaint(); }
+    else if(a==='page'){ LG.page=(LG.page+1)%LG_PAGES.length; logPaint(); }
+    else if(a==='plus'){ clickSet(clickGet()+1); LG.flash=null; try{ if(navigator.vibrate)navigator.vibrate(8); }catch(x){} b.classList.remove('hit'); void b.offsetWidth; b.classList.add('hit'); logPaint(); }
+    else if(a==='minus'){ clickSet(clickGet()-1); logPaint(); }
+    else if(a==='reset'){ if(!b.classList.contains('arm')&&clickGet()>0){ b.classList.add('arm'); setTimeout(function(){ b.classList.remove('arm'); },2200); lgFlash('warn','Tap RESET again to zero the clicker'); return; } b.classList.remove('arm'); clickSet(0); LG.flash=null; logPaint(); }
+  });
+  s.querySelector('#dpLgGo').addEventListener('click',lgGo);
+}
+function lgKeyPress(k){
+  if(LG.mode!=='num')return;
+  if(k==='C')LG.num='';
+  else if(k==='DEL')LG.num=LG.num.slice(0,-1);
+  else if(/^\d$/.test(k)){ if(LG.num.length>=4)return; LG.num=(LG.num+k).replace(/^0+/,''); }
+  LG.flash=null; logPaint();
+}
+function lgFlash(cls,txt,ms){ LG.flash={cls:cls,txt:txt}; logPaint(); clearTimeout(LG.ft); LG.ft=setTimeout(function(){ LG.flash=null; if(logIsOpen())logPaint(); },ms||3400); }
+function logPaint(full){
+  const s=document.getElementById('dpLog'); if(!s||!s.firstChild)return;
+  const card=s.querySelector('.dp-lg-card');
+  card.classList.toggle('clk',LG.mode==='clk');
+  s.querySelectorAll('[data-lg="tab"]').forEach(b=>{ const on=b.getAttribute('data-m')===LG.mode; b.classList.toggle('on',on); b.setAttribute('aria-selected',String(on)); });
+  const k=lgKey(), B=k?boardData(k):null;
+  const tot=document.getElementById('dpLgTot'); if(tot)tot.textContent=fmt(B?(B.drops.total||0):0);
+  const pay=document.getElementById('dpLgPay'); if(pay)pay.textContent=LG.earned?('+'+LG.earned+' ⬡ EARNED'):('+'+lgPay()+' ⬡ A CATCH');
+  const nb=document.getElementById('dpLgNum'); if(nb){ nb.textContent=LG.num||'0'; nb.classList.toggle('dim',!LG.num); }
+  const dg=document.getElementById('dpLgDig');
+  if(dg){ const n=clickGet(), str=String(n).padStart(4,'0'), first=str.search(/[1-9]/);
+    dg.innerHTML=str.split('').map((d,i)=>'<span class="'+(first>=0&&i>=first?'on':'')+'">'+d+'</span>').join('');
+    dg.setAttribute('aria-label',n+' counted'); }
+  /* kinds */
+  const pg=LG_PAGES[LG.page]||LG_PAGES[0], kg=document.getElementById('dpLgKinds');
+  if(kg){ kg.style.gridTemplateColumns='repeat('+pg.cols+',minmax(0,1fr))'; kg.classList.toggle('four',pg.cols===4);
+    kg.innerHTML=pg.k.map(c=>'<button type="button" data-lg="kind" data-v="'+h(c)+'" class="'+(LG.kind===c?'on':'')+'" aria-pressed="'+(LG.kind===c)+'">'+h(kname(c))+'</button>').join('')
+      +'<button type="button" data-lg="page" class="dp-kpg">'+h(pg.nav)+(LG.kind&&pg.k.indexOf(LG.kind)<0?' <em>· '+h(kname(LG.kind))+'</em>':'')+'</button>'; }
+  /* the call it lands on — the clock decides, same as the Drop Log always has */
+  let ph='FLEX'; try{ ph=dropPhase(Date.now()); }catch(e){}
+  const cr=document.getElementById('dpLgCall');
+  if(cr){ const est=LG.kind==='EST';
+    cr.classList.toggle('est',est);
+    cr.innerHTML='<span class="k">CALL</span><div class="segs">'+['FLEX','1ST','2ND'].map(w=>'<span class="'+(w===ph?'on':'')+'">'+(w===ph?w+' · NOW':w)+'</span>').join('')+'</div>'
+      +'<span class="by">'+(est?'whole board so far':'by the clock')+'</span>'; }
+  /* the button */
+  const n=lgCount(), ready=n>0&&!!LG.kind, go=document.getElementById('dpLgGo'), gt=document.getElementById('dpLgGoT');
+  if(gt)gt.textContent=!n?'HOW MANY CAME DOWN?':(!LG.kind?'PICK WHAT KIND':('LOG '+(LG.kind==='EST'?'~':'+')+fmt(n)+' '+kname(LG.kind).toUpperCase()+(LG.kind==='EST'?'':' · '+ph)));
+  if(go)go.classList.toggle('ready',ready);
+  /* the line under it: what just happened, or the last call on the wire */
+  const note=document.getElementById('dpLgNote');
+  if(note){
+    if(LG.flash){ note.className='dp-lg-note '+LG.flash.cls; note.textContent=LG.flash.txt; }
+    else { note.className='dp-lg-note';
+      const L=B?jobsOnly(B.drops.list):[], r=L.length?L.reduce((a,b)=>b.ts>a.ts?b:a):null;
+      note.textContent=r?('last: '+(r.cat==='EST'?'~':'+')+fmt(r.n)+' '+kname(r.cat)+' · '+tm(r.ts)+' · '+(r.mine?'you':(r.by_handle||'a casual'))+(r.backed>1?' · backed ×'+r.backed:'')):'nothing logged yet — the first ear on the speaker'; }
+  }
+}
+function lgGo(){
+  if(guest())return;
+  if(!dropOK()){ lgFlash('bad','The job log is closed — the dispatch window is over'); return; }
+  const n=lgCount();
+  if(!n){ lgFlash('warn',LG.mode==='clk'?'Click once per job first, then LOG':'Type how many came down first'); return; }
+  if(!LG.kind){ lgFlash('warn','Pick what kind came down'); return; }
+  if(n>5000){ lgFlash('warn','That’s more than a board ever drops — check the number'); return; }
+  const kind=LG.kind, sign=(kind==='EST'?'~':'+');
+  let r={ok:false,why:'err'};
+  try{ r=dropReport(n,kind,{quiet:true})||r; }catch(e){ r={ok:false,why:'err'}; }
+  if(r.ok){
+    LG.earned+=lgPay();
+    if(LG.mode==='clk')clickSet(0); else LG.num='';
+    LG.kind=null; LG.page=0;
+    let w=''; try{ w=kind==='EST'?'':' · '+wave(r.d&&r.d.ph||dropPhase(Date.now())); }catch(e){}
+    lgFlash('ok',sign+fmt(n)+' '+kname(kind)+w+' logged · +'+lgPay()+' ⬡',3800);
+    dpRefresh();
+  }
+  else if(r.why==='dup'){ if(LG.mode==='num')LG.num=''; lgFlash('warn',sign+fmt(n)+' '+kname(kind)+' is already in this wave — counted once',4200); }
+  else if(r.why==='n'){ lgFlash('warn','That number doesn’t look right — 1 to 5,000'); }
+  else if(r.why==='guest'){ closeLog(); }
+  else lgFlash('bad','That didn’t log — check your signal and try again');
+}
+/* a keyboard works too (desktop, or a phone with one) */
+document.addEventListener('keydown',function(e){
+  if(!logIsOpen())return;
+  const t=e.target; if(t&&/INPUT|TEXTAREA|SELECT/.test(t.tagName))return;
+  if(LG.mode==='num'&&/^\d$/.test(e.key)){ e.preventDefault(); lgKeyPress(e.key); }
+  else if(LG.mode==='num'&&e.key==='Backspace'){ e.preventDefault(); lgKeyPress('DEL'); }
+  else if(LG.mode==='clk'&&(e.key===' '||e.key==='+')){ e.preventDefault(); clickSet(clickGet()+1); logPaint(); }
+  else if(e.key==='Enter'){ e.preventDefault(); lgGo(); }
+  else if(e.key==='Escape'){ e.stopImmediatePropagation(); closeLog(); }
+});
+
+/* ── THE COUNCIL'S PRE-POST: what the casuals type into the Facebook pre-post every board, kept per board in
+   dispatch_posts (k = the board key). Only a key opens it — the wire refuses everyone else (shk_is_km). The
+   know-before-you-go block (safety · directions · phones · the hall) is ONE row, '_kbyg', shown on every board. ── */
+function openEdit(k){
+  if(!k)return;
+  if(!isKm()){ say('Only the council can fill in the pre-post'); return; }
+  try{ const ps=document.getElementById('dpPhones'); if(ps)ps.classList.remove('on'); }catch(e){}
+  const s=sheetEl('dpEdit','dp-edsheet',77);
+  const F=postFields(k), KB=kbyg(), H=KB.hall||{};
+  const app=(function(){ try{ return startOf(k,null)||''; }catch(e){ return ''; } })();
+  const fin=(Array.isArray(F.finishes)?F.finishes:String(F.finishes||'').split(/\n/)).map(x=>String(x).trim()).filter(Boolean).join('\n');
+  const ph=(Array.isArray(KB.phones)?KB.phones:[]).map(p=>(p.l||'')+' | '+(p.n||'')).join('\n');
+  const inp=(f,lab,v,o)=>'<label class="dp-ed-f'+((o&&o.wide)?' wide':'')+'"><span>'+lab+(o&&o.em?' <em>'+o.em+'</em>':'')+'</span><input type="text" data-f="'+f+'" value="'+h(v==null?'':v)+'"'+((o&&o.num)?' inputmode="numeric" maxlength="6"':'')+((o&&o.ph)?' placeholder="'+h(o.ph)+'"':'')+((o&&o.max)?' maxlength="'+o.max+'"':'')+((o&&o.caps)?' autocapitalize="characters"':'')+' autocomplete="off"></label>';
+  s.innerHTML='<div class="sheet-card dp-ed-card" role="dialog" aria-label="Fill in the pre-post">'
+    +'<div class="dp-grip"></div>'
+    +'<div class="dp-mk-hd"><span class="t">THE PRE-POST</span><span class="dp-ed-for">'+h(kTitle(k))+' · '+h(kDate(k))+'</span></div>'
+    +'<p class="dp-ed-sub">The numbers the hall posts before every board. Fill what you know — blank stays blank, and every phone sees it the moment you save.</p>'
+    +'<div class="dp-ed-grid">'
+      +inp('start','STARTING',F.start,{ph:app||'Z4890',max:6,caps:true})
+      +inp('final','FINAL',F.final,{num:true})
+      +inp('comebacks','COMEBACKS',F.comebacks,{num:true})
+      +inp('bighall','BIG HALL',F.bighall,{num:true})
+      +inp('total','TOTAL',F.total,{num:true})
+      +inp('pred','PREDICTION',F.pred,{max:24,ph:'Show up'})
+    +'</div>'
+    +'<div class="dp-ed-chips"><button type="button" data-pred="Show up">SHOW UP</button><button type="button" data-pred="Long shot">LONG SHOT</button><button type="button" data-pred="Stay home">STAY HOME</button></div>'
+    +'<label class="dp-ed-f wide"><span>SCHEDULED FINISHES <em>one per line</em></span><textarea data-f="finishes" rows="4" placeholder="CSCL SUMMER&#10;PLUMERIA LEADER st/fin">'+h(fin)+'</textarea></label>'
+    +'<details class="dp-ed-kb"><summary>KNOW BEFORE YOU GO <em>· rides every board</em></summary>'
+      +inp('k_safety','SAFETY CODES LINK',KB.safety,{wide:true,ph:'https://…'})
+      +inp('k_directions','DIRECTIONS LINK',KB.directions,{wide:true,ph:'https://…'})
+      +'<label class="dp-ed-f wide"><span>PHONE NUMBERS <em>label | number · one per line</em></span><textarea data-f="k_phones" rows="5">'+h(ph)+'</textarea></label>'
+      +inp('k_hname','THE HALL',H.name,{wide:true,ph:'name'})
+      +inp('k_haddr','ADDRESS',H.addr,{wide:true,ph:'street, city'})
+      +inp('k_hphone','HALL PHONE',H.phone,{wide:true,ph:'(310) …'})
+    +'</details>'
+    +'<div class="dp-ed-msg" id="dpEdMsg" aria-live="polite"></div>'
+    +'<button type="button" class="dp-go ready" id="dpEdSave">'+IC.pen+'<span>SAVE THE PRE-POST</span></button>'
+    +'<button type="button" class="btn-ghost dp-close" data-dpx="1">Never mind</button>'
+    +'</div>';
+  s.querySelectorAll('[data-pred]').forEach(b=>b.addEventListener('click',function(){ const i=s.querySelector('[data-f="pred"]'); if(i)i.value=b.getAttribute('data-pred'); }));
+  s.querySelector('#dpEdSave').addEventListener('click',function(){ saveEdit(k,s,this); });
+  s.classList.add('on');
+}
+DP.openEdit=openEdit;
+async function saveEdit(k,s,btn){
+  const msg=s.querySelector('#dpEdMsg'), val=f=>{ const e=s.querySelector('[data-f="'+f+'"]'); return e?String(e.value||'').trim():''; };
+  const bad=t=>{ if(msg){ msg.className='dp-ed-msg bad'; msg.textContent=t; } };
+  const start=val('start').toUpperCase();
+  if(start&&!/^[A-Z]\d{4}$/.test(start)){ bad('STARTING is a card — a letter and four digits, like Z4890'); return; }
+  const F={};
+  if(start)F.start=start;
+  ['final','comebacks','bighall','total'].forEach(f=>{ const v=val(f); if(!v)return; const n=num(v); if(n!=null)F[f]=n; });
+  for(const f of ['final','comebacks','bighall','total']){ if(val(f)&&F[f]==null){ bad(f.toUpperCase()+' takes a number'); return; } }
+  const pred=val('pred'); if(pred)F.pred=pred.slice(0,24);
+  const fin=val('finishes').split(/\n/).map(x=>x.trim()).filter(Boolean).slice(0,24).map(x=>x.slice(0,60)); if(fin.length)F.finishes=fin;
+  /* the know-before-you-go row — only written when it actually changed */
+  const url=v=>(!v||/^https?:\/\/\S+$/i.test(v))?v:'https://'+v.replace(/^\/+/,'');
+  const KB0=kbyg();
+  const phones=val('k_phones').split(/\n/).map(x=>x.trim()).filter(Boolean).slice(0,20).map(x=>{ const m=x.split('|'); return m.length>1?{l:m[0].trim().slice(0,60),n:m.slice(1).join('|').trim().slice(0,30)}:{l:'',n:x.slice(0,30)}; }).filter(p=>p.n);
+  const KB={safety:url(val('k_safety')),directions:url(val('k_directions')),phones:phones,hall:{name:val('k_hname').slice(0,60),addr:val('k_haddr').slice(0,120),phone:val('k_hphone').slice(0,30)}};
+  const kbChanged=JSON.stringify({safety:KB0.safety||'',directions:KB0.directions||'',phones:KB0.phones||[],hall:Object.assign({name:'',addr:'',phone:''},KB0.hall||{})})!==JSON.stringify(KB);
+  if(!(window.SB&&me())){ bad('Sign in first — the pre-post rides your key'); return; }
+  btn.disabled=true; if(msg){ msg.className='dp-ed-msg'; msg.textContent='Saving…'; }
+  const by=myHandle(), at=new Date().toISOString();
+  try{
+    const rows=[{k:k,fields:F,updated_by:by,updated_at:at}];
+    if(kbChanged)rows.push({k:'_kbyg',fields:KB,updated_by:by,updated_at:at});
+    const r=await window.SB.from('dispatch_posts').upsert(rows,{onConflict:'k'});
+    if(r.error)throw r.error;
+    rows.forEach(x=>{ DP.posts[x.k]=x; });
+    try{ localStorage.setItem('shadowhook_dp_posts',JSON.stringify(DP.posts)); }catch(e){}
+    s.classList.remove('on'); say('✓ Pre-post saved — every phone sees it');
+    try{ buzz(20); }catch(e){}
+    dpRefresh(); try{ if(DP.room&&roomIsOpen())roomPaint(true); }catch(e){}
+    DP.loadPosts(true);
+  }catch(e){
+    btn.disabled=false;
+    bad(/policy|row-level|permission|denied|42501/i.test(String((e&&e.message)||e))?'The wire only takes the pre-post from a key — is this account on the council?':'That didn’t save — check your signal');
+  }
+}
+
+/* ── the phone numbers / the hall: tap to call, tap the address for the map ── */
+function openPhones(hall){
+  const KB=kbyg(), H=KB.hall||{}, s=sheetEl('dpPhones','dp-phsheet',76);
+  const tel=n=>'tel:'+String(n||'').replace(/[^\d+]/g,'');
+  let body='';
+  if(hall){
+    body=(H.addr?'<a class="dp-phrow" href="https://maps.google.com/?q='+encodeURIComponent(H.addr)+'" target="_blank" rel="noopener">'+IC.pin+'<span><b>'+h(H.addr)+'</b><em>open it in maps</em></span>'+IC.chev+'</a>':'')
+      +(H.phone?'<a class="dp-phrow" href="'+h(tel(H.phone))+'">'+IC.phone+'<span><b>'+h(H.phone)+'</b><em>call the hall</em></span>'+IC.chev+'</a>':'')
+      +(webUrl(KB.directions)?'<a class="dp-phrow" href="'+h(webUrl(KB.directions))+'" target="_blank" rel="noopener">'+IC.nav+'<span><b>Terminal directions</b><em>every gate, every pier</em></span>'+IC.chev+'</a>':'');
+  }else{
+    body=(Array.isArray(KB.phones)?KB.phones:[]).map(p=>'<a class="dp-phrow" href="'+h(tel(p.n))+'">'+IC.phone+'<span><b>'+h(p.l||p.n)+'</b><em>'+h(p.n)+'</em></span>'+IC.chev+'</a>').join('');
+  }
+  if(!body)body='<div class="dp-empty">'+IC.phone+'<b>NOTHING ON FILE</b><span>the council hasn’t added these yet</span></div>';
+  s.innerHTML='<div class="sheet-card dp-ph-card" role="dialog" aria-label="'+(hall?'The casual hall':'Phone numbers')+'">'
+    +'<div class="dp-grip"></div>'
+    +'<div class="dp-mk-hd"><span class="t">'+(hall?h(String(H.name||'THE CASUAL HALL').toUpperCase()):'PHONE NUMBERS')+'</span></div>'
+    +'<div class="dp-phlist">'+body+'</div>'
+    +(isKm()?'<button type="button" class="dp-linkish" data-dp="edit" data-k="'+h((DP.pin||pinned()).k||'')+'">'+IC.pen+' edit these</button>':'')
+    +'<button type="button" class="btn-ghost dp-close" data-dpx="1">Close</button></div>';
+  s.classList.add('on');
+}
+
+/* ── PHOTOS + CLIPS OF THE NIGHT: a still is shrunk to 1600 px (storage is the limit we're living inside); a
+   clip goes through the app's own cutting room (clipGate — ten seconds, re-cut for a phone). They land in
+   chat-media/dispatch/<board key>/ and ride the post's talk as a photo/clip row. The dispatch-janitor
+   keeps the folder under 25 GB, oldest first, and gets a nudge after every upload. ── */
+function addMedia(k){
+  if(!k)return;
+  if(guest())return;
+  if(!(window.SB&&me())){ say('Sign in first — photos ride your account'); return; }
+  let inp=document.getElementById('dpMediaIn');
+  if(!inp){ inp=document.createElement('input'); inp.type='file'; inp.id='dpMediaIn'; inp.accept='image/*,video/*'; inp.style.display='none'; document.body.appendChild(inp);
+    inp.addEventListener('change',function(){ const f=inp.files&&inp.files[0]; const kk=inp.getAttribute('data-k'); inp.value=''; if(f&&kk)mediaPicked(kk,f); }); }
+  inp.setAttribute('data-k',k);
+  inp.click();
+}
+DP.addMedia=addMedia;
+DP.composeMedia=function(k,file,kind){ composeMedia(k,file,kind||((file&&file.type&&file.type.startsWith('video'))?'video':'image')); };
+function mediaPicked(k,file){
+  const ext=String((file&&file.name)||'').split('.').pop().toLowerCase();
+  let isVid=!!(file.type&&file.type.startsWith('video'));
+  if(!isVid&&!file.type&&/^(mp4|m4v|mov|qt|webm|3gp|3gpp|ogv|mkv|avi)$/.test(ext)){   /* phones often hand a video over with no type (#vidmime) */
+    isVid=true;
+    try{ file=new File([file],file.name||('clip.'+ext),{type:(typeof mediaMime==='function')?mediaMime(file,ext,'video'):'video/mp4'}); }catch(e){}
+  }
+  if(isVid){
+    if(typeof clipGate!=='function'){ say('Clips aren’t loaded on this build — try a photo'); return; }
+    clipGate(file,function(f){ composeMedia(k,f,'video'); });
+    return;
+  }
+  if(/gif$/i.test(file.type||'')&&file.size<4*1048576){ composeMedia(k,file,'image'); return; }
+  say('Getting the shot ready…');
+  const shrink=(typeof clipShrinkImage==='function')?clipShrinkImage(file):Promise.reject(new Error('no shrink'));
+  shrink.then(function(f){ composeMedia(k,f,'image'); }).catch(function(){
+    if(file.size<=8*1048576&&!/hei[cf]/i.test(file.type||''))composeMedia(k,file,'image');
+    else say('That picture wouldn’t open here — try a screenshot of it or a JPEG');
+  });
+}
+function composeMedia(k,file,kind){
+  const s=sheetEl('dpPh','dp-phcompose',96);
+  let blob=''; try{ blob=URL.createObjectURL(file); }catch(e){}
+  s._blob=blob; s._posting=false;
+  whenClosed(s,function(){ stopMedia(s); if(!s._posting&&s._blob){ try{ URL.revokeObjectURL(s._blob); }catch(e){} } s._blob=''; s.innerHTML=''; });
+  s.innerHTML='<div class="sheet-card dp-pc-card" role="dialog" aria-label="Share it on the Dispatch Post">'
+    +'<div class="dp-grip"></div>'
+    +'<div class="dp-mk-hd"><span class="t">'+(kind==='video'?'A CLIP OF THE NIGHT':'A SHOT OF THE NIGHT')+'</span><span class="dp-ed-for">'+h(kTitle(k))+'</span></div>'
+    +'<div class="dp-pc-prev">'+(kind==='video'?'<video src="'+h(blob)+'" autoplay muted loop playsinline></video>':'<img src="'+h(blob)+'" alt="">')+'</div>'
+    +'<input type="text" class="dp-pc-cap" id="dpPcCap" maxlength="140" placeholder="Say something with it (optional)" autocomplete="off" aria-label="Caption">'
+    +'<button type="button" class="dp-go ready" id="dpPcGo">'+IC.cam+'<span>POST IT ON THE NIGHT</span></button>'
+    +'<button type="button" class="btn-ghost dp-close" data-dpx="1">Never mind</button></div>';
+  s.querySelector('#dpPcGo').addEventListener('click',function(){
+    const cap=String((s.querySelector('#dpPcCap')||{}).value||'').trim().slice(0,140);
+    s._posting=true; s.classList.remove('on');
+    uploadMedia(k,file,kind,cap,blob);
+  });
+  s.classList.add('on');
+}
+async function uploadMedia(k,file,kind,cap,blob){
+  const t=DP.talk[k]||(DP.talk[k]={rows:[],at:0});
+  const tmp={id:'tmp'+Date.now(),owner:me(),by:myHandle(),body:cap,ts:Date.now(),kind:kind,url:blob,local:true};
+  t.rows.push(tmp); dpRefresh(); try{ if(roomIsOpen())roomPaint(); }catch(e){}
+  say(kind==='video'?'Sending the clip up…':'Sending the shot up…');
+  try{
+    const ext=((file.name||'').split('.').pop()||(kind==='video'?'mp4':'jpg')).toLowerCase().replace(/[^a-z0-9]/g,'')||(kind==='video'?'mp4':'jpg');
+    const id=(typeof chatUUID==='function')?chatUUID():('m'+Date.now().toString(36)+Math.random().toString(36).slice(2,8));
+    const path='dispatch/'+k.replace(/[^A-Za-z0-9_-]/g,'_')+'/'+id+'.'+ext;
+    const body=(typeof typedUploadBody==='function')?typedUploadBody(file,ext,kind):file;
+    const type=(typeof mediaMime==='function')?mediaMime(file,ext,kind):(file.type||(kind==='video'?'video/mp4':'image/jpeg'));
+    const up=await window.SB.storage.from('chat-media').upload(path,body,{contentType:type,cacheControl:'31536000'});
+    if(up.error)throw up.error;
+    const pub=window.SB.storage.from('chat-media').getPublicUrl(path), url=pub&&pub.data&&pub.data.publicUrl;
+    if(!url)throw new Error('no public url');
+    const r=await window.SB.from('story_comments').insert({story_id:sid(k),owner:me(),by_id:(typeof ACCT_ID==='string'?ACCT_ID:''),by_handle:myHandle(),body:cap,kind:kind,url:url});
+    if(r.error)throw r.error;
+    t.rows=t.rows.filter(x=>x!==tmp);
+    say(kind==='video'?'🎬 Your clip is on the night':'📸 Your shot is on the night');
+    try{ if(typeof tallyAdd==='function')tallyAdd('dp_media'); }catch(e){}
+    DP.meta[k]=Object.assign(DP.meta[k]||{},{photos:((DP.meta[k]||{}).photos||0)+1});
+    await DP.loadTalk(k,true);
+    try{ window.SB.functions.invoke('dispatch-janitor',{body:{}}).catch(function(){}); }catch(e){}   /* keep the folder under its cap */
+  }catch(e){
+    t.rows=t.rows.filter(x=>x!==tmp);
+    const m=String((e&&(e.message||e.error))||e||'');
+    try{ if(typeof shkAlert==='function')shkAlert('dispatch-media',kind+' '+((file&&file.type)||'?')+' '+Math.round(((file&&file.size)||0)/1024)+'k → '+m.slice(0,150),''); }catch(_){}
+    say(/mime|not supported|415/i.test(m)?'That file type won’t go up — a JPEG or an MP4 will'
+      :/too large|413|exceed|maximum|size/i.test(m)?'That one’s too big to send — try a shorter clip'
+      :'That didn’t go up — check your signal and try again');
+  }
+  dpRefresh(); try{ if(roomIsOpen())roomPaint(); }catch(e){}
+  setTimeout(function(){ try{ if(blob)URL.revokeObjectURL(blob); }catch(e){} },8000);   /* the optimistic row is gone by now */
+}
+
+/* ── small plumbing: Close buttons, the talk while the room is open, and the first paint ── */
+document.addEventListener('click',function(e){ const x=e.target.closest&&e.target.closest('[data-dpx]'); if(!x)return; const sh=x.closest('.sheet'); if(sh)sh.classList.remove('on'); });
+document.addEventListener('keydown',function(e){
+  if(e.key!=='Escape')return;
+  const open=['dpPh','dpPhones','dpEdit','dpMark','dpRoom'].map(id=>document.getElementById(id)).filter(s=>s&&s.classList.contains('on'));
+  if(open.length&&!logIsOpen()){ open[0].classList.remove('on'); }
+});
+setInterval(function(){   /* the room keeps its talk fresh while it's open on screen (the talk has no realtime feed) */
+  if(document.visibilityState!=='visible'||!DP.room||!roomIsOpen())return;
+  try{ DP.loadTalk(DP.room.k,true); }catch(e){}
+},12000);
+try{ DP.loadPosts(false); }catch(e){}
+setTimeout(function(){
+  try{ const f=document.getElementById('socialFeed'); if(f&&f.innerHTML&&typeof renderSocialFeed==='function')renderSocialFeed(); }catch(e){}
+  try{ wireStrip(); }catch(e){}
+  try{ dpKick(); }catch(e){}
+},700);
+
+}catch(e){ try{ console.warn("[dispatch post] failed to start",e); if(typeof shkAlert==="function")shkAlert("dispatch-post",String((e&&e.message)||e).slice(0,160),""); }catch(_){} }
+})();
 </script>
 </body>
 </html>
