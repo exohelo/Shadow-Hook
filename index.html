@@ -8,7 +8,10 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct7mediaretry';   /* oct 7 (54th) — a photo or clip on the Dispatch Post no longer dies on one signal blip: the upload and the post each try three times, an upload that landed but lost its answer counts as done, and the alarm says which step failed (#mediaretry). */
+window.SHK_BUILD='oct7nockin';   /* oct 7 (57th) — the dispatch sheet (final and early look) no longer shows CHECK-IN FORECAST · BIG HALL CHECK-IN (#nockin). */
+/* was: oct7roompull */   /* oct 7 (56th) — PULL DOWN TO CLOSE: drag an open Dispatch Post down from its top bar (or anywhere while it's scrolled to the top) and it closes back to The Hall; a short pull springs back; a grab bar at the top shows it (#roompull). */
+/* was: oct7roomswipe */   /* oct 7 (55th) — SWIPE BETWEEN BOARDS: on an open Dispatch Post, drag right for the board before and left for the board after (same as the ‹ › buttons); short drags spring back, sideways strips and text boxes keep their own swipes (#roomswipe). */
+/* was: oct7mediaretry */   /* oct 7 (54th) — a photo or clip on the Dispatch Post no longer dies on one signal blip: the upload and the post each try three times, an upload that landed but lost its answer counts as done, and the alarm says which step failed (#mediaretry). */
 /* was: oct7nodirections */   /* oct 7 (53rd) — the Casual Hall sheet on the Dispatch Post shows the address and the phone only; Terminal directions is off it (#nodirections). */
 /* was: oct7nostart */   /* oct 7 (52nd) — NO SEAL, NO STARTING CARD: the Dispatch Post's STARTING tile stays blank ("waiting on the day board's end") until the board before it is sealed, and the "N letters from the start" line waits with it (#nostart). */
 /* was: oct7holdcall */   /* oct 7 (51st) — STICK TO YOUR GUNS: once dispatch starts, the predicted stop holds at the last call made before the flex call — drops, the live anchor and the clock no longer move it; a phone opening mid-dispatch figures once without the live read and holds that (#holdcall — CALL_HOLD brings the moving call back). */
@@ -19813,7 +19816,8 @@ function xpSheet(d,label,key,noTiles){
       +'<span><em style="background:var(--neon-v,#7b5cff)"></em>come-backs<b>'+_n(L[1])+'</b></span>'
       +'<span><em style="background:var(--neon2,#ff4dd2)"></em>steady<b>'+_n(L[2])+'</b></span></div></div>';
   }
-  if(ci)h+='<div class="xs-lbl" style="justify-content:center">'+(ci.actual?'CHECK-IN':ci.crowd?'CHECK-IN · REPORTED':'CHECK-IN FORECAST')+'</div><div class="xs-ci"><span>BIG HALL CHECK-IN<b>'+(ci.actual||ci.crowd?'':'~')+_n(ci.T||(ci.A+ci.B))+'</b></span></div>';
+  /* #nockin(oct7) — the CHECK-IN FORECAST · BIG HALL CHECK-IN pill is off the dispatch sheet by request */
+  if(false&&ci)h+='<div class="xs-lbl" style="justify-content:center">'+(ci.actual?'CHECK-IN':ci.crowd?'CHECK-IN · REPORTED':'CHECK-IN FORECAST')+'</div><div class="xs-ci"><span>BIG HALL CHECK-IN<b>'+(ci.actual||ci.crowd?'':'~')+_n(ci.T||(ci.A+ci.B))+'</b></span></div>';
   if(t.casual.length||t.members.length){
     const max=Math.max(1,...rows.map(x=>x[1]));
     rows.forEach(([k,n])=>{const pct=Math.round(n/max*100);
@@ -57569,6 +57573,9 @@ html.daylight .dp-gt{box-shadow:none}
 #dpRoom .dp-room-card{display:flex;flex-direction:column;padding:0;max-width:520px;overflow:hidden;
   height:calc(100% - 14px);height:calc(100% - max(14px,env(safe-area-inset-top)));max-height:none}
 .dp-rm-top{flex:none;display:flex;align-items:center;gap:10px;padding:12px 14px 10px;border-bottom:1px solid var(--line-soft)}
+/* #roompull — the grab bar says the sheet pulls down */
+.dp-rm-top{position:relative;padding-top:18px}
+.dp-rm-top::before{content:'';position:absolute;top:6px;left:50%;width:40px;height:4px;margin-left:-20px;border-radius:99px;background:var(--line);opacity:.9}
 .dp-rm-x{flex:none;width:42px;height:42px;border-radius:12px;border:1px solid var(--line);background:var(--bubble);color:var(--bone);display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer}
 .dp-rm-x svg{width:18px;height:18px}
 .dp-rm-nav{flex:none;display:flex;gap:4px}
@@ -58692,6 +58699,80 @@ function openRoom(k,phase,tab){
       /* a correction on a board that's already over: pull its record again once the wire has it */
       try{ if(R&&R.k!==dropKey())[1500,4000,9000].forEach(function(t){ setTimeout(function(){ DP.loadRecords([R.k],true); },t); }); }catch(_){}
     });
+    /* ═══ #roomswipe(oct7) — SWIPE BETWEEN BOARDS. "Can I just swipe left and right to change days?" Drag the post
+       sideways: right → the board before, left → the board after (the same moves as the ‹ › buttons up top, so
+       everything they do — the phase, the tab you're on — comes along). The page follows your finger a little and
+       springs back if you let go short, or if there's no board that way. A drag that starts on something that
+       scrolls sideways itself (the gallery strip, the rail, a photo) or in a text box is left alone, and a mostly
+       up-and-down drag is just scrolling. ═══ */
+    (function(){
+      let x0=0,y0=0,t0=0,dx=0,axis=0,on=false;
+      const SKIP='input,textarea,select,video,.dp-rail,.dp-gal,.dp-gstrip,.dp-hours,.dp-chips,[data-noswipe]';
+      const sideScroller=el=>{ for(let n=el;n&&n!==body;n=n.parentElement){ if(n.scrollWidth>n.clientWidth+4){ const ox=getComputedStyle(n).overflowX; if(ox==='auto'||ox==='scroll')return true; } } return false; };
+      const reset=anim=>{ body.style.transition=anim?'transform .22s cubic-bezier(.2,.8,.2,1)':''; body.style.transform=''; };
+      body.addEventListener('touchstart',function(e){
+        if(e.touches.length!==1){ on=false; return; }
+        const t=e.target; if(t.closest&&t.closest(SKIP)){ on=false; return; } if(sideScroller(t)){ on=false; return; }
+        x0=e.touches[0].clientX; y0=e.touches[0].clientY; t0=Date.now(); dx=0; axis=0; on=true; body.style.transition='';
+      },{passive:true});
+      body.addEventListener('touchmove',function(e){
+        if(!on)return; const X=e.touches[0].clientX-x0, Y=e.touches[0].clientY-y0;
+        if(!axis){ if(Math.abs(X)<10&&Math.abs(Y)<10)return; axis=(Math.abs(X)>Math.abs(Y)*1.4)?1:2; }
+        if(axis!==1)return;
+        dx=X; body.style.transform='translateX('+(dx*0.35).toFixed(1)+'px)';
+      },{passive:true});
+      const end=function(){
+        if(!on)return; on=false; if(axis!==1){ return; }
+        const fast=Math.abs(dx)/Math.max(1,Date.now()-t0)>0.45, far=Math.abs(dx)>Math.min(110,body.clientWidth*0.28);
+        const which=dx>0?'prev':'next', btn=(fast&&Math.abs(dx)>40)||far?s.querySelector('#dpRoomTop [data-dp="'+which+'"]'):null;
+        if(!btn){ reset(true); if(Math.abs(dx)>60)try{ say(dx>0?'That’s as far back as the post goes':'That’s the board up next — nothing after it yet'); }catch(_){} return; }
+        const out=dx>0?1:-1, k0=DP.room&&DP.room.k;
+        body.style.transition='transform .16s ease-in, opacity .16s ease-in'; body.style.transform='translateX('+(out*40)+'px)'; body.style.opacity='.35';
+        setTimeout(function(){
+          btn.click();
+          const moved=DP.room&&DP.room.k!==k0;
+          body.style.transition=''; body.style.transform='translateX('+(moved?-out*40:0)+'px)';
+          requestAnimationFrame(function(){ body.style.transition='transform .24s cubic-bezier(.2,.8,.2,1), opacity .2s ease-out'; body.style.transform=''; body.style.opacity=''; });
+          if(moved)body.scrollTop=0;
+          try{ buzz(8); }catch(_){}
+        },150);
+      };
+      body.addEventListener('touchend',end,{passive:true});
+      body.addEventListener('touchcancel',function(){ on=false; reset(true); },{passive:true});
+    })();
+    /* ═══ #roompull(oct7) — PULL DOWN TO CLOSE. Drag the post down from its top bar — or from anywhere on it while
+       it's scrolled to the top — and the whole sheet follows your finger; let go past about a fifth of the screen
+       (or flick it) and it closes back to The Hall, short of that it springs back up. Scrolled down, a downward
+       drag is just scrolling back up. The chat box and the dock at the bottom never start a pull. ═══ */
+    (function(){
+      const card=s.querySelector('.dp-room-card'), top=s.querySelector('#dpRoomTop');
+      let y0=0,x0=0,t0=0,dy=0,axis=0,on=false;
+      card.addEventListener('touchstart',function(e){
+        on=false; if(e.touches.length!==1)return;
+        const t=e.target; if(t.closest&&t.closest('#dpRoomDock,input,textarea,select'))return;
+        const fromTop=!!(t.closest&&t.closest('#dpRoomTop'));
+        if(!fromTop&&body.scrollTop>2)return;
+        y0=e.touches[0].clientY; x0=e.touches[0].clientX; t0=Date.now(); dy=0; axis=0; on=true; card.style.transition='';
+      },{passive:true});
+      card.addEventListener('touchmove',function(e){
+        if(!on)return; const Y=e.touches[0].clientY-y0, X=e.touches[0].clientX-x0;
+        if(!axis){ if(Math.abs(X)<10&&Math.abs(Y)<10)return; axis=(Y>0&&Y>Math.abs(X)*1.4)?2:3; if(axis!==2){ on=false; return; } }
+        if(body.scrollTop>2&&!(e.target.closest&&e.target.closest('#dpRoomTop'))){ on=false; card.style.transform=''; return; }
+        dy=Math.max(0,Y); if(e.cancelable)e.preventDefault();   /* the page under it stays put */
+        card.style.transform='translateY('+(dy<160?dy:160+(dy-160)*0.6).toFixed(1)+'px)';
+      },{passive:false});
+      const done=function(){
+        if(!on)return; on=false; if(axis!==2)return;
+        const fast=dy/Math.max(1,Date.now()-t0)>0.6&&dy>50, far=dy>Math.max(110,(s.clientHeight||700)*0.2);
+        if(fast||far){
+          card.style.transition='transform .22s cubic-bezier(.4,0,1,1)'; card.style.transform='translateY(110%)';
+          setTimeout(function(){ closeRoom(); card.style.transition='none'; card.style.transform=''; requestAnimationFrame(function(){ card.style.transition=''; }); },200);
+          try{ buzz(8); }catch(_){}
+        }else{ card.style.transition='transform .26s cubic-bezier(.2,.8,.2,1)'; card.style.transform=''; }
+      };
+      card.addEventListener('touchend',done,{passive:true});
+      card.addEventListener('touchcancel',function(){ on=false; card.style.transition='transform .2s'; card.style.transform=''; },{passive:true});
+    })();
   }
   DP._galEdit=false;
   roomPaint(true);
