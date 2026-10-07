@@ -8,7 +8,8 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct7onenum';   /* oct 7 (48th) — ONE NUMBER PER BOARD: the day sheet no longer shows "you actually get a job" beside the board's reach (it was reach × the share of called cards that came down, mostly no-shows, so it read 100% next to 11%); each board shows the chance it calls your card (#onenum). */
+window.SHK_BUILD='oct7freezefix';   /* oct 7 (49th) — FOUR FREEZES OFF THE ALARMS: the camera's light/glare meter shrinks the frame on the GPU, backs off when slow and stops at the shutter (3 s stalls on iPhone, #meterlite); the board alert speaks through the Dispatch Bot when the app's on screen instead of calling the phone's notifier, which froze Safari 5.6 s (#quietbuzz); the PMA redraw runs its six jobs as separate steps and the record draws only on the Wire (2.4 s on the Order tab, #redrawsplit). */
+/* was: oct7onenum */   /* oct 7 (48th) — ONE NUMBER PER BOARD: the day sheet no longer shows "you actually get a job" beside the board's reach (it was reach × the share of called cards that came down, mostly no-shows, so it read 100% next to 11%); each board shows the chance it calls your card (#onenum). */
 /* was: oct7wiredesk */   /* oct 7 (47th) — THE DESK: on the Wire, the forecast, the week's calendar pages, the Up Next call and the ILWU/PMA dispatch sheet are one card — who's up, your odds, the call, the week ahead, the numbers, the paper — with the record below it (#wiredesk). The Dispatch Bot rides every tab: it slides in when it has something to say, stays as long as the words take to read (holds while you touch it), then leaves the screen; idle mumbling doesn't call it out (#botroam). */
 /* was: oct7prefill */   /* oct 7 (46th) — THE PRE-POST FILLS ITSELF: Final / Comebacks / Big Hall / Total / the scheduled finishes / the start card ride the dispatch sheet and PMA's summary (a correction on the sheet repaints the post on every phone), the prediction is the app's call (#prefill); THE COUNT slides to the new card instead of jumping; every entry can be taken back (UNDO + ✕ on your own jobs, marks, check-ins, talk and photos; the council strikes anything); the spin wheel's drums carry like a clock (A4999 → A5001, a letter's last card → the next letter's first); the post no longer blinks off and on when it repaints (its fade-in plays once); ONE dispatch post rides the Board — on top while ON AIR, filed like any post while on deck so newer posts push it down, every older board a tap away in its room (#onepost); the room's tabs read CHAT (this dispatch only) and PHOTO GALLERY — one shared wall of every dispatch's shots, rolling in a two-row marquee over a collage (#gallery). */
 /* was: oct6dispatchpost */   /* oct 6 (45th) — THE DISPATCH POST: the Drop Log and the Big Hall check-in move off the Wire into The Hall as one live post per dispatch — the pre-post on deck, ON AIR at the flex call (the count, THE RAIL of marks, what came down, LOG JOBS on a number pad or a clicker, the spin wheel MARK with a 20 ⬡ draw every 5 minutes), then the record; photos + 10-second clips on every post; drops pay 3; the log counts on PMA's scale; a MARK is exact in the live anchor (#dispatchpost). */
@@ -12101,7 +12102,7 @@ function gotoTab(name){
     /* #flyto(sep27) — checked in today? the map glides in on your dock */
     try{ const _b=document.getElementById('harborBoard'), _g=_b&&_b.classList.contains('checked-in')?_b.getAttribute('data-goto'):null;
       if(_g&&/^\d+$/.test(_g)){ let _n=0; const _try=()=>{ if(window.harborFlyTo&&harborFlyTo(+_g))return; if(++_n<8)setTimeout(_try,300); }; setTimeout(_try,380); } }catch(e){}}   /* #lazy — the vault comes up with the tab */
-  if(name==='board'){try{openPendingSheet();}catch(e){}}   // #93 — the Wire opens with the pending dispatch sheet showing
+  if(name==='board'){try{ if(window._rbStale)renderRecentBoards(); }catch(e){} try{openPendingSheet();}catch(e){}}   /* #redrawsplit — a record that went stale off-screen draws now */   // #93 — the Wire opens with the pending dispatch sheet showing
   if(name==='ports'||name==='board'){ try{ if(window.pmaPlusRender)window.pmaPlusRender(); }catch(e){} }   /* #pmaplus — In Port Today · The Hall */
   if(name==='armory'&&window.__shopStale){ window.__shopStale=false; try{ renderShop(true); }catch(e){} try{ if(gearProd)paintGear(); }catch(e){} }   /* #shopquiet */
   if(name==='armory'){try{ if(typeof sbFreshProducts==='function')sbFreshProducts(); if(typeof shopKmNote==='function')shopKmNote(); if(typeof wantLoad==='function')wantLoad(); }catch(e){}}   // #waitlist(sep19) — and your own 🔔 list, so the button knows you and a landed drop can say so   // #freshshelf(sep19) — the Armory was the one tab with no hook here: its shelf was read once at boot, so new postings never showed in an app that was already open
@@ -18381,6 +18382,20 @@ function pushOddsAlert(force){
   }
   fireOddsAlert(true);
 }
+/* ═══ #quietbuzz(oct7) — THE BUZZ FROZE THE WIRE FOR 5.6 SECONDS. THE ALARMS, oct 6 4:25 PM (SALTY_BONES_56,
+   iPhone Safari, home screen, #scr-board): "slow: timer ~_oddsAlertT=null; try{ fireOddsAlert(false); 5631ms" —
+   right after push_subs. Everything in fireOddsAlert is a few localStorage reads except the hand-off to the phone's
+   notification system, which Safari waits on with the page frozen. And a pop-up notification about the board is
+   the wrong tool when you're already looking at the app. So: app open on screen → the Dispatch Bot says it (and the
+   phone buzzes); app in the background → the real notification, as before. One alert per board either way. ═══ */
+function shkNotify(title,body,tag,vib){
+  try{ if(!document.hidden){
+    const e=x=>String(x).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    try{ if(typeof botPokeSay==='function')botPokeSay('<b>'+e(title)+'</b><br>'+e(body)); else toast(title); }catch(x){ try{toast(title);}catch(_){} }
+    try{ buzz(vib||[120,60,120]); }catch(x){}
+    return; } }catch(x){}
+  try{ if(SW_REG&&SW_REG.showNotification){ SW_REG.showNotification(title,{body:body,tag:tag,vibrate:vib||[120,60,120]}); } else { new Notification(title,{body:body,tag:tag}); } }catch(x){}
+}
 function fireOddsAlert(force){
   if(!notifyPrefOn() || typeof Notification==="undefined" || Notification.permission!=="granted") return;
   const my=myBoardId(); const od=window._lastOdds;
@@ -18414,8 +18429,7 @@ function fireOddsAlert(force){
     title="\u2693 Alerts on \u2014 I\u2019ve got you";
     body="You\u2019re set. I\u2019ll ping "+my+" when the board\u2019s coming your way, and live as it nears you during dispatch.";
   }
-  if(SW_REG&&SW_REG.showNotification){ SW_REG.showNotification(title,{body:body,tag:"shadowhook-odds",vibrate:[120,60,120]}); }
-  else { try{ new Notification(title,{body:body,tag:"shadowhook-odds"}); }catch(e){} }
+  shkNotify(title,body,"shadowhook-odds",[120,60,120]);   /* #quietbuzz */
 }
 /* #204 — LIVE PING: while dispatch runs, ping ONCE when the actual board (real member
    scans, via lastCall) comes up within ~30 active cards of your number. Rides the live-scan
@@ -18432,8 +18446,7 @@ function maybeLivePing(pos){
     const title="⚓ Board’s coming up on you";
     const body=my+" · they’re calling "+pos+", about "+Math.max(0,gap-1)+" cards out. Get to the window.";
     try{buzz([60,50,60,50,120]);}catch(e){}   /* #haptics — triple-pulse: the board is coming for YOUR card */
-    if(SW_REG&&SW_REG.showNotification)SW_REG.showNotification(title,{body:body,tag:"shadowhook-live",vibrate:[200,80,200]});
-    else{try{new Notification(title,{body:body,tag:"shadowhook-live"});}catch(e){}}
+    shkNotify(title,body,"shadowhook-live",[200,80,200]);   /* #quietbuzz */
   }catch(e){}
 }
 window.maybeLivePing=maybeLivePing;
@@ -20101,6 +20114,10 @@ function wdSeat(card){ try{
 }catch(e){ try{console.warn('wdSeat',e);}catch(_){} } }
 function renderRecentBoards(){
   if(typeof rb==="undefined"||!rb)return;
+  /* #redrawsplit(oct7) — off the Wire, the record isn't drawn: it's marked stale and drawn when the Wire opens
+     (gotoTab). The first draw always happens, so the Wire is never empty. ~30 places call this. */
+  try{ const sc=document.getElementById('scr-board'); if(window._rbDrawn&&sc&&!sc.classList.contains('on')){ window._rbStale=true; return; } }catch(e){}
+  window._rbDrawn=true; window._rbStale=false;
   rb.innerHTML='';
   wdPark(); const wdUp=document.getElementById('wdUp'); if(wdUp)wdUp.innerHTML='';
   const DAY=86400000, today=new Date(); today.setHours(12,0,0,0);
@@ -35207,7 +35224,7 @@ function shkHold(on,ms){ try{ clearTimeout(_holdT); _holdT=null; document.docume
 window.shkHold=shkHold;
 function killDocketCam(){
   camGen++; camOpening=false;                    /* #camlock — anything still waking belongs to a closed viewfinder now */
-  if(camMeter){clearInterval(camMeter);camMeter=null;}
+  if(camMeter){clearTimeout(camMeter);camMeter=null;}   /* #meterlite — a self-scheduling timeout now */
   if(camWatchdog){clearTimeout(camWatchdog);camWatchdog=null;}
   if(camVis){try{document.removeEventListener('visibilitychange',camVis)}catch(e){} camVis=null;}
   if(camStream){try{camStream.getTracks().forEach(t=>t.stop())}catch(e){} camStream=null;}
@@ -35324,10 +35341,22 @@ async function openScanCam(opts){
      brightness (too dark under ~60/255), the share of blown-out pixels (glare past
      ~10%), and the change since the last thumbnail (moving past ~10/255). Advisory
      only — the shutter never refuses. */
-  const mc=document.createElement('canvas'); mc.width=64; mc.height=48; const mx=mc.getContext('2d',{willReadFrequently:true});
+  /* #meterlite(oct7) — THE METER FROZE THE PHONE FOR 3 SECONDS A TICK. THE ALARMS, oct 6 (MAD_MORGAN_38 7:07 PM,
+     AROD73 5:17 PM, both iPhone Safari on #scr-dockets): "slow: interval ~try{ if(!vid.videoWidth)return …" at
+     3048 / 1752 / 1324 / 1197 ms. The canvas was made willReadFrequently, which on Safari puts it in CPU memory —
+     so every drawImage(video) pulled the whole ~4K camera frame off the GPU to shrink it to 64×48. Now: a plain
+     (GPU) canvas does the shrinking and only the 64×48 thumbnail is read back; each tick schedules the next one
+     (slow ticks can't pile up), a slow tick backs the meter off, two very slow ones switch it off for this
+     camera, and it stops the moment the shutter is pressed. It's advisory — the shutter never waited on it. */
+  const mc=document.createElement('canvas'); mc.width=64; mc.height=48; const mx=mc.getContext('2d');
   let lastLuma=null;
   const chip=(id,ok,txtOk,txtBad)=>{ const e=$('#'+id); if(!e)return; e.className=ok?'good':'bad'; e.textContent=ok?txtOk:txtBad; };
-  camMeter=setInterval(()=>{
+  let meterGap=350, meterSlow=0;
+  const meterTick=()=>{
+    camMeter=null;
+    if(!live()||camShooting||!o.isConnected)return;   /* the shutter's pressed or the camera's gone — the meter's done */
+    if(document.hidden){ camMeter=setTimeout(meterTick,1000); return; }
+    const t0=performance.now();
     try{
       if(!vid.videoWidth)return;
       const fr=$('#cgFrame'), ov=o; if(!fr||!ov.isConnected)return;
@@ -35346,7 +35375,14 @@ async function openScanCam(opts){
       chip('cgSteady',okS,'✋ STEADY','✋ HOLD STILL');
       fr.classList.toggle('ok',okL&&okG&&okS);
     }catch(e){}
-  },350);
+    finally{
+      const dt=performance.now()-t0;
+      if(dt>400){ if(++meterSlow>=2){ ['cgLight','cgGlare','cgSteady'].forEach(id=>{ const e=$('#'+id); if(e)e.style.display='none'; }); return; } }   /* this phone can't afford it — the coach goes quiet, the camera stays smooth */
+      meterGap=dt>60?Math.min(2000,meterGap*2):Math.max(350,meterGap-50);
+      if(live()&&!camShooting&&o.isConnected)camMeter=setTimeout(meterTick,meterGap);
+    }
+  };
+  camMeter=setTimeout(meterTick,600);
   $('#camGo').addEventListener('click',async()=>{
     if(camShooting||!camStream||!live())return; camShooting=true;
     const go=$('#camGo'); if(go)go.style.opacity=".45";
@@ -39886,13 +39922,21 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
     try{ if(typeof predScore==='function')predScore(key,p.end,true); }catch(e){}
   }
   let _rd=0, _rp=false;
+  /* #redrawsplit(oct7) — ONE TIMER, SIX JOBS, 2.4 SECONDS. THE ALARMS, oct 6 6:25 PM (EX0, Edge, #scr-order):
+     "scripts: TimerHandler:setTimeout@17277 2424ms" — character 17277 of this script is this timer. It re-ran the
+     engine, redrew the whole record, the bot, the PMA bar and The Hall in one go, on the Order tab where none of it
+     shows. Now each step is its own task (the screen gets a frame between them), and the record waits for the Wire
+     to be opened (renderRecentBoards marks itself stale off-screen). Same steps, same order. */
   function redraw(re){ if(re)_rp=true; if(_rd)return; _rd=setTimeout(function(){ _rd=0;
-    if(_rp){ _rp=false; try{ if(typeof repredict==='function')repredict(); }catch(e){} }   /* the record moved — the next call re-figures */
-    try{ if(typeof renderRecentBoards==='function')renderRecentBoards(); }catch(e){}
-    try{ if(typeof updateBabyNote==='function')updateBabyNote(); }catch(e){}
-    try{ if(typeof renderBotStatus==='function')renderBotStatus(); }catch(e){}
-    try{ if(window.pmaRenderBar)window.pmaRenderBar(); }catch(e){}
-    try{ if(window.pmaPlusRender)window.pmaPlusRender(); }catch(e){} },400); }   /* #pmaplus — In Port Today + The Hall */
+    const steps=[];
+    if(_rp){ _rp=false; steps.push(()=>{ if(typeof repredict==='function')repredict(); }); }   /* the record moved — the next call re-figures */
+    steps.push(()=>{ if(typeof renderRecentBoards==='function')renderRecentBoards(); },
+      ()=>{ if(typeof updateBabyNote==='function')updateBabyNote(); },
+      ()=>{ if(typeof renderBotStatus==='function')renderBotStatus(); },
+      ()=>{ if(window.pmaRenderBar)window.pmaRenderBar(); },
+      ()=>{ if(window.pmaPlusRender)window.pmaPlusRender(); });   /* #pmaplus — In Port Today + The Hall */
+    (function next(){ const f=steps.shift(); if(!f)return; try{ f(); }catch(e){} if(steps.length)setTimeout(next,0); })();
+  },400); }
   function applyAll(){ try{ window.pmaAssert(); }catch(e){} Object.keys(D).forEach(k=>{ try{ apply(k); }catch(e){} }); redraw(); }
 
   async function load(){
