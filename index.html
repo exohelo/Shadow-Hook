@@ -8,7 +8,8 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct7botkill';   /* oct 7 (61st) — the bot switch moves below Alerts and reads "Kill the Dispatch Bot" (on = gone) (#botkill). */
+window.SHK_BUILD='oct7grabshot';   /* oct 7 (62nd) — FREEZES OFF THE ALARMS: on iPhones the shutter grabs the slip straight off the camera already cut and sized (no 5 MB photo to decode — the 11 s stalls, #grabshot); the Hall's feed draws only on the Hall (#lazyfeed); the record builds three boards a frame and the Wire paints before a stale record catches up (#recordchunk). */
+/* was: oct7botkill */   /* oct 7 (61st) — the bot switch moves below Alerts and reads "Kill the Dispatch Bot" (on = gone) (#botkill). */
 /* was: oct7botoff */   /* oct 7 (60th) — Profile → 🧛 Dispatch Bot: one switch turns the bot off on this phone — never pops on any tab; board alerts come as a toast instead (#botoff). */
 /* was: oct7ilwutag */   /* oct 7 (59th) — the Dispatch Post's tiles credit ILWU (or ILWU early) instead of "the sheet" / "early sheet" (#ilwutag). */
 /* was: oct7galdel */   /* oct 7 (58th) — the PHOTO GALLERY's EDIT reads 🗑 DELETE and each removable shot gets a red DELETE pill (tap twice) (#galdel); BIG HALL check-in is off the Dispatch Post for now — the tile, the report box, its timeline rows, the pre-post field and the bot's lines (#nobighall · SHOW_BIGHALL brings it back). */
@@ -12125,7 +12126,7 @@ function gotoTab(name){
     /* #flyto(sep27) — checked in today? the map glides in on your dock */
     try{ const _b=document.getElementById('harborBoard'), _g=_b&&_b.classList.contains('checked-in')?_b.getAttribute('data-goto'):null;
       if(_g&&/^\d+$/.test(_g)){ let _n=0; const _try=()=>{ if(window.harborFlyTo&&harborFlyTo(+_g))return; if(++_n<8)setTimeout(_try,300); }; setTimeout(_try,380); } }catch(e){}}   /* #lazy — the vault comes up with the tab */
-  if(name==='board'){try{ if(window._rbStale)renderRecentBoards(); }catch(e){} try{openPendingSheet();}catch(e){}}   /* #redrawsplit — a record that went stale off-screen draws now */   // #93 — the Wire opens with the pending dispatch sheet showing
+  if(name==='board'){ if(window._rbStale)setTimeout(function(){ try{ renderRecentBoards(); }catch(e){} },30); try{openPendingSheet();}catch(e){}}   /* #redrawsplit · #recordchunk — the tab paints first, then the stale record catches up */   /* #redrawsplit — a record that went stale off-screen draws now */   // #93 — the Wire opens with the pending dispatch sheet showing
   if(name==='ports'||name==='board'){ try{ if(window.pmaPlusRender)window.pmaPlusRender(); }catch(e){} }   /* #pmaplus — In Port Today · The Hall */
   if(name==='armory'&&window.__shopStale){ window.__shopStale=false; try{ renderShop(true); }catch(e){} try{ if(gearProd)paintGear(); }catch(e){} }   /* #shopquiet */
   if(name==='armory'){try{ if(typeof sbFreshProducts==='function')sbFreshProducts(); if(typeof shopKmNote==='function')shopKmNote(); if(typeof wantLoad==='function')wantLoad(); }catch(e){}}   // #waitlist(sep19) — and your own 🔔 list, so the button knows you and a landed drop can say so   // #freshshelf(sep19) — the Armory was the one tab with no hook here: its shelf was read once at boot, so new postings never showed in an app that was already open
@@ -20447,7 +20448,14 @@ function renderRecentBoards(){
   }
   const show=recs.filter(i=>i.win===RB_WIN);
   if(!show.length){ rb.insertAdjacentHTML('beforeend','<div class="rb-empty">No boards logged in this stretch.</div>'); try{openPendingSheet();}catch(e){} return; }
-  show.forEach(i=>{ const o=i.build(); rb.appendChild(o.card); if(o.xp)rb.appendChild(o.xp); });
+  /* #recordchunk(oct7) — THE ALARMS, oct 7 6:02 PM (SALTY_BONES_56, iPhone): 3.1 s stalled on opening the Wire. The
+     record's boards are each a small dashboard; built all at once they locked the page. Now the first three go in at
+     once and the rest three at a time, a frame apart — the screen paints and scrolls in between. A newer render
+     cancels an older one mid-build. */
+  const gen=window._rbGen=(window._rbGen||0)+1;
+  const put=i=>{ try{ const o=i.build(); rb.appendChild(o.card); if(o.xp)rb.appendChild(o.xp); }catch(e){ try{console.warn('record',e);}catch(_){} } };
+  show.slice(0,3).forEach(put);
+  (function more(n){ if(window._rbGen!==gen||n>=show.length)return; setTimeout(function(){ if(window._rbGen!==gen)return; show.slice(n,n+3).forEach(put); more(n+3); },16); })(3);
   /* #93/#95 — exactly one sheet open by default: the newest board's, with ON THE DOCKS folded in */
   try{openPendingSheet();}catch(e){}
 }
@@ -33329,6 +33337,12 @@ window.openSocSheet=openSocSheet;
 
 function renderSocialFeed(){
   const host=document.getElementById('socialFeed'); if(!host)return;
+  /* #lazyfeed(oct7) — THE ALARMS, oct 7 5:47 PM (PAGUIRRE123, iPhone, on the Wire): "replies: rooms 3194ms,
+     gathering_rsvps 2639ms" — the social pull landed on coming back to the app and redrew the whole Hall feed on a
+     tab nobody was looking at. Off the Hall it's marked stale and drawn when the Hall opens (gotoTab already calls
+     this). The first draw always happens. ~59 places call it. */
+  try{ const sc=document.getElementById('scr-order'); if(host._drawn&&sc&&!sc.classList.contains('on')){ host._stale=true; return; } }catch(e){}
+  host._drawn=true; host._stale=false;
   let delay=0; const step=()=>' style="animation-delay:'+(Math.min(delay++,10)*45)+'ms"';   /* capped: post #40 shouldn't wait 2s to appear */
   let html='';
   try{ html+=hotSectionHTML(); }catch(e){ console.warn('[social] hot',e); }
@@ -35470,8 +35484,32 @@ async function openScanCam(opts){
         if(fw>0.15&&fh>0.15&&fw<=1.01&&fh<=1.01)fz={x:fx,y:fy,w:fw,h:fh,a:vw/vh};
       }
     }catch(e){ fz=null; }
-    let blob=null;
-    try{
+    let blob=null, pre=false;
+    /* ═══ #grabshot(oct7) — THE SHUTTER STILL FROZE iPHONES FOR 11 SECONDS. THE ALARMS, oct 7 5:15 + 5:25 PM
+       (BARNACLE_MORGAN_74, BIGCONDE310 · iPhone Safari/26): "stalled 11.1s · tap #camGo · photo 5.7MB +0.3s", and
+       again no 'crop' crumb. Safari has no ImageCapture, so the shutter fell to a FULL-SIZE grab: a 4K canvas off the
+       video, encoded to a 5–6 MB JPEG — which #darkroom then had to decode all over again to cut the frame out, and
+       WebKit decodes a worker's createImageBitmap(Blob) back on the page's own thread. Now, with no ImageCapture, the
+       grab IS the crop: the frame's slice of the live video (7% margin, the same rule frameCrop uses) is drawn once,
+       straight to OCR_SIDE, and a ~1 MB JPEG goes to the reader with nothing left to decode or cut. Phones with
+       ImageCapture (Chrome/Android) keep the real still photo and the worker exactly as before. ═══ */
+    if(typeof ImageCapture==='undefined'){
+      try{
+        const v=vid, vw=v&&v.videoWidth, vh=v&&v.videoHeight;
+        if(vw&&vh){
+          let sx=0,sy=0,sw=vw,sh=vh;
+          if(fz){ const m=0.07, x0=Math.max(0,fz.x-m*fz.w), y0=Math.max(0,fz.y-m*fz.h), x1=Math.min(1,fz.x+fz.w*(1+m)), y1=Math.min(1,fz.y+fz.h*(1+m));
+            if(!(x1-x0>0.92&&y1-y0>0.92)&&(x1-x0)*vw>=400&&(y1-y0)*vh>=300){ sx=Math.round(x0*vw); sy=Math.round(y0*vh); sw=Math.round((x1-x0)*vw); sh=Math.round((y1-y0)*vh); } }
+          const k=Math.min(1,OCR_SIDE/Math.max(sw,sh)), c=document.createElement('canvas');
+          c.width=Math.max(1,Math.round(sw*k)); c.height=Math.max(1,Math.round(sh*k));
+          const g=c.getContext('2d'); g.imageSmoothingEnabled=true; g.imageSmoothingQuality='high';
+          g.drawImage(v,sx,sy,sw,sh,0,0,c.width,c.height);
+          blob=await new Promise(r=>{ try{ c.toBlob(b=>r(b||null),'image/jpeg',0.92); }catch(e){ r(null); } });
+          if(blob){ pre=true; try{ shkCrumb('grab '+c.width+'x'+c.height+' of '+vw+'x'+vh); }catch(e){} }
+        }
+      }catch(e){ blob=null; }
+    }
+    if(!blob)try{
       const ic=new ImageCapture(camStream.getVideoTracks()[0]);
       /* #camstall — a 12-megapixel-class still, not the sensor's biggest (camStillAsk, by frameCrop);
          odd phones reject the size ask, so retry plain — still a true photo capture, not a preview grab */
@@ -35484,13 +35522,13 @@ async function openScanCam(opts){
       const v=vid;
       if(v&&v.videoWidth){const c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;
         c.getContext('2d').drawImage(v,0,0);
-        blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.95));}
+        blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.92));}
     }
     killDocketCam();
     if(!blob)return fallback();
     shkHold(true,8000);   /* #camstall — the viewfinder's gone; the shot develops with the motion held */
     try{ shkCrumb('photo '+(blob.size/1048576).toFixed(1)+'MB'); }catch(e){}
-    try{ const cut=await frameCrop(blob,fz); if(cut)blob=cut; }catch(e){}   /* #framecrop */
+    if(!pre)try{ const cut=await frameCrop(blob,fz); if(cut)blob=cut; }catch(e){}   /* #framecrop · #grabshot — a grab is already cut */
     onShot(new File([blob],(KIND==='card'?'card':'docket')+'.jpg',{type:blob.type||'image/jpeg'}));
   });
 }
