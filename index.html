@@ -8,7 +8,9 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct8councilline';   /* oct 8 (72nd) — THE COUNCIL LINE: replies to the welcome DM land on a shared line in the Command Center; every key holder sees them, whoever's on gets pinged and answers from there (the member gets it as a DM), and the Keymaster keeps every original and sees every answer (#councilline). */
+window.SHK_BUILD='oct8mailclear';   /* oct 8 (74th) — the Council Mailbox clears: ✓ DONE on a conversation, CLEAR ALL ANSWERED, and a cleared list to bring one back; a new message from the member reopens it (#mailclear). */
+/* was: oct8sharedbox */   /* oct 8 (73rd) — THE COUNCIL MAILBOX: the welcome conversation with every new member is shared — all of it shows in the Command Center, and any council member replies from the mailbox in that same conversation, signed with their handle (#sharedbox). */
+/* was: oct8councilline */   /* oct 8 (72nd) — THE COUNCIL LINE: replies to the welcome DM land on a shared line in the Command Center; every key holder sees them, whoever's on gets pinged and answers from there (the member gets it as a DM), and the Keymaster keeps every original and sees every answer (#councilline). */
 /* was: oct7doorfix */   /* oct 7 (71st) — the ⤴ invite button only shows on private rooms you're inside (an outsider saw it on a locked door) (#doorfix). */
 /* was: oct7crownonly */   /* oct 7 (70th) — ONLY THE CROWN MOVES BUCKS, BANS OR SEATS: the server refuses km_bucks / km_ban / km_crown / km_adjust from any key but the founder's — council members' levers ride the desk; refunds are asked for in THE BANK and sealed by the crown (#crownonly #refunddesk). */
 /* was: oct7roomlock */   /* oct 7 (69th) — PRIVATE ROOMS LOCKED AT THE SERVER: a link is no longer a key (the server seats only people a room admits: owner, people the owner let in, clan members, gathering RSVPs); private messages can only be read or written from inside; only a room's owner can change it; members' invites become asks the owner decides; links in DMs are tappable and a room link opens in the app (#roomlock). */
@@ -49311,7 +49313,7 @@ window.SEASON_STORY={
     </details>
     <!-- #councilline(oct8) — replies to the welcome DM, shared by the whole Shadow Council; the Keymaster sees every word -->
     <details class="kmsec" id="kmSecLine" open>
-      <summary class="card-h">The Council Line <span class="pill red" id="kmLineN" style="display:none">0</span></summary>
+      <summary class="card-h">The Council Mailbox <span class="pill red" id="kmLineN" style="display:none">0</span></summary>
       <div class="kmsec-b"><div id="kmLine" class="sub" style="line-height:1.6;margin-bottom:12px">—</div></div>
     </details>
     <details class="kmsec" id="kmSecDesk" open>
@@ -60142,7 +60144,8 @@ a.shk-link{color:inherit;text-decoration:underline;word-break:break-all}
 /* #councilline */
 .cl-th{border:1px solid var(--line-soft);border-radius:12px;padding:9px 11px;margin:0 0 8px;background:var(--well)}
 .cl-th.wait{border-color:rgba(238,180,107,.6);box-shadow:0 0 0 1px rgba(238,180,107,.15) inset}
-.cl-hd{display:flex;align-items:center;gap:8px;cursor:pointer}
+.cl-hd{display:flex;align-items:center;gap:8px;cursor:pointer;flex-wrap:wrap;row-gap:4px;min-width:0}
+.cl-hd b{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .cl-hd b{color:var(--bone);font-size:14px}
 .cl-hd .t{margin-left:auto;color:var(--steel);font-size:11px;white-space:nowrap}
 .cl-last{margin-top:3px;color:var(--steel);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -60165,11 +60168,28 @@ a.shk-link{color:inherit;text-decoration:underline;word-break:break-all}
    handled. The Keymaster keeps every original in their own DMs AND sees every answer on the line.
    Private DMs to the Keymaster that aren't welcome replies never touch the line, and once the Keymaster writes
    to a member personally, that conversation is theirs again. Only key holders can read the line (RLS). ═══ */
+/* #sharedbox(oct8) — "I was hoping to have a council shared mailbox where new member messages hit, and any one of us
+   could reply." The welcome goes out from the Keymaster's account, so THAT conversation with every welcomed member is the
+   mailbox: everything the member sends AND everything sent back lands here (the server's council_line_route). A council
+   reply (council_reply) goes out INSIDE that same conversation — from the mailbox, signed "— LUCBONE · Shadow Council" —
+   so the member keeps one thread no matter who answers, and the whole council sees who did. The Keymaster sees all of it. */
 (function(){
   const $=id=>document.getElementById(id);
   const e=x=>String(x==null?'':x).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const ago=t=>{ const m=Math.round((Date.now()-new Date(t).getTime())/60000); return m<1?'now':m<60?m+'m':m<1440?Math.round(m/60)+'h':Math.round(m/1440)+'d'; };
-  let rows=[], open={}, sub=null;
+  let rows=[], open={}, sub=null, done={}, showDone=false;
+  /* #mailclear(oct8) — "can I clear this": a conversation can be cleared (✓ DONE, or CLEAR ALL ANSWERED). Cleared is
+     shared by the whole council (council_line_done) and only hides it — the messages stay in the member's DMs and the
+     Keymaster's. A new message from that member puts it straight back in the mailbox. */
+  const isDone=t=>{ const d=done[t.id]; return !!(d&&new Date(d.done_at)>=new Date(t.last.created_at)); };
+  async function clear(ids){
+    if(!ids.length)return; const a=(typeof loadAcct==='function'&&loadAcct())||{};
+    const recs=ids.map(id=>({member_id:id,done_at:new Date().toISOString(),done_by:window.__shkUid,done_handle:String(a.handle||'').toUpperCase()}));
+    recs.forEach(r=>{ done[r.member_id]=r; }); draw();
+    try{ const r=await window.SB.from('council_line_done').upsert(recs,{onConflict:'member_id'}); if(r&&r.error)throw r.error; }
+    catch(err){ try{toast('Couldn’t clear — '+String((err&&err.message)||err).slice(0,100));}catch(_){} await load(); }
+  }
+  async function unclear(id){ delete done[id]; draw(); try{ await window.SB.from('council_line_done').delete().eq('member_id',id); }catch(_){} }
   function threads(){
     const by={}; rows.forEach(r=>{ (by[r.member_id]=by[r.member_id]||{id:r.member_id,h:r.member_handle,msgs:[]}).msgs.push(r); });
     return Object.values(by).map(t=>{ t.last=t.msgs[t.msgs.length-1]; t.wait=!t.last.from_council; return t; })
@@ -60179,16 +60199,25 @@ a.shk-link{color:inherit;text-decoration:underline;word-break:break-all}
     return (typeof shkLinkify==='function')?shkLinkify(e(r.body||'')):e(r.body||''); }
   function draw(){
     const out=$('kmLine'); if(!out)return;
-    const T=threads(), w=T.filter(t=>t.wait).length, n=$('kmLineN');
+    const ALL=threads(), T=ALL.filter(t=>showDone?isDone(t):!isDone(t)), nDone=ALL.filter(isDone).length, w=ALL.filter(t=>t.wait&&!isDone(t)).length, n=$('kmLineN');
+    const nAns=ALL.filter(t=>!t.wait&&!isDone(t)).length;
     if(n){ n.textContent=w; n.style.display=w?'':'none'; }
-    if(!T.length){ out.innerHTML='<span style="color:var(--steel)">quiet — when a new member answers the welcome, it lands here for whoever’s on.</span>'; return; }
-    out.innerHTML=T.slice(0,40).map(t=>'<div class="cl-th'+(t.wait?' wait':'')+(open[t.id]?' open':'')+'" data-m="'+e(t.id)+'">'
-      +'<div class="cl-hd"><b>'+e(t.h||'a member')+'</b>'+(t.wait?'<span class="pill gold">WAITING</span>':'<span class="pill grn">answered by '+e(t.last.author_handle||'the council')+'</span>')+'<span class="t">'+ago(t.last.created_at)+'</span></div>'
+    const bar='<div style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px">'
+      +(!showDone&&nAns?'<button class="btn-line" type="button" data-clr="answered" style="flex:1;padding:6px 8px;font-size:11px">✓ CLEAR ALL ANSWERED · '+nAns+'</button>':'')
+      +(nDone||showDone?'<button class="btn-ghost" type="button" data-clr="toggle" style="flex:1;padding:6px 8px;font-size:11px">'+(showDone?'← back to the mailbox':'cleared · '+nDone)+'</button>':'')+'</div>';
+    if(!T.length){ out.innerHTML=bar+'<span style="color:var(--steel)">'+(showDone?'nothing cleared yet.':'all clear — when a new member writes in, it lands here for whoever’s on.')+'</span>'; wireBar(out); return; }
+    if(!ALL.length){ out.innerHTML='<span style="color:var(--steel)">quiet — the shared mailbox. When a new member writes in, it lands here for whoever’s on.</span>'; return; }
+    out.innerHTML=bar+T.slice(0,60).map(t=>'<div class="cl-th'+(t.wait?' wait':'')+(open[t.id]?' open':'')+'" data-m="'+e(t.id)+'">'
+      +'<div class="cl-hd"><b>'+e(t.h||'a member')+'</b>'+(t.wait?'<span class="pill gold">WAITING</span>':'<span class="pill grn">answered by '+e(t.last.author_handle||'the council')+'</span>')+'<span class="t">'+ago(t.last.created_at)+'</span>'
+        +(showDone?'<button class="btn-ghost" type="button" data-unclr="'+e(t.id)+'" style="flex:none;padding:3px 9px;font-size:10.5px">↩ BACK</button>':'<button class="btn-ghost" type="button" data-done="'+e(t.id)+'" title="Clear it off the mailbox" style="flex:none;padding:3px 9px;font-size:10.5px;color:var(--ok)">✓ DONE</button>')+'</div>'
       +'<div class="cl-last">'+(t.last.from_council?'↩ ':'')+e(String(t.last.body||'').slice(0,120))+'</div>'
       +'<div class="cl-body">'+t.msgs.map(r=>'<div class="cl-msg'+(r.from_council?' c':'')+'">'+body(r)+'<small>'+e(r.author_handle||'')+' · '+ago(r.created_at)+'</small></div>').join('')
-        +'<div class="cl-row"><input class="field" type="text" maxlength="2000" placeholder="Answer '+e(t.h||'them')+' for the council…" data-nomention><button class="btn-line gold" type="button" data-send="'+e(t.id)+'" style="flex:none;padding:6px 12px">SEND</button></div>'
-        +'<div class="sub" style="font-size:11px;margin-top:4px">They get it as a DM from you · the council and the Keymaster see it here</div></div></div>').join('');
-    out.querySelectorAll('.cl-hd').forEach(h=>h.addEventListener('click',()=>{ const id=h.parentNode.getAttribute('data-m'); open[id]=!open[id]; draw(); }));
+        +'<div class="cl-row"><input class="field" type="text" maxlength="2000" placeholder="Reply to '+e(t.h||'them')+' from the mailbox…" data-nomention><button class="btn-line gold" type="button" data-send="'+e(t.id)+'" style="flex:none;padding:6px 12px">SEND</button></div>'
+        +'<div class="sub" style="font-size:11px;margin-top:4px">Goes out in the same conversation they wrote in, signed “— your handle · Shadow Council” · every council member sees it here</div></div></div>').join('');
+    out.querySelectorAll('.cl-hd').forEach(h=>h.addEventListener('click',ev=>{ if(ev.target.closest('button'))return; const id=h.parentNode.getAttribute('data-m'); open[id]=!open[id]; draw(); }));
+    out.querySelectorAll('[data-done]').forEach(b=>b.addEventListener('click',ev=>{ ev.stopPropagation(); clear([b.getAttribute('data-done')]); }));
+    out.querySelectorAll('[data-unclr]').forEach(b=>b.addEventListener('click',ev=>{ ev.stopPropagation(); unclear(b.getAttribute('data-unclr')); }));
+    wireBar(out);
     out.querySelectorAll('[data-send]').forEach(b=>b.addEventListener('click',async()=>{
       const id=b.getAttribute('data-send'), inp=b.parentNode.querySelector('input'), v=(inp.value||'').trim(); if(!v)return;
       b.disabled=true; b.textContent='…';
@@ -60196,17 +60225,26 @@ a.shk-link{color:inherit;text-decoration:underline;word-break:break-all}
       catch(err){ try{toast('Couldn’t send — '+String((err&&err.message)||err).slice(0,100));}catch(_){} b.disabled=false; b.textContent='SEND'; }
     }));
   }
+  function wireBar(out){
+    out.querySelectorAll('[data-clr]').forEach(b=>b.addEventListener('click',()=>{
+      if(b.getAttribute('data-clr')==='toggle'){ showDone=!showDone; draw(); return; }
+      const ids=threads().filter(t=>!t.wait&&!isDone(t)).map(t=>t.id);
+      if(typeof shConfirm==='function')shConfirm('Clear '+ids.length+' answered conversation'+(ids.length===1?'':'s')+' off the mailbox? Nothing is deleted — if any of them write again, they come right back.',()=>clear(ids),{title:'Clear the answered?',icon:'✓',okText:'Clear them'});
+      else clear(ids);
+    }));
+  }
   async function load(){
     if(!window.SB||!window.__isKM)return;
-    try{ const r=await window.SB.from('council_line').select('*').order('created_at',{ascending:true}).limit(600); if(r.error)throw r.error; rows=r.data||[]; draw(); }
+    try{ const d=await window.SB.from('council_line_done').select('*'); done={}; ((d&&d.data)||[]).forEach(x=>{ done[x.member_id]=x; }); }catch(_){}
+    try{ const r=await window.SB.from('council_line').select('*').order('created_at',{ascending:true}).limit(1500); if(r.error)throw r.error; rows=r.data||[]; draw(); }
     catch(err){ const out=$('kmLine'); if(out)out.textContent='the line failed: '+String((err&&err.message)||err).slice(0,120); }
   }
   window.kmLine=load;
   function ring(r){
     const who=r.member_handle||'a new member', txt=String(r.body||'').slice(0,90);
     if(r.from_council){ if(r.author_id!==window.__shkUid)try{toast('↩ '+(r.author_handle||'the council')+' answered '+who);}catch(_){} return; }
-    if(document.hidden){ try{ if(typeof alertFire==='function')alertFire('dm',{title:'📮 Council Line · '+who,body:txt,tag:'shadowhook-cline-'+r.member_id}); }catch(_){} }
-    else { try{ toast('📮 Council Line — '+who+': '+txt); }catch(_){} try{ if(typeof buzz==='function')buzz([60,40,60]); }catch(_){} }
+    if(document.hidden){ try{ if(typeof alertFire==='function')alertFire('dm',{title:'📮 Council Mailbox · '+who,body:txt,tag:'shadowhook-cline-'+r.member_id}); }catch(_){} }
+    else { try{ toast('📮 Council Mailbox — '+who+': '+txt); }catch(_){} try{ if(typeof buzz==='function')buzz([60,40,60]); }catch(_){} }
   }
   function subscribe(){
     if(sub||!window.SB||!window.__isKM||!window.__shkUid)return;
