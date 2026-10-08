@@ -8,7 +8,9 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct7crownonly';   /* oct 7 (70th) — ONLY THE CROWN MOVES BUCKS, BANS OR SEATS: the server refuses km_bucks / km_ban / km_crown / km_adjust from any key but the founder's — council members' levers ride the desk; refunds are asked for in THE BANK and sealed by the crown (#crownonly #refunddesk). */
+window.SHK_BUILD='oct8councilline';   /* oct 8 (72nd) — THE COUNCIL LINE: replies to the welcome DM land on a shared line in the Command Center; every key holder sees them, whoever's on gets pinged and answers from there (the member gets it as a DM), and the Keymaster keeps every original and sees every answer (#councilline). */
+/* was: oct7doorfix */   /* oct 7 (71st) — the ⤴ invite button only shows on private rooms you're inside (an outsider saw it on a locked door) (#doorfix). */
+/* was: oct7crownonly */   /* oct 7 (70th) — ONLY THE CROWN MOVES BUCKS, BANS OR SEATS: the server refuses km_bucks / km_ban / km_crown / km_adjust from any key but the founder's — council members' levers ride the desk; refunds are asked for in THE BANK and sealed by the crown (#crownonly #refunddesk). */
 /* was: oct7roomlock */   /* oct 7 (69th) — PRIVATE ROOMS LOCKED AT THE SERVER: a link is no longer a key (the server seats only people a room admits: owner, people the owner let in, clan members, gathering RSVPs); private messages can only be read or written from inside; only a room's owner can change it; members' invites become asks the owner decides; links in DMs are tappable and a room link opens in the app (#roomlock). */
 /* was: oct7noswipehint */   /* oct 7 (68th) — the "swipe →" hint is off What’s Hot (#noswipehint). */
 /* was: oct7mentions */   /* oct 7 (67th) — @TAGS EVERYWHERE: type @ in any message box for the roster; a sent @HANDLE pings that member with a DM (✉ badge + alert); every @handle on screen is a tap-to-open tag, yours glows (#mentions). */
@@ -33058,7 +33060,7 @@ function floorSectionHTML(step,rooms){
         +((r.mine&&r.asks)?'<span class="chan-mini yours" data-asks="'+esc(r.id)+'" style="cursor:pointer">🔔 '+r.asks+' ask to join</span>':'')+'</div>'
       +'</div>'
       +'<div class="chan-r"><span class="chan-time" data-time="'+esc(r.n)+'"></span><span class="chan-unread" data-unread="'+esc(r.n)+'" style="display:none"></span></div>'
-      +((r.mine||r.priv)?'<button class="feed-inv" data-inv="room" data-name="'+esc(r.n)+'"'+(r.id?' data-rid="'+esc(r.id)+'"':'')+' aria-label="Invite to '+esc(r.n)+'">⤴</button>':'')
+      +((r.mine||(r.priv&&r.st==='in'))?'<button class="feed-inv" data-inv="room" data-name="'+esc(r.n)+'"'+(r.id?' data-rid="'+esc(r.id)+'"':'')+' aria-label="Invite to '+esc(r.n)+'">⤴</button>':'')
       /* #ghostroom(aug10) — the ✕ used to need `r.id`, which a phone-only room
          has never had. That is the whole bug: your own room, no way to strike
          it. A local strike clears the cache instead of calling the wire. */
@@ -49307,6 +49309,11 @@ window.SEASON_STORY={
       <summary class="card-h">The To-Do <span class="pill red" id="kmTodoN" style="display:none">0</span></summary>
       <div class="kmsec-b"><div id="kmTodo" class="sub" style="margin-bottom:12px">—</div></div>
     </details>
+    <!-- #councilline(oct8) — replies to the welcome DM, shared by the whole Shadow Council; the Keymaster sees every word -->
+    <details class="kmsec" id="kmSecLine" open>
+      <summary class="card-h">The Council Line <span class="pill red" id="kmLineN" style="display:none">0</span></summary>
+      <div class="kmsec-b"><div id="kmLine" class="sub" style="line-height:1.6;margin-bottom:12px">—</div></div>
+    </details>
     <details class="kmsec" id="kmSecDesk" open>
       <summary class="card-h">The Desk <span class="pill red" id="kmDeskN" style="display:none">0</span></summary>
       <div class="kmsec-b">
@@ -60127,6 +60134,89 @@ a.shk-link{color:inherit;text-decoration:underline;word-break:break-all}
     ev.preventDefault(); ev.stopPropagation();
     try{ if(typeof openDmCard==='function')openDmCard(t.getAttribute('data-uid'),t.getAttribute('data-h')); }catch(e){}
   },true);
+})();
+</script>
+
+
+<style>
+/* #councilline */
+.cl-th{border:1px solid var(--line-soft);border-radius:12px;padding:9px 11px;margin:0 0 8px;background:var(--well)}
+.cl-th.wait{border-color:rgba(238,180,107,.6);box-shadow:0 0 0 1px rgba(238,180,107,.15) inset}
+.cl-hd{display:flex;align-items:center;gap:8px;cursor:pointer}
+.cl-hd b{color:var(--bone);font-size:14px}
+.cl-hd .t{margin-left:auto;color:var(--steel);font-size:11px;white-space:nowrap}
+.cl-last{margin-top:3px;color:var(--steel);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cl-body{display:none;margin-top:8px}
+.cl-th.open .cl-body{display:block}
+.cl-th.open .cl-last{display:none}
+.cl-msg{margin:5px 0;padding:7px 10px;border-radius:12px;font-size:13px;line-height:1.45;color:var(--bone);background:var(--plate);border:1px solid var(--line-soft);max-width:88%}
+.cl-msg.c{margin-left:auto;background:rgba(238,180,107,.12);border-color:rgba(238,180,107,.35)}
+.cl-msg small{display:block;color:var(--steel);font-size:10.5px;margin-top:2px}
+.cl-row{display:flex;gap:6px;margin-top:8px}
+.cl-row input{flex:1;min-width:0}
+</style>
+<script>
+/* ═══ #councilline(oct8) — "Can I make it so the messages go to whatever Shadow Council member is online, and
+   always a way for the Keymaster to get a copy?" — scoped, by your choice, to REPLIES TO THE WELCOME DM.
+   The welcome goes out from the Keymaster's account, so a new member's "thanks — how do I…?" used to land in that
+   one inbox. Now the server (council_line_route) copies every such reply onto THE COUNCIL LINE, which every key
+   holder sees; whoever's on gets a toast (a phone alert if the app's in the background) and answers from here —
+   the answer goes to the member as a DM from them, and onto the line, so the rest of the council sees it was
+   handled. The Keymaster keeps every original in their own DMs AND sees every answer on the line.
+   Private DMs to the Keymaster that aren't welcome replies never touch the line, and once the Keymaster writes
+   to a member personally, that conversation is theirs again. Only key holders can read the line (RLS). ═══ */
+(function(){
+  const $=id=>document.getElementById(id);
+  const e=x=>String(x==null?'':x).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const ago=t=>{ const m=Math.round((Date.now()-new Date(t).getTime())/60000); return m<1?'now':m<60?m+'m':m<1440?Math.round(m/60)+'h':Math.round(m/1440)+'d'; };
+  let rows=[], open={}, sub=null;
+  function threads(){
+    const by={}; rows.forEach(r=>{ (by[r.member_id]=by[r.member_id]||{id:r.member_id,h:r.member_handle,msgs:[]}).msgs.push(r); });
+    return Object.values(by).map(t=>{ t.last=t.msgs[t.msgs.length-1]; t.wait=!t.last.from_council; return t; })
+      .sort((a,b)=>(b.wait-a.wait)||(new Date(b.last.created_at)-new Date(a.last.created_at)));
+  }
+  function body(r){ const u=String(r.url||''); if((r.kind==='image'||r.kind==='gif')&&/^https:/.test(u))return '<a href="'+e(u)+'" target="_blank" rel="noopener">📷 photo</a>';
+    return (typeof shkLinkify==='function')?shkLinkify(e(r.body||'')):e(r.body||''); }
+  function draw(){
+    const out=$('kmLine'); if(!out)return;
+    const T=threads(), w=T.filter(t=>t.wait).length, n=$('kmLineN');
+    if(n){ n.textContent=w; n.style.display=w?'':'none'; }
+    if(!T.length){ out.innerHTML='<span style="color:var(--steel)">quiet — when a new member answers the welcome, it lands here for whoever’s on.</span>'; return; }
+    out.innerHTML=T.slice(0,40).map(t=>'<div class="cl-th'+(t.wait?' wait':'')+(open[t.id]?' open':'')+'" data-m="'+e(t.id)+'">'
+      +'<div class="cl-hd"><b>'+e(t.h||'a member')+'</b>'+(t.wait?'<span class="pill gold">WAITING</span>':'<span class="pill grn">answered by '+e(t.last.author_handle||'the council')+'</span>')+'<span class="t">'+ago(t.last.created_at)+'</span></div>'
+      +'<div class="cl-last">'+(t.last.from_council?'↩ ':'')+e(String(t.last.body||'').slice(0,120))+'</div>'
+      +'<div class="cl-body">'+t.msgs.map(r=>'<div class="cl-msg'+(r.from_council?' c':'')+'">'+body(r)+'<small>'+e(r.author_handle||'')+' · '+ago(r.created_at)+'</small></div>').join('')
+        +'<div class="cl-row"><input class="field" type="text" maxlength="2000" placeholder="Answer '+e(t.h||'them')+' for the council…" data-nomention><button class="btn-line gold" type="button" data-send="'+e(t.id)+'" style="flex:none;padding:6px 12px">SEND</button></div>'
+        +'<div class="sub" style="font-size:11px;margin-top:4px">They get it as a DM from you · the council and the Keymaster see it here</div></div></div>').join('');
+    out.querySelectorAll('.cl-hd').forEach(h=>h.addEventListener('click',()=>{ const id=h.parentNode.getAttribute('data-m'); open[id]=!open[id]; draw(); }));
+    out.querySelectorAll('[data-send]').forEach(b=>b.addEventListener('click',async()=>{
+      const id=b.getAttribute('data-send'), inp=b.parentNode.querySelector('input'), v=(inp.value||'').trim(); if(!v)return;
+      b.disabled=true; b.textContent='…';
+      try{ const r=await window.SB.rpc('council_reply',{p_member:id,p_body:v}); if(r.error)throw r.error; inp.value=''; try{toast('↩ Sent — the council sees you answered');}catch(_){} await load(); }
+      catch(err){ try{toast('Couldn’t send — '+String((err&&err.message)||err).slice(0,100));}catch(_){} b.disabled=false; b.textContent='SEND'; }
+    }));
+  }
+  async function load(){
+    if(!window.SB||!window.__isKM)return;
+    try{ const r=await window.SB.from('council_line').select('*').order('created_at',{ascending:true}).limit(600); if(r.error)throw r.error; rows=r.data||[]; draw(); }
+    catch(err){ const out=$('kmLine'); if(out)out.textContent='the line failed: '+String((err&&err.message)||err).slice(0,120); }
+  }
+  window.kmLine=load;
+  function ring(r){
+    const who=r.member_handle||'a new member', txt=String(r.body||'').slice(0,90);
+    if(r.from_council){ if(r.author_id!==window.__shkUid)try{toast('↩ '+(r.author_handle||'the council')+' answered '+who);}catch(_){} return; }
+    if(document.hidden){ try{ if(typeof alertFire==='function')alertFire('dm',{title:'📮 Council Line · '+who,body:txt,tag:'shadowhook-cline-'+r.member_id}); }catch(_){} }
+    else { try{ toast('📮 Council Line — '+who+': '+txt); }catch(_){} try{ if(typeof buzz==='function')buzz([60,40,60]); }catch(_){} }
+  }
+  function subscribe(){
+    if(sub||!window.SB||!window.__isKM||!window.__shkUid)return;
+    try{ sub=window.SB.channel('cline-'+window.__shkUid).on('postgres_changes',{event:'INSERT',schema:'public',table:'council_line'},p=>{
+        const r=p&&p.new; if(!r)return; if(!rows.some(x=>x.id===r.id))rows.push(r); draw(); ring(r); }).subscribe(); load(); }catch(_){ sub=null; }
+  }
+  setInterval(subscribe,5000); setTimeout(subscribe,3000);
+  /* the Command Center opening refreshes it */
+  document.addEventListener('click',ev=>{ const t=ev.target.closest&&ev.target.closest('#kmSecLine summary'); if(t)setTimeout(load,50); },true);
+  try{ const ks=$('kmSheet'); if(ks)new MutationObserver(()=>{ if(ks.classList.contains('on'))load(); }).observe(ks,{attributes:true,attributeFilter:['class']}); }catch(_){}
 })();
 </script>
 
