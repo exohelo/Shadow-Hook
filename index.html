@@ -8,7 +8,8 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct8mailclear';   /* oct 8 (74th) — the Council Mailbox clears: ✓ DONE on a conversation, CLEAR ALL ANSWERED, and a cleared list to bring one back; a new message from the member reopens it (#mailclear). */
+window.SHK_BUILD='oct8welcomefrom';   /* oct 8 (75th) — THE WELCOME's "Sent from" picker: the Keymaster chooses which council member the welcome comes from; each member's mailbox conversation stays with whoever welcomed them (#welcomefrom). */
+/* was: oct8mailclear */   /* oct 8 (74th) — the Council Mailbox clears: ✓ DONE on a conversation, CLEAR ALL ANSWERED, and a cleared list to bring one back; a new message from the member reopens it (#mailclear). */
 /* was: oct8sharedbox */   /* oct 8 (73rd) — THE COUNCIL MAILBOX: the welcome conversation with every new member is shared — all of it shows in the Command Center, and any council member replies from the mailbox in that same conversation, signed with their handle (#sharedbox). */
 /* was: oct8councilline */   /* oct 8 (72nd) — THE COUNCIL LINE: replies to the welcome DM land on a shared line in the Command Center; every key holder sees them, whoever's on gets pinged and answers from there (the member gets it as a DM), and the Keymaster keeps every original and sees every answer (#councilline). */
 /* was: oct7doorfix */   /* oct 7 (71st) — the ⤴ invite button only shows on private rooms you're inside (an outsider saw it on a locked door) (#doorfix). */
@@ -49530,7 +49531,12 @@ window.SEASON_STORY={
     <div class="sub" style="margin:6px 0 2px">A private Direct Message to every new member, the moment they sign up</div>
     <div class="race-board-tabs" id="kmWelcome"><button data-v="off">OFF</button><button data-v="on">ON</button></div>
     <textarea class="field" id="kmWelcomeTxt" rows="4" maxlength="1000" placeholder="Welcome to The Order of The Shadow Hook, {handle} ⚓ …" style="width:100%;resize:vertical;margin:8px 0 4px"></textarea>
-    <div class="sub" style="margin:0 0 8px;font-size:11px">{handle} becomes the new member's handle. It comes from YOUR account — saving it here makes you the sender.</div>
+    <div class="sub" style="margin:0 0 8px;font-size:11px">{handle} becomes the new member's handle.</div>
+    <!-- #welcomefrom(oct8) — the crown picks which council member the welcome comes from -->
+    <label style="display:flex;align-items:center;gap:10px;margin:0 0 10px">
+      <span class="sub" style="margin:0;white-space:nowrap">Sent from</span>
+      <select class="field" id="kmWelcomeFrom" style="flex:1;min-width:0;padding:8px 10px"><option value="">— you —</option></select>
+    </label>
     <!-- #letterhead(oct1) — the branded header (welcome-letterhead.png, deployed beside index.html) lands as a picture just above the words -->
     <label style="display:flex;align-items:center;gap:10px;margin:0 0 10px;cursor:pointer">
       <input type="checkbox" id="kmWelcomeHead" style="width:18px;height:18px;accent-color:var(--copper)">
@@ -50147,6 +50153,13 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
       if(r.error){ msg.textContent=/relation|does not exist|schema cache/i.test(String(r.error.message))?'⚠ Run WELCOME-DM.sql once in Supabase → SQL Editor, then reopen this.':'⚠ '+r.error.message; return; }
       _wlcRow=r.data||{is_on:false,body:''};
       seg(sw,_wlcRow.is_on?'on':'off');
+      /* #welcomefrom — the council, for the "Sent from" picker (only the crown can change it; the server checks) */
+      try{ const fs=$('kmWelcomeFrom');
+        if(fs){ const c=await window.SB.rpc('council_members');   /* who holds a key right now — the server's list */
+          const list=((c&&c.data)||[]).filter(x=>x&&x.id&&x.handle);
+          if(_wlcRow.from_id&&!list.some(x=>x.id===_wlcRow.from_id))list.unshift({id:_wlcRow.from_id,handle:_wlcRow.from_handle||'current sender'});
+          fs.innerHTML=list.map(x=>'<option value="'+esc(x.id)+'"'+(x.id===(_wlcRow.from_id||window.__shkUid)?' selected':'')+'>'+esc(x.handle)+(x.id===window.__shkUid?' (you)':'')+'</option>').join('')||'<option value="">— you —</option>';
+          const crown=(typeof window.kmIsCrown==='function')&&window.kmIsCrown(); fs.disabled=!crown; fs.title=crown?'':'Only the Keymaster picks the sender'; } }catch(e){}
       try{ const hb=$('kmWelcomeHead'); if(hb)hb.checked=!!_wlcRow.header_url; }catch(e){}   /* #letterhead */
       if(document.activeElement!==tx)tx.value=_wlcRow.body||WELCOME_DEFAULT;
       let n=null; try{ const c=await window.SB.rpc('welcome_count'); if(!c.error)n=c.data; }catch(e){}
@@ -50174,10 +50187,12 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
       const me=(typeof chatMyHandle==='function'?chatMyHandle():'')||((document.getElementById('meHandle')||{}).textContent||'').trim()||null;
       let head=null; try{ const hb=$('kmWelcomeHead'); if(hb&&hb.checked)head=new URL('welcome-letterhead.png',location.href).href; }catch(e){}   /* #letterhead — the deployed site's own copy */
       if(head&&!/^https:\/\//.test(head))head=null;   /* a phone on file:// or http can't hand the server a link a member's phone will load */
-      const r=await window.SB.from('welcome_dm').update({is_on:on,body:body,from_id:window.__shkUid,from_handle:me,header_url:head,updated_at:new Date().toISOString()}).eq('id',1).select('is_on,body,from_id,from_handle,header_url').maybeSingle();
+      /* #welcomefrom — the picked council member is the sender (the server refuses anyone without a key, and anyone but the crown saving) */
+      const fs=$('kmWelcomeFrom'), fid=(fs&&fs.value)||window.__shkUid, fh=(fs&&fs.value&&fs.selectedOptions[0])?fs.selectedOptions[0].textContent.replace(/ \(you\)$/,''):me;
+      const r=await window.SB.from('welcome_dm').update({is_on:on,body:body,from_id:fid,from_handle:fh,header_url:head,updated_at:new Date().toISOString()}).eq('id',1).select('is_on,body,from_id,from_handle,header_url').maybeSingle();
       if(r.error)throw r.error;
-      if(!r.data)throw new Error('the server kept the old one (is WELCOME-DM.sql run, and is this a key?)');
-      _wlcRow=r.data; try{toast(on?'⚓ The Welcome is ON — the next new member gets it from you':'○ The Welcome is OFF');}catch(e){}
+      if(!r.data)throw new Error('the server kept the old one — only the Keymaster can change the welcome');
+      _wlcRow=r.data; try{toast(on?'⚓ The Welcome is ON — the next new member gets it from '+(_wlcRow.from_handle||'you'):'○ The Welcome is OFF');}catch(e){}
       let n=null; try{ const c=await window.SB.rpc('welcome_count'); if(!c.error)n=c.data; }catch(e){}
       kmWelcomeNote(n);
     }catch(e){ msg.textContent='⚠ not saved: '+(e&&e.message||e); }
