@@ -8,7 +8,9 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct7bighallback';   /* oct 7 (63rd) — the BIG HALL tile (the hall's job total off ILWU / PMA) is back on the Dispatch Post and its pre-post field; only the big hall CHECK-IN stays off (#bighallback). */
+window.SHK_BUILD='oct7roominvite';   /* oct 7 (65th) — INVITE TO A PRIVATE ROOM: the ⤴ on a private room (and ＋ INVITE MEMBERS in its 🗝 sheet) opens the roster; the owner's INVITE seats them on the spot and DMs them the key; otherwise the DM carries the key link; SHARE A LINK still works (#roominvite). */
+/* was: oct7nodispline */   /* oct 7 (64th) — the header's DAY · TMRW + call-times column is off; the slot stays for its replacement (#nodispline). */
+/* was: oct7bighallback */   /* oct 7 (63rd) — the BIG HALL tile (the hall's job total off ILWU / PMA) is back on the Dispatch Post and its pre-post field; only the big hall CHECK-IN stays off (#bighallback). */
 /* was: oct7grabshot */   /* oct 7 (62nd) — FREEZES OFF THE ALARMS: on iPhones the shutter grabs the slip straight off the camera already cut and sized (no 5 MB photo to decode — the 11 s stalls, #grabshot); the Hall's feed draws only on the Hall (#lazyfeed); the record builds three boards a frame and the Wire paints before a stale record catches up (#recordchunk). */
 /* was: oct7botkill */   /* oct 7 (61st) — the bot switch moves below Alerts and reads "Kill the Dispatch Bot" (on = gone) (#botkill). */
 /* was: oct7botoff */   /* oct 7 (60th) — Profile → 🧛 Dispatch Bot: one switch turns the bot off on this phone — never pops on any tab; board alerts come as a toast instead (#botoff). */
@@ -5549,6 +5551,12 @@ html.daylight .ck-row input{background:#fff;border-color:rgba(15,17,20,.2)}
 #botFloat.tucked .bf-av,#botFloat.tucked .bf-bub,#botFloat.tucked .bf-x{pointer-events:none}
 #botFloat.tucked .bf-bub{transform:none;opacity:1}
 @media (prefers-reduced-motion:reduce){#botFloat,#botFloat.tucked{transition:opacity .2s}#botFloat.tucked{transform:none}}
+</style>
+<style>
+/* #nodispline(oct7) — "this dispatch time thing is really not useful anymore… for now delete": the header's left
+   column (DAY · TMRW and the three call times) is off. The column itself stays, empty, so the clock stays centered
+   and the slot is ready for whatever replaces it. The ids stay in the page so nothing that writes to them breaks. */
+.hdr-console .hc-board{visibility:hidden!important}
 </style>
 </head>
 <body>
@@ -27316,7 +27324,10 @@ document.getElementById('roomBack').addEventListener('click',closeRoom);
    invite to the phone's share sheet (text, WhatsApp, whatever's on the phone).
    No share sheet → the invite is copied, ready to paste; no clipboard → SMS.
    An invite is spreading the word, so it counts toward Town Crier. */
-async function inviteWord(kind,name,detail,id){
+async function inviteWord(kind,name,detail,id,plain){
+  /* #roominvite(oct7) — a private room you own or hold a key to opens the member picker instead of the share sheet */
+  if(kind==='room'&&!plain){ try{ let r=null; if(id)r=ALL_ROOMS.find(x=>x.id===id); if(!r)r=serverRoomByName(name);
+      if(r&&r.id&&r.is_private&&(isMineRow(r)||MY_KEYS[r.id]==='in')){ openRoomInvite(r.id); return; } }catch(e){} }
   /* #21fix — a room invite carries the room's key (?join=id): that's how an
      invite-only room lets a casual in. Falls back to the plain app link. */
   let url=SHARE_URL;
@@ -34627,13 +34638,15 @@ async function openRoomKeysSheet(roomId){
                   :'<p class="sub" style="padding:6px 0 10px">Nobody at the door.</p>'):'')
     +'<div class="lbl">Who’s in'+(inn.length?' · '+inn.length:'')+'</div>'
     +'<div style="max-height:240px;overflow-y:auto;margin-bottom:12px">'+(inn.length?inn.map(x=>line(x,(mine&&x.user_id!==window.__shkUid)?'<button class="btn-ghost" data-krm="'+esc(x.user_id)+'" data-kh="'+esc(x.handle||'')+'" style="flex:none;padding:6px 10px;font-size:11px;color:var(--ember)">✕</button>':'')).join('')
-                  :'<p class="sub" style="padding:6px 0">Just you so far — tap ⤴ in the room to hand out a key.</p>')+'</div>'
+                  :'<p class="sub" style="padding:6px 0">Just you so far — tap ＋ INVITE MEMBERS to hand out a key.</p>')+'</div>'
     +'<div class="stat-row" style="display:flex;flex-direction:column;gap:8px">'
+    +(roomCanEnter(r)?'<button class="btn-line gold" id="rkInv" type="button" style="width:100%">＋ INVITE MEMBERS</button>':'')   /* #roominvite */
     +(roomCanEnter(r)?'<button class="btn" id="rkOpen" type="button" style="width:100%">🗣 OPEN THE ROOM</button>':'')
     +((!mine&&MY_KEYS[roomId]==='in')?'<button class="btn-line" id="rkLeave" type="button" style="width:100%">Hand the key back</button>':'')
     +'</div>'
     +'<button class="btn-ghost" id="rkX" type="button" style="width:100%;margin-top:10px;border:0;color:#586067">Close</button></div>';
   sh.querySelector('#rkX').addEventListener('click',()=>sh.classList.remove('on'));
+  const iv=sh.querySelector('#rkInv'); if(iv)iv.addEventListener('click',()=>{ sh.classList.remove('on'); openRoomInvite(roomId); });   /* #roominvite */
   const o=sh.querySelector('#rkOpen'); if(o)o.addEventListener('click',()=>{ sh.classList.remove('on'); openRoom(r.name,r.ico||'🗣',isMineRow(r)?'your room':('by '+(r.by_handle||'a casual'))); });
   const l=sh.querySelector('#rkLeave'); if(l)l.addEventListener('click',()=>shConfirm('Hand back the key to '+r.name+'? You can ask again later.',()=>leaveRoomKey(r),{title:'Leave the room?',icon:'🗝',okText:'Leave'}));
   sh.querySelectorAll('[data-kok]').forEach(b=>b.addEventListener('click',()=>decideRoomAsk(roomId,b.getAttribute('data-kok'),'in',b.getAttribute('data-kh')||'them')));
@@ -34642,6 +34655,80 @@ async function openRoomKeysSheet(roomId){
   sh.classList.add('on');
 }
 window.openRoomKeysSheet=openRoomKeysSheet;
+/* ═══ #roominvite(oct7) — "I need a way to invite people into the Shadow Council private group." A private room used
+   to let people in only one way round: THEY asked, the owner said yes, or someone passed them the ⤴ link outside
+   the app. Now the ⤴ (on the room's row, in the room's header, and ＋ INVITE in the 🗝 sheet) opens a picker of the
+   whole roster: type a handle, tap INVITE.
+     · the owner's invite SEATS them on the spot (room_members · status in) and DMs them a heads-up with the room's
+       key link, so it shows up in their Messages too;
+     · if the server won't seat someone for you (a member's invite, or a policy that only lets people seat
+       themselves), the DM carries the key link instead — one tap on it and they're in (room_key_enter);
+     · if their DMs are closed to you, it says so, and SHARE A LINK still hands the key to any app on the phone.
+   People already in, or already asking at the door, are marked rather than offered twice. ═══ */
+let _rinvQ='';
+async function openRoomInvite(roomId){
+  const r=ALL_ROOMS.find(x=>x.id===roomId); if(!r)return;
+  if(!(window.SB&&window.__shkUid)){ toast('Sign in first — keys ride your account'); return; }
+  let sh=document.getElementById('roomInvSheet');
+  if(!sh){ sh=document.createElement('div'); sh.className='sheet'; sh.id='roomInvSheet'; sh.style.zIndex='75'; document.body.appendChild(sh);
+    sh.addEventListener('click',e=>{ if(e.target===sh)sh.classList.remove('on'); }); }
+  let rows=[]; try{ const m=await window.SB.from('room_members').select('user_id,status').eq('room_id',roomId); rows=(m&&!m.error&&m.data)||[]; }catch(e){}
+  const st={}; rows.forEach(x=>{ st[x.user_id]=x.status; });
+  if(!MEMBERS||!MEMBERS.length){ try{ await sbLoadMembers(); }catch(e){} }
+  const mine=isMineRow(r);
+  sh.innerHTML='<div class="sheet-card rinv-card" style="text-align:left">'
+    +'<div class="big" style="font-size:20px;letter-spacing:.06em;text-align:center">🗝 Invite to '+esc(r.name)+'</div>'
+    +'<p class="sub" style="margin:6px 0 12px;text-align:center">'+(mine?'Tap INVITE and they’re in — they get a message with the key.':'They get a message with the room’s key — one tap and they’re in.')+'</p>'
+    +'<input class="field" id="rinvQ" type="search" placeholder="Find a handle…" autocomplete="off" value="'+esc(_rinvQ)+'" style="width:100%;margin-bottom:8px">'
+    +'<div id="rinvList" style="max-height:46vh;overflow-y:auto;margin-bottom:12px"></div>'
+    +'<button class="btn-line" id="rinvShare" type="button" style="width:100%">⤴ SHARE A LINK INSTEAD</button>'
+    +'<button class="btn-ghost" id="rinvX" type="button" style="width:100%;margin-top:8px;border:0;color:#586067">Close</button></div>';
+  const list=sh.querySelector('#rinvList');
+  const paint=()=>{
+    const q=_rinvQ.trim().toLowerCase();
+    const all=(MEMBERS||[]).filter(m=>m&&m.id&&m.handle&&m.id!==window.__shkUid);
+    const hit=(q?all.filter(m=>String(m.handle).toLowerCase().indexOf(q)>=0):all).slice(0,60);
+    if(!all.length){ list.innerHTML='<p class="sub" style="padding:8px 0">The roster isn’t loaded — use SHARE A LINK below.</p>'; return; }
+    if(!hit.length){ list.innerHTML='<p class="sub" style="padding:8px 0">Nobody on the record by that handle.</p>'; return; }
+    list.innerHTML=hit.map(m=>{ const s=st[m.id];
+      const right=s==='in'?'<span class="epill" style="flex:none">IN</span>'
+        :s==='invited'?'<span class="epill" style="flex:none">INVITED</span>'
+        :s==='asked'&&mine?'<button class="btn-line gold" data-rlet="'+esc(m.id)+'" data-rh="'+esc(m.handle)+'" style="flex:none;padding:6px 10px;font-size:11px">LET IN</button>'
+        :'<button class="btn-line gold" data-rinv="'+esc(m.id)+'" data-rh="'+esc(m.handle)+'" style="flex:none;padding:6px 12px;font-size:11px">INVITE</button>';
+      return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line-soft)">'
+        +'<span style="flex:none;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:\'Anton\',sans-serif;font-size:14px;background:var(--well);border:1px solid var(--line);color:var(--bone)">'+esc(String(m.handle).charAt(0).toUpperCase())+'</span>'
+        +'<span style="flex:1;min-width:0;font-family:Inter,system-ui,sans-serif;font-size:13px;color:var(--bone);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(m.handle)+(s==='asked'?' <span style="color:var(--steel);font-size:11px">· asking</span>':'')+'</span>'+right+'</div>'; }).join('')
+      +((q?all.filter(m=>String(m.handle).toLowerCase().indexOf(q)>=0).length:all.length)>60?'<p class="sub" style="padding:8px 0">Type a handle to find more.</p>':'');
+    list.querySelectorAll('[data-rinv]').forEach(b=>b.addEventListener('click',async()=>{ b.disabled=true; b.textContent='…';
+      const ok=await roomInviteOne(r,b.getAttribute('data-rinv'),b.getAttribute('data-rh'));
+      if(ok){ st[b.getAttribute('data-rinv')]=ok; paint(); } else { b.disabled=false; b.textContent='INVITE'; } }));
+    list.querySelectorAll('[data-rlet]').forEach(b=>b.addEventListener('click',async()=>{ b.disabled=true;
+      await decideRoomAsk(r.id,b.getAttribute('data-rlet'),'in',b.getAttribute('data-rh')); st[b.getAttribute('data-rlet')]='in'; sh.classList.add('on'); paint(); }));
+  };
+  sh.querySelector('#rinvQ').addEventListener('input',e=>{ _rinvQ=e.target.value||''; paint(); });
+  sh.querySelector('#rinvShare').addEventListener('click',()=>inviteWord('room',r.name,'',r.id,true));
+  sh.querySelector('#rinvX').addEventListener('click',()=>sh.classList.remove('on'));
+  paint(); sh.classList.add('on');
+}
+window.openRoomInvite=openRoomInvite;
+/* seat them (owner) and/or DM the key link. Resolves 'in' | 'invited' | null. */
+async function roomInviteOne(r,uid,h){
+  let seated=false;
+  if(isMineRow(r)){
+    try{ const q=await window.SB.from('room_members').upsert({room_id:r.id,user_id:uid,handle:h,status:'in',decided_at:new Date().toISOString()},{onConflict:'room_id,user_id'}).select('status');
+      seated=!q.error&&(q.data||[]).length>0; }catch(e){ seated=false; }
+  }
+  const url=SHARE_URL+'/?join='+r.id;
+  const body=seated?('🗝 You’re in — I gave you a key to "'+r.name+'". Find it under The Floor, or tap: '+url)
+                   :('🗝 You’re invited to "'+r.name+'" — tap to take your key: '+url);
+  let dmOk=false;
+  try{ const q=await window.SB.from('dm_messages').insert({id:chatUUID(),from_id:window.__shkUid,to_id:uid,from_handle:(typeof chatMyHandle==='function'?chatMyHandle():'a casual'),body:body});
+    dmOk=!(q&&q.error); }catch(e){ dmOk=false; }
+  if(seated){ toast('🗝 '+h+' is in'+(dmOk?' — they got a message':'')); try{ await sbLoadRoomKeys(); renderSocialFeed(); }catch(e){} try{ unlockBadge(TOWN_CRIER); }catch(e){} return 'in'; }
+  if(dmOk){ toast('🗝 Sent '+h+' the key — one tap and they’re in'); try{ unlockBadge(TOWN_CRIER); }catch(e){} return 'invited'; }
+  toast('Couldn’t reach '+h+' — their messages are closed to you. Use SHARE A LINK.');
+  return null;
+}
 /* the 🗝 in the room header: owners see the asks count, members see who's in */
 function roomAsksBadge(){
   const b=document.getElementById('roomKeys'); if(!b)return;
