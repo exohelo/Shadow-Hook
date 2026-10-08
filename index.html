@@ -8,7 +8,9 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct7noswipehint';   /* oct 7 (68th) — the "swipe →" hint is off What’s Hot (#noswipehint). */
+window.SHK_BUILD='oct7crownonly';   /* oct 7 (70th) — ONLY THE CROWN MOVES BUCKS, BANS OR SEATS: the server refuses km_bucks / km_ban / km_crown / km_adjust from any key but the founder's — council members' levers ride the desk; refunds are asked for in THE BANK and sealed by the crown (#crownonly #refunddesk). */
+/* was: oct7roomlock */   /* oct 7 (69th) — PRIVATE ROOMS LOCKED AT THE SERVER: a link is no longer a key (the server seats only people a room admits: owner, people the owner let in, clan members, gathering RSVPs); private messages can only be read or written from inside; only a room's owner can change it; members' invites become asks the owner decides; links in DMs are tappable and a room link opens in the app (#roomlock). */
+/* was: oct7noswipehint */   /* oct 7 (68th) — the "swipe →" hint is off What’s Hot (#noswipehint). */
 /* was: oct7mentions */   /* oct 7 (67th) — @TAGS EVERYWHERE: type @ in any message box for the roster; a sent @HANDLE pings that member with a DM (✉ badge + alert); every @handle on screen is a tap-to-open tag, yours glows (#mentions). */
 /* was: oct7invfront */   /* oct 7 (66th) — the invite picker opens in front of the room, the clan sheet and the 🗝 sheet instead of behind them (#invfront). */
 /* was: oct7roominvite */   /* oct 7 (65th) — INVITE TO A PRIVATE ROOM: the ⤴ on a private room (and ＋ INVITE MEMBERS in its 🗝 sheet) opens the roster; the owner's INVITE seats them on the spot and DMs them the key; otherwise the DM carries the key link; SHARE A LINK still works (#roominvite). */
@@ -8276,12 +8278,56 @@ html.daylight .hm-lm .lk-g,html.daylight .hm-lm .lk-w{fill:#dfeaf7}
         <div id="bankRules" style="display:none;margin-top:8px;border:1px solid var(--line-soft);border-radius:10px;padding:10px"></div>
       </div>
       <div id="bankFoot">
+        <!-- #refunddesk(oct7) — a member who needs bucks back asks; the Keymaster seals or denies it -->
+        <div id="bankRefund" style="display:none;margin:0 0 8px;border:1px solid var(--line-soft);border-radius:12px;padding:10px">
+          <div class="card-h" style="margin:0 0 6px">↩ Ask for a refund</div>
+          <p class="sub" style="margin:0 0 8px">Charged for something that didn’t go through? Tell the Keymaster how much and why — it’s reviewed before anything moves.</p>
+          <div style="display:flex;gap:8px"><input class="field" id="bankRfN" type="text" inputmode="numeric" maxlength="5" placeholder="⬡" style="width:90px" data-nomention>
+            <input class="field" id="bankRfWhy" type="text" maxlength="300" placeholder="What happened" style="flex:1;min-width:0" data-nomention></div>
+          <button class="btn" id="bankRfGo" type="button" style="width:100%;margin-top:8px">SEND FOR APPROVAL</button>
+          <div class="sub" id="bankRfMsg" style="margin-top:6px"></div>
+          <div id="bankRfList" class="sub" style="margin-top:6px;line-height:1.6"></div>
+        </div>
+        <button class="btn-ghost" id="bankRfBtn" type="button" style="width:100%;margin-bottom:8px">↩ Ask for a refund ▾</button>
         <button class="btn-ghost" id="bankRulesBtn" type="button" style="width:100%">⚓ How they’re earned — the rules ▾</button>
         <button class="btn-ghost" style="width:100%;margin-top:8px" onclick="document.getElementById('bankSheet').classList.remove('on')">Close</button>
       </div>
     </div>
   </div>
   <script>
+  /* ═══ #refunddesk(oct7) — "if somebody needs a refund, they can submit it for approval": a member's ask lands on
+     the Keymaster's desk (km_desk · kind refund); nothing moves until the crown seals it. The server only lets a
+     member file a refund for THEMSELVES, and only the crown can mint. ═══ */
+  (function(){
+    const $=id=>document.getElementById(id);
+    const e=x=>String(x==null?'':x).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    async function list(){
+      const L=$('bankRfList'); if(!L||!window.SB||!window.__shkUid)return;
+      try{ const r=await window.SB.from('km_desk').select('label,status,note,created_at,payload').eq('kind','refund').eq('by',window.__shkUid).order('created_at',{ascending:false}).limit(6);
+        const rows=(r&&r.data)||[];
+        L.innerHTML=rows.length?rows.map(x=>'<div>'+e((x.payload&&x.payload.delta)||'?')+' ⬡ · <b style="color:var(--bone)">'+({pending:'waiting on the Keymaster',sealed:'approved ✓',denied:'denied',withdrawn:'withdrawn',failed:'approved — but it didn’t go through yet'}[x.status]||e(x.status))+'</b>'+(x.note?' — “'+e(x.note)+'”':'')+'</div>').join(''):''; }catch(_){}
+    }
+    function wire(){
+      const b=$('bankRfBtn'), box=$('bankRefund'), go=$('bankRfGo'); if(!b||b._w)return; b._w=1;
+      b.addEventListener('click',()=>{ const on=box.style.display==='none'; box.style.display=on?'':'none'; b.textContent=on?'↩ Ask for a refund ▴':'↩ Ask for a refund ▾'; if(on)list(); });
+      go.addEventListener('click',async()=>{
+        const msg=$('bankRfMsg'), n=parseInt(($('bankRfN').value||'').replace(/[^\d]/g,''),10), why=($('bankRfWhy').value||'').trim();
+        if(!(window.SB&&window.__shkUid)){ msg.textContent='Sign in first — your bank rides your account.'; return; }
+        if(!(n>0)){ msg.textContent='How many ⬡?'; return; }
+        if(n>5000){ msg.textContent='That’s more than a refund — message the Keymaster.'; return; }
+        if(why.length<4){ msg.textContent='Say what happened — the Keymaster reads it.'; return; }
+        go.disabled=true; msg.textContent='Sending…';
+        const a=(typeof loadAcct==='function'&&loadAcct())||{}, h=String(a.handle||'').toUpperCase();
+        try{
+          const r=await window.SB.from('km_desk').insert({by:window.__shkUid,by_handle:h,kind:'refund',label:'Refund '+n.toLocaleString()+' ⬡',target:h,target_uid:window.__shkUid,payload:{delta:n},reason:why.slice(0,300),status:'pending'});
+          if(r.error)throw r.error;
+          msg.textContent='↩ Sent — the Keymaster will approve or deny it. You’ll see it here.'; $('bankRfN').value=''; $('bankRfWhy').value=''; list();
+        }catch(err){ msg.textContent='Couldn’t send it — '+String((err&&err.message)||err).slice(0,120); }
+        go.disabled=false;
+      });
+    }
+    if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wire); else wire();
+  })();
   /* ═══ #bank — module ═══ */
   (function(){
     const $=id=>document.getElementById(id);
@@ -29021,6 +29067,19 @@ function processPendingShare(){
   try{openHub();}catch(e){}
   setTimeout(function(){ try{newStoryFlow({url:d.url,note:d.note||''});}catch(e){} },400);
 }
+/* #roomlock — turn plain links in already-escaped text into tappable ones */
+function shkLinkify(html){ return String(html).replace(/\bhttps?:\/\/[^\s<]+[^\s<.,;:!?)\]'"”’]/g,u=>'<a href="'+u+'" target="_blank" rel="noopener" class="shk-link">'+u+'</a>'); }
+window.shkLinkify=shkLinkify;
+/* a link to one of our own rooms (…/?join=<id>) opens it here, in the app, instead of reloading the page */
+document.addEventListener('click',function(e){
+  const a=e.target.closest&&e.target.closest('a[href*="?join="]'); if(!a)return;
+  let id=''; try{ const U=new URL(a.href,location.href); if(!/theshadowhook\.com$/i.test(U.hostname)&&U.origin!==location.origin)return; id=U.searchParams.get('join')||''; }catch(_){ return; }
+  if(!/^[0-9a-f-]{20,}$/i.test(id))return;
+  e.preventDefault(); e.stopPropagation();
+  try{ localStorage.setItem('shadowhook_pending_join',id); }catch(_){}
+  try{ const dv=document.getElementById('dmView'); if(dv&&dv.style.display!=='none'&&typeof closeDmThread==='function')closeDmThread(); }catch(_){}
+  processPendingJoin();
+},true);
 async function processPendingJoin(){
   let jid=null;try{jid=localStorage.getItem('shadowhook_pending_join')}catch(e){}
   if(!jid||!window.SB)return;
@@ -29030,7 +29089,23 @@ async function processPendingJoin(){
     try{localStorage.removeItem('shadowhook_pending_join')}catch(e){}
     const row=(r&&r.data&&r.data[0])||null;
     if(!row){toast('That room’s gone dark');return;}
-    try{ await window.SB.rpc('room_key_enter',{p_id:row.id}); MY_KEYS[row.id]='in'; }catch(e){}   /* #keys — the link is a key: seated on the server */
+    /* #roomlock(oct7) — A LINK IS NO LONGER A KEY. The server only seats someone a private room already admits (the
+       owner, someone the owner seated, a clan member, a casual going to its gathering). Anyone else holding a
+       forwarded link lands at the door instead — with the ASK button — and never sees inside. */
+    if(row.is_private){
+      let ok=false, why='';
+      try{ const k=await window.SB.rpc('room_key_enter',{p_id:row.id}); ok=!(k&&k.error); why=(k&&k.error&&k.error.message)||''; }catch(e){ why=String((e&&e.message)||e); }
+      if(!ok){
+        MY_KEYS[row.id]=MY_KEYS[row.id]==='asked'?'asked':'';
+        try{ if(!ALL_ROOMS.some(x=>x.id===row.id))ALL_ROOMS.push({id:row.id,name:row.name,ico:row.ico||'🗣',owner:null,by_handle:row.by_handle||'',is_private:true}); }catch(e){}
+        renderSocialFeed();
+        const rr=ALL_ROOMS.find(x=>x.id===row.id)||{id:row.id,name:row.name,by_handle:row.by_handle};
+        toast('🗝 '+row.name+' is invite-only — ask '+(row.by_handle||'the owner')+' for a key');
+        try{ askRoomFlow(rr); }catch(e){}
+        return;
+      }
+      MY_KEYS[row.id]='in';
+    }
     try{
       const j=joinedRooms();
       if(!j.some(x=>x.id===row.id)){j.push({id:row.id,n:row.name,ico:row.ico||'🗣',priv:!!row.is_private,by:row.by_handle||''});localStorage.setItem(K('joinedrooms'),JSON.stringify(j));}
@@ -32210,7 +32285,7 @@ function dmDrawThread(){
     /* #dmmedia — a photo or GIF is the bubble; a clip plays inline; a pending upload sits at half strength */
     const k=m.kind||'text', u=String(m.url||'');
     const body=(k==='ticket')?dmTicketHTML(m)   /* #ticketdm(oct4) */
-      :(k==='text'||!u)?esc(m.tx)
+      :(k==='text'||!u)?shkLinkify(esc(m.tx))   /* #roomlock — "couldn't click the link": links in a DM are tappable */
       :(k==='video'?'<video src="'+esc(u)+'" controls playsinline preload="metadata" style="display:block;max-width:100%;border-radius:10px;background:#000"></video>'
         :'<img src="'+esc(u)+'" alt="'+(k==='gif'?'GIF':'')+'" loading="lazy" style="display:block;max-width:100%;max-height:320px;border-radius:10px">');
     /* #dmbig — classes carry the look (see the sheet); a media bubble is the picture itself.
@@ -34556,7 +34631,7 @@ async function sbLoadRoomKeys(){
          holding an old link-key with no row gets seated the first time this runs */
       ALL_ROOMS.forEach(r=>{ if(!r.is_private)return;
         if(isMineRow(r)&&MY_KEYS[r.id]!=='in'){ window.SB.from('room_members').insert({room_id:r.id,user_id:window.__shkUid,handle:chatMyHandle(),status:'in',decided_at:new Date().toISOString()}).then(()=>{},()=>{}); MY_KEYS[r.id]='in'; }
-        else if(!isMineRow(r)&&MY_KEYS[r.id]===undefined&&j.some(k=>k.id===r.id)){ window.SB.rpc('room_key_enter',{p_id:r.id}).then(()=>{},()=>{}); MY_KEYS[r.id]='in'; } });
+        else if(!isMineRow(r)&&MY_KEYS[r.id]===undefined&&j.some(k=>k.id===r.id)){ window.SB.rpc('room_key_enter',{p_id:r.id}).then(k=>{ if(k&&!k.error)MY_KEYS[r.id]='in'; },()=>{}); } });   /* #roomlock — an old link on this phone seats you only if the room admits you */
     }catch(e){}
   }catch(e){ console.warn('[keys] load',e); }
 }
@@ -34682,10 +34757,11 @@ async function openRoomInvite(roomId){
   const mine=isMineRow(r);
   sh.innerHTML='<div class="sheet-card rinv-card" style="text-align:left">'
     +'<div class="big" style="font-size:20px;letter-spacing:.06em;text-align:center">🗝 Invite to '+esc(r.name)+'</div>'
-    +'<p class="sub" style="margin:6px 0 12px;text-align:center">'+(mine?'Tap INVITE and they’re in — they get a message with the key.':'They get a message with the room’s key — one tap and they’re in.')+'</p>'
+    +'<p class="sub" style="margin:6px 0 12px;text-align:center">'+(mine?'Tap INVITE and they’re in — they get a message saying so. Nobody else can get in.':'Only '+esc(r.by_handle||'the owner')+' can let people in — INVITE puts them forward and the owner says yes or no.')+'</p>'
     +'<input class="field" id="rinvQ" type="search" placeholder="Find a handle…" autocomplete="off" value="'+esc(_rinvQ)+'" style="width:100%;margin-bottom:8px">'
     +'<div id="rinvList" style="max-height:46vh;overflow-y:auto;margin-bottom:12px"></div>'
-    +'<button class="btn-line" id="rinvShare" type="button" style="width:100%">⤴ SHARE A LINK INSTEAD</button>'
+    +'<button class="btn-line" id="rinvShare" type="button" style="width:100%">⤴ SHARE A LINK</button>'
+    +'<p class="sub" style="margin:6px 0 0;font-size:11.5px;text-align:center">A link only opens the room for people already let in — anyone else gets the door and has to ask.</p>'
     +'<button class="btn-ghost" id="rinvX" type="button" style="width:100%;margin-top:8px;border:0;color:#586067">Close</button></div>';
   const list=sh.querySelector('#rinvList');
   const paint=()=>{
@@ -34696,7 +34772,7 @@ async function openRoomInvite(roomId){
     if(!hit.length){ list.innerHTML='<p class="sub" style="padding:8px 0">Nobody on the record by that handle.</p>'; return; }
     list.innerHTML=hit.map(m=>{ const s=st[m.id];
       const right=s==='in'?'<span class="epill" style="flex:none">IN</span>'
-        :s==='invited'?'<span class="epill" style="flex:none">INVITED</span>'
+        :(s==='invited'||(s==='asked'&&!mine))?'<span class="epill" style="flex:none">'+(s==='asked'?'ASKED':'PUT FORWARD')+'</span>'
         :s==='asked'&&mine?'<button class="btn-line gold" data-rlet="'+esc(m.id)+'" data-rh="'+esc(m.handle)+'" style="flex:none;padding:6px 10px;font-size:11px">LET IN</button>'
         :'<button class="btn-line gold" data-rinv="'+esc(m.id)+'" data-rh="'+esc(m.handle)+'" style="flex:none;padding:6px 12px;font-size:11px">INVITE</button>';
       return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line-soft)">'
@@ -34722,15 +34798,23 @@ async function roomInviteOne(r,uid,h){
     try{ const q=await window.SB.from('room_members').upsert({room_id:r.id,user_id:uid,handle:h,status:'in',decided_at:new Date().toISOString()},{onConflict:'room_id,user_id'}).select('status');
       seated=!q.error&&(q.data||[]).length>0; }catch(e){ seated=false; }
   }
+  /* #roomlock — a member (not the owner) can't seat anyone: they put the person forward, and it lands on the
+     owner's 🗝 sheet as an ask to LET IN. The link alone opens nothing now. */
+  let nominated=false;
+  if(!seated&&!isMineRow(r)){
+    try{ const q=await window.SB.from('room_members').insert({room_id:r.id,user_id:uid,handle:h,status:'asked'}).select('status');
+      nominated=!q.error||/duplicate|23505/i.test(String((q.error&&q.error.message)||'')); }catch(e){}
+    if(!nominated){ toast('Couldn’t put '+h+' forward — only the owner can add people'); return null; }
+  }
   const url=SHARE_URL+'/?join='+r.id;
   const body=seated?('🗝 You’re in — I gave you a key to "'+r.name+'". Find it under The Floor, or tap: '+url)
-                   :('🗝 You’re invited to "'+r.name+'" — tap to take your key: '+url);
+                   :('🗝 I put you forward for "'+r.name+'" — '+(r.by_handle||'the owner')+' just has to let you in. You’ll hear the moment they do.');
   let dmOk=false;
   try{ const q=await window.SB.from('dm_messages').insert({id:chatUUID(),from_id:window.__shkUid,to_id:uid,from_handle:(typeof chatMyHandle==='function'?chatMyHandle():'a casual'),body:body});
     dmOk=!(q&&q.error); }catch(e){ dmOk=false; }
   if(seated){ toast('🗝 '+h+' is in'+(dmOk?' — they got a message':'')); try{ await sbLoadRoomKeys(); renderSocialFeed(); }catch(e){} try{ unlockBadge(TOWN_CRIER); }catch(e){} return 'in'; }
-  if(dmOk){ toast('🗝 Sent '+h+' the key — one tap and they’re in'); try{ unlockBadge(TOWN_CRIER); }catch(e){} return 'invited'; }
-  toast('Couldn’t reach '+h+' — their messages are closed to you. Use SHARE A LINK.');
+  if(nominated){ toast('🗝 '+h+' is put forward — '+(r.by_handle||'the owner')+' lets them in'); try{ unlockBadge(TOWN_CRIER); }catch(e){} return 'invited'; }
+  toast('Couldn’t reach '+h+'.');
   return null;
 }
 /* the 🗝 in the room header: owners see the asks count, members see who's in */
@@ -49641,7 +49725,7 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
   function kmMe(){ try{ const a=(typeof loadAcct==='function'&&loadAcct())||{}; return {uid:window.__shkUid||null,handle:String(a.handle||'a key holder').toUpperCase()}; }catch(e){ return {uid:null,handle:'a key holder'}; } }
   /* a reason typed on the spot, for the levers that have no reason field of their own */
   function kmWhy(what){ if(!kmIsDeputy())return ''; try{ return String(prompt('Reason for the Keymaster — '+what)||'').trim(); }catch(e){ return ''; } }
-  const KIND_GLYPH={word:'✉',mint:'⬡',ban:'🔨',unban:'✓',key:'☠',unkey:'✕',amb:'🎖',ambpull:'✕',flags:'⚙',app:'🎖',trade:'🛠',stock:'🛡'};
+  const KIND_GLYPH={refund:'↩',word:'✉',mint:'⬡',ban:'🔨',unban:'✓',key:'☠',unkey:'✕',amb:'🎖',ambpull:'✕',flags:'⚙',app:'🎖',trade:'🛠',stock:'🛡'};
   function kmQuiet(msg){ const e=new Error(msg); e.quiet=true; return e; }
   async function kmLever(req){
     if(!window.SB){ try{toast('backend off');}catch(e){} throw kmQuiet('backend off'); }
@@ -49672,6 +49756,12 @@ setInterval(function(){ try{ if(!document.hidden)loadCouncil(); }catch(e){} },15
       case 'mint':{ const d=parseInt(p.delta,10); if(!d)throw new Error('no amount on the request');
         const bal=await kmMintApply(h,d,String(p.reason||req.reason||'the house moved it'),req.target_uid||null);
         return h+' now holds '+(bal!=null?(+bal).toLocaleString()+' ⬡':'the new stack'); }
+      /* #refunddesk(oct7) — a member's refund request, sealed by the crown: the bucks go back through the same mint,
+         and the member gets a word saying so */
+      case 'refund':{ const d=Math.round(+p.delta||0); if(!(d>0))throw new Error('no amount on the request'); if(d>5000)throw new Error('over 5,000 ⬡ — do it by hand if you mean it');
+        const bal=await kmMintApply(h,d,'refund: '+String(req.reason||'').slice(0,100),req.target_uid||null);
+        try{ await window.SB.rpc('km_warn',{p_handle:h,p_msg:'↩ Your refund of '+d.toLocaleString()+' ⬡ was approved — it’s back in your bank.'}); }catch(e){}
+        return h+' refunded '+d.toLocaleString()+' ⬡'+(bal!=null?' — now '+(+bal).toLocaleString()+' ⬡':''); }
       case 'ban': case 'unban':{ const on=(req.kind==='ban'); const r=await window.SB.rpc('km_ban',{p_handle:h,p_on:on,p_msg:String(p.msg||'')}); if(r.error)throw r.error;
         return on?(h+' is banned'):(h+' is back in the Order'); }
       case 'key': case 'unkey':{ const on=(req.kind==='key'); const r=await window.SB.rpc('km_crown',{p_handle:h,p_on:on,p_msg:String(p.msg||'')}); if(r.error)throw r.error;
@@ -59836,6 +59926,7 @@ html.daylight .mention.me{color:#fff;background:#b0207e;box-shadow:none}
 #mentionPick button i{flex:none;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font:400 13px 'Anton',sans-serif;font-style:normal;
   background:var(--well,#0d0a14);border:1px solid var(--line-soft,#2a2233);color:var(--bone,#ece9f5)}
 #mentionPick button em{margin-left:auto;font:600 10.5px Inter,sans-serif;font-style:normal;color:var(--ok,#7fae6a)}
+a.shk-link{color:inherit;text-decoration:underline;word-break:break-all}
 #mentionPick .mp-h{font:700 10.5px 'Barlow Condensed',sans-serif;letter-spacing:.16em;color:var(--steel,#8f979e);padding:6px 10px 4px}
 </style>
 <script>
