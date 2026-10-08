@@ -8,7 +8,8 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct7ilwutag';   /* oct 7 (59th) — the Dispatch Post's tiles credit ILWU (or ILWU early) instead of "the sheet" / "early sheet" (#ilwutag). */
+window.SHK_BUILD='oct7botoff';   /* oct 7 (60th) — Profile → 🧛 Dispatch Bot: one switch turns the bot off on this phone — never pops on any tab; board alerts come as a toast instead (#botoff). */
+/* was: oct7ilwutag */   /* oct 7 (59th) — the Dispatch Post's tiles credit ILWU (or ILWU early) instead of "the sheet" / "early sheet" (#ilwutag). */
 /* was: oct7galdel */   /* oct 7 (58th) — the PHOTO GALLERY's EDIT reads 🗑 DELETE and each removable shot gets a red DELETE pill (tap twice) (#galdel); BIG HALL check-in is off the Dispatch Post for now — the tile, the report box, its timeline rows, the pre-post field and the bot's lines (#nobighall · SHOW_BIGHALL brings it back). */
 /* was: oct7nockin */   /* oct 7 (57th) — the dispatch sheet (final and early look) no longer shows CHECK-IN FORECAST · BIG HALL CHECK-IN (#nockin). */
 /* was: oct7roompull */   /* oct 7 (56th) — PULL DOWN TO CLOSE: drag an open Dispatch Post down from its top bar (or anywhere while it's scrolled to the top) and it closes back to The Hall; a short pull springs back; a grab bar at the top shows it (#roompull). */
@@ -9453,6 +9454,15 @@ html.daylight .hm-lm .lk-g,html.daylight .hm-lm .lk-w{fill:#dfeaf7}
         <p class="sub" style="margin:10px 0 0">⚓ Friend requests and your friends list live on the <b style="color:var(--bone)">Social → ✉ DMs</b> page.</p>
       </div>
 
+      <!-- #botoff(oct7) — "we need a setting to turn off the dispatch bot. its annoying me" — one switch, this phone -->
+      <div class="albox" id="botBox">
+        <h4>🧛 Dispatch Bot</h4>
+        <div class="alrow"><div class="alm">
+            <div class="alt">Show the Dispatch Bot</div>
+            <div class="als">Off: the bot never pops up on any tab. Board alerts still reach you as a short note at the bottom of the screen.</div>
+          </div><button class="alsw on" id="botSw" type="button" role="switch" aria-checked="true" aria-label="Show the Dispatch Bot"><i></i></button></div>
+      </div>
+
       <!-- #alerts(aug10) — the bells, one per kind -->
       <div class="albox" id="alBox">
         <h4>🔔 Alerts</h4>
@@ -18425,7 +18435,7 @@ function pushOddsAlert(force){
 function shkNotify(title,body,tag,vib){
   try{ if(!document.hidden){
     const e=x=>String(x).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-    try{ if(typeof botPokeSay==='function')botPokeSay('<b>'+e(title)+'</b><br>'+e(body)); else toast(title); }catch(x){ try{toast(title);}catch(_){} }
+    try{ if(typeof botPokeSay==='function'&&!(window.botIsOff&&botIsOff()))botPokeSay('<b>'+e(title)+'</b><br>'+e(body)); else toast(title.replace(/^\W+\s*/,'⚓ ')+' — '+body); }catch(x){ try{toast(title);}catch(_){} }   /* #botoff — no bot, a toast */
     try{ buzz(vib||[120,60,120]); }catch(x){}
     return; } }catch(x){}
   try{ if(SW_REG&&SW_REG.showNotification){ SW_REG.showNotification(title,{body:body,tag:tag,vibrate:vib||[120,60,120]}); } else { new Notification(title,{body:body,tag:tag}); } }catch(x){}
@@ -21053,6 +21063,7 @@ function botFloatEl(){
        sleepy barely wants to, chill and sweet are easygoing. ═══ */
 let _bpTaps=[], _bpLast=0, _bpAsleep=false, _bpSpam=0;
 function botPokeSay(html){
+  if(botIsOff())return;   /* #botoff */
   const el=botFloatEl(); el.querySelector('.bf-tx').innerHTML=bfSplit(html); bfType(el);
   el.querySelector('.bf-nm small').textContent='· '+_bfMood+' · just now';
   el.classList.remove('tucked'); el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
@@ -21123,6 +21134,19 @@ function bfSplit(html){ return String(html).split(/<br\s*\/?>/i).map(x=>x.trim()
 function bfType(el){ el.classList.add('typing'); clearTimeout(el._ty); el._ty=setTimeout(()=>{ el.classList.remove('typing'); const t=el.querySelector('.bf-tx'); if(t)t.scrollTop=t.scrollHeight; },650); }
 /* #botroam(oct7) — the bot stays out as long as its words take to read (7–20 s), holds while you're touching it,
    then leaves the screen entirely until it has something new to say */
+/* ═══ #botoff(oct7) — the Dispatch Bot can be switched off (Profile → 🧛 Dispatch Bot). Kept per phone. Off, it is
+   hidden on every tab and never pops; what it would have said that matters (board alerts) goes out as a toast. ═══ */
+function botIsOff(){ try{ return localStorage.getItem('shadowhook_bot_off')==='1'; }catch(e){ return false; } }
+function botSetOff(off){
+  try{ if(off)localStorage.setItem('shadowhook_bot_off','1'); else localStorage.removeItem('shadowhook_bot_off'); }catch(e){}
+  try{ if(_bf){ _bf.classList.toggle('off',!!off); if(off){ clearTimeout(_bfT); _bf.classList.add('tucked'); } } }catch(e){}
+  const sw=document.getElementById('botSw'); if(sw){ sw.classList.toggle('on',!off); sw.setAttribute('aria-checked',String(!off)); }
+}
+window.botIsOff=botIsOff; window.botSetOff=botSetOff;
+(function(){ const wire=()=>{ const sw=document.getElementById('botSw'); if(!sw||sw._b)return; sw._b=1;
+    botSetOff(botIsOff());
+    sw.addEventListener('click',()=>{ const off=!botIsOff(); botSetOff(off); try{ toast(off?'🧛 Dispatch Bot is off — it won’t pop up anymore':'🧛 Dispatch Bot is back'); }catch(e){} }); };
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wire); else wire(); })();
 function botFloatArm(){ clearTimeout(_bfT);
   let ms=14000; try{ const t=(_bf&&_bf.querySelector('.bf-tx').textContent)||''; ms=Math.max(7000,Math.min(20000,5000+t.length*70)); }catch(e){}
   _bfT=setTimeout(function tuck(){ if(!_bf)return; if(_bf._hold){ _bfT=setTimeout(tuck,2500); return; } _bf.classList.add('tucked'); },ms); }
@@ -21130,7 +21154,7 @@ function botFloatVis(){
   if(!_bf)return;
   /* #botroam(oct7) — every tab now; it only steps aside at the gate and while a sheet is open over the page */
   const D=document.documentElement;
-  const on=!D.classList.contains('at-gate')&&!D.classList.contains('dp-open')&&!document.querySelector('.sheet.on,#dayProf.on');
+  const on=!botIsOff()&&!D.classList.contains('at-gate')&&!D.classList.contains('dp-open')&&!document.querySelector('.sheet.on,#dayProf.on');   /* #botoff */
   _bf.classList.toggle('off',!on);
   try{ const nav=document.querySelector('nav.nav'); if(nav){ const h=window.innerHeight-nav.getBoundingClientRect().top; if(h>0&&h<220)_bf.style.bottom=(h+14)+'px'; } }catch(e){}
 }
@@ -21146,7 +21170,7 @@ function botFloatSet(mood,face,parts,ink,alarm){
   if(sig!==_bfSig){ const first=!_bfSig; _bfSig=sig; _bfAt=Date.now(); el.querySelector('.bf-tx').innerHTML=tx;
     const idle=/^\s*(💭|😴)/.test(plain)&&parts.length<2;   /* #botroam — muttering to itself isn't news */
     const go=()=>{ el.classList.remove('tucked'); el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); bfType(el); botFloatArm(); };
-    if(first)setTimeout(go,3500); else if(!idle)go(); }
+    if(botIsOff()){} else if(first)setTimeout(go,3500); else if(!idle)go(); }   /* #botoff — off: it keeps up silently, never pops */
   const ago=Math.round((Date.now()-_bfAt)/60000);
   el.querySelector('.bf-nm small').textContent='· '+String(mood.name).toLowerCase()+' · '+(ago<1?'just now':ago+' min ago');
 }
