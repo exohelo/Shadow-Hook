@@ -8,7 +8,9 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct7roominvite';   /* oct 7 (65th) — INVITE TO A PRIVATE ROOM: the ⤴ on a private room (and ＋ INVITE MEMBERS in its 🗝 sheet) opens the roster; the owner's INVITE seats them on the spot and DMs them the key; otherwise the DM carries the key link; SHARE A LINK still works (#roominvite). */
+window.SHK_BUILD='oct7mentions';   /* oct 7 (67th) — @TAGS EVERYWHERE: type @ in any message box for the roster; a sent @HANDLE pings that member with a DM (✉ badge + alert); every @handle on screen is a tap-to-open tag, yours glows (#mentions). */
+/* was: oct7invfront */   /* oct 7 (66th) — the invite picker opens in front of the room, the clan sheet and the 🗝 sheet instead of behind them (#invfront). */
+/* was: oct7roominvite */   /* oct 7 (65th) — INVITE TO A PRIVATE ROOM: the ⤴ on a private room (and ＋ INVITE MEMBERS in its 🗝 sheet) opens the roster; the owner's INVITE seats them on the spot and DMs them the key; otherwise the DM carries the key link; SHARE A LINK still works (#roominvite). */
 /* was: oct7nodispline */   /* oct 7 (64th) — the header's DAY · TMRW + call-times column is off; the slot stays for its replacement (#nodispline). */
 /* was: oct7bighallback */   /* oct 7 (63rd) — the BIG HALL tile (the hall's job total off ILWU / PMA) is back on the Dispatch Post and its pre-post field; only the big hall CHECK-IN stays off (#bighallback). */
 /* was: oct7grabshot */   /* oct 7 (62nd) — FREEZES OFF THE ALARMS: on iPhones the shutter grabs the slip straight off the camera already cut and sized (no 5 MB photo to decode — the 11 s stalls, #grabshot); the Hall's feed draws only on the Hall (#lazyfeed); the record builds three boards a frame and the Wire paints before a stale record catches up (#recordchunk). */
@@ -1011,7 +1013,8 @@ html.daylight .jobxp .xs-row{border-bottom-color:rgba(122,69,23,.14)}
 #paySheet{z-index:93}
 #burnSheet{z-index:98}
 #clanSheet{z-index:91}   /* #clans — above the floor, below the pay sheet it opens */
-#roomKeysSheet{z-index:98}   /* #keys — opens from inside a room (80) and from the floor */   /* #burn — opens from the profile (92), a room (80) or a wire (96): it has to clear all three */
+#roomKeysSheet{z-index:98}
+#roomInvSheet{z-index:99!important}   /* #invfront */   /* #keys — opens from inside a room (80) and from the floor */   /* #burn — opens from the profile (92), a room (80) or a wire (96): it has to clear all three */
 #shDlg{z-index:120}      /* #burn — the result card ("Log burned", the logout ask, any alert) rides above every sheet, not under the profile (.dlg itself says 80, further down) */
 /* #sheetscroll(aug10) — EVERY sheet card scrolls itself now.
    Two bugs lived here. (1) Cards without an inline max-height (the PROFILE
@@ -34670,7 +34673,7 @@ async function openRoomInvite(roomId){
   const r=ALL_ROOMS.find(x=>x.id===roomId); if(!r)return;
   if(!(window.SB&&window.__shkUid)){ toast('Sign in first — keys ride your account'); return; }
   let sh=document.getElementById('roomInvSheet');
-  if(!sh){ sh=document.createElement('div'); sh.className='sheet'; sh.id='roomInvSheet'; sh.style.zIndex='75'; document.body.appendChild(sh);
+  if(!sh){ sh=document.createElement('div'); sh.className='sheet'; sh.id='roomInvSheet'; sh.style.zIndex='99';   /* #invfront(oct7) — above the room (80), the clan sheet (91) and the 🗝 sheet (98); dialogs (120) and toasts (110) still ride over it */ document.body.appendChild(sh);
     sh.addEventListener('click',e=>{ if(e.target===sh)sh.classList.remove('on'); }); }
   let rows=[]; try{ const m=await window.SB.from('room_members').select('user_id,status').eq('room_id',roomId); rows=(m&&!m.error&&m.data)||[]; }catch(e){}
   const st={}; rows.forEach(x=>{ st[x.user_id]=x.status; });
@@ -59817,5 +59820,223 @@ setTimeout(function(){
 }catch(e){ try{ console.warn("[dispatch post] failed to start",e); if(typeof shkAlert==="function")shkAlert("dispatch-post",String((e&&e.message)||e).slice(0,160),""); }catch(_){} }
 })();
 </script>
+<style>
+/* ═══ #mentions(oct7) — @TAG ANYONE, ANYWHERE ═══ */
+.mention{color:var(--copper-hi,#eeb46b);font-weight:700;cursor:pointer;border-radius:5px;padding:0 2px;background:rgba(238,180,107,.12);white-space:nowrap}
+.mention.me{color:#fff;background:linear-gradient(90deg,rgba(255,77,210,.55),rgba(255,107,61,.45));box-shadow:0 0 10px rgba(255,77,210,.35)}
+html.daylight .mention{color:#8a3d08;background:rgba(140,84,32,.12)}
+html.daylight .mention.me{color:#fff;background:#b0207e;box-shadow:none}
+#mentionPick{position:fixed;z-index:2147482500;min-width:220px;max-width:min(320px,92vw);max-height:260px;overflow-y:auto;border-radius:14px;
+  background:var(--plate,#16121f);border:1px solid var(--line,#3a3046);box-shadow:0 12px 30px rgba(0,0,0,.5);padding:4px;display:none;-webkit-overflow-scrolling:touch}
+#mentionPick.on{display:block}
+#mentionPick button{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:9px;width:100%;padding:8px 10px;border-radius:10px;cursor:pointer;
+  font:600 14px Inter,system-ui,sans-serif;color:var(--bone,#ece9f5)}
+#mentionPick button.on,#mentionPick button:hover{background:rgba(238,180,107,.14)}
+#mentionPick button i{flex:none;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font:400 13px 'Anton',sans-serif;font-style:normal;
+  background:var(--well,#0d0a14);border:1px solid var(--line-soft,#2a2233);color:var(--bone,#ece9f5)}
+#mentionPick button em{margin-left:auto;font:600 10.5px Inter,sans-serif;font-style:normal;color:var(--ok,#7fae6a)}
+#mentionPick .mp-h{font:700 10.5px 'Barlow Condensed',sans-serif;letter-spacing:.16em;color:var(--steel,#8f979e);padding:6px 10px 4px}
+</style>
+<script>
+/* ═══ #mentions(oct7) — "If I want to reply or give a shoutout to somebody, can I put @MAD_VANE_64 to tag them, and alert
+   them with a message icon as we do for DMs. I want this rule to apply everywhere in the app."
+   THREE PIECES, ALL APP-WIDE:
+   1 · TYPE @ — in any box you write words in (room chat, the Dispatch Post, comments, captions, DMs, the Chamber…),
+       typing @ and a few letters opens the roster under your thumb; tap a handle and it drops in as @HANDLE.
+   2 · SEND IT — every message the app writes to the wire (rooms · messages, post comments · story_comments, posts ·
+       stories, the Chamber · km_chamber) is read on its way out. Each @handle that is a real member — case doesn't
+       matter, and - and _ count as the same — gets a Direct Message: "📣 EXO tagged you in The Hall Floor: “…”".
+       That lands exactly like a DM: the ✉ badge in the header lights, and their phone alert fires if DM alerts are
+       on. Nobody is tagged twice by one message, nobody is told they tagged themselves, five tags at most per message,
+       and nothing goes out unless the message itself landed. If their DMs are closed to you, the tag still shows —
+       it just can't ring their pocket. DMs themselves aren't re-announced (the DM already is the alert).
+   3 · SEE IT — anywhere a message is shown, a real @handle reads as a tag you can tap to open that member's card;
+       a tag of YOU glows. Done once, page-wide, by watching what gets drawn — no screen had to be rewritten.
+   Off the wire (no account, guest, offline) nothing is sent; the highlight and the picker still work off the
+   roster this phone already has. ═══ */
+(function(){
+  const NORM=s=>String(s||'').toUpperCase().replace(/-/g,'_');
+  const roster=()=>{ try{ return (typeof MEMBERS!=='undefined'&&Array.isArray(MEMBERS))?MEMBERS:[]; }catch(e){ return []; } };
+  let _idx=null,_idxN=-1;
+  const index=()=>{ const R=roster(); if(_idx&&_idxN===R.length)return _idx; _idx={}; R.forEach(m=>{ if(m&&m.id&&m.handle)_idx[NORM(m.handle)]=m; }); _idxN=R.length; return _idx; };
+  let _loading=false;
+  const ensure=()=>{ if(roster().length||_loading)return; _loading=true; try{ if(typeof sbLoadMembers==='function')Promise.resolve(sbLoadMembers()).finally(()=>{ _loading=false; _idx=null; scanAll(); }); else _loading=false; }catch(e){ _loading=false; } };
+  const myUid=()=>{ try{ return window.__shkUid||null; }catch(e){ return null; } };
+  const myH=()=>{ try{ return (typeof chatMyHandle==='function'&&chatMyHandle())||((typeof loadAcct==='function'&&loadAcct())||{}).handle||'a casual'; }catch(e){ return 'a casual'; } };
+  const TAG_RE=/(^|[^A-Za-z0-9_@])@([A-Za-z0-9][A-Za-z0-9_\-\.]{1,31})/g;
+  /* the members a text tags (real ones only, de-duped, longest-handle-first for trailing punctuation) */
+  function tagsIn(text){
+    const I=index(), out=[], seen={}; let m; TAG_RE.lastIndex=0;
+    while((m=TAG_RE.exec(String(text||'')))){
+      let raw=m[2], hit=null;
+      while(raw.length>=2){ hit=I[NORM(raw)]; if(hit)break; if(!/[\.\-_]$/.test(raw))break; raw=raw.slice(0,-1); }
+      if(hit&&!seen[hit.id]){ seen[hit.id]=1; out.push(hit); }
+    }
+    return out;
+  }
+  window.mentionTags=tagsIn;
+
+  /* ── 2 · the wire: wrap the client's from() once, read message inserts on their way out ── */
+  const WHERE={messages:r=>{ const rm=String((r&&r.room)||''); if(!rm||/^_/.test(rm))return null; return rm; },
+    story_comments:r=>{ const id=String((r&&r.story_id)||''); return /^dispatch:/.test(id)?'the Dispatch Post':'a post’s comments'; },
+    stories:()=> 'a post on The Hall',
+    km_chamber:()=> 'the Chamber'};
+  const textOf=r=>[r&&r.body,r&&r.note,r&&r.title].filter(x=>typeof x==='string'&&x).join(' ');
+  async function notify(table,rows){
+    try{
+      const me=myUid(); if(!me||!window.SB)return;
+      if(typeof guestWall==='function'){ try{ if(typeof isGuest==='function'&&isGuest())return; }catch(e){} }
+      for(const r of rows){
+        const where=WHERE[table]&&WHERE[table](r); if(!where)continue;
+        const txt=textOf(r); if(!txt||txt.indexOf('@')<0)continue;
+        if(!roster().length){ ensure(); continue; }
+        let tags=tagsIn(txt).filter(m=>m.id!==me).slice(0,5); if(!tags.length)continue;
+        /* a private room's words only go to people holding its key — a tag never leaks a locked room */
+        let privRoom=null;
+        if(table==='messages'){ try{ const rm=(typeof ALL_ROOMS!=='undefined'?ALL_ROOMS:[]).find(x=>x&&x.name===r.room); if(rm&&rm.is_private)privRoom=rm; }catch(e){} }
+        if(privRoom){ try{ const q=await window.SB.from('room_members').select('user_id,status').eq('room_id',privRoom.id); const ok={}; ((q&&q.data)||[]).forEach(x=>{ if(x.status==='in')ok[x.user_id]=1; }); if(privRoom.owner)ok[privRoom.owner]=1; tags=tags.filter(m=>ok[m.id]); }catch(e){ tags=[]; } if(!tags.length)continue; }
+        const snip=txt.replace(/\s+/g,' ').trim().slice(0,140)+(txt.length>140?'…':'');
+        for(const m of tags){
+          try{
+            const id=(typeof chatUUID==='function')?chatUUID():('m'+Date.now().toString(36)+Math.random().toString(36).slice(2,8));
+            await window.SB.from('dm_messages').insert({id:id,from_id:me,to_id:m.id,from_handle:myH(),body:'📣 tagged you in '+where+': “'+snip+'”'});
+          }catch(e){}
+        }
+        try{ if(typeof shkCrumb==='function')shkCrumb('tagged '+tags.length); }catch(e){}
+      }
+    }catch(e){}
+  }
+  let _wrapped=null;
+  function wrap(){
+    const SB=window.SB; if(!SB||_wrapped===SB||typeof SB.from!=='function')return;
+    _wrapped=SB; const _from=SB.from.bind(SB);
+    SB.from=function(table){
+      const b=_from(table);
+      if(!WHERE[table]||!b||typeof b.insert!=='function')return b;
+      const _ins=b.insert.bind(b);
+      b.insert=function(payload){
+        const q=_ins.apply(null,arguments);
+        try{
+          const rows=Array.isArray(payload)?payload:[payload];
+          if(rows.some(r=>textOf(r).indexOf('@')>=0)&&q&&typeof q.then==='function'){
+            const _then=q.then.bind(q);
+            q.then=function(res,rej){ return _then(function(r){ try{ if(r&&!r.error)setTimeout(()=>notify(table,rows),0); }catch(e){} return res?res(r):r; },rej); };
+          }
+        }catch(e){}
+        return q;
+      };
+      return b;
+    };
+  }
+  wrap(); setTimeout(wrap,1500); setTimeout(wrap,6000);
+
+  /* ── 1 · the picker ── */
+  let pick=null, tgt=null, at=-1, items=[], sel=0;
+  const writable=el=>{
+    if(!el||!(el.tagName==='TEXTAREA'||(el.tagName==='INPUT'&&/^(text|search|)$/i.test(el.type||''))))return false;
+    if(el.readOnly||el.disabled)return false;
+    if(el.hasAttribute('data-nomention'))return false;
+    if(el.hasAttribute('data-mention'))return true;
+    const im=(el.getAttribute('inputmode')||'').toLowerCase(); if(im==='numeric'||im==='decimal'||im==='tel'||im==='email')return false;
+    const ph=(el.getAttribute('placeholder')||'')+' '+(el.getAttribute('aria-label')||'')+' '+(el.id||'');
+    return el.tagName==='TEXTAREA'||/messag|say|comment|caption|reply|post|something|write|talk|note|chat|body|word/i.test(ph);
+  };
+  function box(){ if(pick)return pick; pick=document.createElement('div'); pick.id='mentionPick'; pick.setAttribute('role','listbox'); document.body.appendChild(pick);
+    pick.addEventListener('pointerdown',e=>e.preventDefault());   /* keep the keyboard up */
+    pick.addEventListener('click',e=>{ const b=e.target.closest('button[data-i]'); if(b)choose(+b.getAttribute('data-i')); });
+    return pick; }
+  function hide(){ if(pick)pick.classList.remove('on'); tgt=null; at=-1; items=[]; }
+  function choose(i){
+    const m=items[i]; if(!m||!tgt)return;
+    const v=tgt.value, caret=tgt.selectionStart||v.length;
+    const before=v.slice(0,at), after=v.slice(caret);
+    const ins='@'+m.handle+' ';
+    tgt.value=before+ins+after.replace(/^\S*/,'');
+    const pos=(before+ins).length; try{ tgt.setSelectionRange(pos,pos); }catch(e){}
+    tgt.dispatchEvent(new Event('input',{bubbles:true}));
+    hide(); try{ tgt&&tgt.focus(); }catch(e){}
+  }
+  function show(el,q){
+    const R=roster(); if(!R.length){ ensure(); hide(); return; }
+    const me=myUid(), Q=NORM(q);
+    let on={}; try{ ((typeof FLOOR!=='undefined'&&FLOOR.roster)||[]).forEach(p=>{ if(p.uid)on[p.uid]=1; }); }catch(e){}
+    items=R.filter(m=>m&&m.id&&m.handle&&m.id!==me&&(!Q||NORM(m.handle).indexOf(Q)>=0))
+      .sort((a,b)=>{ const sa=NORM(a.handle).indexOf(Q)===0?0:1, sb=NORM(b.handle).indexOf(Q)===0?0:1; return (sa-sb)||((on[a.id]?0:1)-(on[b.id]?0:1))||String(a.handle).localeCompare(String(b.handle)); })
+      .slice(0,6);
+    if(!items.length){ hide(); return; }
+    tgt=el; sel=0; const p=box();
+    const e=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    p.innerHTML='<div class="mp-h">TAG SOMEONE</div>'+items.map((m,i)=>'<button type="button" role="option" data-i="'+i+'"'+(i===sel?' class="on"':'')+'><i>'+e(String(m.handle).charAt(0))+'</i>@'+e(m.handle)+(on[m.id]?'<em>● on</em>':'')+'</button>').join('');
+    const r=el.getBoundingClientRect(), H=Math.min(260,34+items.length*42), vw=window.innerWidth;
+    let top=r.top-H-6; if(top<8)top=r.bottom+6;
+    p.style.top=Math.max(8,top)+'px'; p.style.left=Math.max(8,Math.min(r.left,vw-Math.min(320,vw*.92)-8))+'px';
+    p.classList.add('on');
+  }
+  document.addEventListener('input',function(ev){
+    const el=ev.target; if(!writable(el)){ if(tgt===el)hide(); return; }
+    const v=el.value||'', c=(typeof el.selectionStart==='number')?el.selectionStart:v.length;
+    const m=/(^|[\s(\["'“])@([A-Za-z0-9_\-\.]{0,32})$/.exec(v.slice(0,c));
+    if(!m){ if(tgt===el)hide(); return; }
+    at=c-m[2].length-1; show(el,m[2]);
+  },true);
+  document.addEventListener('keydown',function(ev){
+    if(!pick||!pick.classList.contains('on')||ev.target!==tgt)return;
+    if(ev.key==='ArrowDown'||ev.key==='ArrowUp'){ ev.preventDefault(); sel=(sel+(ev.key==='ArrowDown'?1:items.length-1))%items.length;
+      pick.querySelectorAll('button').forEach((b,i)=>b.classList.toggle('on',i===sel)); }
+    else if(ev.key==='Enter'||ev.key==='Tab'){ ev.preventDefault(); ev.stopPropagation(); choose(sel); }
+    else if(ev.key==='Escape'){ hide(); }
+  },true);
+  document.addEventListener('focusout',function(ev){ if(ev.target===tgt)setTimeout(()=>{ if(document.activeElement!==tgt)hide(); },150); },true);
+  window.addEventListener('scroll',()=>{ if(tgt)hide(); },{passive:true});
+
+  /* ── 3 · the highlight ── */
+  const SKIP=/^(SCRIPT|STYLE|TEXTAREA|INPUT|SELECT|OPTION|BUTTON|CODE|PRE|SVG|NOSCRIPT)$/;
+  function scan(root){
+    if(!root||!roster().length)return;
+    if(root.nodeType===3){ root=root.parentNode; if(!root)return; }
+    if(root.nodeType!==1||root.closest&&root.closest('.mention,#mentionPick,[contenteditable="true"]'))return;
+    if((root.textContent||'').indexOf('@')<0)return;
+    const tw=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{acceptNode:n=>{
+      if(!n.nodeValue||n.nodeValue.indexOf('@')<0)return NodeFilter.FILTER_REJECT;
+      for(let p=n.parentNode;p&&p!==root.parentNode;p=p.parentNode){ if(p.nodeType===1&&(SKIP.test(p.tagName)||(p.classList&&p.classList.contains('mention'))))return NodeFilter.FILTER_REJECT; }
+      return NodeFilter.FILTER_ACCEPT; }});
+    const hits=[]; let n; while((n=tw.nextNode()))hits.push(n);
+    const I=index(), me=myUid();
+    hits.forEach(t=>{
+      const s=t.nodeValue; let m, last=0, frag=null; TAG_RE.lastIndex=0;
+      while((m=TAG_RE.exec(s))){
+        let raw=m[2], hit=null;
+        while(raw.length>=2){ hit=I[NORM(raw)]; if(hit)break; if(!/[\.\-_]$/.test(raw))break; raw=raw.slice(0,-1); }
+        if(!hit)continue;
+        const st=m.index+m[1].length, en=st+1+raw.length;
+        frag=frag||document.createDocumentFragment();
+        frag.appendChild(document.createTextNode(s.slice(last,st)));
+        const sp=document.createElement('span'); sp.className='mention'+(hit.id===me?' me':''); sp.textContent='@'+hit.handle;
+        sp.setAttribute('data-uid',hit.id); sp.setAttribute('data-h',hit.handle); sp.setAttribute('role','link');
+        frag.appendChild(sp); last=en;
+      }
+      if(frag){ frag.appendChild(document.createTextNode(s.slice(last))); try{ t.parentNode.replaceChild(frag,t); }catch(e){} }
+    });
+  }
+  function scanAll(){ try{ scan(document.body); }catch(e){} }
+  window.mentionScan=scanAll;
+  let _q=[], _qt=0;
+  const mo=new MutationObserver(list=>{
+    for(const r of list){
+      if(r.type==='characterData'){ _q.push(r.target); continue; }
+      r.addedNodes.forEach(n=>{ if((n.nodeType===1||n.nodeType===3)&&(n.textContent||'').indexOf('@')>=0)_q.push(n); });
+    }
+    if(_q.length&&!_qt)_qt=setTimeout(()=>{ _qt=0; const Q=_q; _q=[]; Q.forEach(n=>{ try{ if(n.isConnected)scan(n); }catch(e){} }); },60);
+  });
+  const go=()=>{ try{ mo.observe(document.body,{childList:true,subtree:true,characterData:true}); }catch(e){} setTimeout(()=>{ ensure(); scanAll(); },2500); };
+  if(document.body)go(); else document.addEventListener('DOMContentLoaded',go);
+  document.addEventListener('click',function(ev){
+    const t=ev.target.closest&&ev.target.closest('.mention[data-uid]'); if(!t)return;
+    ev.preventDefault(); ev.stopPropagation();
+    try{ if(typeof openDmCard==='function')openDmCard(t.getAttribute('data-uid'),t.getAttribute('data-h')); }catch(e){}
+  },true);
+})();
+</script>
+
 </body>
 </html>
