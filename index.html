@@ -8,7 +8,9 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct8playcta';   /* oct 8 (132nd) — THE DOOR SAID OUT LOUD: a strip on the dispatch post — ON AIR: MARK THE BOARD · every mark is a ticket; on deck: TAP TO OPEN · mark it when it moves — and a ? beside it that opens THE GAME flyer: three steps, six lines of rules, OPEN THE BOARD. The flyer shows itself once, the first time a board goes ON AIR under a casual's thumb (#playcta #gameflyer). */
+window.SHK_BUILD='oct8seatbanner2';   /* oct 8 (134th) — the card banner reads "representative of the P's on the Council", not "speaks for every P" — a seat serves the letter, it doesn't speak over it (#seatbanner). */
+/* was: oct8calm */   /* oct 8 (133rd) — TWO ALARMS. MELISSA 11.2s on the shutter: iPhone Safari 26 reports ImageCapture, so the frame grab was skipped and a 5.7 MB still was decoded on the page — the grab now runs on every WebKit, and the last-resort grab is OCR-sized, never 4K (#grabshot2). LILCLARK20 5.1s after boot: the Chamber's reload called loadCouncil every time, which repaints the Order's boards and the roster — now it only asks when a seat changed, loadCouncil repaints only when the list changed, and the Chamber's first read waits 20 s and an idle moment (#calmcouncil). */
+/* was: oct8playcta */   /* oct 8 (132nd) — THE DOOR SAID OUT LOUD: a strip on the dispatch post — ON AIR: MARK THE BOARD · every mark is a ticket; on deck: TAP TO OPEN · mark it when it moves — and a ? beside it that opens THE GAME flyer: three steps, six lines of rules, OPEN THE BOARD. The flyer shows itself once, the first time a board goes ON AIR under a casual's thumb (#playcta #gameflyer). */
 /* was: oct8pmatotal */   /* oct 8 (131st) — PMA TOTAL redrawn as the head of THE NUMBERS: the label first, then the figure big on its own plate ("every longshore job on the night"), then one bar for where it goes — hall · come-backs · steady — with the counts, and the sheet / week tabs below (#pmatotal). */
 /* was: oct8weekup */   /* oct 8 (130th) — THE WEEK AHEAD moves above PMA TOTAL on the Wire's console (#weekup). */
 /* was: oct8noyoustrip */   /* oct 8 (129th) — the YOU ON THIS BOARD strip with its percent is gone from the Wire desk (#noyoustrip). */
@@ -31798,7 +31800,7 @@ function mcFactsHTML(uid,name,self){
      retired: it honoured a date; this honours a seat that's held today. The crown's banner names the head of the table. */
   { const k=String(name||'').trim().toLowerCase(); const st=(window.councilSeat&&window.councilSeat(name))||''; const L=(window.SEAT_OF||{})[k]||'';
     if(st==='crown')h+='<div class="mc-found"><span class="mc-fi">⚜</span><span><b>THE SHADOW COUNCIL</b><small>Head of the table · the Keymaster</small></span></div>';
-    else if(st==='seat'&&L)h+='<div class="mc-found"><span class="mc-fi">⚜</span><span><b>THE SHADOW COUNCIL</b><small>Seat of '+esc(L)+' · speaks for every '+esc(L)+' on the docks</small></span></div>'; }
+    else if(st==='seat'&&L)h+='<div class="mc-found"><span class="mc-fi">⚜</span><span><b>THE SHADOW COUNCIL</b><small>Seat of '+esc(L)+' · representative of the '+esc(L)+'’s on the Council</small></span></div>'; }
   const chips=[];
   /* #cardhrs(oct3) — EXPERIENCE HOURS ON THE BOOK, by request: the figure their own phone publishes to the
      Race (posting or stub + every docket sealed since). Hidden by the member in Privacy settings → nobody
@@ -35831,7 +35833,11 @@ async function openScanCam(opts){
        grab IS the crop: the frame's slice of the live video (7% margin, the same rule frameCrop uses) is drawn once,
        straight to OCR_SIDE, and a ~1 MB JPEG goes to the reader with nothing left to decode or cut. Phones with
        ImageCapture (Chrome/Android) keep the real still photo and the worker exactly as before. ═══ */
-    if(typeof ImageCapture==='undefined'){
+    /* #grabshot2(oct8) — MELISSA, oct 8 5:16 PM: "stalled 11.2s · tap #camGo · photo 5.7MB", no 'grab' crumb — iPhone
+       Safari 26 answers typeof ImageCapture, so it skipped the grab and took the full still again. The grab is for
+       every WebKit (every iPhone/iPad browser is WebKit), whatever it claims to support. */
+    const _ua=navigator.userAgent||'', _webkit=/iPhone|iPad|iPod/.test(_ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)||(/Safari\//.test(_ua)&&!/Chrome|Chromium|CriOS|Edg|Android/.test(_ua));
+    if(typeof ImageCapture==='undefined'||_webkit){
       try{
         const v=vid, vw=v&&v.videoWidth, vh=v&&v.videoHeight;
         if(vw&&vh){
@@ -35847,7 +35853,7 @@ async function openScanCam(opts){
         }
       }catch(e){ blob=null; }
     }
-    if(!blob)try{
+    if(!blob&&!_webkit)try{
       const ic=new ImageCapture(camStream.getVideoTracks()[0]);
       /* #camstall — a 12-megapixel-class still, not the sensor's biggest (camStillAsk, by frameCrop);
          odd phones reject the size ask, so retry plain — still a true photo capture, not a preview grab */
@@ -35858,9 +35864,10 @@ async function openScanCam(opts){
     }catch(e){}
     if(!blob){ /* photo pipeline refused — high-res frame grab beats nothing */
       const v=vid;
-      if(v&&v.videoWidth){const c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;
-        c.getContext('2d').drawImage(v,0,0);
-        blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.92));}
+      if(v&&v.videoWidth){ /* #grabshot2 — the last resort is OCR-sized too, never the full 4K frame */
+        const k=Math.min(1,OCR_SIDE/Math.max(v.videoWidth,v.videoHeight)), c=document.createElement('canvas'); c.width=Math.round(v.videoWidth*k); c.height=Math.round(v.videoHeight*k);
+        c.getContext('2d').drawImage(v,0,0,c.width,c.height);
+        blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.92)); if(blob)pre=true; }
     }
     killDocketCam();
     if(!blob)return fallback();
@@ -49866,8 +49873,12 @@ window.loadCouncil=async function(){
   try{ const r=await window.SB.rpc('sc_council_public'); const so={}; if(r&&!r.error&&Array.isArray(r.data))r.data.forEach(x=>{ const k=String(x.handle||'').trim().toLowerCase(); if(!k)return; so[k]=x.letter; if(m[k]!=='crown')m[k]='seat'; }); window.SEAT_OF=so; }catch(e){}
   /* this phone knows its own seat better than a fallback read does */
   try{ const a=loadAcct()||{}; if(a.handle&&window.__isKM){ m[String(a.handle).toLowerCase()]=(typeof window.kmIsCrown==='function'&&window.kmIsCrown())?'crown':'council'; } }catch(e){}
+  /* #calmcouncil(oct8) — repaint the boards and the roster only when who sits where actually changed (LILCLARK20,
+     oct 8 7:34 PM: a 5.1s stall right after the council read on a phone that took 10.7s to parse) */
+  const sig=JSON.stringify(m)+'|'+JSON.stringify(window.SEAT_OF||{});
   window.COUNCIL=m;
   try{ renderCouncilChip(); }catch(e){}
+  if(sig===window.__councilSig)return; window.__councilSig=sig;
   try{ if(typeof renderBoards==='function')renderBoards(); }catch(e){}
   try{ if(typeof _floorSheetRepaint==='function')_floorSheetRepaint(); }catch(e){}
 };
@@ -60577,7 +60588,7 @@ a.shk-link{color:inherit;text-decoration:underline;word-break:break-all}
    #shadowcouncil(oct8) — THE SHADOW COUNCIL · first sitting (DEMO BUILD)
 
    Twenty-six seats at a long table, one per board letter, and the Keymaster at the
-   head of it. A seat holder speaks for every casual whose card starts with their
+   head of it. A seat holder represents every casual whose card starts with their
    letter: welcomes them, answers them, and when a question is too big for the seat,
    pushes it up the line to the Keymaster. Nobody outside the room learns who sits in it.
 
@@ -60665,7 +60676,7 @@ a.shk-link{color:inherit;text-decoration:underline;word-break:break-all}
     var tr=(rs[9].data||[])[0]; if(tr)SC.traffic={today:tr.today,week:tr.week,month:tr.month,peak:'',dispatch:''};
   }
   var loading=null;
-  async function reload(){ if(!window.SB||!window.__shkUid)return; if(loading)return loading; loading=(async function(){ try{ await loadSeats(); await loadClaims(); await loadRoom(); SC.loaded=true; markCheck(); try{ if(typeof loadCouncil==='function')loadCouncil(); }catch(e){} }catch(e){ console.warn('[sc] load',e); } loading=null; })(); return loading; }
+  async function reload(){ if(!window.SB||!window.__shkUid)return; if(loading)return loading; loading=(async function(){ try{ await loadSeats(); await loadClaims(); await loadRoom(); SC.loaded=true; markCheck(); const ss=LETTERS.map(function(L){ return SC.seats[L]?L:''; }).join(''); if(ss!==SC._seatSig){ var first=SC._seatSig==null; SC._seatSig=ss; if(!first){ try{ if(typeof loadCouncil==='function')loadCouncil(); }catch(e){} } } }catch(e){ console.warn('[sc] load',e); }   /* #calmcouncil — only on a seat change; boot already runs loadCouncil once */ loading=null; })(); return loading; }
   window.scReload=reload;
   /* the ⚜ mark lands when your own seat is truly held */
   function markCheck(){ try{ if(seatOf_uid(window.__shkUid)&&typeof unlockBadge==='function'&&typeof bixLate==='function'){ var ix=bixLate('Shadow Council'); if(ix>=0)unlockBadge(ix); } }catch(e){} }
@@ -60877,7 +60888,7 @@ a.shk-link{color:inherit;text-decoration:underline;word-break:break-all}
   function lockedHTML(w){
     return '<div class="sheet-card"><button type="button" class="sc-close" data-scx>✕</button>'
       +'<div class="sc-h" style="padding-top:18px"><div class="sc-seal open" style="font-size:22px">🔒</div><div class="k" style="letter-spacing:.3em">Access not granted</div><div class="t" style="font-size:19px">Shadow Council Members Only</div></div><div class="sc-rule"></div>'
-      +'<p class="sc-p" style="text-align:center">All twenty-six seats are taken. One casual speaks for every letter, and '+esc(w.letter)+' already has its voice.</p>'
+      +'<p class="sc-p" style="text-align:center">All twenty-six seats are taken. Every letter has its representative on the Council, '+esc(w.letter)+' included.</p>'
       +'<p class="sc-p dim" style="text-align:center">Seats open only when a member gives theirs up.</p>'
       +'<div class="sc-row"><button type="button" class="sc-btn ghost" data-scx>Understood</button></div></div>';
   }
@@ -60926,7 +60937,7 @@ a.shk-link{color:inherit;text-decoration:underline;word-break:break-all}
         +'<div class="sc-row"><button type="button" class="sc-btn" data-scgo="chamber">⚜ Enter the Chamber</button></div>';
     } else if(w.seat===L){
       h+='<div class="s">Seated '+ago(s.since)+'</div></div><div class="sc-rule"></div>'+(s.word?'<div class="sc-q">“'+esc(s.word)+'”</div>':'')
-        +'<p class="sc-p dim">You speak for every casual whose card begins with '+esc(L)+'. Welcome them. Answer them. What you cannot answer, push up the line. The seat is yours until you give it up, or the council takes it.</p>'
+        +'<p class="sc-p dim">You represent the '+esc(L)+'’s on the Council. Welcome them. Answer them. What you cannot answer, push up the line. The seat is yours until you give it up, or the council takes it.</p>'
         +'<div class="sc-row"><button type="button" class="sc-btn" data-scgo="chamber">⚜ Enter the Chamber</button></div>'
         +'<div class="sc-row"><button type="button" class="sc-btn ghost" data-scgo="giveup">Retire the seat · step down</button></div>';
     } else if(ask){
@@ -60938,7 +60949,7 @@ a.shk-link{color:inherit;text-decoration:underline;word-break:break-all}
     } else if(s){
       h+='<div class="s">This seat is held</div></div><div class="sc-rule"></div>'+elig(false,'Wait until the Shadow Council member retires a seat.');
     } else {
-      h+='<div class="s">This seat stands open</div></div><div class="sc-rule"></div>'+elig(true,'One seat per letter, twenty-six seats. Take '+esc(L)+' and you speak for every casual whose card begins with it: you welcome each new one, answer what you can, push up what you can’t, and sit in on every vote.')
+      h+='<div class="s">This seat stands open</div></div><div class="sc-rule"></div>'+elig(true,'One seat per letter, twenty-six seats. Take '+esc(L)+' and you become the '+esc(L)+'’s representative on the Council: you welcome each new one, answer what you can, push up what you can’t, and sit in on every vote.')
         +'<textarea class="sc-in" id="scWhy" rows="2" maxlength="300" placeholder="Optional message to the council — why do you want to join? Short answer." style="margin-bottom:2px"></textarea>'
         +'<div class="sc-row"><button type="button" class="sc-btn" data-scgo="claim">Take the seat of '+esc(L)+'</button></div>'
         +'<p class="sc-p dim" style="margin-top:10px;text-align:center">Filing opens a seven-day window for '+esc(L)+'. Others of the letter may file too; the council votes.</p>';
@@ -60961,7 +60972,7 @@ a.shk-link{color:inherit;text-decoration:underline;word-break:break-all}
 
   /* ── THE CHARTER — the rules of the house, as the Keymaster set them (#charter, oct 8) ── */
   var CHARTER=[
-    ['I · The Seats','One seat per letter, twenty-six seats. A seat holder speaks for every casual whose card begins with their letter: welcomes them, answers them, and pushes up what they cannot answer. A seat is claimed and seated; it can be given up, and then it stands open for the next casual of that letter.'],
+    ['I · The Seats','One seat per letter, twenty-six seats. A seat holder is the representative of their letter on the Council: welcomes them, answers them, and pushes up what they cannot answer. A seat is claimed and seated; it can be given up, and then it stands open for the next casual of that letter.'],
     ['II · Equals at the Table','Every seat is equal to every other. Members treat one another with respect — at the table, on the Hall, and on the docks. Disagree with the motion, never the member.'],
     ['III · The Keymaster','The Keymaster holds the table, not a seat. The Keymaster can decree a motion carried or struck down, appoint the Keeper of the Count, and alone can bring the removal of a council member to a vote.'],
     ['IV · Motions','Any seat may put a motion. Two-thirds of the seated carries it. The Keeper of the Count seals the vote once it is cast, works the count, and announces the result to the table.'],
@@ -61179,7 +61190,8 @@ a.shk-link{color:inherit;text-decoration:underline;word-break:break-all}
     window.__scRT.subscribe(); }catch(e){ console.warn('[sc] realtime',e); } }
   var _fsr=window._floorSheetRepaint; window._floorSheetRepaint=function(){ try{ if(typeof _fsr==='function')_fsr.apply(this,arguments); }catch(e){} try{ var ch=$('scChamber'); if(ch&&ch.classList.contains('on')&&tab==='table')paintChamber(); }catch(e){} };
   /* first read once there's a session; keep watching for one */
-  (function boot(){ var tries=0, iv=setInterval(function(){ if(window.SB&&window.__shkUid){ clearInterval(iv); reload(); rtOn(); } else if(++tries>180)clearInterval(iv); },1000); })();
+  /* #calmcouncil — the first read waits for the phone to settle (and runs when idle), not in the boot crowd */
+  (function boot(){ var tries=0, iv=setInterval(function(){ if(window.SB&&window.__shkUid){ clearInterval(iv); setTimeout(function(){ var go=function(){ reload(); rtOn(); }; if(window.requestIdleCallback)requestIdleCallback(go,{timeout:8000}); else go(); },20000); } else if(++tries>180)clearInterval(iv); },1000); })();
 
   /* ── THE MARK — registered on the wall, locked until a seat is truly taken ──── */
   try{ if(Array.isArray(window.BADGES)&&!BADGES.some(function(b){ return b[1]&&b[1].indexOf('Shadow Council ·')===0; }))BADGES.push(['⚜','Shadow Council · a seat at the table',0,2]); }catch(e){}
