@@ -9,6 +9,7 @@
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
 window.SHK_BUILD='oct8rectop';   /* oct 8 (152nd) — a record opens at the TOP of the post on ALL; it had been scrolling down to the tab bar as if ALL were a destination like CHAT or the gallery (#recall). */
+/* was: oct9chamberstill */   /* oct 9 (154th) — THE CHAMBER HOLDS STILL: it was rebuilt whole on every read (open, the server read after it, every realtime kick), and the 13px text floor then re-lifted 31 small labels a few frames after each rebuild — text popping small→big over and over read as the sheet flickering. Now the sheet is built once and only a changed section is swapped; a read that changes nothing touches nothing; and the Chamber\'s type is drawn at 13px to begin with (#chamberstill). */
 /* was: oct8seatcount */   /* oct 8 (152nd) — THE COUNT SHOWS FOR EVERYONE: the N OPEN / FULL tag under the console crest no longer hides for seated members; only the beckoning rim is theirs to skip (#seatcount). */
 /* was: oct8dmedit */   /* oct 8 (151st) — EDIT A DIRECT MESSAGE: press and hold one of your own text bubbles → ✎ EDIT · 🗑 DELETE; Edit puts the words in the box under an Editing bar, ➤ saves it in place with · edited on the bubble, and the other phone sees it live. Needs DM-EDIT-SETUP.sql on the server once (#dmedit). */
 /* was: oct8recall */   /* oct 8 (150th) — a record opens on ALL no matter how you reach it: swiping off an on-deck board's PHOTO GALLERY onto the record used to carry the gallery tab along (#chatonly). */
@@ -61042,7 +61043,12 @@ a.shk-link{color:inherit;text-decoration:underline;word-break:break-all}
   '.sc-li.q{flex-wrap:wrap}.sc-li.q .act{width:100%;justify-content:flex-end;margin-top:4px}.sc-li.q .act button{padding:8px 14px;font-size:10.5px}',
   '.sc-li .act button.y{background:linear-gradient(160deg,var(--sc-gold-hi),var(--sc-gold));color:#2a0b14}.sc-li .act button.n{border-color:#d6665a;color:#ffb3a8}',
   '.sc-close{position:absolute;top:-2px;right:12px;width:30px;height:30px;border-radius:50%;border:1px solid var(--sc-gold-lo);background:rgba(0,0,0,.35);color:var(--sc-gold);font-size:15px;cursor:pointer;z-index:2}',
-  'html.daylight #scBoard,html.daylight .sc-sheet .sheet-card{color:var(--sc-ink)}'
+  'html.daylight #scBoard,html.daylight .sc-sheet .sheet-card{color:var(--sc-ink)}',
+  /* #chamberstill(oct9) — the 13px text floor (#textfloor) lifts anything smaller a few frames AFTER it is drawn,
+     so every one of these labels used to flash in small and then jump. Drawn at the floor to begin with: one
+     paint, no jump. Tracking is eased where the tiny caps relied on it. */
+  '.sc-gate .k,.sc-gate .s,#scBoard .sc-kind,#scBoard .sc-grid b,#scBoard .sc-foot .st,#scBoard .sc-cta,#scDemo span,#scDemo button,.sc-h .k,.sc-h .o,.sc-elig,.sc-elig i,.sc-btn,.sc-charterlink,.sc-announce,.sc-tabs button,.sc-inroom,.sc-msg .av,.sc-msg .who,.sc-msg .who span,.sc-mo .k,.sc-tally,.sc-vote button,.sc-ap .who span,.sc-ap .facts span,.sc-stat span,.sc-sec,.sc-li .L,.sc-li .d small,.sc-li .act button,.sc-li.q .act button{font-size:13px}',
+  '.sc-h .k,.sc-gate .k{letter-spacing:.16em}.sc-ap .facts span,.sc-stat span,.sc-mo .k,.sc-msg .who span,.sc-ap .who span{letter-spacing:.06em}',
   ].join('\n');
   document.head.appendChild(css);
 
@@ -61358,8 +61364,28 @@ a.shk-link{color:inherit;text-decoration:underline;word-break:break-all}
       +'<div class="sc-body">'+(tab==='table'?tableHTML(w):tab==='motions'?motionsHTML(w):tab==='jobs'?jobsHTML(w):deskHTML(w))+'</div>'
       /* #composebottom(oct8) — the Table's say-box is pinned to the foot of the page, under the scroll, like a chat */
       +(tab==='table'?'<div class="sc-compose"><textarea class="sc-in" id="scSay" rows="1" maxlength="600" placeholder="Speak to the table…"></textarea><button type="button" class="sc-btn" data-scc="say">Say</button></div>':'')+'</div>';
-    sh.innerHTML=h;
-    if(tab==='table'){ var b=sh.querySelector('.sc-body'); if(b)b.scrollTop=b.scrollHeight; }
+    /* #chamberstill(oct9) — THE CHAMBER IS NOT REBUILT ON EVERY READ. This used to be `sh.innerHTML=h` on every
+       paint: the first open, the server read half a second later, and every realtime kick from any of eleven
+       tables — each one threw the whole sheet away and drew it again (scroll back to the bottom, halos
+       restarted, the say-box recreated, and the 13px text floor re-lifting every label a few frames after).
+       Now the sheet is built once; after that only the section whose HTML actually changed is swapped, and a
+       read that changes nothing touches nothing. */
+    var card=sh.querySelector('.sheet-card');
+    if(!card||sh._scTab!==tab){ sh.innerHTML=h; sh._scTab=tab; sh._scHTML=h; if(tab==='table'){ var b=sh.querySelector('.sc-body'); if(b)b.scrollTop=b.scrollHeight; } return; }
+    if(sh._scHTML===h)return;
+    var t=document.createElement('div'); t.innerHTML=h; var nc=t.firstElementChild;
+    var grew=false;
+    ['.sc-h','.sc-announce','.sc-tabs','.sc-body','.sc-compose'].forEach(function(q){
+      var o=card.querySelector(':scope > '+q), n=nc.querySelector(':scope > '+q);
+      if(!o&&!n)return;
+      if(o&&!n){ o.remove(); return; }
+      if(o&&n&&o.outerHTML===n.outerHTML)return;
+      if(q==='.sc-body'&&o&&n){ var wasBottom=o.scrollHeight-o.scrollTop-o.clientHeight<40; o.innerHTML=n.innerHTML; if(tab==='table'&&wasBottom)o.scrollTop=o.scrollHeight; return; }
+      if(o&&n){ o.replaceWith(n); return; }
+      /* a section that didn't exist before (the announcement appearing): put it where it belongs */
+      var after=nc.querySelector(':scope > '+q).previousElementSibling, anchor=after?card.querySelector(':scope > .'+after.className.split(' ')[0]):null;
+      if(anchor)anchor.after(n); else card.appendChild(n); grew=true; });
+    sh._scHTML=h;
   }
   /* ── THE TAPS — every one a server call, then a fresh read and a repaint (#sclive) ── */
   var after=function(msg,pat){ return function(){ if(msg)say(msg); hum(pat||[20,40,60]); reload().then(paintChamber); }; };
