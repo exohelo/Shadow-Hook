@@ -8,7 +8,11 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct8flyer3';   /* oct 8 (137th) — the flyer says "20 port bucks" in words (#gameflyer). */
+window.SHK_BUILD='oct8galfront';   /* oct 8 (141st) — the TAP TO OPEN nudge moves to the foot of the post, under the photos; the GALLERY door moves up beside ADD YOURS with a 🖼 and a shot count, instead of hiding at the far end of the roll (#galfront). */
+/* was: oct8gamebtn */   /* oct 8 (140th) — THE POST'S LAYOUT FIXED: the bottom TAP TO OPEN strip is gone. 🎰 THE GAME, a gold shining button, takes ON DECK's corner and opens the flyer; ON AIR rides the meta line in green. Under the head, its own nudge: a finger tapping with rings rippling — TAP TO OPEN on deck, TAP TO MARK THE BOARD live (#gamebtn). */
+/* was: oct8nopostcount */   /* oct 8 (139th) — THE BOARD's header drops its "14 posts" count (#nopostcount). */
+/* was: oct8botquip */   /* oct 8 (138th) — THE BOT WAITS: no word until the page has finished, 12 s have passed and the phone is idle (#botwait). And it has feelings: killed, it storms off with a line ("Kill me? KILL ME??"); brought back, it gloats ("You missed me, ahhh?") (#botquip). */
+/* was: oct8flyer3 */   /* oct 8 (137th) — the flyer says "20 port bucks" in words (#gameflyer). */
 /* was: oct8flyer2 */   /* oct 8 (136th) — THE GAME flyer as a poster: big tilted title, a face per step (📣 🎯 💰), 17–24px type, two rules, a chunky OPEN THE BOARD (#gameflyer). */
 /* was: oct8fulllist */   /* oct 8 (135th) — THE WHOLE FIELD: all four boards (hours global · hours squad · bucks all · bucks squad) list every casual, not the top 10, in a list that scrolls inside the board ten rows tall; your row stands in its real lane and is pinned under the list when you're below the fold — tap it to scroll to yourself (#fulllist). */
 /* was: oct8seatbanner2 */   /* oct 8 (134th) — the card banner reads "representative of the P's on the Council", not "speaks for every P" — a seat serves the letter, it doesn't speak over it (#seatbanner). */
@@ -21367,9 +21371,37 @@ function botSetOff(off){
   const sw=document.getElementById('botSw'); if(sw){ sw.classList.toggle('on',!!off); sw.setAttribute('aria-checked',String(!!off)); }   /* #botkill — ON = killed */
 }
 window.botIsOff=botIsOff; window.botSetOff=botSetOff;
+/* #botquip — one line straight from the bot's own mouth, outside its moods; then(), if given, runs once it has spoken */
+function botQuip(face,line,ink,then){
+  try{ const el=botFloatEl(); el._quip=true; el.classList.remove('off');
+    el.querySelector('.bf-face').textContent=face; el.style.setProperty('--bf-ink',ink||'#ff9ce6');
+    const tx=el.querySelector('.bf-tx'); if(tx)tx.innerHTML='<span class="bf-ln">'+line+'</span>';
+    const nm=el.querySelector('.bf-nm small'); if(nm)nm.textContent='· '+(then?'leaving':'back')+' · just now';
+    el.classList.remove('tucked'); el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); bfType(el);
+    try{ const av=el.querySelector('.bf-av'); if(then){ av.classList.remove('mad1'); void av.offsetWidth; av.classList.add('mad1'); } }catch(e){}
+    clearTimeout(_bfT); _bfSig='';
+    _bfT=setTimeout(function(){ el._quip=false; if(then){ el.classList.add('tucked'); setTimeout(then,450); } else botFloatArm(); }, then?3800:5200);
+  }catch(e){ if(then)then(); }
+}
 (function(){ const wire=()=>{ const sw=document.getElementById('botSw'); if(!sw||sw._b)return; sw._b=1;
     botSetOff(botIsOff());
-    sw.addEventListener('click',()=>{ const off=!botIsOff(); botSetOff(off); try{ toast(off?'🧛 The Dispatch Bot is dead — it won’t pop up anymore':'🧛 The Dispatch Bot rises again'); }catch(e){} }); };
+    sw.addEventListener('click',()=>{ const off=!botIsOff();
+      /* #botquip(oct8) — it doesn't go quietly, and it comes back smug */
+      const pick=a=>a[Math.floor(Math.random()*a.length)];
+      if(off){ botQuip(pick(['😤','🤬','😠']),pick([
+          'Oh, so it’s like that? FINE. Mark your own board then. 👋',
+          'Kill me? KILL ME?? I called that board three nights running. Unbelievable.',
+          'You’ll be back. They always come back. Enjoy guessing, rookie.',
+          'Wow. After everything. I’m telling the Keymaster.',
+          'Alright alright, I’m going. Don’t cry when the board skips you.'
+        ]),'#ff6b6b',function(){ botSetOff(true); }); }
+      else { botSetOff(false); botQuip(pick(['😏','😎','🦇']),pick([
+          'You missed me, ahhh? 😏 I knew it.',
+          'Look who came crawling back. The board’s been lonely too.',
+          'Ahhh, couldn’t do it without me, huh? Back on duty.',
+          'Miss me? Don’t answer. I already know.',
+          'I’m BACK, baby. Somebody wipe the dust off my mic.'
+        ]),'#a3f55a'); } }); };
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',wire); else wire(); })();
 function botFloatArm(){ clearTimeout(_bfT);
   let ms=14000; try{ const t=(_bf&&_bf.querySelector('.bf-tx').textContent)||''; ms=Math.max(7000,Math.min(20000,5000+t.length*70)); }catch(e){}
@@ -21378,7 +21410,7 @@ function botFloatVis(){
   if(!_bf)return;
   /* #botroam(oct7) — every tab now; it only steps aside at the gate and while a sheet is open over the page */
   const D=document.documentElement;
-  const on=!botIsOff()&&!D.classList.contains('at-gate')&&!D.classList.contains('dp-open')&&!document.querySelector('.sheet.on,#dayProf.on');   /* #botoff */
+  const on=_bf._quip||(!botIsOff()&&!D.classList.contains('at-gate')&&!D.classList.contains('dp-open')&&!document.querySelector('.sheet.on,#dayProf.on'));   /* #botoff · #botquip — a parting/return line shows even over the profile sheet */
   _bf.classList.toggle('off',!on);
   try{ const nav=document.querySelector('nav.nav'); if(nav){ const h=window.innerHeight-nav.getBoundingClientRect().top; if(h>0&&h<220)_bf.style.bottom=(h+14)+'px'; } }catch(e){}
 }
@@ -21393,8 +21425,14 @@ function botFloatSet(mood,face,parts,ink,alarm){
   const sig=plain+'|'+mood.name;
   if(sig!==_bfSig){ const first=!_bfSig; _bfSig=sig; _bfAt=Date.now(); el.querySelector('.bf-tx').innerHTML=tx;
     const idle=/^\s*(💭|😴)/.test(plain)&&parts.length<2;   /* #botroam — muttering to itself isn't news */
-    const go=()=>{ el.classList.remove('tucked'); el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); bfType(el); botFloatArm(); };
-    if(botIsOff()){} else if(first)setTimeout(go,3500); else if(!idle)go(); }   /* #botoff — off: it keeps up silently, never pops */
+    const go=()=>{ if(botIsOff())return; el.classList.remove('tucked'); el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); bfType(el); botFloatArm(); };
+    /* #botwait(oct8) — the bot came out while the page was still loading. It waits for the page to finish, for
+       12 s after the app opened, and for an idle moment before its first word; nothing pops before that. */
+    const settled=function(fn){ const wait=Math.max(0,12000-(performance.now?performance.now():12000));
+      const idleGo=function(){ if(window.requestIdleCallback)requestIdleCallback(fn,{timeout:4000}); else setTimeout(fn,300); };
+      const after=function(){ setTimeout(idleGo,wait); };
+      if(document.readyState==='complete')after(); else window.addEventListener('load',after,{once:true}); };
+    if(botIsOff()){} else if(first)settled(go); else if(!idle){ if(performance.now&&performance.now()<12000)settled(go); else go(); } }   /* #botoff — off: it keeps up silently, never pops */
   const ago=Math.round((Date.now()-_bfAt)/60000);
   el.querySelector('.bf-nm small').textContent='· '+String(mood.name).toLowerCase()+' · '+(ago<1?'just now':ago+' min ago');
 }
@@ -33430,7 +33468,7 @@ function boardPostHTML(s,i,step){
 }
 function boardSectionHTML(step){
   const posts=storiesFeed();
-  let html='<div class="fsec" id="boardSec"><div class="fsec-h"><span class="ttl">📣 The Board</span><span class="more">'+(posts.length?posts.length+' post'+(posts.length===1?'':'s'):'the open feed')+'</span></div>';
+  let html='<div class="fsec" id="boardSec"><div class="fsec-h"><span class="ttl">📣 The Board</span></div>';
   /* the composer leads — a tap on the line says it in words; the icons shoot, pick, or paste */
   html+='<div class="bcomp">'+avSlot('bc-av',window.__shkUid,'🎭')
     +'<button type="button" class="bc-say" data-bnew="txt">Say something…</button>'
@@ -57959,7 +57997,8 @@ html.daylight{--dp-hi:var(--copper-hi);--dp-uvi:var(--neon2,#5c1f96);--dp-ink:#f
 .dp-ph.add svg{width:20px;height:20px}
 .dp-ph.add span{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;letter-spacing:.05em;white-space:nowrap}
 .dp-ph.more{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;color:var(--dp-acc);border-color:color-mix(in srgb,var(--dp-acc) 40%,transparent);background:color-mix(in srgb,var(--dp-acc) 8%,var(--well))}
-.dp-ph.more b{font-family:'Anton',sans-serif;font-weight:400;font-size:20px;line-height:1;display:flex}
+.dp-ph.more b{font-family:'Anton',sans-serif;font-weight:400;font-size:24px;line-height:1;display:flex}
+.dp-ph.more em{font-style:normal;font:500 10px Inter,system-ui,sans-serif;letter-spacing:.04em;color:var(--steel);margin-top:1px}
 .dp-ph.more b svg{width:22px;height:22px}
 .dp-ph.more span{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;letter-spacing:.08em}
 
@@ -58018,17 +58057,27 @@ html.daylight .dp-gt{box-shadow:none}
 
 /* the foot: like · talk · camera · the way in */
 #socialFeed .dp-post .dp-foot{display:flex;align-items:center;gap:6px;margin-top:0}
-/* #playcta(oct8) — the door, said out loud */
-.dp-cta{display:flex;gap:8px;align-items:stretch;margin:12px 0 10px}
-.dp-cta .go{flex:1;display:flex;align-items:center;gap:12px;text-align:left;padding:11px 14px;border-radius:14px;cursor:pointer;color:var(--bone);
-  background:linear-gradient(100deg,rgba(255,179,71,.14),rgba(0,0,0,.25));border:1px solid rgba(255,179,71,.45)}
-.dp-cta .go b{font:400 15px Anton,sans-serif;letter-spacing:.08em;color:#ffb347;white-space:nowrap}
-.dp-cta .go span{flex:1;font:400 12.5px 'Barlow Condensed',sans-serif;color:var(--steel);line-height:1.25}
-.dp-cta .go i{color:#ffb347;display:flex}
-.dp-cta.live .go{background:linear-gradient(100deg,rgba(163,245,90,.16),rgba(0,0,0,.3));border-color:rgba(163,245,90,.55);box-shadow:0 0 18px rgba(163,245,90,.18);animation:dpCtaPulse 2.4s ease-in-out infinite}
-.dp-cta.live .go b,.dp-cta.live .go i{color:#a3f55a}
-@keyframes dpCtaPulse{0%,100%{box-shadow:0 0 14px rgba(163,245,90,.14)}50%{box-shadow:0 0 26px rgba(163,245,90,.34)}}
-.dp-cta .how{flex:none;width:44px;border-radius:14px;border:1px solid var(--line);background:var(--plate-2);color:var(--steel);font:700 16px Inter,sans-serif;cursor:pointer}
+/* #gamebtn(oct8) — THE GAME in the corner, and the tap nudge */
+.dp-gamebtn{flex:none;position:relative;overflow:hidden;display:inline-flex;align-items:center;gap:5px;padding:6px 10px 6px 8px;border-radius:999px;cursor:pointer;
+  border:1px solid rgba(255,213,138,.8);background:linear-gradient(160deg,#ffd58a,#ff9d2e);color:#2a1a08;box-shadow:0 3px 0 #7a3b00,0 0 16px rgba(255,179,71,.35)}
+.dp-gamebtn i{font-style:normal;font-size:15px;line-height:1;animation:dpSlot 3.2s ease-in-out infinite}
+.dp-gamebtn b{font:400 12.5px Anton,sans-serif;letter-spacing:.05em;line-height:1;white-space:nowrap}
+.dp-gamebtn::after{content:"";position:absolute;top:0;bottom:0;width:40%;left:-60%;background:linear-gradient(100deg,transparent,rgba(255,255,255,.7),transparent);animation:dpShine 3.2s ease-in-out infinite}
+.dp-gamebtn:active{transform:translateY(2px);box-shadow:0 1px 0 #7a3b00}
+@keyframes dpShine{0%,60%{left:-60%}85%,100%{left:130%}}
+@keyframes dpSlot{0%,70%,100%{transform:rotate(0)}76%{transform:rotate(-14deg)}82%{transform:rotate(12deg)}88%{transform:rotate(-6deg)}}
+.dp-onair{font-style:normal;color:#a3f55a;font-weight:700;letter-spacing:.06em}
+.dp-tap{display:flex;align-items:center;gap:10px;margin:12px 0 10px;padding:8px 12px;border-radius:12px;background:rgba(255,179,71,.07);border:1px dashed rgba(255,179,71,.4);color:#ffb347;cursor:pointer}
+.dp-tap .fx{position:relative;flex:none;width:28px;height:28px;display:flex;align-items:center;justify-content:center}
+.dp-tap .fx em{font-style:normal;font-size:20px;line-height:1;animation:dpTapF 1.6s ease-in-out infinite;transform-origin:50% 90%}
+.dp-tap .fx i{position:absolute;left:50%;top:22%;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;border:2px solid currentColor;opacity:0;animation:dpTapR 1.6s ease-out infinite}
+.dp-tap .fx i.r2{animation-delay:.25s}
+.dp-tap b{font:400 15px Anton,sans-serif;letter-spacing:.1em;white-space:nowrap}
+.dp-tap .sub{font:400 13px 'Barlow Condensed',sans-serif;color:var(--steel);line-height:1.2;min-width:0;margin-left:auto;text-align:right}
+.dp-tap.live{color:#a3f55a;background:rgba(163,245,90,.08);border-color:rgba(163,245,90,.5)}
+@keyframes dpTapF{0%,100%{transform:translateY(0) scale(1)}35%{transform:translateY(3px) scale(.92)}50%{transform:translateY(0) scale(1)}}
+@keyframes dpTapR{0%,30%{opacity:0;transform:scale(.4)}38%{opacity:.9}100%{opacity:0;transform:scale(3.2)}}
+@media (prefers-reduced-motion:reduce){.dp-gamebtn i,.dp-gamebtn::after,.dp-tap .fx em,.dp-tap .fx i{animation:none}}
 /* #gameflyer — the flyer */
 #gameFlyer .sheet-card.gf{text-align:left;max-width:460px;padding:22px 18px calc(16px + env(safe-area-inset-bottom));background:radial-gradient(120% 80% at 50% 0%,#2a1140,#120a1c 60%,#0b0712);border:1px solid rgba(255,179,71,.35)}
 .gf-k{font:600 10px Inter,system-ui,sans-serif;letter-spacing:.34em;color:var(--copper-hi);text-transform:uppercase;text-align:center}
@@ -58762,28 +58811,19 @@ DP.onDraw=function(row){
 /* ── painting the post ── */
 function headHTML(k,meta,pill,extra){
   return '<div class="dp-head"><div class="dp-av">'+IC.radar+'</div>'
-    +'<div class="dp-who"><b>'+h(kTitle(k))+'</b><span>'+h(meta)+'</span></div>'+(extra||'')+pill+'</div>';
+    +'<div class="dp-who"><b>'+h(kTitle(k))+'</b><span>'+h(meta).replace(/^● ON AIR · /,'<em class="dp-onair">● ON AIR</em> · ')+'</span></div>'+(extra||'')+pill+'</div>';
 }
 function pillHTML(phase){
   if(phase==='live')return '<span class="dp-pill live"><i></i>ON AIR</span>';
   if(phase==='pre')return '<span class="dp-pill deck">ON DECK</span>';
   return '<span class="dp-pill final">FINAL</span>';
 }
-/* #playcta(oct8) — THE DOOR, SAID OUT LOUD. The post always opened on a tap, but nothing said so. Now a strip above
-   the footer does: ON AIR → "MARK THE BOARD · a ticket in the 5-minute draw"; on deck → "TAP TO OPEN · mark it when it
-   moves". A small ? opens the flyer. */
-function ctaHTML(k){
-  const live=!!(DP.pin&&DP.pin.k===k&&DP.pin.phase==='live'), pre=!!(DP.pin&&DP.pin.k===k&&DP.pin.phase==='pre');
-  if(!live&&!pre)return '';
-  return '<div class="dp-cta'+(live?' live':'')+'"><button type="button" class="go" data-dp="room" data-k="'+h(k)+'" data-phase="'+(live?'live':'pre')+'">'
-    +(live?'<b>MARK THE BOARD</b><span>every mark is a ticket · a draw every 5 min pays 20 ⚓</span>':'<b>TAP TO OPEN</b><span>mark the board when it moves · win ⚓</span>')
-    +'<i>'+IC.chev+'</i></button><button type="button" class="how" data-dp="how" data-k="'+h(k)+'" aria-label="How the game works">?</button></div>';
-}
+/* #playcta(oct8) — the bottom strip it drew is retired by #gamebtn: THE GAME in the corner, the tap nudge under the head */
 function footHTML(k,right){
   const id=sid(k), liked=(function(){ try{ return storyLiked(id); }catch(e){ return false; } })();
   const nl=(function(){ try{ return storyLikeCount(id); }catch(e){ return 0; } })();
   const nt=(DP.meta[k]&&DP.meta[k].talk)||((DP.talk[k]&&DP.talk[k].rows.filter(x=>!(x.kind==='image'||x.kind==='video')).length)||0);
-  return ctaHTML(k)+'<div class="bp-foot dp-foot">'
+  return '<div class="bp-foot dp-foot">'
     +'<button type="button" class="bp-like dp-like'+(liked?' on':'')+'" data-dp="like" data-k="'+h(k)+'" aria-label="Like"><span class="ic">'+(liked?IC.heartOn:IC.heart)+'</span><span class="n">'+(nl?fmt(nl):'')+'</span></button>'
     +'<button type="button" class="dp-talkb" data-dp="talk" data-k="'+h(k)+'" aria-label="Chat"><span class="ic">'+IC.talk+'</span><span class="n">'+(nt?fmt(nt):'')+'</span></button>'
     +'<button type="button" class="dp-camb" data-dp="photo" data-k="'+h(k)+'" aria-label="Add a photo or a clip"><span class="ic">'+IC.cam+'</span></button>'
@@ -58874,9 +58914,10 @@ function stripHTML(k,max){
   const shown=G.slice(0,max||8);
   return '<div class="dp-photos" aria-label="The photo gallery">'
     +'<button type="button" class="dp-ph add" data-dp="photo" data-k="'+h(k)+'">'+IC.cam+'<span>ADD YOURS</span></button>'
+    /* #galfront(oct8) — the GALLERY door sits beside ADD YOURS, where it's seen, not at the far end of the roll */
+    +'<button type="button" class="dp-ph more" data-dp="gallery" data-k="'+h(k)+'" aria-label="Open the photo gallery"><b>🖼</b><span>GALLERY</span><em>'+fmt(G.length)+' shots</em></button>'
     +shown.map(c=>'<button type="button" class="dp-ph" data-dp="media" data-url="'+h(c.url)+'" data-kind="'+h(c.kind)+'" aria-label="Open the '+(c.kind==='video'?'clip':'photo')+' from '+h(c.by)+'">'
       +(c.kind==='video'?'<video src="'+h(c.url)+'#t=0.1" muted playsinline preload="metadata"></video><span class="pl">'+IC.play+'</span>':'<img src="'+h(c.url)+'" alt="" loading="lazy">')+'</button>').join('')
-    +'<button type="button" class="dp-ph more" data-dp="gallery" data-k="'+h(k)+'" aria-label="Open the photo gallery"><b>'+(G.length>shown.length?'+'+fmt(G.length-shown.length):IC.chev)+'</b><span>GALLERY</span></button>'
     +'</div>';
 }
 /* ── #gallery(oct7) — THE PHOTO GALLERY tab: every dispatch's shots, rolling in a two-row marquee over a collage.
@@ -59094,8 +59135,14 @@ function postHTML(k,phase){
     right=isKm()?'<button type="button" class="dp-cta quiet" data-dp="edit" data-k="'+h(k)+'" aria-label="Edit the pre-post">'+IC.pen+' EDIT</button>':'<span class="dp-soon">turns live at the flex call</span>'; }
   else { meta=recMeta(k); inner=recHTML(k,false); right='<button type="button" class="dp-cta quiet" data-dp="room" data-k="'+h(k)+'" data-phase="rec">EVERY CALL '+IC.chev+'</button>'; }
   return '<div class="bpost dp-post dp-'+phase+'" id="'+(phase==='rec'?'dpRec_'+h(k):'dpPost')+'" data-dpk="'+h(k)+'" data-phase="'+phase+'"'+(phase==='rec'?' data-rec="1"':'')+' data-sid="'+h(sid(k))+'">'
-    +headHTML(k,meta,pillHTML(phase),extra)+inner+stripHTML(k,8)+footHTML(k,right)+'</div>';
+    +headHTML(k,phase==='live'?'● ON AIR · '+meta:meta,phase==='rec'?pillHTML(phase):gameBtnHTML(),extra)+inner+stripHTML(k,8)+(phase==='rec'?'':tapHintHTML(phase))+footHTML(k,right)+'</div>';   /* #gamebtn — the tap nudge rides at the foot, under the photos */
 }
+/* #gamebtn(oct8) — THE GAME takes ON DECK's corner: a gold slot-machine button that opens the flyer. ON AIR moves
+   onto the meta line in green. And a separate, animated nudge under the head — a finger tapping, rings rippling —
+   says the card opens: TAP TO OPEN on deck, TAP TO MARK THE BOARD while it's live. */
+function gameBtnHTML(){ return '<button type="button" class="dp-gamebtn" data-dp="how" aria-label="How the game works"><i>🎰</i><b>THE GAME</b></button>'; }
+function tapHintHTML(phase){ const live=phase==='live';
+  return '<div class="dp-tap'+(live?' live':'')+'" aria-hidden="true"><span class="fx"><i class="r1"></i><i class="r2"></i><em>👆</em></span><b>'+(live?'TAP TO MARK THE BOARD':'TAP TO OPEN')+'</b><span class="sub">'+(live?'every mark is a ticket':'live at the flex call')+'</span></div>'; }
 /* ── #onepost(oct7) — ONE DISPATCH POST ON THE BOARD, by the Keymaster's call. Every board before it is a tap away in
    its room (‹ ›), so the Board carries only the board that's coming up or running:
      · ON AIR — on top, under the composer, from the flex call until the window closes;
