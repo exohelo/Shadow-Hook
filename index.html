@@ -8,7 +8,9 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct8seatbanner2';   /* oct 8 (134th) — the card banner reads "representative of the P's on the Council", not "speaks for every P" — a seat serves the letter, it doesn't speak over it (#seatbanner). */
+window.SHK_BUILD='oct8flyer2';   /* oct 8 (136th) — THE GAME flyer as a poster: big tilted title, a face per step (📣 🎯 💰), 17–24px type, two rules, a chunky OPEN THE BOARD (#gameflyer). */
+/* was: oct8fulllist */   /* oct 8 (135th) — THE WHOLE FIELD: all four boards (hours global · hours squad · bucks all · bucks squad) list every casual, not the top 10, in a list that scrolls inside the board ten rows tall; your row stands in its real lane and is pinned under the list when you're below the fold — tap it to scroll to yourself (#fulllist). */
+/* was: oct8seatbanner2 */   /* oct 8 (134th) — the card banner reads "representative of the P's on the Council", not "speaks for every P" — a seat serves the letter, it doesn't speak over it (#seatbanner). */
 /* was: oct8calm */   /* oct 8 (133rd) — TWO ALARMS. MELISSA 11.2s on the shutter: iPhone Safari 26 reports ImageCapture, so the frame grab was skipped and a 5.7 MB still was decoded on the page — the grab now runs on every WebKit, and the last-resort grab is OCR-sized, never 4K (#grabshot2). LILCLARK20 5.1s after boot: the Chamber's reload called loadCouncil every time, which repaints the Order's boards and the roster — now it only asks when a seat changed, loadCouncil repaints only when the list changed, and the Chamber's first read waits 20 s and an idle moment (#calmcouncil). */
 /* was: oct8playcta */   /* oct 8 (132nd) — THE DOOR SAID OUT LOUD: a strip on the dispatch post — ON AIR: MARK THE BOARD · every mark is a ticket; on deck: TAP TO OPEN · mark it when it moves — and a ? beside it that opens THE GAME flyer: three steps, six lines of rules, OPEN THE BOARD. The flyer shows itself once, the first time a board goes ON AIR under a casual's thumb (#playcta #gameflyer). */
 /* was: oct8pmatotal */   /* oct 8 (131st) — PMA TOTAL redrawn as the head of THE NUMBERS: the label first, then the figure big on its own plate ("every longshore job on the night"), then one bar for where it goes — hall · come-backs · steady — with the counts, and the sheet / week tabs below (#pmatotal). */
@@ -2047,6 +2049,13 @@ textarea.field{resize:vertical;min-height:110px;line-height:1.45}
 .race-board-tabs button.on::after{transform:rotate(90deg)}
 .race-list.pop{animation:feedIn .3s both}
 .race-list{list-style:none;margin:0;padding:0}
+/* #fulllist(oct8) — the whole field scrolls inside the board, ten rows tall; you ride pinned below */
+.race-list.lb-scroll{position:relative;max-height:min(520px,62vh);overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding-right:2px;scrollbar-width:thin;scrollbar-color:rgba(238,180,107,.35) transparent;
+  -webkit-mask-image:linear-gradient(180deg,#000 92%,transparent);mask-image:linear-gradient(180deg,#000 92%,transparent)}
+.race-list.lb-scroll::-webkit-scrollbar{width:4px}.race-list.lb-scroll::-webkit-scrollbar-thumb{background:rgba(238,180,107,.35);border-radius:4px}
+.race-list.lb-pin{margin-top:8px;cursor:pointer}
+.race-list li.lb-sp{padding:0!important;margin:0!important;border:0!important;background:none!important;box-shadow:none!important;min-height:0!important;list-style:none}
+.race-list.lb-pin li.me{box-shadow:0 -6px 16px rgba(0,0,0,.35)}
 .race-list li{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;margin-bottom:5px;background:var(--well);border:1px solid var(--line-soft)}
 .race-list li.podium{background:linear-gradient(90deg,rgba(238,180,107,.12),var(--well) 65%);border-color:rgba(238,180,107,.35)}
 .race-list li.me{background:linear-gradient(90deg,rgba(238,180,107,.22),rgba(238,180,107,.06));border-color:var(--copper-hi);animation:racePulse 2.6s ease-in-out infinite}
@@ -8004,11 +8013,11 @@ html.daylight .hm-lm .lk-g,html.daylight .hm-lm .lk-w{fill:#dfeaf7}
       </div>
       <div class="bdk-view" id="bdkView">
         <div class="bdk-page cur" data-pg="0">
-          <div class="bdk-cap">🏁 The Long Game · Global Top 10 · true hours</div>
+          <div class="bdk-cap">🏁 The Long Game · Every casual · true hours</div>
           <ol class="race-list" id="raceListGlobal"></ol>
         </div>
         <div class="bdk-page" data-pg="1">
-          <div class="bdk-cap">🏁 The Long Game · <span id="bdkCapSq">Your Squad</span> Top 10 · true hours</div>
+          <div class="bdk-cap">🏁 The Long Game · <span id="bdkCapSq">Your Squad</span> · true hours</div>
           <ol class="race-list" id="raceListLetter"></ol>
         </div>
         <div class="bdk-page" data-pg="2">
@@ -19033,6 +19042,34 @@ window.updateRace=updateRace;
    casual hours list, hours ride the anchor curve, and where YOUR climb has
    passed casuals, the field shifts one lane down — exactly like the hunt. You
    ride highlighted in your lane; outside the Top 10 you're pinned below it. */
+/* #fulllist(oct8) — a board list that scrolls inside itself (ten rows tall) with your row pinned below it */
+/* The hours roster is the whole hall (~5,500 cards): only the rows in view (and a screen either side) are drawn,
+   between two spacers, so the board costs ~60 rows of DOM however long it is. */
+function lbScrollList(ol,rows,pinHTML){
+  if(!ol)return;
+  ol.classList.add('lb-scroll');
+  const all=Array.isArray(rows)?rows:[rows], me=all.findIndex(x=>x.indexOf('class="me"')>=0);
+  const V=ol._v||(ol._v={}); V.rows=all; V.me=me;
+  if(all.length<=80){ ol.innerHTML=all.join(''); V.rh=0; }
+  else {
+    if(!V.rh)V.rh=44;   /* a first guess; paint() measures the real pitch off the drawn rows and corrects itself */
+    const paint=function(){ const R=V.rows, rh=V.rh, top=ol.scrollTop, vh=ol.clientHeight||520;
+      const s=Math.max(0,Math.floor(top/rh)-15), e=Math.min(R.length,Math.ceil((top+vh)/rh)+15);
+      if(s===V.s&&e===V.e&&V.n===R.length)return; V.s=s; V.e=e; V.n=R.length;
+      ol.innerHTML='<li class="lb-sp" style="height:'+(s*rh)+'px"></li>'+R.slice(s,e).join('')+'<li class="lb-sp" style="height:'+((R.length-e)*rh)+'px"></li>';
+      /* the true row pitch is only known once rows are drawn on screen: correct it once, keep the same top row in view */
+      if(!V.measured){ const L=[...ol.querySelectorAll('li:not(.lb-sp):not(.podium):not(.me)')]; if(L.length>6&&L[0].offsetParent){
+        const a0=L[1].getBoundingClientRect().top, a1=L[L.length-2].getBoundingClientRect().top, real=(a1-a0)/(L.length-3);
+        if(real>10){ V.measured=true; if(Math.abs(real-rh)>0.25){ const idx=top/rh; V.rh=real; V.s=V.e=-1; ol.scrollTop=idx*real; paint(); } } } } };
+    V.s=V.e=-1; paint();
+    if(!ol._vWired){ ol._vWired=true; let raf=0; ol.addEventListener('scroll',function(){ if(raf)return; raf=requestAnimationFrame(function(){ raf=0; if(ol._v&&ol._v.rh)ol._v.paint(); }); },{passive:true}); }
+    V.paint=paint;
+  }
+  let pin=ol.nextElementSibling; if(!pin||!pin.classList||!pin.classList.contains('lb-pin')){ pin=document.createElement('ol'); pin.className='race-list lb-pin'; ol.after(pin);
+    pin.addEventListener('click',function(){ const v=ol._v; if(!v||v.me<0)return; const rh=v.rh||(ol.querySelector('li.me')||{}).offsetHeight||48;
+      const y=v.rh?v.me*v.rh:((ol.querySelector('li.me')||{}).offsetTop||0); ol.scrollTo({top:Math.max(0,y-ol.clientHeight/2+rh/2),behavior:'smooth'}); }); }
+  pin.innerHTML=pinHTML||''; pin.style.display=pinHTML?'':'none';
+}
 function renderRaceBoards(me){
   const g=document.getElementById('raceListGlobal'),lel=document.getElementById('raceListLetter');
   if(!g||!lel)return;
@@ -19046,18 +19083,16 @@ function renderRaceBoards(me){
   const liveDot='<span class="rlive" title="hours riding live off this casual’s own sealed dockets">●</span>';
   const cardTx=x=>x[0];   /* #nodot(sep29) — the green ● read as "online"; it only ever meant "live hours", so it's gone */
   /* 🌍 global — the standings as they stand now, with me inserted at my lane */
-  let out='';
-  const others=(me&&me.others)||RACE_NOW;
-  for(let r=1;r<=10;r++){
-    if(me&&r===me.live){out+=row(r,esc(ACCT_ID)+' · '+esc(handle),hrsTx(me.est),true);continue;}
+  /* #fulllist(oct8) — THE WHOLE FIELD, not the top 10: every casual in a scrolling list (ten rows tall), your own row
+     in its real lane, and pinned under the list whenever you're below the fold — tap it to scroll to yourself. */
+  const out=[];
+  const others=(me&&me.others)||RACE_NOW, N=others.length+(me?1:0);
+  for(let r=1;r<=N;r++){
+    if(me&&r===me.live){out.push(row(r,esc(ACCT_ID)+' · '+esc(handle),hrsTx(me.est),true));continue;}
     const x=others[(me&&r>me.live)?r-2:r-1]; if(!x)break;
-    out+=row(r,cardTx(x),hrsTx(x[1]),false);
+    out.push(row(r,cardTx(x),hrsTx(x[1]),false));
   }
-  if(me&&me.live>10){
-    out+=gapRow(me.live-11,'casuals');
-    out+=row(me.live,esc(ACCT_ID)+' · '+esc(handle),hrsTx(me.est),true);
-  }
-  g.innerHTML=out;
+  lbScrollList(g,out,(me&&me.live>10)?row(me.live,esc(ACCT_ID)+' · '+esc(handle),hrsTx(me.est),true):'');
   /* your letter's squad — hours-ranked within the letter. #onedeck — the name
      rides the deck chip + the page caption now, not a fold-away tab */
   const tab=document.getElementById('rbLetterTab'),cap=document.getElementById('bdkCapSq');
@@ -19071,17 +19106,13 @@ function renderRaceBoards(me){
   if(tab)tab.textContent=me.L+'-SQUAD';
   if(cap)cap.textContent=me.L+'-Squad';
   const sq=me.squad||(LETTER_NOW[me.L]||[]).filter(x=>x[0]!==ACCT_ID);   /* #racelive — the squad as it stands now, me inserted below */
-  let lo='';
-  for(let q=1;q<=10;q++){
-    if(q===me.lLive){lo+=row(q,esc(ACCT_ID)+' · '+esc(handle),hrsTx(me.est),true);continue;}
+  const lo=[];
+  for(let q=1;q<=sq.length+1;q++){
+    if(q===me.lLive){lo.push(row(q,esc(ACCT_ID)+' · '+esc(handle),hrsTx(me.est),true));continue;}
     const x=sq[(q>me.lLive)?q-2:q-1]; if(!x)break;
-    lo+=row(q,cardTx(x),hrsTx(x[1]),false);
+    lo.push(row(q,cardTx(x),hrsTx(x[1]),false));
   }
-  if(me.lLive>10){
-    lo+=gapRow(me.lLive-11,'squadmates');
-    lo+=row(me.lLive,esc(ACCT_ID)+' · '+esc(handle),hrsTx(me.est),true);
-  }
-  lel.innerHTML=lo;
+  lbScrollList(lel,lo,me.lLive>10?row(me.lLive,esc(ACCT_ID)+' · '+esc(handle),hrsTx(me.est),true):'');   /* #fulllist */
   try{if(window._bdkH)_bdkH();}catch(e){}   /* #onedeck — the window hugs the fresh board */
 }
 /* #onedeck(aug13) — THE BOARD DECK ENGINE. One window, four boards: drag to turn
@@ -27084,7 +27115,7 @@ function lbBoardHTML(scope,L,handle){
      max() then mixed the two scales and pinned the YOU bar near 100%. Match on
      handle so the member is recognised in the list and the duplicate row drops. */
   const myH=myH0;
-  let rows=pool.slice(0,10).map(a=>({h:a.h,v:+a.v||0,you:String(a.h||'').trim().toUpperCase()===myH}));
+  let rows=pool.map(a=>({h:a.h,v:+a.v||0,you:String(a.h||'').trim().toUpperCase()===myH}));   /* #fulllist — every casual, not the top 10 */
   const empty=!rows.length;
   if(empty)rows=[{h:handle,v:mine,you:true}];
   const youOn=rows.some(r=>r.you);
@@ -27107,22 +27138,13 @@ function lbBoardHTML(scope,L,handle){
     +'<span class="rid">'+esc(name)+(window.councilTag?councilTag(name):'')+(mineRow?'<span class="rtagme">YOU</span>':'')+'</span>'   /* #council */
     +'<span class="rhrs">'+val+'</span></li>';
   const gapRow=(n,word)=>'<li class="gap"><span class="rmed">⋯</span><span class="rid" style="font-family:\'Inter\',system-ui,-apple-system,\'Segoe UI\',Roboto,sans-serif;font-size:10px;color:var(--steel)">'+n.toLocaleString()+' '+word+' between</span></li>';
-  let html='<ol class="race-list">';
+  let html='<ol class="race-list lb-scroll">';
   rows.forEach((r,i)=>{ html+=row(i+1,r.h,vTx(r.v),r.you); });
-  if(!youOn){
-    /* the ⋯ marker counts who stands between the last visible rung and them —
-       the same read the Race arena gives, so a casual sees one climb, not two
-       different ways of being told they're behind. */
-    if(myRank&&myRank>rows.length){
-      const between=myRank-rows.length-1;
-      if(between>0){
-        const noun=scope==='squad'?(between===1?'squadmate':'squadmates'):(between===1?'casual':'casuals');
-        html+=gapRow(between,noun);
-      }
-    }
-    html+=row(myRank||'—',handle,vTx(mine),true);
-  }
   html+='</ol>';
+  /* #fulllist — you, pinned under the list: off the board entirely, or below the first ten */
+  const myAt=rows.findIndex(r=>r.you);
+  if(!youOn)html+='<ol class="race-list lb-pin">'+row(myRank||'—',handle,vTx(mine),true)+'</ol>';
+  else if(myAt>=10)html+='<ol class="race-list lb-pin" data-jump="1">'+row(myAt+1,handle,vTx(mine),true)+'</ol>';
   /* #boards2(aug10) — the empty note has to match what's actually on the board.
      The old line congratulated the member on holding the crown, which read as
      nonsense on a Monday morning when they were crowned with nothing: the
@@ -27156,6 +27178,8 @@ function renderBoards(){
   document.querySelectorAll('.bdk-wintag').forEach(t=>{t.textContent=(BOARDS.mode==='week'?'this week':'all time');});
   const handle=((document.getElementById('meHandle')||{}).textContent||'YOU').trim()||'YOU';
   elA.innerHTML=lbBoardHTML('all',L,handle);
+  /* #fulllist — the pinned you-row scrolls the bucks list to you */
+  [elA,document.getElementById('lbListSquad')].forEach(function(el){ if(!el||el._pinWired)return; el._pinWired=true; el.addEventListener('click',function(e){ const p=e.target.closest('.lb-pin[data-jump]'); if(!p)return; const ol=el.querySelector('.lb-scroll'), m=ol&&ol.querySelector('li.me'); if(m)ol.scrollTo({top:Math.max(0,m.offsetTop-ol.clientHeight/2+m.offsetHeight/2),behavior:'smooth'}); }); });
   if(elS)elS.innerHTML=squadOk
     ? lbBoardHTML('squad',L,handle)
     : '<p class="sub" style="text-align:center;padding:16px 8px 10px">🔒 Verify your card at the gate to take a squad — your letter is your crew.</p>';
@@ -58005,17 +58029,20 @@ html.daylight .dp-gt{box-shadow:none}
 @keyframes dpCtaPulse{0%,100%{box-shadow:0 0 14px rgba(163,245,90,.14)}50%{box-shadow:0 0 26px rgba(163,245,90,.34)}}
 .dp-cta .how{flex:none;width:44px;border-radius:14px;border:1px solid var(--line);background:var(--plate-2);color:var(--steel);font:700 16px Inter,sans-serif;cursor:pointer}
 /* #gameflyer — the flyer */
-#gameFlyer .sheet-card.gf{text-align:left;max-width:460px;padding:20px 18px calc(16px + env(safe-area-inset-bottom))}
-.gf-k{font:600 9px Inter,system-ui,sans-serif;letter-spacing:.3em;color:var(--copper-hi);text-transform:uppercase;text-align:center}
-.gf-t{font:400 34px Anton,sans-serif;letter-spacing:.06em;color:var(--bone);text-align:center;margin:4px 0 2px}
-.gf-s{font:400 15px 'Barlow Condensed',sans-serif;color:var(--steel);text-align:center;margin-bottom:16px}
-.gf-step{display:flex;gap:12px;align-items:flex-start;padding:11px 0;border-top:1px solid var(--line-soft)}
-.gf-step b{flex:none;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font:400 16px Anton,sans-serif;color:#2a1a08;background:linear-gradient(160deg,#ffd58a,var(--copper-hi))}
-.gf-step strong{display:block;font:400 16px Anton,sans-serif;letter-spacing:.04em;color:var(--bone);margin-bottom:2px}
-.gf-step span{font:400 14px 'Barlow Condensed',sans-serif;color:var(--steel);line-height:1.35}.gf-step em{font-style:normal;color:#a3f55a;font-weight:700}
-.gf-rules{margin:10px 0 14px;padding:10px 12px;border-radius:12px;background:rgba(0,0,0,.3);border:1px solid var(--line-soft);font:400 12.5px 'Barlow Condensed',sans-serif;color:var(--steel);line-height:1.4}
-.gf-rules div+div{margin-top:4px}
-.gf-go{width:100%;padding:13px;border-radius:12px;border:1px solid rgba(255,179,71,.6);background:linear-gradient(160deg,#ffd58a,var(--copper-hi));color:#2a1a08;font:400 15px Anton,sans-serif;letter-spacing:.1em;cursor:pointer}
+#gameFlyer .sheet-card.gf{text-align:left;max-width:460px;padding:22px 18px calc(16px + env(safe-area-inset-bottom));background:radial-gradient(120% 80% at 50% 0%,#2a1140,#120a1c 60%,#0b0712);border:1px solid rgba(255,179,71,.35)}
+.gf-k{font:600 10px Inter,system-ui,sans-serif;letter-spacing:.34em;color:var(--copper-hi);text-transform:uppercase;text-align:center}
+.gf-t{font:400 54px Anton,sans-serif;letter-spacing:.06em;line-height:1;color:#fff;text-align:center;margin:6px 0 4px;text-shadow:0 0 28px rgba(255,179,71,.45),0 3px 0 #7a3b00;transform:rotate(-2deg)}
+.gf-s{font:400 20px 'Barlow Condensed',sans-serif;color:#ffb347;text-align:center;letter-spacing:.06em;margin-bottom:18px}
+.gf-step{display:flex;gap:14px;align-items:center;padding:14px 14px;margin:0 0 10px;border-radius:18px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-left:5px solid #ffb347}
+.gf-step.s1{border-left-color:#4de2ff}.gf-step.s2{border-left-color:#ff4dd2}.gf-step.s3{border-left-color:#a3f55a}
+.gf-step i{flex:none;width:54px;height:54px;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:30px;font-style:normal;background:rgba(0,0,0,.35);box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
+.gf-step strong{display:block;font:400 24px Anton,sans-serif;letter-spacing:.05em;color:#fff;margin-bottom:3px;line-height:1.05}
+.gf-step.s1 strong{color:#9ef0ff}.gf-step.s2 strong{color:#ffa8ec}.gf-step.s3 strong{color:#c8ffa0}
+.gf-step span{font:400 17px 'Barlow Condensed',sans-serif;color:#e9e2f5;line-height:1.3}.gf-step em{font-style:normal;color:#a3f55a;font-weight:700;font-size:19px}
+.gf-rules{margin:12px 0 16px;padding:12px 14px;border-radius:14px;background:rgba(255,179,71,.08);border:1px dashed rgba(255,179,71,.45);font:400 16px 'Barlow Condensed',sans-serif;color:#f3e9d6;line-height:1.4}
+.gf-rules div+div{margin-top:6px}.gf-rules b{color:#ffb347}
+.gf-go{width:100%;padding:16px;border-radius:14px;border:1px solid rgba(255,179,71,.6);background:linear-gradient(160deg,#ffd58a,var(--copper-hi));color:#2a1a08;font:400 19px Anton,sans-serif;letter-spacing:.12em;cursor:pointer;box-shadow:0 6px 0 #7a3b00,0 10px 24px rgba(255,179,71,.35)}
+.gf-go:active{transform:translateY(3px);box-shadow:0 3px 0 #7a3b00}
 .gf-x{width:100%;margin-top:8px;padding:11px;border-radius:12px;border:0;background:transparent;color:var(--steel);font:700 12px Inter,sans-serif;letter-spacing:.1em;text-transform:uppercase;cursor:pointer}
 #socialFeed .dp-post .dp-foot button{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:99px;border:1px solid var(--line);background:transparent;color:var(--steel);font-family:var(--dp-inter);font-size:13px;font-weight:600;cursor:pointer}
 #socialFeed .dp-post .dp-foot .ic{display:inline-flex}
@@ -58768,11 +58795,11 @@ function footHTML(k,right){
 function openGameFlyer(){
   let sh=document.getElementById('gameFlyer');
   if(!sh){ sh=document.createElement('div'); sh.className='sheet dp-sh'; sh.id='gameFlyer'; sh.style.zIndex='88';
-    sh.innerHTML='<div class="sheet-card gf"><div class="gf-k">THE DISPATCH POST</div><div class="gf-t">The Game</div><div class="gf-s">Call the board. Mark the board. Get paid.</div>'
-      +'<div class="gf-step"><b>1</b><div><strong>Open the post</strong><span>Tap the card on the Hall. When the board is ON AIR the room is live.</span></div></div>'
-      +'<div class="gf-step"><b>2</b><div><strong>Mark the board</strong><span>Spin the drums to the card the board is on and MARK it. Tag it if it skipped, or if it’s the end of 1st or 2nd.</span></div></div>'
-      +'<div class="gf-step"><b>3</b><div><strong>Collect</strong><span>Every mark that moves the board is a ticket. Every 5 minutes one ticket is drawn and paid <em>20 ⚓</em>. Feeding the board pays <em>5 ⚓</em> on its own.</span></div></div>'
-      +'<div class="gf-rules"><div>One mark per move — a repeat of the same card doesn’t count.</div><div>Wrong number? Strike it ☠ and mark again; strikes don’t cost you.</div><div>The app’s call is a prediction. The board is the truth. Your mark is what makes it true for everybody.</div></div>'
+    sh.innerHTML='<div class="sheet-card gf"><div class="gf-k">THE DISPATCH POST</div><div class="gf-t">THE GAME</div><div class="gf-s">Spin it. Mark it. Get paid.</div>'
+      +'<div class="gf-step s1"><i>📣</i><div><strong>OPEN THE POST</strong><span>Tap the card on the Hall. ON AIR means the board is moving right now.</span></div></div>'
+      +'<div class="gf-step s2"><i>🎯</i><div><strong>MARK THE BOARD</strong><span>Spin the drums to the card they’re calling and hit MARK.</span></div></div>'
+      +'<div class="gf-step s3"><i>💰</i><div><strong>GET PAID</strong><span>Every mark is a ticket. Every 5 minutes one ticket wins <em>20 ⚓</em>.</span></div></div>'
+      +'<div class="gf-rules"><div>☠ Wrong number? Strike it and mark again — free.</div><div>⚓ The app guesses. <b>You</b> make it true.</div></div>'
       +'<button type="button" class="gf-go" data-gf="go">OPEN THE BOARD</button><button type="button" class="gf-x" data-gf="x">Got it</button></div>';
     document.body.appendChild(sh);
     sh.addEventListener('click',e=>{ const b=e.target.closest('[data-gf]'); if(e.target===sh||(b&&b.getAttribute('data-gf')==='x')){ sh.classList.remove('on'); return; }
