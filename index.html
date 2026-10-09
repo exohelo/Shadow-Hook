@@ -8,7 +8,8 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct8recall';   /* oct 8 (150th) — a record opens on ALL no matter how you reach it: swiping off an on-deck board's PHOTO GALLERY onto the record used to carry the gallery tab along (#chatonly). */
+window.SHK_BUILD='oct8dmedit';   /* oct 8 (151st) — EDIT A DIRECT MESSAGE: press and hold one of your own text bubbles → ✎ EDIT · 🗑 DELETE; Edit puts the words in the box under an Editing bar, ➤ saves it in place with · edited on the bubble, and the other phone sees it live. Needs DM-EDIT-SETUP.sql on the server once (#dmedit). */
+/* was: oct8recall */   /* oct 8 (150th) — a record opens on ALL no matter how you reach it: swiping off an on-deck board's PHOTO GALLERY onto the record used to carry the gallery tab along (#chatonly). */
 /* was: oct8stripmarq */   /* oct 8 (149th) — THE POST'S PHOTO STRIP IS JUST THE PICTURES, rolling in one marquee the way the gallery rolls (hold to stop, tap to open); the ADD YOURS tile and the GALLERY door came off the strip — the camera in the post's foot adds a shot, the gallery is a tab in the room. With fewer than three shots, or reduced motion on, it's a plain row (#stripmarq). */
 /* was: oct8chatonly */   /* oct 8 (148th) — THE SAY-BOX RIDES THE CHAT TAB ONLY: in a post's room it used to sit under the gallery and under a record's count, taking a row nobody typed in; now it shows on CHAT alone (the live tools still ride every other tab while ON AIR). An on-deck board opens on the PHOTO GALLERY, a live board and a record open on ALL, and swiping from a board's chat onto a record lands on ALL, not CHAT (#chatonly). */
 /* was: oct8succfoot */   /* oct 8 (147th) — SUCCESSION MOVES TO THE FOOT OF THE DESK: the red OPEN THE KEYMASTER’S SEAT button sat mid-desk between the ban requests and the line; it's a once-in-a-tenure act, so it now lives past the roster at the very bottom, folded behind a quiet GIVE UP THE TABLE… line, and the red button shows only once that's opened (NOT YET closes it again). While a vote is running, its count stays up top (#succfoot). */
@@ -2388,6 +2389,14 @@ html.daylight .hdr-msg{box-shadow:0 0 10px rgba(224,73,46,.35),0 3px 0 #7a1608}
 #dmFeed .dm-b.me{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 #dmFeed .dm-b.me img,#dmFeed .dm-b.me video{-webkit-touch-callout:none}
 #dmFeed .dm-b.dm-pick{opacity:.55;transform:scale(.97);transition:transform .15s,opacity .15s}
+/* #dmedit(oct8) — the pop under a held bubble: EDIT · DELETE */
+#dmFeed .dm-b.dm-held{box-shadow:0 0 0 2px rgba(238,180,107,.55)}
+.dm-actpop{display:flex;gap:6px;justify-content:flex-end;margin:-4px 0 10px;animation:dmPop .14s ease-out}
+.dm-actpop button{height:34px;padding:0 14px;border-radius:99px;border:1px solid var(--line);background:var(--bubble);color:var(--bone);font:600 13px Inter,system-ui,sans-serif;cursor:pointer}
+.dm-actpop button.ed{color:var(--copper-hi);border-color:rgba(238,180,107,.5)}.dm-actpop button.dl{color:#e07a6e}.dm-actpop button.x{color:var(--steel);padding:0 11px}
+@keyframes dmPop{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+.dm-b .dm-ed{display:inline;font-size:10.5px;color:var(--steel);letter-spacing:.04em;margin-left:5px;white-space:nowrap}
+.dm-editbar{flex:none}
 /* #friendrow — one big 💬 on a friend's row; the row itself is the card */
 .fr-row .fr-msg{flex:none;width:46px;height:40px;border-radius:12px;border:1px solid rgba(238,180,107,.55);background:linear-gradient(184deg,var(--btn-hi),var(--btn-lo));color:var(--copper-hi);font-size:19px;line-height:1;cursor:pointer;box-shadow:0 2px 0 rgba(0,0,0,.35)}
 .fr-row .fr-msg:active{transform:translateY(1px);box-shadow:none}
@@ -31598,7 +31607,7 @@ function dmFold(m,fresh){
   const t=DM.threads[peer]||(DM.threads[peer]={h:null,msgs:[]});
   if(!mine&&m.from_handle)t.h=m.from_handle;
   if(t.msgs.some(x=>x.id===m.id))return;
-  t.msgs.push({id:m.id,mine:mine,tx:String(m.body||''),at:m.created_at||new Date().toISOString(),kind:m.kind||'text',url:String(m.url||'')});   /* #dmmedia — kind + url ride along */
+  t.msgs.push({id:m.id,mine:mine,tx:String(m.body||''),at:m.created_at||new Date().toISOString(),kind:m.kind||'text',url:String(m.url||''),ed:m.edited_at||null});   /* #dmedit — ed rides along */   /* #dmmedia — kind + url ride along */
   t.msgs.sort((a,b)=>String(a.at)<String(b.at)?-1:1);
   if(fresh){
     if(DM.openPeer===peer){dmDrawThread();dmMarkSeen(peer);}
@@ -31664,6 +31673,8 @@ function dmSub(){
       /* #wipe — a burned wire vanishes on the other phone too (a DELETE carries only the id) */
       .on('postgres_changes',{event:'DELETE',schema:'public',table:'dm_messages'},
         p=>{try{if(p&&p.old&&p.old.id)dmApplyDelete(p.old.id);}catch(e){}})
+      .on('postgres_changes',{event:'UPDATE',schema:'public',table:'dm_messages'},   /* #dmedit — an edit lands on the other phone */
+        p=>{try{if(p&&p.new&&p.new.id)dmApplyEdit(p.new.id,p.new.body,p.new.edited_at);}catch(e){}})
       /* #friends2 — a request landing rings the bell and bumps the badge at once */
       .on('postgres_changes',{event:'INSERT',schema:'public',table:'friend_requests',filter:'to_id=eq.'+window.__shkUid},
         p=>{try{ const r=p&&p.new; if(!r)return; DM.reqIn[r.from_id]=r.from_handle||'a casual'; dmRenderAll();
@@ -32171,6 +32182,8 @@ function _dmView(){
     +'<span class="pill" id="dmTFriend" style="display:none;color:var(--ok);border-color:rgba(127,174,106,.45)">friend</span>'
     +'<button class="pdp-back" id="dmWipe" type="button" aria-label="Wipe my messages" title="Wipe every message you\'ve sent — all rooms, all Direct Messages" style="padding:2px 8px;font-size:16px">🧹</button></div>'   /* #wipe */
     +'<div id="dmFeed" style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px;display:flex;flex-direction:column;gap:8px"></div>'
+    /* #dmedit(oct8) — the edit bar: shows while one of your own messages is in the box */
+    +'<div class="chat-editbar dm-editbar" id="dmEditBar">✎ Editing your message<button type="button" id="dmEditCancel">Cancel</button></div>'
     +'<div style="flex:none;display:flex;gap:8px;align-items:center;padding:10px 12px calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--line);background:var(--plate)">'
     /* #dmmedia(sep04) — ＋ (photo or clip) and GIF, the room's two buttons on the wire */
     +'<button class="attach" id="dmAtt" type="button" aria-label="Add photo or video">＋</button>'
@@ -32181,7 +32194,8 @@ function _dmView(){
     +'<button id="dmSendBtn" type="button" style="flex:none;width:42px;height:42px;border-radius:50%;border:1px solid rgba(238,180,107,.5);background:linear-gradient(184deg,var(--btn-hi),var(--btn-lo));color:var(--copper-hi);font-size:16px;cursor:pointer">➤</button></div>';
   document.body.appendChild(v);
   try{ if(window.pinchTextArm)pinchTextArm(v.querySelector('#dmFeed')); }catch(e){}   /* #pinchtext — two fingers size the wire too */
-  v.querySelector('#dmBack').addEventListener('click',closeDmThread);
+  v.querySelector('#dmBack').addEventListener('click',function(){ try{ dmCancelEdit(); }catch(e){} closeDmThread(); });
+  try{ v.querySelector('#dmEditCancel').addEventListener('click',dmCancelEdit); }catch(e){}   /* #dmedit */
   v.querySelector('#dmWipe').addEventListener('click',()=>burnSheet('dms',{peer:DM.openPeer}));   /* #burn — this wire, pre-picked */
   v.querySelector('#dmSendBtn').addEventListener('click',dmSend);
   v.querySelector('#dmIn').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();dmSend();}});
@@ -32493,7 +32507,7 @@ function dmDrawThread(){
        A RUN (same side, next one inside 4 min) shows the time once, on its last bubble — Messenger's rhythm. */
     const nx=arr[i+1], run=!!(nx&&nx.mine===m.mine&&(new Date(nx.at)-new Date(m.at))<240000);
     return '<div data-dmid="'+esc(String(m.id))+'" class="dm-b '+(m.mine?'me':'them')+((k!=='text'&&k!=='ticket'&&u)?' media':'')+(k==='ticket'?' tix':'')+(m.pend?' pend':'')+(run?' run':'')+'">'
-      +body+(run?'':'<span class="dm-t">'+tm+'</span>')+'</div>';
+      +body+(run?'':'<span class="dm-t">'+tm+(m.ed?'<span class="dm-ed">· edited</span>':'')+'</span>')+(run&&m.ed?'<span class="dm-t"><span class="dm-ed">edited</span></span>':'')+'</div>';   /* #dmedit */
   }).join('')
   :'<p class="sub" style="text-align:center;margin-top:30px">A private conversation, just you two. Masked handles, and talk is free.</p>';
   f.scrollTop=f.scrollHeight;
@@ -32571,6 +32585,23 @@ function dmDelArm(){   /* armed on the feed each time a thread draws — the fee
   function ask(b){
     const m=find(b.dataset.dmid); if(!m||!m.mine)return;
     try{ if(navigator.vibrate)navigator.vibrate(12); }catch(e){}
+    /* #dmedit(oct8) — a message of yours gets a choice: EDIT or DELETE. Pictures, clips, GIFs and tickets only delete. */
+    if((m.kind||'text')==='text'&&!m.url){
+      feed.querySelectorAll('.dm-actpop').forEach(x=>x.remove()); feed.querySelectorAll('.dm-held').forEach(x=>x.classList.remove('dm-held'));
+      b.classList.add('dm-held');
+      const pop=document.createElement('div'); pop.className='dm-actpop';
+      pop.innerHTML='<button type="button" class="ed">✎ Edit</button><button type="button" class="dl">🗑 Delete</button><button type="button" class="x" aria-label="Never mind">✕</button>';
+      b.insertAdjacentElement('afterend',pop);
+      const off=()=>{ pop.remove(); b.classList.remove('dm-held'); };
+      pop.querySelector('.ed').addEventListener('click',e=>{ e.stopPropagation(); off(); dmStartEdit(m); });
+      pop.querySelector('.dl').addEventListener('click',e=>{ e.stopPropagation(); off(); askDel(b,m); });
+      pop.querySelector('.x').addEventListener('click',e=>{ e.stopPropagation(); off(); });
+      setTimeout(()=>{ if(pop.isConnected)off(); },6000);
+      return;
+    }
+    askDel(b,m);
+  }
+  function askDel(b,m){
     b.classList.add('dm-pick');
     const what=(m.kind==='video')?'this clip':(m.kind==='gif')?'this GIF':(m.kind==='ticket')?'this ticket':(m.kind&&m.kind!=='text'&&m.url)?'this photo':'this message';
     const done=()=>b.classList.remove('dm-pick');
@@ -32602,10 +32633,52 @@ function dmDelArm(){   /* armed on the feed each time a thread draws — the fee
     const t=DM.threads[DM.openPeer]; if(!t||!t.msgs.some(x=>x.mine))return;
     localStorage.setItem('shadowhook_dmdelhint','1'); setTimeout(()=>{ try{ toast('Tip: press and hold a message you sent to delete it'); }catch(e){} },900); }catch(e){} };
 }
+/* ═══ #dmedit(oct8) — EDIT ONE MESSAGE YOU SENT ═══
+   By request ("I need an edit button"): press and hold one of YOUR OWN text bubbles → ✎ EDIT puts the words in the
+   box under an "Editing your message" bar; ➤ saves it in place (· edited on the bubble) and the other phone hears the
+   UPDATE over realtime. The server lets a sender change only their own words (run DM-EDIT-SETUP.sql once:
+   an edited_at column and an UPDATE policy, from_id = auth.uid()). */
+DM._edit=null;
+function dmStartEdit(m){
+  if(!m||!m.mine)return; DM._edit=String(m.id);
+  const inp=document.getElementById('dmIn'), bar=document.getElementById('dmEditBar');
+  if(inp){ inp.value=m.tx||''; inp.focus(); try{ inp.setSelectionRange(inp.value.length,inp.value.length); }catch(e){} }
+  if(bar)bar.style.display='flex';
+}
+function dmCancelEdit(){
+  DM._edit=null;
+  const inp=document.getElementById('dmIn'), bar=document.getElementById('dmEditBar');
+  if(inp)inp.value=''; if(bar)bar.style.display='none';
+}
+function dmApplyEdit(id,body,ed){
+  let hit=false;
+  Object.keys(DM.threads||{}).forEach(u=>{ (DM.threads[u].msgs||[]).forEach(x=>{ if(String(x.id)===String(id)){ x.tx=String(body||''); x.ed=ed||x.ed||new Date().toISOString(); hit=true; } }); });
+  if(hit){ if(DM.openPeer)dmDrawThread(); dmRenderAll(); }
+}
+async function dmSaveEdit(v){
+  const id=DM._edit, peer=DM.openPeer; if(!id||!peer)return;
+  const t=DM.threads[peer], m=t&&t.msgs.find(x=>String(x.id)===id); if(!m){ dmCancelEdit(); return; }
+  if(!(window.SB&&window.__shkUid)){ toast('Sign in first'); return; }
+  const prev=m.tx, prevEd=m.ed, now=new Date().toISOString();
+  m.tx=v; m.ed=now; dmCancelEdit(); dmDrawThread();   /* optimistic */
+  let r=null;
+  try{ r=await window.SB.from('dm_messages').update({body:v,edited_at:now}).eq('id',id).eq('from_id',window.__shkUid).select('id'); }catch(e){ r={error:e}; }
+  if(r&&r.error&&/edited_at/i.test(String(r.error.message||''))){   /* the column isn't on the server yet: save the words alone */
+    try{ r=await window.SB.from('dm_messages').update({body:v}).eq('id',id).eq('from_id',window.__shkUid).select('id'); }catch(e){ r={error:e}; }
+  }
+  if((r&&r.error)||!r||!r.data||!r.data.length){
+    m.tx=prev; m.ed=prevEd; dmDrawThread();
+    toast(r&&r.error?'Couldn’t save the edit — '+(/policy|denied|violates/i.test(String(r.error.message||''))?'the server isn’t set up for edits yet':'check your signal'):'Can’t edit that one');
+    return;
+  }
+  try{ toast('✎ Edited'); }catch(e){}
+  dmRenderAll();
+}
 async function dmSend(){
   if(typeof guestWall==='function'&&guestWall())return;   /* #guest */
   const inp=document.getElementById('dmIn');if(!inp)return;
   const v=inp.value.trim();if(!v||!DM.openPeer)return;
+  if(DM._edit){ dmSaveEdit(v); return; }   /* #dmedit — saving an edit, not a new send */
   if(!(window.SB&&window.__shkUid)){toast('Sign in first — Direct Messages ride your account');return;}
   if(!payCredits(MSG_COST,'DM',true))return;   /* #free — 0 now */
   const id=chatUUID(), peer=DM.openPeer;
