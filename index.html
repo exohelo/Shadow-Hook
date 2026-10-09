@@ -9,6 +9,9 @@
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
 window.SHK_BUILD='oct8rectop';   /* oct 8 (152nd) — a record opens at the TOP of the post on ALL; it had been scrolling down to the tab bar as if ALL were a destination like CHAT or the gallery (#recall). */
+/* was: oct9hotstill */   /* oct 9 (158th) — WHAT'S HOT HOLDS STILL: the 🔥 strip (the + tile, the lobby cards, the ONLINE pill) was rebuilt whole on every presence sync and the 13px text floor re-lifted its labels after each — the same blink as the Chamber. Now it is patched in place: only a count or a line that changed is swapped; a card arriving or leaving still rebuilds the row (#hotstill). */
+/* was: oct9androidstill */   /* oct 9 (157th) — THE CHAMBER HOLDS ON ANDROID: the sheet is promoted to its own compositor layer and painted in isolation, the season decor beneath it is parked while it is open, and the floor halo pulses by opacity alone instead of scaling inside the SVG, so the phone no longer re-rasters the whole fixed sheet on every pulse (#androidstill). */
+/* was: oct9chamberstays */   /* oct 9 (156th) — THE CHAMBER STAYS THE ROOM: every presence re-assert (the 5-minute heal, the Keymaster's flag read, a season flip, a rename) sent CURRENT_ROOM — null inside the Chamber — so it kicked the member out of the Chamber's roster, their halo blinked off and the floor redrew. floorTrack now keeps "The Chamber" while the sheet is open (#chamberstays). */
 /* was: oct9votecall */   /* oct 9 (155th) — THE COUNCIL'S OWN ALERT: a ⚜ beside the ✉ and 🤝 in the header, for seat holders and the Keymaster only, counting votes waiting on them (open motions not yet voted, seat applicants in an open window with no vote cast, a succession vote not cast). Gold on velvet, rings on a new one, hidden when there is nothing; one tap opens the Chamber on the tab where the vote sits (#votecall). */
 /* was: oct9chamberstill */   /* oct 9 (154th) — THE CHAMBER HOLDS STILL: it was rebuilt whole on every read (open, the server read after it, every realtime kick), and the 13px text floor then re-lifted 31 small labels a few frames after each rebuild — text popping small→big over and over read as the sheet flickering. Now the sheet is built once and only a changed section is swapped; a read that changes nothing touches nothing; and the Chamber\'s type is drawn at 13px to begin with (#chamberstill). */
 /* was: oct8seatcount */   /* oct 8 (152nd) — THE COUNT SHOWS FOR EVERYONE: the N OPEN / FULL tag under the console crest no longer hides for seated members; only the beckoning rim is theirs to skip (#seatcount). */
@@ -29465,6 +29468,11 @@ function _flMeta(room){
 }
 /* called when a casual walks into a room or back out onto the shelves */
 function floorTrack(room){
+  /* #chamberstays(oct9) — nine places re-assert the presence meta with CURRENT_ROOM (the 5-minute heal, the KM flag
+     read, a season/raffle flip, a rename…), and CURRENT_ROOM is null inside the Chamber, so each one quietly
+     pulled a seated member OUT of the Chamber's roster: their halo on the floor blinked off and the floor
+     redrew. While the Chamber is open, the Chamber is the room. */
+  try{ if(room==null){ var ch=document.getElementById('scChamber'); if(ch&&ch.classList.contains('on'))room='The Chamber'; } }catch(e){}
   try{ if(_flChan&&_flChan.track)_flChan.track(_flMeta(room)); }catch(e){}   /* #floorwho — the handle rides along */
 }
 window.dmGhost=dmGhost;
@@ -33482,9 +33490,23 @@ function hotSectionHTML(){
 function renderHot(){   /* presence moved: repaint the What's Hot row alone — the board stays put */
   const host=document.getElementById('socialFeed'); const old=host&&host.querySelector('#hotSec');
   if(!old){ if(host&&host.innerHTML)renderSocialFeed(); return; }
-  const tmp=document.createElement('div'); tmp.innerHTML=hotSectionHTML(); const nu=tmp.firstElementChild; if(!nu)return;
+  const html=hotSectionHTML(); if(old._hotHTML===html)return;   /* nothing moved: touch nothing */
+  const tmp=document.createElement('div'); tmp.innerHTML=html; const nu=tmp.firstElementChild; if(!nu)return;
+  /* #hotstill(oct9) — THE STRIP IS PATCHED, NOT REBUILT. This replaced the whole 🔥 section on every presence sync
+     (every join, leave or re-broadcast from any phone on the floor), and the 13px text floor then re-lifted its
+     small labels a few frames after — on a busy floor the + tile, the lobby cards and the ONLINE pill blinked in
+     bursts. Now: same cards in the same order → only the numbers that changed are swapped (the pill's count, a
+     card's "on now" line, its TOP flag); a card appearing or leaving still rebuilds the row, scroll kept. */
+  const key=el=>el.getAttribute('data-room')||el.getAttribute('data-hgath')||el.getAttribute('data-hclan')||(el.hasAttribute('data-hnew')?'+':'');
+  const oc=[...old.querySelectorAll('.hcard')], nc=[...nu.querySelectorAll('.hcard')];
+  if(oc.length===nc.length&&oc.every((c,i)=>key(c)===key(nc[i]))){
+    const op=old.querySelector('#hotOnPill b'), np=nu.querySelector('#hotOnPill b'); if(op&&np&&op.textContent!==np.textContent)op.textContent=np.textContent;
+    oc.forEach((c,i)=>{ ['.hc-kind','.hc-ico','.hc-name','.hc-stat'].forEach(q=>{ const a=c.querySelector(q), b=nc[i].querySelector(q); if(a&&b&&a.innerHTML!==b.innerHTML)a.innerHTML=b.innerHTML; });
+      ['data-ico','data-who'].forEach(at=>{ const v=nc[i].getAttribute(at); if(v!=null&&c.getAttribute(at)!==v)c.setAttribute(at,v); }); });
+    old._hotHTML=html; return;
+  }
   const row=old.querySelector('.hot'), sl=row?row.scrollLeft:0;
-  old.replaceWith(nu); bindHot(nu); const h=nu.querySelector('.hot'); if(h&&sl)h.scrollLeft=sl;
+  old.replaceWith(nu); bindHot(nu); nu._hotHTML=html; const h=nu.querySelector('.hot'); if(h&&sl)h.scrollLeft=sl;
 }
 function bindHot(host){
   /* #stripcut(oct8) — the + tile opens the three doors; the pill opens the roster */
@@ -60975,6 +60997,15 @@ a.shk-link{color:inherit;text-decoration:underline;word-break:break-all}
   '.sc-sheet.full .sheet-card{max-width:none;height:100%;max-height:none;border-radius:0;border-width:0 0 0 0;border-top:1px solid var(--sc-gold-lo);transform:none;',
   '  display:flex;flex-direction:column;padding:12px 16px calc(10px + env(safe-area-inset-bottom) + var(--kb,0px))}',
   '.sc-sheet.full .sheet-card:before{inset:6px;border-radius:0}',
+  /* #androidstill(oct9) — THE CHAMBER GETS ITS OWN LAYER. On Android, Chrome drops and redraws a big fixed sheet
+     whenever too much animates beneath it, and the Chamber sat over the Halloween scene (bats, drips, embers)
+     with its own floor pulsing inside an SVG, which the phone cannot hand to the GPU, so every pulse re-rastered
+     the whole sheet: random bursts of the sheet blinking off and on. Three things: the sheet is promoted to its
+     own compositor layer and painted in isolation; the season decor behind it is parked while it is open (it
+     is under the sheet anyway); and the halo pulses by opacity alone, which is cheap to repaint. */
+  '.sc-sheet.full{will-change:transform;transform:translateZ(0);backface-visibility:hidden;contain:layout paint}',
+  '.sc-sheet.full .sheet-card{contain:paint;isolation:isolate}',
+  'body:has(#scChamber.on) .sn-scene,body:has(#scChamber.on) .sn-prop,body:has(#scChamber.on) .sn-cone,body:has(#scChamber.on) .sn-drop,body:has(#scChamber.on) #gooSplash{animation-play-state:paused!important;visibility:hidden}',
   '.sc-sheet.full .sc-h{padding-top:6px}',
   '.sc-h{text-align:center;padding:14px 0 10px}.sc-h .k{font-family:Inter,system-ui,sans-serif;font-size:8.5px;letter-spacing:.22em;color:var(--sc-gold);text-transform:uppercase;white-space:nowrap}',
   /* #chamberhead(oct8) — the house name over the door, the society line under it, by the Keymaster */
@@ -61017,7 +61048,7 @@ a.shk-link{color:inherit;text-decoration:underline;word-break:break-all}
   '.sc-floor .hs .halo{fill:rgba(127,174,106,.12);stroke:#9fd08a;stroke-width:1.5;stroke-dasharray:none;animation:scHalo 2.2s ease-in-out infinite}',
   '.sc-floor .hs.in>circle:not(.halo){stroke:#9fd08a}',
   '.sc-floor .hs.me .halo{stroke:#fff}',
-  '@keyframes scHalo{0%,100%{opacity:.55;transform:scale(1)}50%{opacity:1;transform:scale(1.08)}}',
+  '@keyframes scHalo{0%,100%{opacity:.5}50%{opacity:1}}',   /* #androidstill — opacity only, no scale */
   '.sc-floor .hs{transform-box:fill-box;transform-origin:center}.sc-floor .hs .halo{transform-box:fill-box;transform-origin:center}',
   '.sc-inroom{display:flex;align-items:center;justify-content:center;gap:6px;margin:2px 0 0;font-family:"Barlow Condensed",sans-serif;font-size:12px;letter-spacing:.06em;color:var(--sc-dim)}',
   '.sc-inroom i{width:7px;height:7px;border-radius:50%;background:#9fd08a;box-shadow:0 0 8px rgba(159,208,138,.8)}.sc-inroom b{color:#9fd08a}',
