@@ -5,7 +5,9 @@
    Head-to-head duels: 5 ⬡ a side, seven questions, ten seconds each, fastest correct answer takes the point, more
    points takes the 10. The phone never holds an answer — it asks the server for the seven questions (trivia_qs: text +
    four options) and sends every tap to trivia_answer, which grades it against the clock that started on the server
-   (started_at). Question i opens at started_at + i×13 s: 10 s to tap, 3 s of reveal. All of it is GAMES.sql. */
+   (your own started_at). Question i opens at started_at + i×13 s: 10 s to tap, 3 s of reveal. All of it is GAMES.sql.
+   ASYNC (oct 10): each side runs the seven on its own clock — you play the moment you put the duel up; they play
+   whenever they accept, online or not. Fastest right answer per question still takes the point. */
 (function(){
   'use strict';
   var esc=function(s){ return (s==null?'':(''+s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'); };
@@ -92,7 +94,9 @@
   function lobby(){
     S.view='lobby'; stopTimer();
     wrap().innerHTML=top('loading the table…');
-    rpc('trivia_lobby').then(function(L){ S.lobby=L; S.off=new Date(L.now).getTime()-Date.now(); if(L.live)return rejoin(L.live); drawLobby(); sub(); })
+    rpc('trivia_lobby').then(function(L){ S.lobby=L; S.off=new Date(L.now).getTime()-Date.now(); if(L.play)return rejoin(L.play);
+      if(L.settle&&L.settle.length){ var id=L.settle[0]; return rpc('trivia_settle',{p_id:id}).then(function(d){ refreshBucks(); result(d); }).catch(function(){ drawLobby(); sub(); }); }
+      drawLobby(); sub(); })
       .catch(function(e){ var m=String(e.message||e); wrap().innerHTML=top('')+'<div class="trv-body"><div class="trv-row"><div class="m">'+esc(/trivia_lobby|does not exist|schema cache|PGRST202|42883/i.test(m)?'The trivia bank isn’t built yet — the Keymaster runs GAMES.sql once.':m)+'</div></div></div>'; });
   }
   function drawLobby(){
@@ -101,33 +105,45 @@
     var h=top('Head-to-head · 7 Qs · 10 s · fastest right answer wins','<div class="trv-bank"><span>BANK</span><b>'+(L.bucks||0).toLocaleString()+' ⬡</b></div>')+'<div class="trv-body">'
       +'<div class="trv-me"><div class="hex" style="width:64px;height:72px;background:linear-gradient(180deg,'+CY+',#1fa8e0);font-size:26px">'+esc(L.me.charAt(0))+'</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:5px"><div style="display:flex;align-items:baseline;gap:8px"><span class="nm">'+esc(L.me)+'</span><span class="rk">'+(st.wins?'IN THE RANKS':'ROOKIE')+'</span></div>'
       +'<div class="st"><span><b>'+(st.wins||0)+'</b> W</span><span><b>'+(st.losses||0)+'</b> L</span><span><b style="color:'+MG+'">×'+(st.streak||0)+'</b> STREAK</span><span><b style="color:'+LM+'">'+(st.best_ms?(st.best_ms/1000).toFixed(2):'—')+'</b>s BEST</span></div></div></div>';
-    if(L.mine){ h+='<div class="trv-sec">YOUR DUEL ON THE TABLE</div><div class="trv-row"><div style="flex:1;min-width:0"><div class="nm">'+(L.mine.open_to==='anyone'?'OPEN TO ANYONE':'WAITING ON '+esc(L.mine.open_to))+'</div><div class="m">PUT UP '+ago(L.mine.created_at).toUpperCase()+' AGO · 5 ⬡ DOWN · STARTS WHEN THEY TAKE IT</div></div><button type="button" class="trv-btn gh" data-trv="cancel" data-v="'+L.mine.id+'">TAKE BACK</button></div>'; }
-    else{
-      h+='<button type="button" class="trv-big" data-trv="open" data-v="anyone"><span>CHALLENGE ANYONE<small>5 ⬡ DOWN · WINNER TAKES 10</small></span><span style="font-size:28px">⚡</span></button>'
-        +'<div style="display:flex;gap:6px;margin-top:-6px"><input class="trv-in" id="trvWho" placeholder="CALL OUT A HANDLE…" maxlength="24" autocapitalize="characters"><button type="button" class="trv-btn" data-trv="open" data-v="who">CALL OUT</button></div>';
-    }
+    h+='<button type="button" class="trv-big" data-trv="open" data-v="anyone"><span>CHALLENGE ANYONE<small>5 ⬡ DOWN · WINNER TAKES 10 · YOU RUN NOW, THEY RUN WHEN THEY ACCEPT</small></span><span style="font-size:28px">⚡</span></button>'
+      +'<div style="display:flex;gap:6px;margin-top:-6px"><button type="button" class="trv-btn gh" style="flex:1;text-align:left" data-trv="pick">👥 WHO’S ONLINE · RIVALS</button><input class="trv-in" id="trvWho" placeholder="OR A HANDLE…" maxlength="24" autocapitalize="characters" style="flex:1"><button type="button" class="trv-btn" data-trv="open" data-v="who">CALL OUT</button></div>';
+    var mine=L.mine||[];
+    if(mine.length){ h+='<div><div class="trv-sec">WAITING ON THEM</div>'+mine.map(function(d){ return '<div class="trv-row" style="margin-top:6px"><div style="flex:1;min-width:0"><div class="nm">'+(d.open_to==='anyone'?'ANYONE':esc(d.open_to))+'</div><div class="m">'+(d.played?'YOUR RUN IS IN':'YOUR RUN IS WAITING')+' · '+ago(d.created_at).toUpperCase()+' · 24 H TO ACCEPT</div></div>'+(d.played?'':'<button type="button" class="trv-btn fill" data-trv="result" data-v="'+d.id+'">RUN IT</button>')+'<button type="button" class="trv-btn gh" data-trv="cancel" data-v="'+d.id+'">TAKE BACK</button></div>'; }).join('')+'</div>'; }
     if(forMe.length){ h+='<div><div class="trv-sec hot">INCOMING · THEY CALLED YOU OUT</div>'+forMe.map(function(d){ return row(d,true); }).join('')+'</div>'; }
     h+='<div><div class="trv-sec">OPEN ON THE TABLE</div>'+(any.length?any.map(function(d){ return row(d,false); }).join(''):'<div class="trv-row"><div class="m">NOBODY ON THE TABLE — PUT ONE UP</div></div>')+'</div>';
+    var res=L.results||[];
+    if(res.length){ h+='<div><div class="trv-sec">RECENT</div>'+res.map(function(d){ var won=d.winner===window.__shkUid, tie=!d.winner, them=d.me_by?d.foe_handle:d.by_handle, a=d.me_by?d.score_by:d.score_foe, b2=d.me_by?d.score_foe:d.score_by; return '<div class="trv-row" style="margin-top:6px"><div style="flex:1;min-width:0"><div class="nm" style="color:'+(won?LM:tie?YL:MG)+'">'+(won?'WON':tie?'DEAD HEAT':'LOST')+' '+a+'–'+b2+' vs '+esc(them||'?')+'</div><div class="m">'+ago(d.finished_at).toUpperCase()+' AGO</div></div><button type="button" class="trv-btn gh" data-trv="result" data-v="'+d.id+'">SEE IT</button></div>'; }).join('')+'</div>'; }
     h+='<div><div class="trv-sec">THE PODIUM</div><div id="trvPod" class="trv-pod"></div></div>'
       +'<div style="display:flex;gap:8px"><button type="button" class="trv-btn gh" style="flex:1" data-trv="board">FULL BOARD</button><button type="button" class="trv-btn gh" style="flex:1" data-trv="submit">WRITE A Q · +10 ⬡</button></div></div>';
     w.innerHTML=h; podium();
     function row(d,inc){ return '<div class="trv-row'+(inc?' in':'')+'" style="margin-top:6px"><div class="hex" style="width:40px;height:46px;background:'+(inc?MG:'#1a2235')+';color:'+(inc?'#05070f':CY)+';font-size:18px">'+esc(d.by_handle.charAt(0))+'</div><div style="flex:1;min-width:0"><div class="nm">'+esc(d.by_handle)+'</div><div class="m">'+(inc?'FOR YOU':'ANYONE')+' · '+ago(d.created_at).toUpperCase()+'</div></div><button type="button" class="trv-btn'+(inc?' fill':'')+'" data-trv="join" data-v="'+d.id+'">'+(inc?'ACCEPT':'FIGHT')+' · 5 ⬡</button></div>'; }
   }
+  function picker(){
+    var L=S.lobby||{}, my=me(), on=[]; try{ if(typeof FLOOR!=='undefined'&&FLOOR.roster)on=FLOOR.roster.map(function(r){ return String(r.h||'').toUpperCase(); }).filter(function(h){ return h&&h!==my&&h!=='—'; }); }catch(e){}
+    on=on.filter(function(h,i){ return on.indexOf(h)===i; }); var riv=(L.rivals||[]).filter(function(h){ return h&&h!==my&&on.indexOf(h)<0; });
+    var row=function(h,tag){ return '<div class="trv-row" style="margin-top:6px"><div class="hex" style="width:34px;height:40px;background:#1a2235;color:'+CY+';font-size:15px">'+esc(h.charAt(0))+'</div><div style="flex:1;min-width:0"><div class="nm">'+esc(h)+'</div><div class="m">'+tag+'</div></div><button type="button" class="trv-btn fill" data-trv="callout" data-v="'+esc(h)+'">CALL OUT · 5 ⬡</button></div>'; };
+    S.view='pick';
+    wrap().innerHTML=top('call somebody out · they run it when they’re back')+'<div class="trv-body">'
+      +'<div><div class="trv-sec hot">ONLINE NOW</div>'+(on.length?on.map(function(h){ return row(h,'ON THE FLOOR'); }).join(''):'<div class="trv-row" style="margin-top:6px"><div class="m">NOBODY ELSE ON THE FLOOR RIGHT NOW</div></div>')+'</div>'
+      +'<div><div class="trv-sec">RIVALS · PEOPLE YOU’VE DUELED</div>'+(riv.length?riv.map(function(h){ return row(h,'OFFLINE OR NOT · THEY RUN IT WHEN THEY’RE BACK'); }).join(''):'<div class="trv-row" style="margin-top:6px"><div class="m">NO RIVALS YET — CALL SOMEBODY OUT</div></div>')+'</div>'
+      +'<button type="button" class="trv-btn gh" data-trv="lobby">← BACK</button></div>';
+  }
   function podium(){ rpc('trivia_board').then(function(rows){ var p=$('trvPod'); if(!p)return; var my=me(); var o=[rows[1],rows[0],rows[2]], hts=[62,86,46], ranks=[2,1,3], cols=['linear-gradient(180deg,#8fa0b8,#2a3350)','linear-gradient(180deg,'+YL+',#a3821a)','linear-gradient(180deg,'+MG+',#6a1040)'];
       p.innerHTML=o.map(function(r,i){ return '<div><span class="n"'+(r&&r.handle===my?' style="color:'+CY+'"':'')+'>'+(r?esc(r.handle):'—')+'</span><div class="b" style="height:'+hts[i]+'px;background:'+cols[i]+(i===1?';box-shadow:0 0 20px rgba(255,230,0,.4)':'')+'">'+ranks[i]+'</div></div>'; }).join(''); }).catch(function(){}); }
   function act(k,v,b){
     if(k==='open'){ var to=v==='who'?String(($('trvWho')||{}).value||'').trim():'anyone'; if(v==='who'&&!to){ say('Type a handle, or challenge anyone'); return; }
-      b.disabled=true; rpc('trivia_open',{p_to:to}).then(function(){ hum([20,40,20]); say('⚡ 5 ⬡ down — waiting for a taker'); refreshBucks(); lobby(); }).catch(function(e){ b.disabled=false; say('✗ '+e.message); }); }
+      b.disabled=true; rpc('trivia_open',{p_to:to}).then(function(d){ hum([20,40,20]); say('⚡ 5 ⬡ down — your run starts now; they play theirs when they accept'); refreshBucks(); enter(d); }).catch(function(e){ b.disabled=false; say('✗ '+e.message); }); }
     else if(k==='cancel'){ b.disabled=true; rpc('trivia_cancel',{p_id:+v}).then(function(){ say('↩ taken back — 5 ⬡ returned'); refreshBucks(); lobby(); }).catch(function(e){ b.disabled=false; say('✗ '+e.message); }); }
     else if(k==='join'){ b.disabled=true; rpc('trivia_join',{p_id:+v}).then(function(d){ refreshBucks(); enter(d); }).catch(function(e){ b.disabled=false; say('✗ '+e.message); lobby(); }); }
     else if(k==='board')board(); else if(k==='submit')submitForm(); else if(k==='lobby'||k==='again')lobby(); else if(k==='send')sendQ(b); else if(k==='ans')answer(+v,b);
-    else if(k==='rematch'){ var foeH=foe(); b.disabled=true; rpc('trivia_open',{p_to:foeH}).then(function(){ hum([20,40,20]); say('⚡ rematch put up for '+foeH); refreshBucks(); lobby(); }).catch(function(e){ b.disabled=false; say('✗ '+e.message); }); }
+    else if(k==='rematch'){ var foeH=foe(); b.disabled=true; rpc('trivia_open',{p_to:foeH}).then(function(d){ hum([20,40,20]); say('⚡ rematch — '+foeH+' gets the call-out'); refreshBucks(); enter(d); }).catch(function(e){ b.disabled=false; say('✗ '+e.message); }); }
+    else if(k==='pick')picker(); else if(k==='callout'){ b.disabled=true; rpc('trivia_open',{p_to:v}).then(function(d){ hum([20,40,20]); say('⚡ '+v+' is called out — your run starts now'); refreshBucks(); enter(d); }).catch(function(e){ b.disabled=false; say('✗ '+e.message); }); } else if(k==='result'){ rpc('trivia_state',{p_id:+v}).then(function(d){ if(d.status==='done')result(d); else enter(d); }).catch(function(e){ say('✗ '+e.message); }); }
   }
   function sub(){
     if(S.chan||!sb())return;
     try{ S.chan=sb().channel('trivia-lobby-'+(window.__shkUid||'x')).on('postgres_changes',{event:'*',schema:'public',table:'trivia_duels'},function(p){
         var r=(p&&p.new)||{}; if(!r.id||S.view!=='lobby')return;
-        if(S.lobby&&S.lobby.mine&&String(r.id)===String(S.lobby.mine.id)&&r.status==='live'){ unsub(); rpc('trivia_state',{p_id:r.id}).then(enter).catch(function(e){ say('✗ '+e.message); }); return; }
+        if((r.by===window.__shkUid||r.foe===window.__shkUid)&&r.status==='done'){ say('⚡ a duel settled — check RECENT'); hum([30,40,30]); }
         clearTimeout(S.relist); S.relist=setTimeout(function(){ if(S.view==='lobby')rpc('trivia_lobby').then(function(L){ S.lobby=L; drawLobby(); }).catch(function(){}); },400);
       }).subscribe(); }catch(e){ S.chan=null; }
   }
@@ -139,14 +155,15 @@
     unsub(); S.duel=d; S.off=new Date(d.now).getTime()-Date.now(); S.mine={}; S.theirs={}; S.seenQ=-1; S.polledQ=-1; S.settled=false; S.view='duel';
     (d.answers||[]).forEach(function(a){ (a.uid===window.__shkUid?S.mine:S.theirs)[a.qi]=a; });
     if(d.status==='done'){ result(d); return; }
+    if(!d.started_at){ lobby(); return; }
     wrap().innerHTML=top('fetching the questions…');
     rpc('trivia_qs',{p_id:d.id}).then(function(qs){ S.qs=qs; hum([30,50,30]); tick(); S.timer=setInterval(tick,100); }).catch(function(e){ say('✗ '+e.message); lobby(); });
   }
   function stopTimer(){ if(S.timer){ clearInterval(S.timer); S.timer=null; } }
-  function foe(){ var d=S.duel; return d.by===window.__shkUid?(d.foe_handle||'?'):d.by_handle; }
+  function foe(){ var d=S.duel; return d.by===window.__shkUid?(d.foe_handle||(d.open_to==='anyone'?'A TAKER':d.open_to)):d.by_handle; }
   function score(){ var a=0,b=0; for(var i=0;i<N;i++){ var m=S.mine[i], t=S.theirs[i]; var mc=m&&m.correct&&m.ms!=null, tc=t&&t.correct&&t.ms!=null; if(mc&&(!tc||m.ms<t.ms))a++; else if(tc&&(!mc||t.ms<m.ms))b++; } return [a,b]; }
   function dots(qi){ var s=''; for(var i=0;i<N;i++){ var c=''; var m=S.mine[i],t=S.theirs[i]; var mc=m&&m.correct&&m.ms!=null, tc=t&&t.correct&&t.ms!=null; if(i<qi){ if(mc&&(!tc||m.ms<t.ms))c='me'; else if(tc&&(!mc||t.ms<m.ms))c='them'; } if(i===qi)c='now'; s+='<span class="'+c+'"></span>'; } return s; }
-  function face(){ var sc=score(); return '<div class="trv-face"><div class="s"><div class="hex" style="width:40px;height:46px;background:linear-gradient(180deg,'+CY+',#1fa8e0);font-size:18px">'+esc(me().charAt(0))+'</div><div style="display:flex;flex-direction:column;min-width:0"><span class="nm">'+esc(me())+'</span><span class="sc" style="color:'+CY+'" id="trvScA">'+sc[0]+'</span></div></div><div class="vs">VS</div><div class="s r"><div style="display:flex;flex-direction:column;min-width:0;align-items:flex-end"><span class="nm">'+esc(foe())+'</span><span class="sc" style="color:'+MG+'" id="trvScB">'+sc[1]+'</span></div><div class="hex" style="width:40px;height:46px;background:'+MG+';font-size:18px">'+esc(foe().charAt(0))+'</div></div></div>'; }
+  function face(){ var sc=score(); return '<div class="trv-face"><div class="s"><div class="hex" style="width:40px;height:46px;background:linear-gradient(180deg,'+CY+',#1fa8e0);font-size:18px">'+esc(me().charAt(0))+'</div><div style="display:flex;flex-direction:column;min-width:0"><span class="nm">'+esc(me())+'</span><span class="sc" style="color:'+CY+'" id="trvScA">'+sc[0]+'</span></div></div><div class="vs">VS</div><div class="s r"><div style="display:flex;flex-direction:column;min-width:0;align-items:flex-end"><span class="nm">'+esc(foe())+'</span><span class="sc" style="color:'+MG+'" id="trvScB">'+(S.duel.foe?sc[1]:'?')+'</span></div><div class="hex" style="width:40px;height:46px;background:'+MG+';font-size:18px">'+esc((S.duel.foe?foe():'?').charAt(0))+'</div></div></div>'; }
   function tick(){
     var el=nowS()-start(), w=wrap(); if(!w)return;
     if(el<0){ if(S.seenQ!==-2){ S.seenQ=-2; w.innerHTML=top('vs '+foe())+face()+'<div class="trv-count" id="trvCount">3</div><div class="trv-rev">SEVEN QUESTIONS · TEN SECONDS EACH · 5 ⬡ A SIDE</div>'; }
@@ -161,7 +178,7 @@
   function drawQ(qi){
     var q=S.qs[qi], w=wrap(); if(!q||!w)return;
     w.innerHTML=top('vs '+foe()+' · 10 ⬡ on the table')+face()+'<div class="trv-dots">'+dots(qi)+'</div><div class="trv-body" style="gap:10px;padding-top:4px">'
-      +'<div style="display:flex;align-items:center;gap:14px"><div class="trv-ring" id="trvRing"><div id="trvT">10</div></div><div style="display:flex;flex-direction:column;gap:3px"><span style="font-family:Bungee,sans-serif;font-size:13px;color:'+MG+'">ROUND '+(qi+1)+' / '+N+'</span><span style="font-size:12px;letter-spacing:.22em;color:#8fa0b8;font-weight:700">'+esc(String(q.cat||'').toUpperCase())+' · 1 PT · FASTEST TAKES IT</span><span style="font-family:\'IBM Plex Mono\',monospace;font-size:11px;color:#8fa0b8" id="trvThem"></span></div></div>'
+      +'<div style="display:flex;align-items:center;gap:14px"><div class="trv-ring" id="trvRing"><div id="trvT">10</div></div><div style="display:flex;flex-direction:column;gap:3px"><span style="font-family:Bungee,sans-serif;font-size:13px;color:'+MG+'">ROUND '+(qi+1)+' / '+N+'</span><span style="font-size:12px;letter-spacing:.22em;color:#8fa0b8;font-weight:700">'+esc(String(q.cat||'').toUpperCase())+' · 1 PT · FASTEST TAKES IT</span><span style="font-family:\'IBM Plex Mono\',monospace;font-size:11px;color:#8fa0b8" id="trvThem">'+(S.duel.foe?(S.theirs[qi]?'● '+esc(foe())+' HAS RUN THIS ONE':'○ '+esc(foe())+' HAS NOT RUN THIS YET'):'○ THEY RUN IT WHEN THEY ACCEPT')+'</span></div></div>'
       +'<div class="trv-q"><i>Q'+(qi+1)+'</i>'+esc(q.q)+'</div>'
       +'<div class="trv-grid">'+(q.a||[]).map(function(o,i){ return '<button type="button" class="trv-opt" data-trv="ans" data-v="'+i+'"><span class="l"><span>'+'ABCD'.charAt(i)+'</span><span id="trvL'+i+'"></span></span><span class="t">'+esc(o)+'</span></button>'; }).join('')+'</div>'
       +'<div class="trv-rev" id="trvRev"></div></div>';
@@ -187,13 +204,21 @@
         if(S.seenQ!==qi)return; var m=S.mine[qi], t=S.theirs[qi], rv2=$('trvRev'); if(!rv2)return;
         var mc=m&&m.correct&&m.ms!=null, tc=t&&t.correct&&t.ms!=null, who=esc(foe()), line;
         if(mc&&tc)line=(m.ms<t.ms)?'⚡ <b>YOUR POINT</b> — '+(m.ms/1000).toFixed(2)+'s BEATS '+(t.ms/1000).toFixed(2)+'s':(m.ms>t.ms?'<em>'+who+'</em> TOOK IT — '+(t.ms/1000).toFixed(2)+'s':'DEAD HEAT — NOBODY’S POINT');
-        else if(mc)line='⚡ <b>YOUR POINT</b>'; else if(tc)line='<em>'+who+'</em> TOOK IT IN '+(t.ms/1000).toFixed(2)+'s'; else line='NOBODY’S POINT';
+        else if(mc)line=(d.foe&&(d.by===window.__shkUid?d.foe_started_at:d.by_started_at))?'⚡ <b>YOUR POINT</b>':'✓ <b>'+(m.ms/1000).toFixed(2)+'s</b> ON THE CLOCK · THEY RUN IT LATER'; else if(tc)line='<em>'+who+'</em> TOOK IT IN '+(t.ms/1000).toFixed(2)+'s'; else line=(d.foe?'NOBODY’S POINT':'✗ · THEY RUN IT LATER');
         rv2.innerHTML=line; var sc=score(); var a=$('trvScA'),b=$('trvScB'); if(a)a.textContent=sc[0]; if(b)b.textContent=sc[1];
       }).catch(function(){}); },600+(lite()?400:0));
   }
   function settle(){
     if(S.settled)return; S.settled=true; stopTimer(); wrap().innerHTML=top('the count…');
-    var tries=0; (function go(){ rpc('trivia_settle',{p_id:S.duel.id}).then(result).catch(function(e){ if(++tries<4)setTimeout(go,1200); else { say('✗ '+e.message); lobby(); } }); })();
+    var tries=0; (function go(){ rpc('trivia_settle',{p_id:S.duel.id}).then(function(d){ refreshBucks(); result(d); }).catch(function(e){ var m=String(e.message||''); if(/waiting on a taker|still going/i.test(m))return waiting(); if(++tries<4)setTimeout(go,1200); else { say('✗ '+m); lobby(); } }); })();
+  }
+  function waiting(){
+    S.view='wait'; var sc=score(); var who=foe();
+    wrap().innerHTML=top('your run is in')+'<div class="trv-body" style="align-items:center">'
+      +'<div class="trv-res"><div class="w t" style="font-size:34px">RUN’S IN</div><div style="font-size:13px;letter-spacing:.3em;color:#8fa0b8;font-weight:700;text-align:center">'+(S.duel.status==='open'?'WAITING ON '+(S.duel.open_to==='anyone'?'A TAKER':esc(S.duel.open_to))+' · 24 H':esc(who)+' IS STILL RUNNING THEIRS')+'</div></div>'
+      +'<div class="trv-tiles"><div class="trv-tile me"><span class="n">YOUR POINTS SO FAR</span><span class="s">'+sc[0]+'</span></div></div>'
+      +'<div class="trv-rev">YOU’LL GET A BUZZ WHEN IT SETTLES · THE RESULT WAITS UNDER RECENT</div>'
+      +'<div style="display:flex;flex-direction:column;gap:8px;width:100%;margin-top:auto"><button type="button" class="trv-big" style="justify-content:center" data-trv="again">BACK TO THE ARENA</button></div></div>';
   }
   function result(d){
     S.duel=d; S.settled=true; stopTimer(); S.view='result'; refreshBucks();
