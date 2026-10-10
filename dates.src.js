@@ -96,7 +96,12 @@
   function open(){
     css(); var r=host();
     if(!r){ r=document.createElement('div'); r.className='roomscreen'; r.id='msyRoom'; r.innerHTML='<div class="msy-wrap"></div>'; document.body.appendChild(r);
-      r.addEventListener('click',onTap); r.addEventListener('keydown',function(e){ if(e.key==='Enter'&&e.target&&e.target.id==='msyText'){ e.preventDefault(); send(); } }); }
+      r.addEventListener('click',onTap); r.addEventListener('keydown',function(e){ if(e.key==='Enter'&&e.target&&e.target.id==='msyText'){ e.preventDefault(); send(); } });
+      /* pull down to get out: start the drag with the room scrolled to the top, pull 120 px, let go */
+      var y0=null,dy=0,w0=null;
+      r.addEventListener('touchstart',function(e){ var w=r.querySelector('.msy-wrap'); if(!w||w.scrollTop>2||e.target.closest('input,textarea'))return; y0=e.touches[0].clientY; dy=0; w0=w; },{passive:true});
+      r.addEventListener('touchmove',function(e){ if(y0==null)return; dy=e.touches[0].clientY-y0; if(dy>0&&w0.scrollTop<=0){ w0.style.transform='translateY('+Math.min(dy*.45,90)+'px)'; w0.style.transition='none'; w0.style.opacity=String(Math.max(.5,1-dy/400)); } },{passive:true});
+      r.addEventListener('touchend',function(){ if(y0==null)return; var d=dy; y0=null; if(w0){ w0.style.transition='transform .2s,opacity .2s'; w0.style.transform=''; w0.style.opacity=''; } if(d>120){ hum([15]); askClose(); } },{passive:true}); }
     if(!S)S=fresh();
     r.classList.add('on'); hum([15,30,15]);
     window.__messyGhost=true; try{ if(typeof floorTrack==='function')floorTrack(null); }catch(e){}
@@ -148,7 +153,7 @@
       +'<div class="msy-lock" data-nofloor>🕶 YOU GO INVISIBLE ON THE HALL WHILE YOU’RE IN HERE</div></div>'
       +'<div class="msy-card v"><div class="msy-row"><span>I’M A</span>'+pick('sex','m','MAN',P.sex==='m')+pick('sex','w','WOMAN',P.sex==='w')+'</div>'
       +'<div class="msy-row"><span>INTO</span>'+pick('into','m','MEN',P.into==='m',1)+pick('into','w','WOMEN',P.into==='w',1)+pick('into','b','BOTH',P.into==='b',1)+'</div></div>'
-      +'<div class="msy-vip"><div class="hex" style="width:40px;height:46px;background:linear-gradient(180deg,#fff2b0,'+GOLD+' 40%,#a3821a);font-size:11px">VIP</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px"><div style="display:flex;align-items:baseline;gap:8px"><b>GOOD STANDING</b><small>TREAT EVERYBODY WITH RESPECT</small></div><div class="n"><span><b>'+P.dates+'</b> DATES</span><span><b style="color:'+NEON+'">'+P.extends+'</b> EXT</span><span><b style="color:'+GOLD+'">'+(P.rated!=null?P.rated:'—')+'</b> RATED</span></div></div></div>'
+      +'<div class="msy-vip"><div class="hex" style="width:40px;height:46px;background:linear-gradient(180deg,#fff2b0,'+GOLD+' 40%,#a3821a);font-size:11px">VIP</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px"><div style="display:flex;flex-direction:column;gap:2px"><b>GOOD STANDING</b><small>TREAT EVERYBODY WITH RESPECT · NOTHING ABOUT YOUR DATES IS KEPT ON THIS SCREEN</small></div></div></div>'
       +'<button type="button" class="msy-big" id="msyGo" data-msy="go"'+(P.sex&&P.into?'':' disabled')+'>♥ GET MESSY</button>'
       +'<div class="msy-foot">Enter at your own risk. Don’t report me to LRC.</div>';
   }
