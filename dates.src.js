@@ -55,13 +55,13 @@
       +'.msy-m1{font-family:"Bungee Shade","Bungee",sans-serif;font-size:min(72px,17vw);line-height:.9;color:'+NEON+';text-shadow:0 0 8px #fff,0 0 20px '+NEON+',0 0 44px '+NEON+'}'
       +'.msy-m2{font-family:"Bungee",sans-serif;font-size:min(30px,7vw);margin-top:4px;line-height:1;letter-spacing:.04em;background:linear-gradient(180deg,#fff 0,#d9dde3 35%,#6f7780 50%,#e6eaee 65%,#8a9199 100%);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 2px 0 #2a2f35)}'
       +'.msy-tag{margin-top:14px;padding:6px 14px;border:2px solid '+VIOLET+';border-radius:3px;font-family:"Bungee",sans-serif;font-size:15px;letter-spacing:.1em;color:#f4ecff;text-shadow:0 0 6px rgba(181,108,255,.6);box-shadow:0 0 12px '+VIOLET+';transform:rotate(-2deg)}'
-      +'.msy-live{margin-top:12px;font-family:Inter,system-ui,sans-serif;font-weight:600;font-size:9.5px;letter-spacing:.26em;color:'+RED+';text-shadow:0 0 8px '+RED+'}'
+      +'.msy-live{margin-top:12px;font-family:Inter,system-ui,sans-serif;font-weight:600;font-size:9px;letter-spacing:.18em;white-space:nowrap;color:'+RED+';text-shadow:0 0 8px '+RED+'}'
       +'.msy-body{padding:10px 16px 28px;display:flex;flex-direction:column;gap:9px}.msy-rope{position:relative;margin:12px 18px 0;height:24px}.msy-rope i{position:absolute;top:0;width:12px;height:24px;border-radius:3px;background:linear-gradient(90deg,'+GOLD+',#fff7b0 40%,#a3821a);box-shadow:0 0 8px rgba(255,230,0,.5)}.msy-rope i:first-child{left:0}.msy-rope i:nth-child(2){right:0}.msy-rope b{position:absolute;left:10px;right:10px;top:4px;height:12px;border-radius:99px;background:repeating-linear-gradient(100deg,#8c1246 0 7px,#c41f5e 7px 12px,#5a0a2c 12px 16px);border-top:1px solid rgba(255,255,255,.25);box-shadow:0 4px 10px rgba(0,0,0,.6)}'
       +'.msy-card{padding:12px 14px;border-radius:10px;background:linear-gradient(135deg,#1f0d19,#0d0710);border:1px solid rgba(255,61,154,.45);box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 0 18px rgba(255,61,154,.2);display:flex;flex-direction:column;gap:4px}'
       +'.msy-card.v{background:linear-gradient(135deg,#16091a,#0d0710);border-color:rgba(181,108,255,.45);box-shadow:0 0 16px rgba(181,108,255,.15)}'
-      +'.msy-h{font-family:Inter,system-ui,sans-serif;font-weight:600;font-size:11px;letter-spacing:.14em;color:'+NEON+';text-shadow:0 0 8px '+NEON+'}'
-      +'.msy-rule{display:flex;gap:10px;align-items:center;font-size:17px;line-height:1.3;font-weight:600;color:#f3e9ee}.msy-rule b{color:'+NEON+'}.msy-rule i{flex:none;font-style:normal;font-family:Anton,sans-serif;font-size:19px;color:'+GOLD+';text-shadow:0 0 8px '+GOLD+';width:26px}'
-      +'.msy-lock{display:flex;align-items:center;gap:8px;font-family:Inter,system-ui,sans-serif;font-weight:600;font-size:8.5px;letter-spacing:.06em;color:#7fe08a;text-shadow:0 0 8px rgba(127,224,138,.8)}'
+      +'.msy-h{font-family:Inter,system-ui,sans-serif;font-weight:700;font-size:11px;letter-spacing:.18em;color:'+NEON+';text-shadow:0 0 8px '+NEON+';margin-bottom:2px}'
+      +'.msy-rule{display:flex;gap:12px;align-items:center;font-size:15.5px;line-height:1.35;font-weight:500;color:#d7c6cf;padding:6px 0;border-top:1px solid rgba(255,255,255,.06)}.msy-rule:first-of-type{border-top:0}.msy-rule b{color:'+NEON+'}.msy-rule strong{color:#fff;font-weight:700}.msy-rule i{flex:none;font-style:normal;font-family:Anton,sans-serif;font-size:14px;letter-spacing:.04em;white-space:nowrap;color:#0b0509;min-width:50px;padding:0 6px;height:34px;border-radius:8px;background:linear-gradient(180deg,#fff7b0,'+GOLD+' 45%,#a3821a);box-shadow:0 0 10px rgba(255,230,0,.45),inset 0 1px 0 rgba(255,255,255,.5);display:flex;align-items:center;justify-content:center}'
+      +'.msy-lock{display:flex;align-items:center;gap:8px;font-family:Inter,system-ui,sans-serif;font-weight:600;font-size:10px;letter-spacing:.04em;color:#7fe08a;text-shadow:0 0 8px rgba(127,224,138,.8)}'
       +'.msy-row{display:flex;align-items:center;gap:8px}.msy-row>span{font-family:Inter,system-ui,sans-serif;font-weight:600;font-size:11px;letter-spacing:.1em;color:'+VIOLET+';width:48px;text-shadow:0 0 8px '+VIOLET+'}'
       +'.msy-pick{flex:1;padding:9px 6px;border-radius:6px;border:1px solid rgba(255,255,255,.15);background:linear-gradient(180deg,#2a1d2a,#130b14);color:#8f8794;font-family:Inter,system-ui,sans-serif;font-weight:700;font-size:13px;letter-spacing:.06em;cursor:pointer}'
       +'.msy-pick.on{border-color:'+NEON+';background:linear-gradient(180deg,'+NEON+',#8a1d55);color:#0b0509;box-shadow:0 0 14px '+NEON+'}.msy-pick.on.g{border-color:'+GOLD+';background:linear-gradient(180deg,#fff2b0,'+GOLD+' 40%,#a3821a);box-shadow:0 0 14px rgba(255,230,0,.6)}'
@@ -141,11 +141,11 @@
     var pick=function(k,v,l,on,g){ return '<button type="button" class="msy-pick'+(on?' on':'')+(g?' g':'')+'" data-msy="'+k+'" data-v="'+v+'">'+l+'</button>'; };
     b.innerHTML=
       '<div class="msy-card"><div class="msy-h">HOUSE RULES</div>'
-      +'<div class="msy-rule"><i>10</i><span>minutes. Fake names. Messages wipe the second it closes.</span></div>'
-      +'<div class="msy-rule"><i>+5</i><span>Extend the time or drop handles — only if you <b>both</b> say so.</span></div>'
-      +'<div class="msy-rule"><i>★</i><span>Rate the date!! Repeat offenders of misconduct get suspended from Messy.</span></div>'
-      +'<div class="msy-lock" style="margin-top:2px;padding-top:7px;border-top:1px solid rgba(255,61,154,.25)">🔒 ENCRYPTED COMMUNICATION: PHONE TO PHONE</div>'
-      +'<div class="msy-lock">🕶 YOU GO INVISIBLE ON THE HALL WHILE YOU’RE IN HERE</div></div>'
+      +'<div class="msy-rule"><i>10 MIN</i><span><strong>Fake names.</strong> Messages wipe the second it closes.</span></div>'
+      +'<div class="msy-rule"><i>+5</i><span><strong>Extend the time or drop handles</strong> — only if you <b>both</b> say so.</span></div>'
+      +'<div class="msy-rule"><i>★</i><span><strong>Rate the date!!</strong> Repeat offenders of misconduct get suspended from Messy.</span></div>'
+      +'<div class="msy-lock" data-nofloor style="margin-top:2px;padding-top:7px;border-top:1px solid rgba(255,61,154,.25)">🔒 ENCRYPTED COMMUNICATION: PHONE TO PHONE</div>'
+      +'<div class="msy-lock" data-nofloor>🕶 YOU GO INVISIBLE ON THE HALL WHILE YOU’RE IN HERE</div></div>'
       +'<div class="msy-card v"><div class="msy-row"><span>I’M A</span>'+pick('sex','m','MAN',P.sex==='m')+pick('sex','w','WOMAN',P.sex==='w')+'</div>'
       +'<div class="msy-row"><span>INTO</span>'+pick('into','m','MEN',P.into==='m',1)+pick('into','w','WOMEN',P.into==='w',1)+pick('into','b','BOTH',P.into==='b',1)+'</div></div>'
       +'<div class="msy-vip"><div class="hex" style="width:40px;height:46px;background:linear-gradient(180deg,#fff2b0,'+GOLD+' 40%,#a3821a);font-size:11px">VIP</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px"><div style="display:flex;align-items:baseline;gap:8px"><b>GOOD STANDING</b><small>TREAT EVERYBODY WITH RESPECT</small></div><div class="n"><span><b>'+P.dates+'</b> DATES</span><span><b style="color:'+NEON+'">'+P.extends+'</b> EXT</span><span><b style="color:'+GOLD+'">'+(P.rated!=null?P.rated:'—')+'</b> RATED</span></div></div></div>'
@@ -186,7 +186,7 @@
       +'<div style="font-size:11px;font-weight:600;letter-spacing:.18em;color:#8f979e">YOU’LL BE</div>'
       +'<div style="width:100%;display:flex;gap:8px"><input id="msyAlias" class="msy-alias" maxlength="20" value="'+esc(S.me)+'"><button type="button" class="msy-ghost" data-msy="roll" style="width:46px;flex:none" aria-label="Re-roll the name">↻</button></div>'
       +'<div style="font-size:11.5px;color:#8f979e;text-align:center">Keep ours, re-roll it, or type your own. Not your handle.</div></div>'
-      +'<span class="msy-lock">🕶 INVISIBLE ON THE HALL</span>'
+      +'<span class="msy-lock" data-nofloor>🕶 INVISIBLE ON THE HALL</span>'
       +'<button type="button" class="msy-ghost" data-msy="back" style="width:100%">NEVER MIND</button></div>';
     S.queue=sb().channel('messy-queue',{config:{broadcast:{self:false}}})
       .on('broadcast',{event:'seek'},function(p){ var m=p.payload||{}; if(!m.id||m.id===S.id||!m.pk)return; S.seen[m.id]={t:Date.now(),sex:m.sex,into:m.into,pk:m.pk}; propose(); })
