@@ -32,6 +32,7 @@
   var unb64=function(s){ var b=atob(s),u=new Uint8Array(b.length); for(var i=0;i<b.length;i++)u[i]=b.charCodeAt(i); return u.buffer; };
 
   var D=window.DATES={ _live:false, open:open, close:close };
+  var ev=function(k,n){ try{ if(sb()&&window.__shkUid)sb().rpc('dates_event',{p_kind:k,p_n:(n==null?null:Math.round(n)),p_sess:S&&S.id||null}).then(function(){},function(){}); }catch(e){} };   /* the pulse: anonymous counters, no uid, no words */
   var DATE_MS=10*60*1000, EXT_MS=5*60*1000, MAX_EXT=3, EXT_WINDOW=60*1000;
   var NEON='#ff3d9a', VIOLET='#b56cff', GOLD='#ffe600', RED='#ff2d55';
   var ADJ=['Honey','Sugar','Velvet','Satin','Cherry','Candy','Sultry','Smooth','Slippery','Naughty','Dirty','Hot','Wet','Midnight','Late-Shift','Sweet'];
@@ -102,14 +103,14 @@
     if(S.view==='date')return;
     door();
   }
-  function askClose(){ if(S&&S.view==='date'){ if(!confirm('Leave the date? The chat is gone for good.'))return; } if(S&&S.view==='queue'){ if(!confirm('Stop looking?'))return; } close(); }
+  function askClose(){ if(S&&S.view==='date'){ if(!confirm('Leave the date? The chat is gone for good.'))return; } if(S&&S.view==='queue'){ if(!confirm('Stop looking?'))return; ev('ghost'); } close(); }
   function close(){ var r=host(); if(r)r.classList.remove('on'); teardown(); S=null;
     window.__messyGhost=false; try{ if(typeof floorTrack==='function')floorTrack((typeof CURRENT_ROOM!=='undefined'&&CURRENT_ROOM)||null); }catch(e){} }
   function teardown(){ if(!S)return;
     try{ if(S.room)sealSend({t:'bye'}); }catch(e){}
     try{ if(S.queue)S.queue.send({type:'broadcast',event:'gone',payload:{id:S.id}}); }catch(e){}
     var q=S.queue, rm=S.room; setTimeout(function(){ [q,rm].forEach(function(c){ try{ if(c&&sb())sb().removeChannel(c); }catch(e){} }); },250);
-    clearInterval(S.seekT); clearInterval(S.beat); clearInterval(S.tick); clearInterval(S.pingT); S.queue=null; S.room=null; S.lines=[]; S.key=null; }
+    clearInterval(S.seekT); clearInterval(S.beat); clearInterval(S.seekLog); clearInterval(S.tick); clearInterval(S.pingT); S.queue=null; S.room=null; S.lines=[]; S.key=null; }
   window.addEventListener('pagehide',function(){ try{ teardown(); S=null; window.__messyGhost=false; }catch(e){} });
   function onTap(e){ var b=e.target.closest('[data-msy]'); if(!b)return; var k=b.getAttribute('data-msy'), v=b.getAttribute('data-v'); try{ act(k,v,b); }catch(err){ say('✗ '+(err&&err.message||err)); } }
   function act(k,v,b){
@@ -195,6 +196,7 @@
           S.pending=m.from; S.queue.send({type:'broadcast',event:'ok',payload:{from:S.id,to:m.from,room:m.room,pk:S.pub}}); enter(m.room,m.from,m.pk); })
       .on('broadcast',{event:'ok'},function(p){ var m=p.payload||{}; if(m.to!==S.id||S.view!=='queue'||S.pending!==m.from||!m.pk)return; enter(m.room,m.from,m.pk); })
       .subscribe(function(st){ if(st==='SUBSCRIBED'){ seek(); S.seekT=setInterval(seek,1500); } });
+    ev('seek'); S.seekLog=setInterval(function(){ ev('seek'); },60000);
     S.beat=setInterval(function(){ if(!S||S.view!=='queue')return; var e=$('msySrch'); if(e){ S.dots=((S.dots||0)+1)%4; e.textContent='Searching Match'+'...'.slice(0,S.dots); }
       var b=$('msyBlip'); if(b){ var a=Math.random()*Math.PI*2, r=40+Math.random()*50; b.style.left=(100+Math.cos(a)*r-5)+'px'; b.style.top=(100+Math.sin(a)*r-5)+'px'; b.classList.add('on'); setTimeout(function(){ b.classList.remove('on'); },500); } },700);
   }
@@ -214,7 +216,7 @@
   function enter(room,themId,theirPk){
     S.view='date'; S.roomId=room; S.themId=themId; S.them=''; S.lines=[]; S.started=Date.now(); S.ends=S.started+DATE_MS; S.lastPing=Date.now();
     try{ S.queue.send({type:'broadcast',event:'gone',payload:{id:S.id}}); }catch(e){}
-    var q=S.queue; setTimeout(function(){ try{ if(q&&sb())sb().removeChannel(q); }catch(e){} },250); S.queue=null; clearInterval(S.seekT); clearInterval(S.beat);
+    var q=S.queue; setTimeout(function(){ try{ if(q&&sb())sb().removeChannel(q); }catch(e){} },250); S.queue=null; clearInterval(S.seekT); clearInterval(S.beat); clearInterval(S.seekLog); ev('pair');
     hum([30,50,30]); paintRoom();
     deriveKey(theirPk).then(function(){
       S.room=sb().channel('messy-'+room,{config:{broadcast:{self:false}}})
@@ -253,14 +255,14 @@
   }
   function extend(){ if(S.over||S.extMine)return; S.extMine=true; var b=$('msyExt'); if(b){ b.classList.add('wait'); b.textContent='⏳ WAITING ON THEM…'; } sealSend({t:'extend'}); tryExtend(); }
   function tryExtend(){ if(S.over||!S.extMine||!S.extTheirs||S.ext>=MAX_EXT)return;
-    S.ext++; S.ends+=EXT_MS; S.extMine=false; S.extTheirs=false; var w=$('msyExtWrap'); if(w)w.innerHTML=''; sys('Extended — five more minutes.'); hum([20,40,20,40,20]); }
+    S.ext++; S.ends+=EXT_MS; S.extMine=false; S.extTheirs=false; ev('extend'); var w=$('msyExtWrap'); if(w)w.innerHTML=''; sys('Extended — five more minutes.'); hum([20,40,20,40,20]); }
   function over(){ S.over=true; var i=$('msyText'); if(i)i.disabled=true; clearInterval(S.pingT); count(); hum([40,60,40]);
     var w=$('msyIn'); if(w)w.innerHTML='<div style="text-align:center;padding:6px 0 4px"><div class="msy-look" style="font-size:26px">DROP HANDLES?</div><div style="font-size:14px;font-weight:600;color:#8f979e;margin:6px 0 10px">Only if you <b style="color:#f3e9ee">both</b> say yes. Say no and it never happened.</div><div style="display:flex;gap:8px"><button type="button" class="msy-big" style="margin:0;padding:14px;font-size:15px;flex:1" data-msy="reveal">YEAH, DROP IT</button><button type="button" class="msy-ghost" style="flex:1" data-msy="noreveal">NAH, GHOST</button></div><div id="msyRevNote" style="margin-top:8px;font-size:12px;letter-spacing:.14em;font-weight:700;color:'+GOLD+'"></div></div>';
     tryReveal(); }
   function reveal(yes){ if(!S.over)return; if(yes){ S.revMine=true; sealSend({t:'reveal'}); var n=$('msyRevNote'); if(n)n.textContent='WAITING ON '+S.them.toUpperCase()+'…'; tryReveal(); } else end(false); }
-  function tryReveal(){ if(!S.over||!S.revMine||!S.revTheirs)return; sealSend({t:'handle',handle:me()}); if(S.theirHandle)end(true); }
-  function count(){ if(S.counted)return; S.counted=true; if(Date.now()-S.started<5*60*1000)return; rpc('dates_done',{p_extensions:S.ext}).catch(function(){}); }
-  function left(why){ if(!S||S.view!=='date')return; if(S.over&&S.revMine)return; var early=(Date.now()-S.started)<5*60*1000; S.over=true; clearInterval(S.pingT); count(); end(false,why+(early?' Under five minutes — it doesn’t count.':'')); }
+  function tryReveal(){ if(!S.over||!S.revMine||!S.revTheirs)return; if(!S.revLogged){ S.revLogged=true; ev('reveal'); } sealSend({t:'handle',handle:me()}); if(S.theirHandle)end(true); }
+  function count(){ if(S.counted)return; S.counted=true; ev('done',(Date.now()-S.started)/1000); if(Date.now()-S.started<5*60*1000)return; rpc('dates_done',{p_extensions:S.ext}).catch(function(){}); }
+  function left(why){ if(!S||S.view!=='date')return; if(S.over&&S.revMine)return; ev('left',(Date.now()-S.started)/1000); var early=(Date.now()-S.started)<5*60*1000; S.over=true; clearInterval(S.pingT); count(); end(false,why+(early?' Under five minutes — it doesn’t count.':'')); }
 
   /* ── after: rate the date ── */
   function end(revealed,note){
