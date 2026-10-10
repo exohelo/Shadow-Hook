@@ -94,7 +94,7 @@
   function lobby(){
     S.view='lobby'; stopTimer();
     wrap().innerHTML=top('loading the table…');
-    rpc('trivia_lobby').then(function(L){ S.lobby=L; S.off=new Date(L.now).getTime()-Date.now(); if(L.play)return rejoin(L.play);
+    rpc('trivia_lobby').then(function(L){ S.lobby=L; S.off=new Date(L.now).getTime()-Date.now(); if(L.play&&L.play!==S.skip)return rejoin(L.play);
       if(L.settle&&L.settle.length){ var id=L.settle[0]; return rpc('trivia_settle',{p_id:id}).then(function(d){ refreshBucks(); result(d); }).catch(function(){ drawLobby(); sub(); }); }
       drawLobby(); sub(); })
       .catch(function(e){ var m=String(e.message||e); wrap().innerHTML=top('')+'<div class="trv-body"><div class="trv-row"><div class="m">'+esc(/trivia_lobby|does not exist|schema cache|PGRST202|42883/i.test(m)?'The trivia bank isn’t built yet — the Keymaster runs GAMES.sql once.':m)+'</div></div></div>'; });
@@ -137,7 +137,7 @@
     else if(k==='join'){ b.disabled=true; rpc('trivia_join',{p_id:+v}).then(function(d){ refreshBucks(); enter(d); }).catch(function(e){ b.disabled=false; say('✗ '+e.message); lobby(); }); }
     else if(k==='board')board(); else if(k==='submit')submitForm(); else if(k==='lobby'||k==='again')lobby(); else if(k==='send')sendQ(b); else if(k==='ans')answer(+v,b);
     else if(k==='rematch'){ var foeH=foe(); b.disabled=true; rpc('trivia_open',{p_to:foeH}).then(function(d){ hum([20,40,20]); say('⚡ rematch — '+foeH+' gets the call-out'); refreshBucks(); enter(d); }).catch(function(e){ b.disabled=false; say('✗ '+e.message); }); }
-    else if(k==='pick')picker(); else if(k==='callout'){ b.disabled=true; rpc('trivia_open',{p_to:v}).then(function(d){ hum([20,40,20]); say('⚡ '+v+' is called out — your run starts now'); refreshBucks(); enter(d); }).catch(function(e){ b.disabled=false; say('✗ '+e.message); }); } else if(k==='result'){ rpc('trivia_state',{p_id:+v}).then(function(d){ if(d.status==='done')result(d); else enter(d); }).catch(function(e){ say('✗ '+e.message); }); }
+    else if(k==='pick')picker(); else if(k==='callout'){ b.disabled=true; rpc('trivia_open',{p_to:v}).then(function(d){ hum([20,40,20]); say('⚡ '+v+' is called out — your run starts now'); refreshBucks(); enter(d); }).catch(function(e){ b.disabled=false; say('✗ '+e.message); }); } else if(k==='result'){ rpc('trivia_state',{p_id:+v}).then(function(d){ if(d.status==='done')return result(d); if(d.status==='open'&&d.by===window.__shkUid&&!d.started_at)return rpc('trivia_run',{p_id:d.id}).then(enter); enter(d); }).catch(function(e){ say('✗ '+e.message); }); }
   }
   function sub(){
     if(S.chan||!sb())return;
@@ -157,7 +157,7 @@
     if(d.status==='done'){ result(d); return; }
     if(!d.started_at){ lobby(); return; }
     wrap().innerHTML=top('fetching the questions…');
-    rpc('trivia_qs',{p_id:d.id}).then(function(qs){ S.qs=qs; hum([30,50,30]); tick(); S.timer=setInterval(tick,100); }).catch(function(e){ say('✗ '+e.message); lobby(); });
+    rpc('trivia_qs',{p_id:d.id}).then(function(qs){ S.qs=qs; hum([30,50,30]); tick(); S.timer=setInterval(tick,100); }).catch(function(e){ say('✗ '+e.message); S.skip=d.id; S.view='lobby'; rpc('trivia_lobby').then(function(L){ S.lobby=L; drawLobby(); sub(); }).catch(function(){}); });
   }
   function stopTimer(){ if(S.timer){ clearInterval(S.timer); S.timer=null; } }
   function foe(){ var d=S.duel; return d.by===window.__shkUid?(d.foe_handle||(d.open_to==='anyone'?'A TAKER':d.open_to)):d.by_handle; }
