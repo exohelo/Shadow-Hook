@@ -102,7 +102,7 @@
   function drawLobby(){
     var L=S.lobby, st=L.stats||{}, w=wrap(); if(!w||S.view!=='lobby')return;
     var open=L.open||[], forMe=open.filter(function(d){ return d.open_to!=='anyone'; }), any=open.filter(function(d){ return d.open_to==='anyone'; });
-    var h=top('7 Qs · 10 s · fastest right answer wins','<div class="trv-bank"><span>BANK</span><b>'+(L.bucks||0).toLocaleString()+' ⬡</b></div>')+'<div class="trv-body">'
+    var h=top('','<div class="trv-bank"><span>BANK</span><b>'+(L.bucks||0).toLocaleString()+' ⬡</b></div>')+'<div class="trv-body">'
       +'<div class="trv-me"><div class="hex" style="width:64px;height:72px;background:linear-gradient(180deg,'+CY+',#1fa8e0);font-size:26px">'+esc(L.me.charAt(0))+'</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:5px"><div style="display:flex;align-items:baseline;gap:8px"><span class="nm">'+esc(L.me)+'</span><span class="rk">'+(st.wins?'IN THE RANKS':'ROOKIE')+'</span></div>'
       +'<div class="st"><span><b>'+(st.wins||0)+'</b> W</span><span><b>'+(st.losses||0)+'</b> L</span><span><b style="color:'+MG+'">×'+(st.streak||0)+'</b> STREAK</span><span><b style="color:'+LM+'">'+(st.best_ms?(st.best_ms/1000).toFixed(2):'—')+'</b>s BEST</span></div></div></div>';
     h+='<button type="button" class="trv-big" data-trv="open" data-v="anyone"><span>CHALLENGE ANYONE<small>5 ⬡ DOWN · WINNER TAKES 10 · YOU RUN NOW, THEY RUN WHEN THEY ACCEPT</small></span><span style="font-size:28px">⚡</span></button>'
