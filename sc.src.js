@@ -175,7 +175,7 @@
   '#scBoard .sc-kind{font-family:Cinzel,serif;font-weight:600;font-size:9.5px;letter-spacing:.3em;color:var(--sc-gold);text-transform:uppercase;margin:0 0 6px}',
   '#scBoard .sc-ttl{font-family:Cinzel,serif;font-weight:700;font-size:21px;letter-spacing:.06em;color:var(--sc-gold-hi);margin:0 0 2px;text-shadow:0 1px 0 #000,0 0 18px rgba(212,179,106,.25)}',
   '#scBoard .sc-sub{font-family:"Barlow Condensed",sans-serif;font-size:13px;color:var(--sc-dim);letter-spacing:.03em;margin-bottom:11px}',
-  '#scBoard .sc-grid{display:grid;grid-template-columns:repeat(13,minmax(0,1fr));gap:5px}','.ch-card{border:1px solid rgba(212,179,106,.45);border-radius:14px;padding:12px 14px;margin:0 0 10px;background:linear-gradient(184deg,rgba(212,179,106,.12),rgba(0,0,0,.15))}','.ch-hd{display:flex;align-items:center;justify-content:space-between;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#d4b36a}.ch-hd em{font-style:normal;font-weight:700;color:#f1d58e}','.ch-t{font-size:15px;font-weight:600;color:#f3e6cf;margin:4px 0 10px}','.ch-st{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 8px}.ch-st i{flex:none;width:24px;height:24px;border-radius:50%;background:#d4b36a;color:#1a0b0f;font:700 13px Inter,system-ui,sans-serif;font-style:normal;display:flex;align-items:center;justify-content:center}.ch-st small{flex-basis:100%;margin-left:34px;font-size:12px;color:#b9a68a}','.ch-b{flex:1;min-width:0;text-align:center;text-decoration:none;display:block;cursor:pointer}','.ch-done{width:100%;margin-top:4px;padding:11px;border-radius:10px;border:1px dashed rgba(212,179,106,.6);background:none;color:#f1d58e;font:700 13px Inter,system-ui,sans-serif;letter-spacing:.04em;cursor:pointer}',
+  '#scBoard .sc-grid{display:grid;grid-template-columns:repeat(13,minmax(0,1fr));gap:5px}','.ch-card.hot{border-color:#f1d58e;box-shadow:0 0 18px rgba(241,213,142,.25)}.ch-card.hot .ch-t b{color:#f1d58e}','.ch-row{display:flex;align-items:center;gap:10px;justify-content:space-between;padding:9px 0;border-bottom:1px solid rgba(212,179,106,.15)}.ch-row b{display:block;color:#f3e6cf;font-size:14px}.ch-row span{font-size:12px;color:#b9a68a}.ch-row em{font-style:normal;color:#f1d58e;font-weight:700;font-size:13px}.ch-row.dim{opacity:.6}','.ch-card{border:1px solid rgba(212,179,106,.45);border-radius:14px;padding:12px 14px;margin:0 0 10px;background:linear-gradient(184deg,rgba(212,179,106,.12),rgba(0,0,0,.15))}','.ch-hd{display:flex;align-items:center;justify-content:space-between;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#d4b36a}.ch-hd em{font-style:normal;font-weight:700;color:#f1d58e}','.ch-t{font-size:15px;font-weight:600;color:#f3e6cf;margin:4px 0 10px}','.ch-st{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 8px}.ch-st i{flex:none;width:24px;height:24px;border-radius:50%;background:#d4b36a;color:#1a0b0f;font:700 13px Inter,system-ui,sans-serif;font-style:normal;display:flex;align-items:center;justify-content:center}.ch-st small{flex-basis:100%;margin-left:34px;font-size:12px;color:#b9a68a}','.ch-b{flex:1;min-width:0;text-align:center;text-decoration:none;display:block;cursor:pointer}','.ch-done{width:100%;margin-top:4px;padding:11px;border-radius:10px;border:1px dashed rgba(212,179,106,.6);background:none;color:#f1d58e;font:700 13px Inter,system-ui,sans-serif;letter-spacing:.04em;cursor:pointer}',
   '#scBoard .sc-grid b{display:flex;align-items:center;justify-content:center;height:24px;border-radius:6px;font-family:Cinzel,serif;font-weight:700;font-size:11.5px;letter-spacing:.02em;',
   '  color:rgba(239,227,200,.28);border:1px solid rgba(212,179,106,.14);background:rgba(0,0,0,.25)}',
   '#scBoard .sc-grid b.sc-on{color:#2a0b14;background:linear-gradient(160deg,var(--sc-gold-hi),var(--sc-gold) 60%,#9a7a3a);border-color:var(--sc-gold-hi);box-shadow:0 0 10px rgba(212,179,106,.35),inset 0 1px 0 rgba(255,255,255,.5)}',
@@ -607,31 +607,34 @@
   /* #housechores(oct11) — the three standing chores, live from the app's own To-Do: call the hall line after the
      dispatch, put the PMA sheet up, check the union sheet. Each has its steps as buttons; finishing one files a done
      job for the Keymaster to pay (sc_chore_done). */
+  /* #housejobs(oct11) — THE JOBS TAB IS THE THREE HOUSE JOBS. Always on the board, each with its own steps as buttons:
+     the Hall Line after the dispatch, the PMA sheet, the ILWU sheet. "Done" files it for the Keymaster to pay
+     (sc_chore_done); the Keymaster's pay is the check. */
   var CH_PAY={log:10,pma:15,sheet:15};
-  function choresHTML(){
-    var C=window.HOUSE_CHORES; if(!C)return '';
-    var list=[]; try{ list=C.list(); }catch(e){}
-    var h='<div class="sc-sec">House chores</div>';
-    if(!list.length)return h+'<p class="sc-p dim">All caught up — nothing due on the record right now. These show up the moment a board ends or a sheet is late.</p>';
-    return h+list.map(function(t){
-      var step=function(n,inner){ return '<div class="ch-st"><i>'+n+'</i>'+inner+'</div>'; }, steps='';
-      if(t.kind==='log')steps=step(1,'<a class="sc-btn ch-b" href="'+esc(t.tel)+'">☎ Call the Hall Line</a>')+step(2,'<button type="button" class="sc-btn ch-b" data-sch="log" data-k="'+esc(t.key)+'">✎ Log the end card</button>');
-      if(t.kind==='pma')steps=step(1,'<button type="button" class="sc-btn ch-b" data-sch="out" data-u="'+esc(t.url)+'">↗ Open PMA in your browser</button><small>Download the PDF there — the app’s own viewer can’t save it.</small>')
-        +step(2,'<label class="sc-btn ch-b">⬆ Add the PDF here<input type="file" accept="application/pdf,.pdf" multiple hidden data-schf="'+esc(t.key)+'" data-t="'+esc(t.title)+'"></label>');
-      if(t.kind==='sheet')steps=(t.url?step(1,'<button type="button" class="sc-btn ch-b" data-sch="out" data-u="'+esc(t.url)+'">↗ Open the union sheet</button>'):'')
-        +step(t.url?2:1,'<button type="button" class="sc-btn ch-b" data-sch="enter" data-k="'+esc(t.key)+'" data-w="'+esc(t.which||'D')+'">✎ Check &amp; enter the numbers</button>');
-      return '<div class="ch-card ch-'+t.kind+'"><div class="ch-hd"><b>'+(t.kind==='log'?'☎ Hall Line':t.kind==='pma'?'📄 PMA sheet':'📋 ILWU sheet')+'</b><em>+'+CH_PAY[t.kind]+' ⚓</em></div>'
-        +'<div class="ch-t">'+esc(t.title)+'</div>'+steps
-        +'<button type="button" class="ch-done" data-sch="done" data-kind="'+t.kind+'" data-k="'+esc(t.key)+'" data-t="'+esc(t.title)+'">✓ Done — claim '+CH_PAY[t.kind]+' ⚓</button></div>';
-    }).join('');
-  }
   function jobsHTML(w){
-    var open=openJobs(), mine=SC.jobs.filter(function(j){ return j.taker===w.handle&&j.state!=='paid'; }), rest=SC.jobs.filter(function(j){ return j.state!=='open'&&!(j.taker===w.handle&&j.state!=='paid'); });
-    var h=choresHTML()+'<p class="sc-p dim">Other work the house needs done, paid in port bucks ⚓. Take a job, do it, mark it done; the Keymaster pays it out.</p>';
-    if(w.head)h+='<div class="sc-sec">Post a job</div><input class="sc-in" id="scJT" maxlength="80" placeholder="The job, in one line" style="margin-bottom:8px"><textarea class="sc-in" id="scJB" rows="2" maxlength="300" placeholder="What done looks like" style="margin-bottom:8px"></textarea><div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span class="sc-p dim" style="margin:0;white-space:nowrap">Bounty ⚓</span><input class="sc-in" id="scJP" type="number" min="1" max="500" value="20" style="flex:1"></div><div class="sc-row"><button type="button" class="sc-btn" data-scc="job">Post it · ⚓ bounty</button></div>';
-    if(mine.length)h+='<div class="sc-sec">Your jobs</div>'+mine.map(function(j){ return jobCard(j,w); }).join('');
-    h+='<div class="sc-sec">Open · take one</div>'+(open.length?open.map(function(j){ return jobCard(j,w); }).join(''):'<p class="sc-p dim">Nothing open. Check back after the next draw.</p>');
-    if(rest.length)h+='<div class="sc-sec">In hand · done · paid</div>'+rest.sort(function(a,b){ return b.at-a.at; }).map(function(j){ return jobCard(j,w); }).join('');
+    var C=window.HOUSE_CHORES; if(!C)return '<p class="sc-p dim">Loading the house jobs…</p>';
+    var due={}; try{ C.list().forEach(function(t){ if(!due[t.kind])due[t.kind]=t; }); }catch(e){}
+    var lb=due.log?due.log.key:C.lastBoard(), pk=due.pma?due.pma.key:C.pmaKey(), sk=C.sheetKey();
+    var step=function(n,inner,note){ return '<div class="ch-st"><i>'+n+'</i>'+inner+(note?'<small>'+note+'</small>':'')+'</div>'; };
+    var card=function(kind,icon,name,state,hot,steps,key,title){
+      return '<div class="ch-card'+(hot?' hot':'')+'"><div class="ch-hd"><b>'+icon+' '+name+'</b><em>+'+CH_PAY[kind]+' ⚓</em></div>'
+        +'<div class="ch-t">'+state+'</div>'+steps
+        +(key?'<button type="button" class="ch-done" data-sch="done" data-kind="'+kind+'" data-k="'+esc(key)+'" data-t="'+esc(title)+'">✓ Done — claim '+CH_PAY[kind]+' ⚓</button>':'')+'</div>'; };
+    var nm=function(k){ try{ return C.name(k); }catch(e){ return k||''; } };
+    var h='<p class="sc-p dim">The three jobs that keep the record honest. Do one, tap Done, and the Keymaster pays it out.</p>';
+    h+=card('log','☎','Hall Line',due.log?'<b>'+esc(nm(lb))+'</b> ended with no end card on the record.':(lb?'Next one: right after the dispatch ends. Last board: '+esc(nm(lb))+'.':'Right after each dispatch ends.'),!!due.log,
+      step(1,'<a class="sc-btn ch-b" href="tel:+13106209879">☎ Call the Hall Line</a>','Listen for where the board ended.')
+      +step(2,'<button type="button" class="sc-btn ch-b" data-sch="log" data-k="'+esc(lb||'')+'">✎ Log the end card</button>'),lb,'Hall Line · '+nm(lb));
+    h+=card('pma','📄','PMA sheet',due.pma?'<b>'+esc(nm(pk))+'</b> is missing its PMA sheet.':'All PMA sheets are in. New ones post after each dispatch.',!!due.pma,
+      step(1,'<button type="button" class="sc-btn ch-b" data-sch="out" data-u="'+esc(C.pmaLink(pk))+'">↗ Open PMA in your browser</button>','Download the PDF there — the app can’t save it.')
+      +step(2,'<label class="sc-btn ch-b">⬆ Add the PDF<input type="file" accept="application/pdf,.pdf" multiple hidden data-schf="'+esc(pk||'')+'" data-t="'+esc('PMA sheet · '+nm(pk))+'"></label>','Adding it puts it on the record and claims the job.'),null,'');
+    h+=card('sheet','📋','ILWU sheet',sk&&sk.n?'<b>'+esc(nm(sk.key))+'</b>: '+sk.n+' number'+(sk.n>1?'s':'')+' don’t add up.':(sk?'Latest: '+esc(nm(sk.key))+' — nothing flagged. Check it against the paper anyway.':'Waiting on the next union sheet.'),!!(sk&&sk.n),
+      step(1,'<button type="button" class="sc-btn ch-b" data-sch="out" data-u="'+esc(C.ilwuLink())+'">↗ Open the ILWU sheets</button>','Download the sheet there.')
+      +step(2,'<button type="button" class="sc-btn ch-b" data-sch="fix" data-k="'+esc(sk?sk.key:'')+'">✎ Upload it &amp; fix the numbers</button>','Add the PDF or a photo, type what the paper says, save.'),sk&&sk.key,'ILWU sheet · '+(sk?nm(sk.key):''));
+    /* the pay list: the Keymaster pays, everyone sees what's waiting */
+    var owed=SC.jobs.filter(function(j){ return j.state==='done'; }), paid=SC.jobs.filter(function(j){ return j.state==='paid'; }).slice(0,6);
+    if(owed.length)h+='<div class="sc-sec">Waiting on the Keymaster</div>'+owed.map(function(j){ return '<div class="ch-row"><div><b>'+esc(j.taker||'')+'</b><span>'+esc(String(j.title).replace(/^House chore · /,''))+'</span></div>'+(w.head?'<button type="button" class="sc-btn" data-scj="pay" data-c="'+j.id+'">Pay '+j.bucks+' ⚓</button>':'<em>'+j.bucks+' ⚓</em>')+'</div>'; }).join('');
+    if(paid.length)h+='<div class="sc-sec">Paid</div>'+paid.map(function(j){ return '<div class="ch-row dim"><div><b>'+esc(j.taker||'')+'</b><span>'+esc(String(j.title).replace(/^House chore · /,''))+'</span></div><em>✓ '+j.bucks+' ⚓</em></div>'; }).join('');
     return h;
   }
   function paintChamber(){
@@ -682,14 +685,14 @@
   var nope=function(){};
   document.addEventListener('change',function(ev){ var inp=ev.target; if(!inp||!inp.getAttribute||!inp.getAttribute('data-schf'))return; var C=window.HOUSE_CHORES; if(!C)return;
     var fs=[].slice.call(inp.files||[]), k=inp.getAttribute('data-schf'), ttl=inp.getAttribute('data-t'); inp.value=''; if(!fs.length)return;
-    say('Reading the PDF…'); Promise.resolve(C.addPma(fs)).then(function(){ return rpc('sc_chore_done',{p_kind:'pma',p_key:k,p_title:ttl}); }).then(function(){ after('📄 On the record — claimed for the Keymaster to pay',[20,40,20])(); }).catch(function(e){ say('✗ '+(e&&e.message||e)); });
+    say('Reading the PDF…'); Promise.resolve(C.addPma(fs)).then(function(){ return rpc('sc_chore_done',{p_kind:'pma',p_key:k||fs[0].name,p_title:ttl||('PMA sheet · '+fs[0].name)}); }).then(function(){ after('📄 On the record — claimed for the Keymaster to pay',[20,40,20])(); }).catch(function(e){ say('✗ '+(e&&e.message||e)); });
   });
   document.addEventListener('click',function(ev){
     var sh=$('scChamber'); if(!sh||!sh.classList.contains('on'))return; var w=me();
     var t=ev.target.closest&&ev.target.closest('[data-sct]'); if(t){ tab=t.getAttribute('data-sct'); paintChamber(); hum([8]); return; }
     var ch=ev.target.closest&&ev.target.closest('[data-sch]'); if(ch){ var C=window.HOUSE_CHORES, a=ch.getAttribute('data-sch'), k=ch.getAttribute('data-k'); if(!C)return;
       if(a==='out'){ C.outside(ch.getAttribute('data-u')); return; }
-      if(a==='log'||a==='enter'){ sh.classList.remove('on'); setTimeout(function(){ if(a==='log')C.log(k); else C.enter(k,ch.getAttribute('data-w')); },150); return; }
+      if(a==='log'||a==='enter'||a==='fix'){ if(!k){ say('Nothing to open yet'); return; } sh.classList.remove('on'); setTimeout(function(){ if(a==='log')C.log(k); else if(a==='fix')C.fix(k); else C.enter(k,ch.getAttribute('data-w')); },150); return; }
       if(a==='done'){ ch.disabled=true; rpc('sc_chore_done',{p_kind:ch.getAttribute('data-kind'),p_key:k,p_title:ch.getAttribute('data-t')}).then(function(r){ after(r&&r.ok?'✓ Claimed — the Keymaster pays it out':'Already claimed',[20,40,20])(); }).catch(function(e){ ch.disabled=false; say('✗ '+(e&&e.message||e)); }); return; }
       return; }
     var v=ev.target.closest&&ev.target.closest('[data-scv]'); if(v){ rpc('sc_vote',{p_motion:v.getAttribute('data-m'),p_choice:v.getAttribute('data-scv')}).then(function(st){ after(st==='carried'?'⚜ The motion carries.':st==='failed'?'The motion fails.':'Vote cast.',st==='carried'?[40,40,120]:[15])(); }).catch(nope); return; }
