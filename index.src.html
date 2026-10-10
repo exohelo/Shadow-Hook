@@ -8,7 +8,7 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct12p';   /* oct 8 (152nd) — a record opens at the TOP of the post on ALL; it had been scrolling down to the tab bar as if ALL were a destination like CHAT or the gallery (#recall). */
+window.SHK_BUILD='oct12t';   /* oct 8 (152nd) — a record opens at the TOP of the post on ALL; it had been scrolling down to the tab bar as if ALL were a destination like CHAT or the gallery (#recall). */
 /* was: oct10build */   /* oct 10 (162nd) — TWO GAMES ON THE HALL (#games): ❓ DOCK TRIVIA (trivia.js) and 💌 MESSY ON DA DOCKS · Singles & Cheaters (dates.js: full-page room, sexy dock aliases or your own, who you are / who you're into with mutual matching, phone-to-phone encryption over the broadcast — ECDH→AES-GCM — a ghost on the floor while inside, rate the date after, anonymous flags: three = a suspension, a week / two / a month), each its own file fetched on the first tap, same as sc.js — nothing of either is parsed at boot; index.html holds two What's Hot cards, a 20-line loader (#gameslazy) and the Desk's two new kinds (trivq: a member's question, sealed → trivia_approve · datereport: the last 20 lines of a date). Trivia is graded in Supabase (GAMES.sql) — the answer never reaches the phone; 5 ⬡ a side, winner takes 10, through the same bucks_book THE BANK reads; the first 50 questions are seeded. Messy pairs over a realtime broadcast channel — no table, nothing of the chat stored; good standing = not locked, not suspended. Upload trivia.js and dates.js beside index.html; precache them in sw.js with sc.js. */
 /* was: oct9build */   /* oct 9 (161st) — THE SMOOTHNESS PASS, done unattended: (1) #quietsheets — the 52 closed sheets and rooms skip style/layout/paint (content-visibility:hidden); a :root variable write measured 39 ms → 21 ms on a desktop, ~5× that on a phone. (2) #covered — html.covered while a room or the Chamber is up, set by a small observer (not :has()); the scene under it rests. (3) #onefreeze — one freeze of 4 s+ puts that phone on lite effects for the week; the Keymaster's FULL flag still wins. (4) #build — index.html is now BUILT from index.src.html (node build.mjs): comments and whitespace out, names kept; 5.3 MB → 3.7 MB, boot parse+run 738 → 509 ms on a desktop. Edit the .src file; serve the built one. */
 /* was: oct9sclazy */   /* oct 9 (160th) — THE COUNCIL LEAVES THE BOOT: the Shadow Council (gate, Chamber, charter, seat sheet, board, alert — ~700 lines) moves to its own file, sc.js, loaded on demand. A casual's phone never parses it; a phone that has held a seat fetches it at idle so the OPEN count and ⚜ alert still paint themselves; a tap on the door fetches it on the spot. Only the door's styling and a 30-line loader stay in index.html (#sclazy). Upload sc.js beside index.html. */
@@ -38737,7 +38737,9 @@ let _liveChan=null, _liveOn=false;
    eleven endpoints) runs at most once every 2 min: phones drop and re-open the
    socket constantly when backgrounded, and each reconnect was a full re-download. */
 const _rtT={};
-function _rtCoalesce(name,fn,ms){ if(_rtT[name])return; _rtT[name]=setTimeout(function(){_rtT[name]=null;try{fn();}catch(e){}},ms||4000); }
+/* #diet(oct12) — each phone waits its own random 0–2.5 s on top of the coalesce, so a change on the wire doesn't send every
+   phone to re-read the same table in the same instant (the flex-call stampede that sank Oct 9) */
+function _rtCoalesce(name,fn,ms){ if(_rtT[name])return; _rtT[name]=setTimeout(function(){_rtT[name]=null;try{fn();}catch(e){}},(ms||4000)+Math.floor(Math.random()*2500)); }
 let _liveRefreshAt=0;
 function liveRefreshAll(){
   if(Date.now()-_liveRefreshAt<120000)return;
@@ -38760,17 +38762,11 @@ function liveSync(){
       .on('postgres_changes',{event:'*',schema:'public',table:'live_wire'},      function(){_rtCoalesce('lw',sbLoadLiveCalls,3000);})   /* #onewire — every scan moves every reel */
       .on('postgres_changes',{event:'*',schema:'public',table:'km_flags'},       function(){try{sbLoadKmFlags();}catch(e){}})   /* #km — the Keymaster's word travels instantly */
       .on('postgres_changes',{event:'*',schema:'public',table:'km_notices'},     function(){try{sbLoadNotices();}catch(e){}})   /* #km2 — warnings & bans land live */
-      .on('postgres_changes',{event:'*',schema:'public',table:'km_desk'},        function(p){try{if(window.kmDeskLive)window.kmDeskLive(p);}catch(e){}})   /* #desk — a request lands on the crown, a decision lands on the deputy */
-      .on('postgres_changes',{event:'*',schema:'public',table:'km_chamber'},     function(p){try{if(window.kmChamberLive)window.kmChamberLive(p);}catch(e){}})   /* #chamber — a motion, a closing */
-      .on('postgres_changes',{event:'*',schema:'public',table:'km_ballots'},     function(p){try{if(window.kmChamberLive)window.kmChamberLive(p);}catch(e){}})   /* #chamber — a ballot */
+      /* #diet — km_desk · km_chamber · km_ballots moved to _kmChan below: only a Keymaster's phone listens.
+         race_book · rooms · gatherings · gathering_rsvps · stories moved to _socChan: live only while Social is on screen. */
       .on('postgres_changes',{event:'*',schema:'public',table:'board_wire'},      function(){_rtCoalesce('bw',sbLoadBoardWire);})
-      .on('postgres_changes',{event:'*',schema:'public',table:'race_book'},       function(p){try{raceLiveEvent(p);}catch(e){}})   /* #racelive — a casual's book moves, every Race moves */
       .on('postgres_changes',{event:'*',schema:'public',table:'dispatch_boards'}, function(p){try{ if(p&&p.new&&p.new.key&&p.new.data)ingestForecast(p.new.key,p.new.data); else sbLoadDispatch(true); }catch(e){}})   /* #egress2 — the event carries the row; no table re-pull */
       .on('postgres_changes',{event:'*',schema:'public',table:'hall_line_log'},   function(){_rtCoalesce('hl',sbLoadHallLine);})   /* #hallline — the phone bot's reads land live */
-      .on('postgres_changes',{event:'*',schema:'public',table:'rooms'},           function(){try{socPullSoon();}catch(e){}})   // #21fix — the social
-      .on('postgres_changes',{event:'*',schema:'public',table:'gatherings'},      function(){try{socPullSoon();}catch(e){}})   // directory is shared:
-      .on('postgres_changes',{event:'*',schema:'public',table:'gathering_rsvps'}, function(){try{socPullSoon();}catch(e){}})   // rooms/RSVPs land live
-      .on('postgres_changes',{event:'*',schema:'public',table:'stories'},         function(){_rtCoalesce('st',sbLoadStories,6000);})   // #hub — the Stories wall lands live
       .on('postgres_changes',{event:'*',schema:'public',table:'dispatch_posts'},  function(){ try{ if(window.DP&&window.DP.loadPosts)window.DP.loadPosts(true); }catch(e){} })   /* #dispatchpost — the council's pre-post lands live */
       .on('postgres_changes',{event:'INSERT',schema:'public',table:'mark_draws'}, function(p){ try{ if(window.DP&&window.DP.onDraw)window.DP.onDraw(p&&p.new); }catch(e){} })   /* #dispatchpost — the 5-minute draw: the winner's phone rains coins */
       .subscribe(function(s){ _liveOn=(s==='SUBSCRIBED'); try{console.log('[live] order sync:',s);}catch(e){} try{DEVLOG.note('realtime: '+s);}catch(e){}
@@ -38778,6 +38774,50 @@ function liveSync(){
   }catch(e){}
 }
 try{liveSync();}catch(e){}
+/* #diet — the Keymaster's own channel: opened only while this phone holds a key (both handlers ignore everyone else anyway) */
+let _kmChan=null;
+setInterval(function(){ try{
+  if(!window.SB)return; const want=!!window.__isKM&&!document.hidden;
+  if(want&&!_kmChan){ _kmChan=window.SB.channel('km-live-'+Date.now())
+      .on('postgres_changes',{event:'*',schema:'public',table:'km_desk'},    function(p){try{if(window.kmDeskLive)window.kmDeskLive(p);}catch(e){}})
+      .on('postgres_changes',{event:'*',schema:'public',table:'km_chamber'}, function(p){try{if(window.kmChamberLive)window.kmChamberLive(p);}catch(e){}})
+      .on('postgres_changes',{event:'*',schema:'public',table:'km_ballots'}, function(p){try{if(window.kmChamberLive)window.kmChamberLive(p);}catch(e){}})
+      .subscribe(); }
+  else if(!want&&_kmChan){ try{ window.SB.removeChannel(_kmChan); }catch(e){} _kmChan=null; }
+}catch(e){} },5000);
+/* #diet — A PHONE IN A POCKET LETS GO. Once the app has been in the background for a minute it closes its live channels,
+   so the database isn't fanning out every change to phones nobody's looking at. Back to the front: it reconnects, and the
+   reconnect's own catch-up (liveRefreshAll) pulls whatever it missed. */
+/* #diet2(oct12) — THE SOCIAL FEEDS LIVE ONLY WHILE SOCIAL IS ON SCREEN. The Race, the rooms and gatherings, and the
+   Board's posts open their live channel when the Social tab is showing and let go a minute after you leave it. Coming
+   back reads them fresh once, so nothing is ever stale on screen. */
+let _socChan=null, _socOffAt=0;
+setInterval(function(){ try{
+  if(!window.SB)return; const sc=document.getElementById('scr-order');
+  const want=!!(sc&&sc.classList.contains('on'))&&!document.hidden;
+  if(want){ _socOffAt=0;
+    if(!_socChan){ _socChan=window.SB.channel('soc-live-'+Date.now())
+        .on('postgres_changes',{event:'*',schema:'public',table:'race_book'},       function(p){try{raceLiveEvent(p);}catch(e){}})
+        .on('postgres_changes',{event:'*',schema:'public',table:'rooms'},           function(){try{socPullSoon();}catch(e){}})
+        .on('postgres_changes',{event:'*',schema:'public',table:'gatherings'},      function(){try{socPullSoon();}catch(e){}})
+        .on('postgres_changes',{event:'*',schema:'public',table:'gathering_rsvps'}, function(){try{socPullSoon();}catch(e){}})
+        .on('postgres_changes',{event:'*',schema:'public',table:'stories'},         function(){_rtCoalesce('st',sbLoadStories,6000);})
+        .subscribe(function(st){ if(st==='SUBSCRIBED'){ try{socPullSoon();}catch(e){} try{_rtCoalesce('st',sbLoadStories,300);}catch(e){} try{sbLoadRaceLive();}catch(e){} } }); } }
+  else if(_socChan){ if(!_socOffAt)_socOffAt=Date.now(); else if(Date.now()-_socOffAt>60000){ try{ window.SB.removeChannel(_socChan); }catch(e){} _socChan=null; _socOffAt=0; } }
+}catch(e){} },2000);
+let _bgT=0;
+document.addEventListener('visibilitychange',function(){ try{
+  if(document.hidden){ clearTimeout(_bgT); _bgT=setTimeout(function(){ if(!document.hidden||!window.SB)return;
+      try{ if(_liveChan){ window.SB.removeChannel(_liveChan); _liveChan=null; _liveOn=false; } }catch(e){}
+      try{ if(typeof _alChan!=='undefined'&&_alChan){ window.SB.removeChannel(_alChan); _alChan=null; } }catch(e){}
+      try{ if(typeof DM!=='undefined'&&DM.chan){ window.SB.removeChannel(DM.chan); DM.chan=null; } }catch(e){}
+      try{ if(typeof _keysChan!=='undefined'&&_keysChan){ window.SB.removeChannel(_keysChan); _keysChan=null; } }catch(e){} },60000); }
+  else { clearTimeout(_bgT);
+    if(!_liveChan){ _liveRefreshAt=0; try{ liveSync(); }catch(e){} }
+    try{ if(typeof _alChan!=='undefined'&&!_alChan&&typeof alertsJoin==='function')alertsJoin(); }catch(e){}
+    try{ if(typeof DM!=='undefined'&&!DM.chan&&typeof dmSub==='function'){ dmSub(); if(typeof dmLoad==='function')dmLoad(); } }catch(e){}
+    try{ if(typeof _keysChan!=='undefined'&&!_keysChan&&typeof roomKeysSub==='function')roomKeysSub(); }catch(e){} }
+}catch(e){} });
 setInterval(function(){ if(document.hidden||!window.SB||_liveOn)return; liveRefreshAll(); }, 45000);   // #egress — fallback pull only while realtime is down
 /* #118 — NO FLOP: the official end of dispatch, called from the Drop Log.
    The end card is the one entry that matters; the crowd's drops are the count.
@@ -48217,6 +48257,7 @@ html.daylight .sn-decor{opacity:.5}
 .sn-pause .sn-decor *{animation-play-state:paused!important}
 /* #camstall(oct1) — the viewfinder is up / the shot it took is developing (shkHold): the season holds still */
 html.shk-hold .sn-decor *,html.shk-hold .sn-scene *{animation-play-state:paused!important}
+html.sn-busy .sn-decor *,html.sn-busy .sn-scene *{animation-play-state:paused!important}   /* #calmdecor */
 
 /* ── falling: snow, hearts, clover, leaves ─────────────────────────────── */
 .sn-fall{top:0;left:var(--x);font-size:calc(var(--s) * 1px);line-height:1;
@@ -49190,6 +49231,7 @@ window.SEASON_DECOR={
     if(spec.drip){ var d0={}; for(var dkk in spec.drip)d0[dkk]=spec.drip[dkk]; d0.n=Math.max(3,Math.round(3+(spec.drip.n-3)*hwP));   /* 3 on Oct 1 → 6 at Halloween */ spec.drip=d0; }
     if(spec.day&&document.documentElement.classList.contains('hw-day')){ var m={}; for(var kk in spec)m[kk]=spec[kk]; for(var dk in spec.day)m[dk]=spec.day[dk]; spec=m; }
     var narrow=(window.innerWidth||420)<380, k=narrow?.65:1;   /* a small phone carries fewer */
+    try{ if(/iPhone|iPad|iPod/.test(navigator.userAgent||''))k=Math.min(k,.55); }catch(e){}   /* #calmdecor(oct12) — an iPhone carries about half */
     var L=document.createElement('div'); L.className='sn-decor'; L.setAttribute('aria-hidden','true');
 
     [spec.fall,spec.fall2].forEach(function(f){ if(!f)return; var n=Math.max(1,Math.round(f.n*k));
@@ -54434,6 +54476,7 @@ function alertsJoin(){
 
     /* ── chat replies · every member ─────────────────────────────────── */
     ch.on('postgres_changes',{event:'INSERT',schema:'public',table:'messages'},p=>{
+      try{ window.dispatchEvent(new CustomEvent('shk:msg',{detail:p&&p.new})); }catch(_){}   /* #lobbyfab — one subscription feeds the lobby bubble too */
       try{
         const m=p&&p.new; if(!m||!m.room)return;
         if(String(m.by_id||'')===String(ACCT_ID))return;          // never your own word
@@ -61173,6 +61216,20 @@ html.daylight .sc-ribbon{box-shadow:none}
 })();
 </script>
 
+<script>
+/* #calmdecor(oct12) — THE DECOR HOLDS STILL WHILE THE PAGE WORKS. The Oct 10 freeze (LILCLARK20, 2.6 s on the Hall):
+   three batches of data redrew a 9,000-piece page while 27 bats, drips and flaps kept moving. Now the season's
+   animations pause the moment a big redraw lands (50+ pieces added at once) or a finger starts scrolling, and pick
+   back up a beat after it settles. Same look; the phone just isn't asked to do both at once. */
+(function(){ try{
+  var root=document.documentElement, t=0;
+  function hold(ms){ root.classList.add('sn-busy'); clearTimeout(t); t=setTimeout(function(){ root.classList.remove('sn-busy'); },ms||900); }
+  var mo=new MutationObserver(function(list){ var n=0; for(var i=0;i<list.length;i++){ n+=list[i].addedNodes.length; if(n>=50){ hold(1200); return; } } });
+  function start(){ var app=document.getElementById('app')||document.body; mo.observe(app,{childList:true,subtree:true}); }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start); else start();
+  ['touchmove','wheel'].forEach(function(ev){ window.addEventListener(ev,function(){ hold(700); },{passive:true}); });
+}catch(e){} })();
+</script>
 <!-- #lobbyfab(oct12) — THE LOBBY BUBBLE (option A). A round 🗣 button in the bottom-right corner on The Order · The Hall ·
      Social, with a red count of new lines on The Hall Floor since you last looked. Tap it: you're in the lobby. When someone
      says something while you're elsewhere on those tabs, a speech bubble slides out of the button with their handle and the
@@ -61221,12 +61278,11 @@ html.daylight #lobbyFab .lf-bub{background:#fff;border-color:#e3bb92}html.daylig
   btn.addEventListener('click',open);
   document.addEventListener('click',function(e){ if(e.target.closest&&e.target.closest('#lobbyPill'))open(); });
   bub.addEventListener('click',function(e){ if(e.target.closest('.lf-mute')){ e.stopPropagation(); try{ localStorage.setItem(MUTE,muted()?'0':'1'); }catch(_){} bub.hidden=true; try{ toast(muted()?'🔕 Lobby pop-ups off on this phone':'🔔 Lobby pop-ups on'); }catch(_){} return; } open(); });
-  function join(){ if(chan||!window.SB)return;
-    try{ chan=window.SB.channel('lobbyfab-'+Date.now()).on('postgres_changes',{event:'INSERT',schema:'public',table:'messages'},function(p){
-      var m=p&&p.new; if(!m||m.room!==ROOM)return; if(String(m.by_id||'')===String(typeof ACCT_ID!=='undefined'?ACCT_ID:''))return;
-      if(typeof CURRENT_ROOM!=='undefined'&&CURRENT_ROOM===ROOM)return;
-      unread++; pend.push(m); paint(); pop(); }).subscribe(); }catch(e){ chan=null; } }
-  setInterval(function(){ join(); paint(); },800);
+  /* #lighter(oct12) — no channel of its own: it listens to the alerts channel the app already holds on `messages`,
+     so the bubble adds zero load on the database */
+  window.addEventListener('shk:msg',function(ev){ var m=ev&&ev.detail; if(!m||m.room!==ROOM)return; if(String(m.by_id||'')===String(typeof ACCT_ID!=='undefined'?ACCT_ID:''))return;
+      if(typeof CURRENT_ROOM!=='undefined'&&CURRENT_ROOM===ROOM)return; unread++; pend.push(m); paint(); pop(); });
+  setInterval(paint,800);
 })();
 </script>
 <!-- #games(oct10) — THE GAMES LIVE IN THEIR OWN FILES. Dock Trivia is trivia.js, Ten-Minute Dates is dates.js; each is
