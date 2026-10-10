@@ -38,6 +38,24 @@
   var ADJ=['Honey','Sugar','Velvet','Satin','Cherry','Candy','Sultry','Smooth','Slippery','Naughty','Dirty','Hot','Wet','Midnight','Late-Shift','Sweet'];
   var NOUN=['Hawser','Deckhand','Lasher','Longshore','Stevedore','Capstan','Twistlock','Spreader','Top Handler','Gantry','Hatch','Reefer','Bollard','Night Shift','Clerk','Crane'];
   var roll=function(){ return ADJ[Math.floor(Math.random()*ADJ.length)]+' '+NOUN[Math.floor(Math.random()*NOUN.length)]; };
+  /* THE CARD — answered once, used on every search. Each question: what you are (one pick) and what you're into (any
+     number, or ANYBODY). Only the codes ride the wire, never the handle. */
+  var CARD=[
+    {k:'age',  q:'AGE',       me:[['a','18–24'],['b','25–34'],['c','35–44'],['d','45–54'],['e','55+']]},
+    {k:'body', q:'BODY',      me:[['s','SLIM'],['a','ATHLETIC'],['m','AVERAGE'],['c','CURVY'],['t','BIG & TALL'],['x','RATHER NOT SAY']]},
+    {k:'race', q:'RACE',      me:[['b','BLACK'],['l','LATINO'],['w','WHITE'],['a','ASIAN'],['n','NATIVE'],['m','MIXED'],['o','OTHER'],['x','RATHER NOT SAY']]},
+    {k:'pol',  q:'POLITICS',  me:[['l','LEFT'],['c','CENTER'],['r','RIGHT'],['x','DON’T CARE']]},
+    {k:'rel',  q:'RELIGION',  me:[['c','CHRISTIAN'],['k','CATHOLIC'],['m','MUSLIM'],['j','JEWISH'],['s','SPIRITUAL'],['n','NONE'],['o','OTHER'],['x','RATHER NOT SAY']]},
+    {k:'look', q:'HERE FOR', me:[['t','JUST TALK'],['d','A DATE'],['m','SOMETHING MESSY'],['w','WHATEVER']], solo:true}
+  ];
+  var arr=function(v){ return v==null?[]:(Array.isArray(v)?v:[v]); };
+  function cardDone(c){ c=c||{}; return CARD.every(function(x){ return arr(c[x.k]).length&&(x.solo||arr(c[x.k+'_in']).length); }); }
+  function cardLine(c){ c=c||{}; var lab=function(x,v){ var m=x.me.filter(function(o){ return o[0]===v; })[0]; return m?m[1]:''; };
+    return CARD.filter(function(x){ return arr(c[x.k]).length; }).map(function(x){ return arr(c[x.k]).map(function(v){ return lab(x,v); }).filter(Boolean).join('/'); }).filter(Boolean).join(' · ')||'NOT SET UP YET'; }
+  /* how well two cards fit, both ways: a point for every "into" that takes the other's answer. ANYBODY takes all. */
+  function takes(into,me_){ into=arr(into); me_=arr(me_); if(into.indexOf('*')>=0||!me_.length||me_.indexOf('x')>=0)return true; return me_.some(function(v){ return into.indexOf(v)>=0; }); }
+  function fit2(a,b){ var sc=0; CARD.forEach(function(x){ if(x.solo)return; if(takes(a[x.k+'_in'],b[x.k]))sc++; if(takes(b[x.k+'_in'],a[x.k]))sc++; }); return sc; }
+  var FIT_MAX=10;
 
   function css(){
     if($('msyCSS'))return;
@@ -62,7 +80,7 @@
       +'.msy-h{font-family:Inter,system-ui,sans-serif;font-weight:700;font-size:11px;letter-spacing:.18em;color:'+NEON+';text-shadow:0 0 8px '+NEON+';margin-bottom:2px}'
       +'.msy-rule{display:flex;gap:12px;align-items:center;font-size:15.5px;line-height:1.35;font-weight:500;color:#d7c6cf;padding:6px 0;border-top:1px solid rgba(255,255,255,.06)}.msy-rule:first-of-type{border-top:0}.msy-rule b{color:'+NEON+'}.msy-rule strong{color:#fff;font-weight:700}.msy-rule i{flex:none;font-style:normal;font-family:Anton,sans-serif;font-size:14px;letter-spacing:.04em;white-space:nowrap;color:#0b0509;min-width:50px;padding:0 6px;height:34px;border-radius:8px;background:linear-gradient(180deg,#fff7b0,'+GOLD+' 45%,#a3821a);box-shadow:0 0 10px rgba(255,230,0,.45),inset 0 1px 0 rgba(255,255,255,.5);display:flex;align-items:center;justify-content:center}'
       +'.msy-lock{display:flex;align-items:center;gap:8px;font-family:Inter,system-ui,sans-serif;font-weight:600;font-size:10px;letter-spacing:.04em;color:#7fe08a;text-shadow:0 0 8px rgba(127,224,138,.8)}'
-      +'.msy-row{display:flex;align-items:center;gap:8px}.msy-row>span{font-family:Inter,system-ui,sans-serif;font-weight:600;font-size:11px;letter-spacing:.1em;color:'+VIOLET+';width:48px;text-shadow:0 0 8px '+VIOLET+'}'
+      +'.msy-row{display:flex;align-items:center;gap:8px}.msy-lbl{font-family:Inter,system-ui,sans-serif;font-weight:600;font-size:11px;letter-spacing:.1em;color:'+VIOLET+';margin-top:4px}.msy-pills{display:flex;flex-wrap:wrap;gap:6px}.msy-tbl{display:flex;flex-direction:column;border-radius:14px;background:linear-gradient(135deg,#16091a,#0d0710);border:1px solid rgba(181,108,255,.4);overflow:hidden}.msy-q{padding:12px 14px;border-top:1px solid rgba(255,255,255,.07)}.msy-q:first-child{border-top:0}.msy-q1,.msy-q2{display:flex;align-items:center;gap:12px}.msy-q2{margin-top:8px}.msy-qh{font-family:Inter,system-ui,sans-serif;font-weight:700;font-size:12px;letter-spacing:.16em;color:'+VIOLET+';text-shadow:0 0 8px rgba(181,108,255,.5)}.msy-ql{flex:none;width:78px;line-height:1.1;font-family:Inter,system-ui,sans-serif;font-weight:700;font-size:11.5px;letter-spacing:.12em;color:'+VIOLET+'}.msy-sel{position:relative;flex:1;min-width:0}.msy-sel select{width:100%;appearance:none;-webkit-appearance:none;background:#0b0509;border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:11px 36px 11px 12px;color:#f3e9ee;font-family:Inter,system-ui,sans-serif;font-weight:600;font-size:14px;letter-spacing:.02em}.msy-sel select:invalid,.msy-sel select option[value=""]{color:#8f8794}.msy-car{position:absolute;right:12px;top:50%;transform:translateY(-50%);color:'+NEON+';pointer-events:none;font-size:14px}.msy-strip{flex:1;min-width:0;display:flex;gap:6px;overflow-x:auto;scroll-snap-type:x proximity;padding:2px 0 6px;scrollbar-width:none;-webkit-overflow-scrolling:touch;mask-image:linear-gradient(90deg,#000 90%,rgba(0,0,0,0));-webkit-mask-image:linear-gradient(90deg,#000 90%,rgba(0,0,0,0))}.msy-strip::-webkit-scrollbar{display:none}.msy-chip2{flex:none;scroll-snap-align:start;padding:8px 13px;border-radius:99px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:#d7c6cf;font-family:Inter,system-ui,sans-serif;font-weight:600;font-size:12.5px;letter-spacing:.03em;cursor:pointer;white-space:nowrap}.msy-chip2.on{border-color:'+NEON+';background:linear-gradient(180deg,#ff86c2,'+NEON+' 50%,#a21c62);color:#0b0509;box-shadow:0 0 10px rgba(255,61,154,.45)}.msy-chip2.g.on{border-color:'+GOLD+';background:linear-gradient(180deg,#fff7b0,'+GOLD+' 45%,#a3821a);box-shadow:0 0 10px rgba(255,230,0,.45)}.msy-row>span{font-family:Inter,system-ui,sans-serif;font-weight:600;font-size:11px;letter-spacing:.1em;color:'+VIOLET+';width:74px;line-height:1.1;text-shadow:0 0 8px '+VIOLET+'}'
       +'.msy-pick{flex:1;padding:9px 6px;border-radius:6px;border:1px solid rgba(255,255,255,.15);background:linear-gradient(180deg,#2a1d2a,#130b14);color:#8f8794;font-family:Inter,system-ui,sans-serif;font-weight:700;font-size:13px;letter-spacing:.06em;cursor:pointer}'
       +'.msy-pick.on{border-color:'+NEON+';background:linear-gradient(180deg,'+NEON+',#8a1d55);color:#0b0509;box-shadow:0 0 14px '+NEON+'}.msy-pick.on.g{border-color:'+GOLD+';background:linear-gradient(180deg,#fff2b0,'+GOLD+' 40%,#a3821a);box-shadow:0 0 14px rgba(255,230,0,.6)}'
       +'.msy-big{position:relative;width:100%;padding:15px 16px;border-radius:14px;border:2px solid '+NEON+';background:linear-gradient(180deg,#ff86c2 0,'+NEON+' 45%,#a21c62 55%,#ff5fb0 100%);color:#0b0509;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:12px;box-shadow:0 0 20px '+NEON+',0 0 50px rgba(255,61,154,.6),inset 0 2px 0 rgba(255,255,255,.6),0 6px 0 #4d0f30;font-family:Anton,sans-serif;font-size:28px;letter-spacing:.08em;margin-top:8px;padding:18px 16px}.msy-big:disabled{opacity:.5}'
@@ -121,6 +139,10 @@
   function act(k,v,b){
     if(k==='back'){ if(S.view==='door')close(); else if(S.view==='date')askClose(); else { teardown(); S=fresh(); door(); } }
     else if(k==='sex'){ PROF.sex=v; paintDoor(); } else if(k==='into'){ PROF.into=v; paintDoor(); }
+    else if(k==='card')cardScreen(); else if(k==='cme'){ var kk=v.split(':'); PROF.card[kk[0]]=toggleIn(PROF.card[kk[0]],kk[1],['x']); restrip(b,PROF.card[kk[0]]); }
+    else if(k==='cin'){ var kv=v.split(':'), key=kv[0]+'_in'; PROF.card[key]=toggleIn(PROF.card[key],kv[1],['*']); restrip(b,PROF.card[key]); }
+    else if(k==='quick'){ CARD.forEach(function(x){ if(!x.solo)PROF.card[x.k+'_in']=['*']; }); paintCard(); }
+    else if(k==='csave')cardSave(b);
     else if(k==='go')go(b); else if(k==='roll'){ var i=$('msyAlias'); if(i)i.value=roll(); }
     else if(k==='send')send(); else if(k==='extend')extend(); else if(k==='reveal')reveal(true); else if(k==='noreveal')reveal(false);
     else if(k==='flag')flag(b); else if(k==='hook'){ S.hooks=+v; paintRate(); } else if(k==='tag'){ S.tags[v]=!S.tags[v]; paintRate(); }
@@ -137,7 +159,7 @@
     if(!window.SB||!window.__shkUid){ $('msyBody').innerHTML='<div class="msy-card"><div class="msy-h">SIGN IN FIRST</div><div class="msy-rule">Messy is for members. Claim your card and sign in.</div></div>'; return; }
     rpc('dates_eligible').then(function(r){
       if(!r||!r.ok){ $('msyBody').innerHTML='<div class="msy-card"><div class="msy-h">THE DOOR IS SHUT</div><div class="msy-rule">'+esc((r&&r.why)||'not today')+'</div></div>'; return; }
-      PROF=PROF||{}; PROF.handle=r.handle; if(!PROF.sex)PROF.sex=r.sex||''; if(!PROF.into)PROF.into=r.into||''; PROF.alias=r.alias||PROF.alias||''; PROF.dates=r.dates||0; PROF.extends=r.extends||0; PROF.rated=r.rated;
+      PROF=PROF||{}; PROF.handle=r.handle; if(!PROF.sex)PROF.sex=r.sex||''; if(!PROF.into)PROF.into=r.into||''; PROF.alias=r.alias||PROF.alias||''; PROF.card=r.card||PROF.card||{}; PROF.dates=r.dates||0; PROF.extends=r.extends||0; PROF.rated=r.rated;
       paintDoor();
     }).catch(function(e){ var m=String(e.message||e); $('msyBody').innerHTML='<div class="msy-card"><div class="msy-rule">'+esc(/dates_eligible|does not exist|PGRST202|42883/i.test(m)?'Messy isn’t built yet — run GAMES.sql once in Supabase.':m)+'</div></div>'; });
   }
@@ -149,14 +171,35 @@
       +'<div class="msy-rule"><i>10 MIN</i><span><strong>Fake names.</strong> Messages wipe the second it closes.</span></div>'
       +'<div class="msy-rule"><i>+5</i><span><strong>Extend the time or drop handles</strong> — only if you <b>both</b> say so.</span></div>'
       +'<div class="msy-rule"><i>★</i><span><strong>Rate the date!!</strong> Repeat offenders of misconduct get suspended from Messy.</span></div>'
-      +'<div class="msy-lock" data-nofloor style="margin-top:2px;padding-top:7px;border-top:1px solid rgba(255,61,154,.25)">🔒 ENCRYPTED COMMUNICATION: PHONE TO PHONE</div>'
-      +'<div class="msy-lock" data-nofloor>🕶 YOU GO INVISIBLE ON THE HALL WHILE YOU’RE IN HERE</div></div>'
+      +'<div class="msy-lock" data-nofloor style="margin-top:2px;padding-top:7px;border-top:1px solid rgba(255,61,154,.25)">🔒 ENCRYPTED COMMUNICATION: PHONE TO PHONE</div></div>'
       +'<div class="msy-card v"><div class="msy-row"><span>I’M A</span>'+pick('sex','m','MAN',P.sex==='m')+pick('sex','w','WOMAN',P.sex==='w')+'</div>'
-      +'<div class="msy-row"><span>INTO</span>'+pick('into','m','MEN',P.into==='m',1)+pick('into','w','WOMEN',P.into==='w',1)+pick('into','b','BOTH',P.into==='b',1)+'</div></div>'
+      +'<div class="msy-row"><span>LOOKING FOR</span>'+pick('into','m','MEN',P.into==='m',1)+pick('into','w','WOMEN',P.into==='w',1)+pick('into','b','BOTH',P.into==='b',1)+'</div></div>'
+      +(cardDone(P.card)
+          ?'<div class="msy-card v" style="flex-direction:row;align-items:center;gap:10px"><div style="flex:1;min-width:0"><div class="msy-h" style="color:'+VIOLET+'">YOUR CARD · USED ON EVERY SEARCH</div><div style="font-size:13px;font-weight:600;color:#d7c6cf;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(cardLine(P.card))+'</div></div><button type="button" class="msy-ghost v" data-msy="card">EDIT</button></div>'
+          :'<button type="button" class="msy-ghost v" data-msy="card" style="width:100%;padding:14px;font-size:13px;border-width:2px">✎ SET UP YOUR CARD · ONCE, 2 MINUTES · AGE, BODY, RACE, POLITICS, RELIGION</button>')
       +'<div class="msy-vip"><div class="hex" style="width:40px;height:46px;background:linear-gradient(180deg,#fff2b0,'+GOLD+' 40%,#a3821a);font-size:11px">VIP</div><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px"><div style="display:flex;flex-direction:column;gap:2px"><b>GOOD STANDING</b><small>TREAT EVERYBODY WITH RESPECT · NOTHING ABOUT YOUR DATES IS KEPT ON THIS SCREEN</small></div></div></div>'
-      +'<button type="button" class="msy-big" id="msyGo" data-msy="go"'+(P.sex&&P.into?'':' disabled')+'>♥ GET MESSY</button>'
+      +'<button type="button" class="msy-big" id="msyGo" data-msy="go"'+(P.sex&&P.into&&cardDone(P.card)?'':' disabled')+'>♥ GET MESSY</button>'
+      +(P.sex&&P.into&&!cardDone(P.card)?'<div class="msy-foot" style="color:#d7a8c0">Set up your card first — it’s what the matching runs on.</div>':'')
       +'<div class="msy-foot">Enter at your own risk. Don’t report me to LRC.</div>';
   }
+
+  /* ── the card screen ── */
+  function cardScreen(){ S.view='card'; PROF.card=PROF.card||{};
+    wrap().innerHTML=top('YOUR CARD','ONCE ·<br>2 MIN')+'<div class="msy-body" id="msyCard" style="gap:10px"></div>'; paintCard(); }
+  function paintCard(){ var w=$('msyCard'); if(!w)return; var c=PROF.card;
+    var chip=function(k,v,l,on,g){ return '<button type="button" class="msy-chip2'+(on?' on':'')+(g?' g':'')+'" data-msy="'+k+'" data-v="'+v+'">'+l+'</button>'; };
+    w.innerHTML='<div style="font-size:14px;font-weight:500;color:#d7c6cf;line-height:1.45">Answer once — every search uses it to find the closest match on the dock. Tap one or several on each line: <b style="color:'+NEON+'">ABOUT ME</b> is what they match on, <b style="color:'+GOLD+'">LOOKING FOR</b> is what you match on.</div>'
+      +'<button type="button" class="msy-ghost" data-msy="quick" style="border-color:'+GOLD+';color:'+GOLD+'">⚡ DON’T CARE WHO · TAKE ANYBODY ON EVERY LINE</button>'
+      +'<div class="msy-tbl">'+CARD.map(function(x){ var me_=arr(c[x.k]), ins=arr(c[x.k+'_in']);
+        return '<div class="msy-q"><div class="msy-qh">'+x.q+'</div>'
+          +'<div class="msy-q2"><span class="msy-ql" style="color:'+NEON+'">ABOUT ME</span><div class="msy-strip">'+x.me.map(function(o){ return chip('cme',x.k+':'+o[0],o[1],me_.indexOf(o[0])>=0); }).join('')+'</div></div>'
+          +(x.solo?'':'<div class="msy-q2"><span class="msy-ql" style="color:'+GOLD+'">LOOKING FOR</span><div class="msy-strip">'+chip('cin',x.k+':*','ANYBODY',ins.indexOf('*')>=0,1)+x.me.filter(function(o){ return o[0]!=='x'; }).map(function(o){ return chip('cin',x.k+':'+o[0],o[1],ins.indexOf(o[0])>=0,1); }).join('')+'</div></div>')+'</div>'; }).join('')+'</div>'
+      +'<button type="button" class="msy-big" data-msy="csave"'+(cardDone(c)?'':' disabled')+'>SAVE MY CARD</button>'
+      +(cardDone(c)?'':'<div class="msy-foot" style="color:#d7a8c0">Every line needs something about you and a LOOKING FOR.</div>');
+  }
+  function toggleIn(list,val,excl){ list=arr(list).slice(); if(excl.indexOf(val)>=0)return list.indexOf(val)>=0?[]:[val]; list=list.filter(function(z){ return excl.indexOf(z)<0; }); var i=list.indexOf(val); if(i>=0)list.splice(i,1); else list.push(val); return list; }
+  function restrip(b,list){ var strip=b.parentNode; strip.querySelectorAll('.msy-chip2').forEach(function(ch){ var cv=ch.getAttribute('data-v').split(':')[1]; ch.classList.toggle('on',list.indexOf(cv)>=0); }); var sv=$('msyCard')&&$('msyCard').querySelector('[data-msy=csave]'); if(sv)sv.disabled=!cardDone(PROF.card); }
+  function cardSave(b){ b.disabled=true; rpc('dates_setup',{p_sex:PROF.sex||'m',p_into:PROF.into||'b',p_alias:PROF.alias||null,p_card:PROF.card}).then(function(){ hum([20,40,20]); say('✎ card saved'); door(); }).catch(function(e){ b.disabled=false; say('✗ '+e.message); }); }
 
   /* ── keys: the two phones agree one between themselves ── */
   function makeKeys(){
@@ -176,28 +219,29 @@
   function go(b){
     var P=PROF; if(!P||!P.sex||!P.into){ say('Pick who you are and who you’re into'); return; }
     b.disabled=true;
-    rpc('dates_setup',{p_sex:P.sex,p_into:P.into,p_alias:P.alias||null}).then(function(){ return makeKeys(); }).then(function(){ queue(); })
+    rpc('dates_setup',{p_sex:P.sex,p_into:P.into,p_alias:P.alias||null,p_card:P.card||{}}).then(function(){ return makeKeys(); }).then(function(){ queue(); })
       .catch(function(e){ b.disabled=false; say('✗ '+e.message); });
   }
   function fits(a,b){ var ok=function(into,sex){ return into==='b'||into===sex; }; return ok(a.into,b.sex)&&ok(b.into,a.sex); }
   function queue(){
-    S.view='queue'; S.me=PROF.alias||roll();
+    S.view='queue'; S.me=PROF.alias||roll(); S.queuedAt=Date.now();
     wrap().innerHTML=top('AFTER HOURS','')
       +'<div class="msy-body" style="align-items:center;justify-content:center;gap:16px">'
       +'<div class="msy-ring"><i></i><i></i><i></i><div class="msy-sweep"></div><div class="msy-blip" id="msyBlip"></div><div class="hex" style="width:68px;height:78px;background:linear-gradient(180deg,'+NEON+',#8a1d55);font-size:28px;filter:drop-shadow(0 0 18px '+NEON+')" id="msyMyHex">'+esc(S.me.charAt(0).toUpperCase())+'</div></div>'
-      +'<div class="msy-look">LOOKING FOR<br>SOMEBODY MESSY</div><div style="font-size:14px;font-weight:600;color:#8f979e;letter-spacing:.08em;text-align:center"><span id="msySrch">Searching Match</span> · Stay on this screen.</div>'
-      +'<div class="msy-glass"><div style="display:flex;align-items:center;gap:8px"><span class="msy-chip">'+(PROF.sex==='m'?'Man':'Woman')+'</span><span style="color:#8f979e;font-size:13px">into</span><span class="msy-chip c">'+({m:'Men',w:'Women',b:'Both'})[PROF.into]+'</span></div>'
+      +'<div class="msy-look">LOOKING FOR<br>SOMEBODY MESSY</div><div style="font-size:14px;font-weight:600;color:#8f979e;letter-spacing:.08em;text-align:center"><span id="msySrch">Searching Match</span> · Stay on this screen.</div><div style="font-size:12px;font-weight:600;color:#8f979e;text-align:center">Closest card first · after 20 s, best on the dock</div>'
+      +'<div class="msy-glass"><div style="display:flex;align-items:center;gap:8px"><span class="msy-chip">'+(PROF.sex==='m'?'Man':'Woman')+'</span><span style="color:#8f979e;font-size:13px">looking for</span><span class="msy-chip c">'+({m:'Men',w:'Women',b:'Both'})[PROF.into]+'</span></div>'
       +'<div style="width:100%;height:1px;background:linear-gradient(90deg,rgba(0,0,0,0),rgba(255,255,255,.14),rgba(0,0,0,0))"></div>'
       +'<div style="font-size:11px;font-weight:600;letter-spacing:.18em;color:#8f979e">YOU’LL BE</div>'
       +'<div style="width:100%;display:flex;gap:8px"><input id="msyAlias" class="msy-alias" maxlength="20" value="'+esc(S.me)+'"><button type="button" class="msy-ghost" data-msy="roll" style="width:46px;flex:none" aria-label="Re-roll the name">↻</button></div>'
       +'<div style="font-size:11.5px;color:#8f979e;text-align:center">Keep ours, re-roll it, or type your own. Not your handle.</div></div>'
-      +'<span class="msy-lock" data-nofloor>🕶 INVISIBLE ON THE HALL</span>'
+      
       +'<button type="button" class="msy-ghost" data-msy="back" style="width:100%">NEVER MIND</button></div>';
     S.queue=sb().channel('messy-queue',{config:{broadcast:{self:false}}})
-      .on('broadcast',{event:'seek'},function(p){ var m=p.payload||{}; if(!m.id||m.id===S.id||!m.pk)return; S.seen[m.id]={t:Date.now(),sex:m.sex,into:m.into,pk:m.pk}; propose(); })
+      .on('broadcast',{event:'seek'},function(p){ var m=p.payload||{}; if(!m.id||m.id===S.id||!m.pk)return; S.seen[m.id]={t:Date.now(),sex:m.sex,into:m.into,pk:m.pk,card:m.card||{}}; propose(); })
       .on('broadcast',{event:'gone'},function(p){ var m=p.payload||{}; delete S.seen[m.id]; if(S.pending===m.id)S.pending=null; })
       .on('broadcast',{event:'pair'},function(p){ var m=p.payload||{}; if(m.to!==S.id||S.view!=='queue'||S.pending||!m.pk)return;
           if(!fits({sex:PROF.sex,into:PROF.into},{sex:m.sex,into:m.into}))return;
+          if(fit2(PROF.card||{},m.card||{})<FIT_MAX&&Date.now()-(S.queuedAt||0)<20000)return;
           S.pending=m.from; S.queue.send({type:'broadcast',event:'ok',payload:{from:S.id,to:m.from,room:m.room,pk:S.pub}}); enter(m.room,m.from,m.pk); })
       .on('broadcast',{event:'ok'},function(p){ var m=p.payload||{}; if(m.to!==S.id||S.view!=='queue'||S.pending!==m.from||!m.pk)return; enter(m.room,m.from,m.pk); })
       .subscribe(function(st){ if(st==='SUBSCRIBED'){ seek(); S.seekT=setInterval(seek,1500); } });
@@ -207,15 +251,18 @@
   }
   function seek(){ if(!S||!S.queue||S.view!=='queue')return;
     var i=$('msyAlias'); if(i){ var v=String(i.value||'').trim().slice(0,20); if(v&&v.toUpperCase()!==me())S.me=v; var h=$('msyMyHex'); if(h)h.textContent=S.me.charAt(0).toUpperCase(); }
-    try{ S.queue.send({type:'broadcast',event:'seek',payload:{id:S.id,sex:PROF.sex,into:PROF.into,pk:S.pub}}); }catch(e){}
+    try{ S.queue.send({type:'broadcast',event:'seek',payload:{id:S.id,sex:PROF.sex,into:PROF.into,pk:S.pub,card:PROF.card||{}}}); }catch(e){}
     var now=Date.now(); Object.keys(S.seen).forEach(function(k){ if(now-S.seen[k].t>5000)delete S.seen[k]; });
     if(S.pending&&now-S.pendAt>3500){ S.refused[S.pending]=1; S.pending=null; }
     propose(); }
   function propose(){ if(!S||S.view!=='queue'||S.pending)return;
     var ids=Object.keys(S.seen).filter(function(k){ return !S.refused[k]&&fits({sex:PROF.sex,into:PROF.into},S.seen[k]); }).sort(); if(!ids.length)return;
-    if(S.id>ids[0])return;
-    S.pending=ids[0]; S.pendAt=Date.now(); S.roomId=rid(6);
-    try{ S.queue.send({type:'broadcast',event:'pair',payload:{from:S.id,to:ids[0],room:S.roomId,pk:S.pub,sex:PROF.sex,into:PROF.into}}); }catch(e){} }
+    if(S.id>ids[0])return;   /* the lowest id on the dock proposes */
+    var waited=Date.now()-(S.queuedAt||Date.now()), best=null, bs=-1;
+    ids.forEach(function(k){ var sc=fit2(PROF.card||{},S.seen[k].card||{}); if(sc>bs){ bs=sc; best=k; } });
+    if(bs<FIT_MAX&&waited<20000)return;   /* a perfect fit pairs at once; a lesser one only after 20 s on the dock */
+    S.pending=best; S.pendAt=Date.now(); S.roomId=rid(6);
+    try{ S.queue.send({type:'broadcast',event:'pair',payload:{from:S.id,to:best,room:S.roomId,pk:S.pub,sex:PROF.sex,into:PROF.into,card:PROF.card||{}}}); }catch(e){} }
 
   /* ── the room ── */
   function enter(room,themId,theirPk){
