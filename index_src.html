@@ -8,7 +8,8 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct12x';   /* oct 11 (166th) — THE BIG HALL TILE IS BACK (#bighallback2): #nobighall2 misread the ask — the number was meant to clear for the new sheet (that's #clearsheet), not the tile to go. Tile, pre-post field and layout are as they were. */
+window.SHK_BUILD='oct12y';   /* oct 11 (167th) — EVERY SEAT EARNS THE MARK (#seatmark): the RARE Council Member mark went only to Keymaster-key holders; an elected Shadow Council seat (Seat of T…) never earned it. A seat holder's phone now earns it the next time it reads the council. */
+/* was: oct12x */   /* oct 11 (166th) — THE BIG HALL TILE IS BACK (#bighallback2): #nobighall2 misread the ask — the number was meant to clear for the new sheet (that's #clearsheet), not the tile to go. Tile, pre-post field and layout are as they were. */
 /* was: oct12w */   /* oct 11 (165th) — THE SPLASH IS BACK (#splashback): the goo drop splashes on the tab bar again on every phone, the raffle banner's goo drips again, and every phone gets a fresh slow-phone check (marks earned on the heavier builds are wiped once). */
 /* was: oct12v */   /* oct 11 (164th) — THE ALARMS PASS: #floorflush (the 13px text floor works in one budget per frame and lifts text without firing its transitions — the 37× font-size/letter-spacing and flush2 entries) · #minutelock (the minute tick leaves a locked call alone) · #dwsteps (a drop_wire pull repaints in steps) · #hotwait (What's Hot waits while the Room covers it) · #hallcheap (no layout read for the Hall off its tab) · #hwlrest (the Halloween lake rests while the app is away). */
 /* was: oct12u */   /* oct 11 (163rd) — #clearsheet: the Keymaster takes a sheet off a board it landed on by mistake (pre-post editor) · #lockcall: once the flex call goes out the call stays locked for the whole dispatch · #nobighall2: the BIG HALL tile is off the Dispatch Post. */
@@ -27201,7 +27202,11 @@ function checkMarks(silent){ // real rules on real data — marks are earned, ne
        Once earned it stays on the wall like every other mark — the wall is a record
        of what happened, and the seat happened; the live tag on your handle is what
        comes and goes with the seat itself. */
-    if(window.__isKM&&!(typeof window.kmIsCrown==='function'&&window.kmIsCrown()))unlockBadge(bix("Council Member"));
+    /* #seatmark(oct11) — and an elected SEAT earns it too. Asked: "the council members don't have the RARE Council Member
+       mark — add it to all of them." Only a Keymaster key (__isKM) ever earned it, so every Seat of A–Z holder went
+       without. A handle in SEAT_OF (sc_council_public, read by loadCouncil) holds a seat. */
+    let _seat=false; try{ const a=loadAcct()||{}; _seat=!!(a.handle&&(window.SEAT_OF||{})[String(a.handle).trim().toLowerCase()]); }catch(e){}
+    if((window.__isKM&&!(typeof window.kmIsCrown==='function'&&window.kmIsCrown()))||_seat)unlockBadge(bix("Council Member"));
   }catch(e){}
   /* #haunt-marks — October on the dockets */
   try{
@@ -50374,6 +50379,10 @@ window.loadCouncil=async function(){
   const m={}; rows.forEach(x=>{ if(x&&x.h)m[String(x.h).trim().toLowerCase()]=(x.seat==='crown'?'crown':'council'); });
   /* #sctag — the Shadow Council's seats, by handle; the crown stays the crown */
   try{ const r=await window.SB.rpc('sc_council_public'); const so={}; if(r&&!r.error&&Array.isArray(r.data))r.data.forEach(x=>{ const k=String(x.handle||'').trim().toLowerCase(); if(!k)return; so[k]=x.letter; if(m[k]!=='crown')m[k]='seat'; }); window.SEAT_OF=so; }catch(e){}
+  /* #seatmark(oct11) — this phone's own seat earns the RARE mark the moment the seats are read (unlockBadge pays
+     only a mark the card doesn't already hold, so the 15-minute re-read never pays twice) */
+  try{ const a=loadAcct()||{}, k=String(a.handle||'').trim().toLowerCase();
+    if(k&&window.SEAT_OF[k]&&typeof unlockBadge==='function'&&typeof bixLate==='function'){ const ix=bixLate("Council Member"); if(ix>=0)unlockBadge(ix); } }catch(e){}
   /* this phone knows its own seat better than a fallback read does */
   try{ const a=loadAcct()||{}; if(a.handle&&window.__isKM){ m[String(a.handle).toLowerCase()]=(typeof window.kmIsCrown==='function'&&window.kmIsCrown())?'crown':'council'; } }catch(e){}
   /* #calmcouncil(oct8) — repaint the boards and the roster only when who sits where actually changed (LILCLARK20,
