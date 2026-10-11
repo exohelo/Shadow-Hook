@@ -8,7 +8,9 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct12z';   /* oct 11 (168th) — THE WELCOME COMES FROM YOUR SEAT (#seatwelcome): the server now sends a new member's welcome from the Shadow Council seat of their letter (signed with the seat), so their questions go to their rep; an empty seat falls back to the sender picked here. The Welcome's labels say so. */
+window.SHK_BUILD='oct13b';   /* oct 11 (170th) — THE RECORD CARD COUNTS LIKE THE POST (#hallcas): its HALL bar is the ILWU sheet's total (PMA's count only when there's no sheet) and its CASUAL bar the hall's four casual boards (Hold · UTR · Dock · Swamper) — it had mixed PMA's new orders with a wider casual count and showed casual over the hall (781 vs 903 on Sat 10/10). */
+/* was: oct13a */   /* oct 11 (169th) — THE SHEETS IN THE PAPER'S ORDER (#ilwuorder): the Sheet Editor and CHECK & FIX list the boards the way every ILWU sheet prints them (Hold, Crane, Crane Top Handler, Winch, UTR, CY, Jitney, Swamper, Casual, Dock, Mechanics, Gear, Carpenter); the editor shows every row, blank where the sheet has none, so a sheet is typed straight down the page. */
+/* was: oct12z */   /* oct 11 (168th) — THE WELCOME COMES FROM YOUR SEAT (#seatwelcome): the server now sends a new member's welcome from the Shadow Council seat of their letter (signed with the seat), so their questions go to their rep; an empty seat falls back to the sender picked here. The Welcome's labels say so. */
 /* was: oct12y */   /* oct 11 (167th) — EVERY SEAT EARNS THE MARK (#seatmark): the RARE Council Member mark went only to Keymaster-key holders; an elected Shadow Council seat (Seat of T…) never earned it. A seat holder's phone now earns it the next time it reads the council. */
 /* was: oct12x */   /* oct 11 (166th) — THE BIG HALL TILE IS BACK (#bighallback2): #nobighall2 misread the ask — the number was meant to clear for the new sheet (that's #clearsheet), not the tile to go. Tile, pre-post field and layout are as they were. */
 /* was: oct12w */   /* oct 11 (165th) — THE SPLASH IS BACK (#splashback): the goo drop splashes on the tab bar again on every phone, the raffle banner's goo drips again, and every phone gets a fresh slow-phone check (marks earned on the heavier builds are wiped once). */
@@ -19972,6 +19974,30 @@ function _clearSheetLocal(key){
   try{if(window.DispatchBot)window.DispatchBot.onData();}catch(e){}
   try{if(window.dpRefresh)window.dpRefresh();}catch(e){}
 }
+/* ═══ #ilwuorder(oct11) — THE BOARDS IN THE PAPER'S ORDER ═══
+   Asked: "the ILWU sheets always come in this order — can we make the app sheets in the same order to make it easier
+   to update". The Sheet Editor listed boards biggest-first and CHECK & FIX in whatever order the bot read them, so a
+   sheet was typed by hunting up and down. Both now follow the paper. Names match loosely (Holds = Hold, UTRs = UTR,
+   Top Handler = Crane Top Handler); a board the paper doesn't list sorts after these, biggest first. */
+window.ILWU_BOARDS=['Hold','Crane','Crane Top Handler','Winch','UTR','CY','Jitney','Swamper','Casual','Dock','Mechanics','Gear','Carpenter'];
+window.ilwuKey=function(n){ const k=String(n||'').toUpperCase().replace(/[^A-Z]/g,'');
+  const AL={TOPHANDLER:'CRANETOPHANDLER',TOPHANDLERS:'CRANETOPHANDLER',CTH:'CRANETOPHANDLER',SWMP:'SWAMPER',MECH:'MECHANIC',MECHS:'MECHANIC',CARP:'CARPENTER'};
+  if(AL[k])return AL[k]; return k.length>2?k.replace(/S$/,''):k; };
+window.ilwuRank=function(n){ const k=ilwuKey(n); for(let i=0;i<ILWU_BOARDS.length;i++){ if(ilwuKey(ILWU_BOARDS[i])===k)return i; } return 999; };
+window.ilwuSortBoards=function(names,val){ return names.slice().sort(function(a,b){ return (ilwuRank(a)-ilwuRank(b))||(val?((+val(b)||0)-(+val(a)||0)):0); }); };
+/* the editor's rows: every board on the paper, in its order (the sheet's own name and number where it has one, blank
+   where it doesn't — a blank row is never saved), then anything else the sheet carries */
+window.ilwuRows=function(boards){ boards=boards||{}; const used={}, out=[], tot=function(nm){ return (boards[nm]&&boards[nm].total)!=null?boards[nm].total:0; };
+  ILWU_BOARDS.forEach(function(c){ const nm=Object.keys(boards).find(function(x){ return !used[x]&&ilwuKey(x)===ilwuKey(c); });
+    if(nm){ used[nm]=1; out.push([nm,tot(nm)]); } else out.push([c,'']); });
+  ilwuSortBoards(Object.keys(boards).filter(function(x){ return !used[x]; }),tot).forEach(function(nm){ out.push([nm,tot(nm)]); });
+  return out; };
+/* #hallcas(oct11) — the hall's casual count: the four casual boards on the sheet (Hold · UTR · Dock · Swamper — #four),
+   or the sheet's stated casual figure when it has no rows. Same rule as the Dispatch Post's CASUAL tile. */
+window.sheetFourCas=function(d){ if(!d)return null; let s=0, seen=false;
+  if(d.boards&&typeof d.boards==='object')for(const nm in d.boards){ const k=ilwuKey(nm); if(k!=='HOLD'&&k!=='UTR'&&k!=='DOCK'&&k!=='SWAMPER')continue;
+    const n=Number(d.boards[nm]&&d.boards[nm].total); if(isFinite(n)){ s+=n; seen=true; } }
+  if(seen)return s; const c=(d.total&&typeof d.total==='object')?Number(d.total.cas):NaN; return (isFinite(c)&&c>0)?c:null; };
 window.addDispatchData=function(key,data){   // ← the dispatch bot calls this with each new sheet
   if(data&&data.cleared){   /* #clearsheet */
     if(!(data.boards||data.total!=null||data.early)){ _clearSheetLocal(key); return; }
@@ -20795,8 +20821,13 @@ function renderRecentBoards(){
       let G={tot:null,hall:null,cas:null};
       try{ const pmx=(window.PMALAD&&PMALAD.pmaOf)?PMALAD.pmaOf(key):null;
         G.tot=(pmx&&pmx.ls)?pmx.ls[4]:(r.tot||null);
-        G.hall=(pmx?((pmx.f&&pmx.h)?pmx.h:pmx.nc):null)||(dd&&typeof sheetGrandTotal==='function'?sheetGrandTotal(dd):null);
-        G.cas=dd?(sheetTotals(dd).cas):null; }catch(_e){}
+        /* #hallcas(oct11) — "it's showing more jobs for casual than the big hall — that doesn't make sense, the union's
+           number is always higher, we get the jobs from them." HALL was PMA's new orders (781) and CASUAL every board
+           but the members' (903) — two documents, two ideas of casual. Both now come off the ILWU sheet, the way the
+           Dispatch Post counts them: HALL = the sheet's total, CASUAL = the four casual boards. PMA fills HALL only
+           when there's no sheet. */
+        G.hall=(dd&&typeof sheetGrandTotal==='function'?sheetGrandTotal(dd):null)||(pmx?((pmx.f&&pmx.h)?pmx.h:pmx.nc):null);
+        G.cas=dd?((window.sheetFourCas&&sheetFourCas(dd))||sheetTotals(dd).cas):null; }catch(_e){}
       const _sp=(sp||0), _wk=Math.max(0,dn||0), _ne=Math.max(0,off||0), _fp=Math.max(0,_sp-_wk-_ne);
       const _usual=(!still&&att!=null)?rbUsualAtt(String(r.slot).endsWith('AM'),r.date):null;
       const RR=46, CC=2*Math.PI*RR, fw=_sp?_wk/_sp:0, fn=_sp?_ne/_sp:0;
@@ -21104,7 +21135,7 @@ function checkFix(key){
     const tI=iss.__total__, cI=iss.__cas__;
     h+='<div class="cf-r big'+(tI?' bad':'')+'"><span>TOTAL</span><input inputmode="numeric" data-k="'+pre+'__total__" value="'+(tt.total!=null?tt.total:'')+'">'+(tI?'<em>the boards add to <b data-use="'+tI.boards+'">'+n(tI.boards)+'</b>'+(tI.cols?' · the totals row says <b data-use="'+tI.cols+'">'+n(tI.cols)+'</b>':'')+'</em>':'')+'</div>';
     h+='<div class="cf-r big'+(cI?' bad':'')+'"><span>CASUAL</span><input inputmode="numeric" data-k="'+pre+'__cas__" value="'+(tt.cas!=null?tt.cas:'')+'" placeholder="from the rows">'+(cI?'<em>the casual rows add to <b data-use="'+cI.rows+'">'+n(cI.rows)+'</b></em>':'')+'</div>';
-    Object.keys(dd.boards||{}).forEach(k=>{ const r=dd.boards[k]||{}, I=iss[k];
+    (window.ilwuSortBoards?ilwuSortBoards(Object.keys(dd.boards||{}),x=>dd.boards[x]&&dd.boards[x].total):Object.keys(dd.boards||{})).forEach(k=>{ const r=dd.boards[k]||{}, I=iss[k];   /* #ilwuorder */
       h+='<div class="cf-r'+(I?' bad':'')+'"><span>'+acEsc(k)+'</span><input inputmode="numeric" data-k="'+pre+acEsc(k)+'" value="'+(r.total!=null?r.total:'')+'">'+(I?'<em>its own columns add to <b data-use="'+I.cols+'">'+n(I.cols)+'</b></em>':'')+'</div>'; });
     h+='</div>'; });
   h+='<button type="button" class="cf-save">✓ Save — this is what the paper says</button><div class="cf-msg"></div>';
@@ -40358,12 +40389,11 @@ try{window.__bootProg&&__bootProg(90)}catch(e){}   /* #realboot — yards charte
       {const c=document.getElementById('shCasual'); if(c) c.value=(s.total&&s.total.cas!=null)?s.total.cas:'';}
       document.getElementById('shFlops').value=(s.flops!=null)?s.flops:'';
       const box=document.getElementById('shBoards');
-      const names=s.boards?Object.keys(s.boards).sort((a,b)=>((s.boards[b]&&s.boards[b].total)||0)-((s.boards[a]&&s.boards[a].total)||0)):[];
+      const rows=window.ilwuRows(s.boards);   /* #ilwuorder — the paper's order, every board, blank where the sheet has none */
       const rowH=(nm,v)=>'<div class="shRow" style="display:flex;gap:8px;margin:4px 0">'
         +'<input class="shN" value="'+esc(nm)+'" placeholder="board name" style="flex:1;background:#0b0d0f;border:1px solid rgba(122,130,138,.35);color:#c9d1d9;border-radius:7px;font:12px monospace;padding:6px 8px">'
         +'<input class="shV" value="'+(v!=null?v:'')+'" type="number" inputmode="numeric" placeholder="jobs" style="flex:0 0 84px;background:#0b0d0f;border:1px solid rgba(122,130,138,.35);color:#eeb46b;border-radius:7px;font:12px monospace;padding:6px 8px;text-align:right"></div>';
-      box.innerHTML=names.map(nm=>rowH(nm,(s.boards[nm]&&s.boards[nm].total)!=null?s.boards[nm].total:0)).join('')||'';
-      if(!names.length) ['Hold','UTR','CY','Swamper','Dock','Jitney','Gear','Casual'].forEach(nm=>box.insertAdjacentHTML('beforeend',rowH(nm,'')));
+      box.innerHTML=rows.map(r=>rowH(r[0],r[1])).join('');
       _shRaw0=JSON.stringify(s,null,2);
       const ta=document.getElementById('shRaw'); if(ta) ta.value=_shRaw0;
       const m=document.getElementById('shMsg'); if(m) m.textContent='';
