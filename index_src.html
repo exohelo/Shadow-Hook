@@ -8,7 +8,8 @@
    (with the page's own byte size beside it), so a phone still serving an older index.html
    from the service-worker cache can be told from one on the current build. BUMP IT WITH
    EVERY DEPLOY — it is the one line in this file that should change every time. */
-window.SHK_BUILD='oct12u';   /* oct 11 (163rd) — #clearsheet: the Keymaster takes a sheet off a board it landed on by mistake (pre-post editor) · #lockcall: once the flex call goes out the call stays locked for the whole dispatch · #nobighall2: the BIG HALL tile is off the Dispatch Post. */
+window.SHK_BUILD='oct12v';   /* oct 11 (164th) — THE ALARMS PASS: #floorflush (the 13px text floor works in one budget per frame and lifts text without firing its transitions — the 37× font-size/letter-spacing and flush2 entries) · #minutelock (the minute tick leaves a locked call alone) · #dwsteps (a drop_wire pull repaints in steps) · #hotwait (What's Hot waits while the Room covers it) · #hallcheap (no layout read for the Hall off its tab) · #hwlrest (the Halloween lake rests while the app is away). */
+/* was: oct12u */   /* oct 11 (163rd) — #clearsheet: the Keymaster takes a sheet off a board it landed on by mistake (pre-post editor) · #lockcall: once the flex call goes out the call stays locked for the whole dispatch · #nobighall2: the BIG HALL tile is off the Dispatch Post. */
 /* was: oct12t */   /* oct12t:   /* oct 8 (152nd) — a record opens at the TOP of the post on ALL; it had been scrolling down to the tab bar as if ALL were a destination like CHAT or the gallery (#recall). */
 /* was: oct10build */   /* oct 10 (162nd) — TWO GAMES ON THE HALL (#games): ❓ DOCK TRIVIA (trivia.js) and 💌 MESSY ON DA DOCKS · Singles & Cheaters (dates.js: full-page room, sexy dock aliases or your own, who you are / who you're into with mutual matching, phone-to-phone encryption over the broadcast — ECDH→AES-GCM — a ghost on the floor while inside, rate the date after, anonymous flags: three = a suspension, a week / two / a month), each its own file fetched on the first tap, same as sc.js — nothing of either is parsed at boot; index.html holds two What's Hot cards, a 20-line loader (#gameslazy) and the Desk's two new kinds (trivq: a member's question, sealed → trivia_approve · datereport: the last 20 lines of a date). Trivia is graded in Supabase (GAMES.sql) — the answer never reaches the phone; 5 ⬡ a side, winner takes 10, through the same bucks_book THE BANK reads; the first 50 questions are seeded. Messy pairs over a realtime broadcast channel — no table, nothing of the chat stored; good standing = not locked, not suspended. Upload trivia.js and dates.js beside index.html; precache them in sw.js with sc.js. */
 /* was: oct9build */   /* oct 9 (161st) — THE SMOOTHNESS PASS, done unattended: (1) #quietsheets — the 52 closed sheets and rooms skip style/layout/paint (content-visibility:hidden); a :root variable write measured 39 ms → 21 ms on a desktop, ~5× that on a phone. (2) #covered — html.covered while a room or the Chamber is up, set by a small observer (not :has()); the scene under it rests. (3) #onefreeze — one freeze of 4 s+ puts that phone on lite effects for the week; the Keymaster's FULL flag still wins. (4) #build — index.html is now BUILT from index.src.html (node build.mjs): comments and whitespace out, names kept; 5.3 MB → 3.7 MB, boot parse+run 738 → 509 ms on a desktop. Edit the .src file; serve the built one. */
@@ -14572,10 +14573,14 @@ function _minuteRecalc(force){
     const k=_predKey();
     sig=JSON.stringify([k, pendingStartCard(), (k===dropKey()?((dropUnion().total||0)+'|'+JSON.stringify(dropUnion().ck||{})):0), Object.keys(DISPATCH_DATA).length,
       live, (typeof startConfirmed==='function'?!!startConfirmed():1), callSlot, (live&&lastCall?lastCall.pos:0),   /* #liveanchor — a new board position re-figures the call within the minute */
-      (live&&(+window._pcMs||0)<1500?Math.floor(Date.now()/60000):0)]);   /* #dispatchpost(oct6) — and while the board is live, every minute: the live anchor reads the clock. A phone that needs 1.5 s+ to figure the call keeps the 3-minute safety instead (#minutecheap). */
+      (live&&!CALL_HOLD&&(+window._pcMs||0)<1500?Math.floor(Date.now()/60000):0)]);   /* #minutelock — the per-minute term fed the live anchor, which is off while the call holds */   /* #dispatchpost(oct6) — and while the board is live, every minute: the live anchor reads the clock. A phone that needs 1.5 s+ to figure the call keeps the 3-minute safety instead (#minutecheap). */
   }catch(e){ sig='x'+Date.now(); }
   const safety=(live?3:15)*60000;
-  if(!force&&sig===_mrSig&&Date.now()-_mrAt<safety)return;
+  /* #minutelock(oct11) — THE ALARMS, oct 10–11: REALLYARANDOM "interval ~const n=nowLA() 1879ms" at 6:55 AM and
+     MAD_SILVER_55 2894ms — this tick re-running the whole engine mid-dispatch. Once the call is locked (#lockcall)
+     the engine can't move it, so neither the per-minute term nor the 3-minute safety re-figures a locked call;
+     only a real change in what the tick can see (the signature) still does. */
+  if(!force&&sig===_mrSig&&(Date.now()-_mrAt<safety||(typeof callLockOn==='function'&&callLockOn()&&callHoldGet(_predKey()))))return;
   _mrSig=sig; _mrAt=Date.now();
   const _pc0=(window.performance&&performance.now)?performance.now():Date.now();
   publishCall();
@@ -17077,6 +17082,20 @@ setTimeout(function(){ try{dropScaleFetch(false);}catch(e){} },9000);
 setInterval(function(){ try{ if(document.visibilityState==='visible')dropScaleFetch(false); }catch(e){} },30*60000);
 /* #holdcall(oct7) — the call that stands during dispatch (see publishCall) */
 const CALL_HOLD=true;
+/* #lockcall(oct11) — the lock runs from the board's flex call until the clock rolls to the next board (9:30 AM /
+   7:00 PM). NOT liveWindow(): that goes false the moment a board reads "sealed" — an end card a casual logs, the
+   hotline's reading, the early sheet — which can land mid-dispatch, and every one of those released the old hold
+   and re-figured the call with the morning's drops in it. */
+function callLockOn(){
+  try{
+    if(!CALL_HOLD)return false;
+    const n=nowLA(), k=_predKey();
+    const iso=n.getFullYear()+"-"+String(n.getMonth()+1).padStart(2,"0")+"-"+String(n.getDate()).padStart(2,"0");
+    if(k.slice(0,10)!==iso)return false;                    // the pending board isn't today's — nothing has gone out yet
+    const mm=n.getHours()*60+n.getMinutes();
+    return String(callSlot).endsWith("AM")?mm>=6*60+30:mm>=16*60+30;
+  }catch(e){ return false; }
+}
 function callHoldGet(key,start){ try{ const o=JSON.parse(localStorage.getItem('shadowhook_callhold')||'{}')[key];
   return (o&&(start==null||o.s===start)&&Array.isArray(o.pmf)&&o.pmf.length)?o:null; }catch(e){ return null; } }
 function callHoldPut(key,start,pmf,raw,live){ try{
@@ -17106,8 +17125,9 @@ function publishCall(){
      the flex call goes out, the call on file for the board stands no matter what: its own start card anchors the
      letters, a changed record can neither release it nor blank it, and nothing overwrites it until the board ends.
      A phone that opens mid-dispatch with nothing on file figures the call from what was known BEFORE the flex
-     (no drop count, no live anchor) and locks that. */
-  const _lk=(CALL_HOLD&&liveWindow())?callHoldGet(_predKey()):null;
+     (no drop count, no live anchor) and locks that. The lock runs flex → the next board (callLockOn), so a board
+     that reads sealed early (an end card, the hotline, the early sheet) keeps its call too. */
+  const _lockOn=callLockOn(), _lk=_lockOn?callHoldGet(_predKey()):null;
   if(!_lk && typeof startConfirmed==='function' && !startConfirmed()){
     window._lastCall=null; window._lastStageO=null; window._predSource=null;
     window._publishedKey=_predKey();
@@ -17129,7 +17149,7 @@ function publishCall(){
   let _dropTot=0, _dropRaw=0;
   try{ if(key===dropKey()){ _dropRaw=(dropUnion().total||0); _dropTot=Math.round(_dropRaw*dropScale()); } }catch(e){}   /* #dispatchpost — on PMA's scale (dropScale) */
   try{ window._dropScaled=_dropRaw?{raw:_dropRaw,scaled:_dropTot,scale:dropScale()}:null; }catch(e){}
-  if(CALL_HOLD&&live)_dropTot=0;   /* #lockcall — the drop count is shown, never figured into a locked dispatch's call */
+  if(_lockOn)_dropTot=0;   /* #lockcall — the drop count is shown, never figured into a locked dispatch's call */
   const isAM=callSlot.endsWith("AM");
   const dowIdx={Mon:0,Tue:1,Wed:2,Thu:3,Fri:4,Sat:5,Sun:6}[callSlot.slice(0,3)];
   let pmf,mom,source;
@@ -17300,7 +17320,7 @@ function publishCall(){
   }catch(_lae){ window._liveAnchor=null; }
   if(CALL_HOLD){ try{
     if(_hold){ pmf=_hold.pmf.slice(); if(_hold.raw)pmfRaw=_hold.raw.slice(); }   /* #holdcall — dispatch is on: the pre-run call stands */
-    else callHoldPut(key,lastStart,pmf,pmfRaw,live);                            /* before dispatch the latest call is the one that will stand */
+    else callHoldPut(key,lastStart,pmf,pmfRaw,_lockOn);   /* #lockcall — once the flex is out, the first call on file is never overwritten */                            /* before dispatch the latest call is the one that will stand */
   }catch(_he){} }
   SH_PMF=pmf; SH_PMF_RAW=pmfRaw;   /* #ffsync — the forecast's pending cell reads both */
   const cum=[]; let c=0; pmf.forEach(x=>{c+=x;cum.push(c);});
@@ -17356,7 +17376,7 @@ function publishCall(){
      during the live run the call re-figures off real member scans, and scoring
      THAT against the seal would grade the bot on an open-book exam. The last
      pre-run call is the one that stands. */
-  try{ if(!liveWindow()){
+  try{ if(!liveWindow()&&!_lockOn){   /* #lockcall — after the flex the snapshot is history, sealed or not */
     /* #totshadow(aug20) — the total-aware side-bet: same pmf, 65/35 blended with the
        dormant spillover model on the union-scale EWMA. Snapshotted, never published. */
     let _p2=null;
@@ -21917,9 +21937,12 @@ async function dwPull(){
       window.__dwSig=_sig;
       try{dropHeal();}catch(e){}   /* #dlmine — own rows this phone lost come home first */
       try{dropCommit();}catch(e){}
-      try{renderDropLog();}catch(e){}
-      try{renderRecentBoards();}catch(e){}
-      try{repredict();}catch(e){}   /* #liverecalc — another casual's ears move YOUR call */
+      /* #dwsteps(oct11) — THE ALARMS, oct 10 4:58 PM: RICKY, "long task 3.3s · replies: drop_wire 2 rows 3800ms ·
+         Response.text.then 3321ms". Two rows — the cost was everything after them: the Drop Log, the whole record and
+         the call, in one task. The data lands at once (above); the three repaints each get their own task, same order,
+         the way #redrawsplit did for the PMA sheet. */
+      const _dws=[()=>renderDropLog(),()=>renderRecentBoards(),()=>repredict()];   /* #liverecalc — another casual's ears move YOUR call */
+      (function _dwn(){ const f=_dws.shift(); if(!f)return; try{ f(); }catch(e){} if(_dws.length)setTimeout(_dwn,0); })();
     }
   }catch(e){}
 }
@@ -29531,7 +29554,15 @@ function _flRepaint(){
     /* #social2 — presence only moves the counts: repaint What's Hot, the stat strip and
        an open tile sheet. The board underneath stays put (no photo flicker, no replayed
        fade-in, no restarted clip covers) — it has nothing presence could change. */
-    try{ if(typeof renderHot==='function')renderHot(); else if(typeof renderSocialFeed==='function')renderSocialFeed(); }catch(e){}
+    /* #hotwait(oct11) — THE ALARMS, oct 11 6:55 AM: REALLYARANDOM, "timer ~try{typeof renderHot==… 438ms" with the Room
+       open on top of the Hall. Off screen (another tab, the Room over it, the app away) the strip isn't drawn: it's marked
+       stale and drawn the moment it can be seen again (the Hall's 1 s clock picks it up). */
+    try{
+      const _f=document.getElementById('socialFeed'), _sc=_f&&_f.closest('.screen'), _rm=document.getElementById('dpRoom');
+      const _seen=document.visibilityState!=='hidden'&&(!_sc||_sc.classList.contains('on'))&&!(_rm&&_rm.classList.contains('on'));
+      if(!_seen&&typeof renderHot==='function'&&_f&&_f.querySelector('#hotSec')){ window._hotStale=true; }
+      else { window._hotStale=false; if(typeof renderHot==='function')renderHot(); else if(typeof renderSocialFeed==='function')renderSocialFeed(); }
+    }catch(e){}
     try{ if(typeof renderHallStats==='function')renderHallStats(); }catch(e){}
     try{ if(typeof socSheetRepaint==='function')socSheetRepaint(); }catch(e){}
   },600);
@@ -58038,34 +58069,67 @@ html.daylight .hbc{background:rgba(0,0,0,.025)}
    grows: margins, padding and boxes keep their size, unlike the app-wide zoom, which scales everything.
    Skips the drawings (SVG, the season decor, the banner art) and anything marked data-nofloor. */
 (function(){try{
+  /* ═══ #floorflush(oct11) — THE FLOOR WAS TWO OF THE ALARMS ═══
+     THE ALARMS, oct 10: "flush2 312ms" (MAD_SILVER_55) and "flush2@906 (FrameRequestCallback) 325ms" (RICKY) — flush2 is
+     this flush. Every node a redraw added got its OWN sweep, and each sweep spent up to 12 ms before yielding, all inside
+     one animation frame: thirty new nodes, ~360 ms of locked page. Now every queued node feeds ONE work list, worked
+     8 ms a frame, the rest on idle time; a node already inside a queued node isn't walked twice.
+     And the "37×~font-size 37×~letter-spacing" animations on MAD_SILVER_55's reports were this floor too: a lifted
+     label whose rule has a shorthand transition (transition:.2s = all) ANIMATED the jump to 13px — and its em
+     letter-spacing with it — re-laying out its text every frame. A lift now lands with transitions off for that one
+     element, and its own transition comes back two frames later, after the new size is in. */
   var FLOOR=13;
   window.TEXT_FLOOR=FLOOR;
   var SKIP='svg,svg *,canvas,.sn-decor,.sn-decor *,#snBanner .bn-art,#snBanner .bn-art *,#gooSplash,#gooSplash *,[data-nofloor],[data-nofloor] *,script,style,noscript,video,img,iframe,br,hr';
+  var idle=window.requestIdleCallback||function(f){return setTimeout(function(){f()},16)};
   function hasText(el){
     if(el.tagName==='INPUT'||el.tagName==='TEXTAREA'||el.tagName==='SELECT'||el.tagName==='BUTTON'||el.tagName==='OPTION')return true;
     for(var n=el.firstChild;n;n=n.nextSibling){ if(n.nodeType===3&&/\S/.test(n.nodeValue))return true; }
     return false;
   }
+  var held=[];   /* lifted elements whose transitions are parked until the new size has been drawn */
   function lift(el){
     try{ if(el.nodeType!==1||el._tf===FLOOR||el.matches(SKIP)||!hasText(el))return;
-      var fs=parseFloat(getComputedStyle(el).fontSize);
-      if(fs&&fs<FLOOR-.01){ el.style.setProperty('font-size',FLOOR+'px','important'); }
+      var cs=getComputedStyle(el), fs=parseFloat(cs.fontSize);
+      if(fs&&fs<FLOOR-.01){
+        if(/[1-9]/.test(cs.transitionDuration||'')){
+          held.push([el,el.style.getPropertyValue('transition'),el.style.getPropertyPriority('transition')]);
+          el.style.setProperty('transition','none','important');
+        }
+        el.style.setProperty('font-size',FLOOR+'px','important');
+      }
       el._tf=FLOOR;
     }catch(e){}
   }
-  function sweep(root,done){
-    var all=(root.nodeType===1?[root]:[]).concat(Array.prototype.slice.call((root.querySelectorAll?root:document).querySelectorAll('*')));
-    var i=0;
-    (function chunk(dl){
-      var t0=Date.now();
-      while(i<all.length&&(Date.now()-t0<12)){ lift(all[i++]); }
-      if(i<all.length){ (window.requestIdleCallback||function(f){return setTimeout(function(){f()},16)})(chunk); } else if(done)done();
-    })();
+  function release(){
+    if(!held.length)return;
+    var h=held; held=[];
+    requestAnimationFrame(function(){ requestAnimationFrame(function(){
+      h.forEach(function(x){ try{ if(x[1])x[0].style.setProperty('transition',x[1],x[2]); else x[0].style.removeProperty('transition'); }catch(e){} });
+    }); });
   }
+  var work=[], wi=0, running=false;
+  function add(root){
+    if(!root||root.nodeType!==1||!root.isConnected)return;
+    work.push(root);
+    var d=root.querySelectorAll('*'); for(var i=0;i<d.length;i++)work.push(d[i]);
+  }
+  function pump(){
+    var t0=Date.now();
+    while(wi<work.length&&Date.now()-t0<8){ lift(work[wi++]); }
+    if(wi<work.length){ idle(pump); return; }
+    work=[]; wi=0; running=false; release();
+  }
+  function go(){ if(!running&&work.length){ running=true; pump(); } }
   var queue=[], queued=false;
-  function flush(){ queued=false; var q=queue; queue=[]; q.forEach(function(n){ if(n.isConnected)sweep(n); }); }
+  function flush(){
+    queued=false; var q=queue; queue=[];
+    q=q.filter(function(n){ return n.isConnected; });
+    q.forEach(function(n){ for(var j=0;j<q.length;j++){ if(q[j]!==n&&q[j].contains(n))return; } add(n); });   /* a node inside another queued node is walked with it */
+    go();
+  }
   function boot(){
-    sweep(document.body);
+    add(document.body); go();
     new MutationObserver(function(ms){
       ms.forEach(function(m){ for(var k=0;k<m.addedNodes.length;k++){ var n=m.addedNodes[k];
         if(n.nodeType===1)queue.push(n); else if(n.nodeType===3&&m.target&&m.target.nodeType===1){ m.target._tf=0; queue.push(m.target); } } });
@@ -58074,6 +58138,19 @@ html.daylight .hbc{background:rgba(0,0,0,.025)}
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot); else boot();
 }catch(e){ try{console.warn('[textfloor]',e)}catch(_){} }})();
+/* ═══ #hwlrest(oct11) — THE LAKE RESTS WHILE THE APP IS AWAY ═══
+   THE ALARMS, oct 10–11: AMIGO 2.7 s and EASTGOCRAZY 2.6 s on #scr-dockets, both right after "win focus", no script
+   named, 56 animations live — 18 candle glows, 12 embers and the creeping frame of the Halloween lake among them.
+   While the app is in the background or the window has lost focus, the lake's animations pause; coming back, they
+   wait 900 ms, so the first frames after a return go to the page instead of 30-odd animations catching up. */
+(function(){try{
+  var de=document.documentElement, t=0;
+  function rest(){ clearTimeout(t); de.classList.add('shk-rest'); }
+  function wake(){ clearTimeout(t); t=setTimeout(function(){ if(document.visibilityState!=='hidden')de.classList.remove('shk-rest'); },900); }
+  document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='hidden')rest(); else wake(); });
+  window.addEventListener('blur',rest); window.addEventListener('focus',wake);
+  window.addEventListener('pagehide',rest); window.addEventListener('pageshow',wake);
+}catch(e){} })();
 </script>
 <style>
 /* #hwlamps(sep29) — CANDLES IN THE PUMPKINS. Every screen title gets a little still life beside it:
@@ -58135,6 +58212,7 @@ html.season-halloween.daylight .screen-title::before{animation:none;filter:drop-
 @keyframes hwlEmber{0%{transform:translate(0,0);opacity:0}8%{opacity:.9}50%{transform:translate(calc(var(--dx) * -.5),-48vh);opacity:.7}
   85%{opacity:.35}100%{transform:translate(var(--dx),-92vh);opacity:0}}
 @media (prefers-reduced-motion:reduce){.hwl-frame,.hwl-frame .g,.hwl-moon,.hwl-embers b{animation:none}.hwl-embers{display:none}}
+html.shk-rest .hwl-frame,html.shk-rest .hwl-frame .g,html.shk-rest .hwl-moon,html.shk-rest .hwl-embers b{animation-play-state:paused}   /* #hwlrest — see the script under the text floor */
 html.daylight .hwl-embers{display:none}
 </style>
 <style>
@@ -58808,6 +58886,7 @@ html.daylight .dp-gt{box-shadow:none}
 .dp-ed-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .dp-ed-f{display:flex;flex-direction:column;gap:4px;min-width:0}
 .dp-ed-f.wide{grid-column:1/-1}
+.dp-ed-f.span2{grid-column:span 2}   /* #nobighall2 — PREDICTION fills the gap BIG HALL left */
 .dp-ed-f>span{font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;letter-spacing:.1em;color:var(--steel);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dp-ed-f em,.dp-ed-kb summary em{font-style:normal;font-family:var(--dp-inter);font-size:13px;font-weight:500;letter-spacing:0;opacity:.85}
 .dp-ed-f input,.dp-ed-f textarea{width:100%;box-sizing:border-box;min-width:0;padding:10px 11px;border-radius:10px;border:1px solid var(--line);background:var(--well);color:var(--bone);font-family:var(--dp-inter);font-size:16px;outline:none}
@@ -59649,7 +59728,12 @@ let _rq=0;
 function dpRefresh(){ if(_rq)return; _rq=setTimeout(function(){ _rq=0; try{ paint(); }catch(e){ try{ console.warn('[dispatch post] paint',e); }catch(_){} } },140); }
 window.dpRefresh=dpRefresh; DP.refresh=dpRefresh;
 function feedHost(){ return document.getElementById('socialFeed'); }
-function hallOnScreen(){ const f=feedHost(); return !!(f&&f.offsetParent!==null&&document.visibilityState!=='hidden'); }
+/* #hallcheap(oct11) — offsetParent forces a full layout, and the 1 s clock and the 4 s flyer check asked it from every tab
+   (THE ALARMS: 361 ms / 326 ms on those cheap timers — paying for layout the page had already dirtied). Off the Hall's
+   tab the answer is a class check; on it, the layout read stays, so a hidden pane inside the tab still reads hidden. */
+function hallOnScreen(){ const f=feedHost(); if(!f||document.visibilityState==='hidden')return false;
+  const sc=f.closest('.screen'); if(sc&&!sc.classList.contains('on'))return false;
+  return f.offsetParent!==null; }
 /* the countdown ticks on its own (the 1 s clock writes it) — a post whose only change is the countdown isn't a change */
 function stableHTML(x){ return String(x||'').replace(/(data-dpcd="[^"]*">)[^<]*/g,'$1'); }
 /* the photo strip keeps where a thumb left it across a repaint */
@@ -59751,6 +59835,7 @@ setInterval(function(){
   document.querySelectorAll('[data-dpcd]').forEach(el=>{ const t=+el.getAttribute('data-dpcd'); if(t)el.textContent=hms(t-now); });
   try{ const P=pinned(), was=DP.pin; if(was&&(was.k!==P.k||was.phase!==P.phase))dpRefresh(); }catch(e){}
   try{ if((DP._dirty||DP._stale)&&hallOnScreen())dpRefresh(); }catch(e){}
+  try{ if(window._hotStale&&!roomIsOpen()&&hallOnScreen()&&typeof renderHot==='function'){ window._hotStale=false; renderHot(); } }catch(e){}   /* #hotwait */
   /* #prefill — the pre-post rides the dispatch sheet and PMA's summary: when a number there moves (a sheet lands,
      the Keymaster fixes one in the Sheet Editor, PMA re-posts), repaint now — not on the next 30 s sweep */
   try{ const P=DP.pin; if(P&&P.k&&P.phase==='pre'&&(hallOnScreen()||roomIsOpen())){ const c=callFor(P.k);
@@ -60650,7 +60735,7 @@ function openEdit(k){
   const app=(function(){ try{ return startOf(k,null)||''; }catch(e){ return ''; } })();
   const c=(function(){ try{ return callFor(k); }catch(e){ return null; } })();
   const fin=(Array.isArray(F.finishes)?F.finishes:String(F.finishes||'').split(/\n/)).map(x=>String(x).trim()).filter(Boolean).join('\n');
-  const inp=(f,lab,v,o)=>'<label class="dp-ed-f'+((o&&o.wide)?' wide':'')+'"><span>'+lab+(o&&o.em?' <em>'+o.em+'</em>':'')+'</span><input type="text" data-f="'+f+'" value="'+h(v==null?'':v)+'"'+((o&&o.num)?' inputmode="numeric" maxlength="6"':'')+((o&&o.ph)?' placeholder="'+h(o.ph)+'"':'')+((o&&o.max)?' maxlength="'+o.max+'"':'')+((o&&o.caps)?' autocapitalize="characters"':'')+' autocomplete="off"></label>';
+  const inp=(f,lab,v,o)=>'<label class="dp-ed-f'+((o&&o.wide)?' wide':'')+((o&&o.span2)?' span2':'')+'"><span>'+lab+(o&&o.em?' <em>'+o.em+'</em>':'')+'</span><input type="text" data-f="'+f+'" value="'+h(v==null?'':v)+'"'+((o&&o.num)?' inputmode="numeric" maxlength="6"':'')+((o&&o.ph)?' placeholder="'+h(o.ph)+'"':'')+((o&&o.max)?' maxlength="'+o.max+'"':'')+((o&&o.caps)?' autocapitalize="characters"':'')+' autocomplete="off"></label>';
   /* #prefill — a number the sheets already carry is shown locked, with where it came from: the fix goes on the sheet */
   const src=a=>(a.src==='PMA'?'PMA':(a.src==='ILWU early'?'ILWU early':'ILWU'));   /* #ilwutag */
   const lock=(f,lab)=>{ const a=A[f]; return '<label class="dp-ed-f auto"><span>'+lab+'</span><input type="text" data-f="'+f+'" value="'+h(typeof a.v==='number'?fmt(a.v):a.v)+'" disabled aria-label="'+h(lab)+' — from '+h(src(a))+'"><small class="from">'+h(src(a))+'</small></label>'; };
@@ -60666,7 +60751,7 @@ function openEdit(k){
       +fld('final','CASUAL',F.final,{num:true})
       +fld('comebacks','COMEBACKS',F.comebacks,{num:true})
       +fld('total','TOTAL',F.total,{num:true})
-      +inp('pred','PREDICTION',F.pred,{max:24,ph:(c&&c.stop?'app says '+c.stop:'Show up')})
+      +inp('pred','PREDICTION',F.pred,{span2:true,max:24,ph:(c&&c.stop?'app says '+c.stop:'Show up')})
     +'</div>'
     +'<div class="dp-ed-chips"><button type="button" data-pred="Show up">SHOW UP</button><button type="button" data-pred="Long shot">LONG SHOT</button><button type="button" data-pred="Stay home">STAY HOME</button></div>'
     +(A.finishes?'<label class="dp-ed-f wide auto"><span>SCHEDULED FINISHES <em>PMA</em></span><textarea data-f="finishes" rows="'+Math.min(6,Math.max(2,A.finishes.v.length))+'" disabled>'+h(A.finishes.v.join('\n'))+'</textarea></label>'
