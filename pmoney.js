@@ -32,6 +32,10 @@
         'border-radius:999px;padding:4px 8px}'+
       '#pmCasino iframe{flex:1;width:100%;border:0;background:#14021f;display:block}'+
       'html.pm-lock,html.pm-lock body{overflow:hidden}'+
+      '#pmCasino .pm-miss{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:28px;text-align:center;color:#fff4e0;font:500 15px/1.45 system-ui,sans-serif}'+
+      '#pmCasino .pm-miss b{font-family:Bungee,sans-serif;font-weight:400;font-size:17px;color:#ffd54a}'+
+      '#pmCasino .pm-miss span{max-width:34ch;color:#d9c4ff}'+
+      '#pmCasino .pm-miss code{color:#ff8fd0}'+
       '@media (prefers-reduced-motion:reduce){#pmCasino.on{animation:none}}';
     document.head.appendChild(st);
   }
@@ -50,10 +54,54 @@
     el.querySelector('.pm-x').addEventListener('click',close);
   }
 
+  /* #pmguard(oct12) — NEVER THE APP INSIDE THE CASINO. When pmoney.html is missing, sw.js does exactly what it
+     should for a member's pages and hands back the saved index.html — so the frame filled with a second copy of the
+     whole app under the casino's bar. Now the page is asked for first and must carry <meta name="pmoney-casino">;
+     anything else (a 404, the app shell, a host that rewrites unknown paths to index.html) gets a plain message
+     and the frame stays empty, so no second app ever boots inside the first. */
+  var SRC=function(){return 'pmoney.html?v='+encodeURIComponent(window.SHK_BUILD||'');};
+  var verified=false;
+  function isCasino(html){return typeof html==='string'&&html.indexOf('name="pmoney-casino"')>-1;}
+  function fail(why){
+    var f=el.querySelector('iframe'); try{f.removeAttribute('src');}catch(e){}
+    f.style.display='none';
+    var m=el.querySelector('.pm-miss');
+    if(!m){m=document.createElement('div');m.className='pm-miss';el.appendChild(m);}
+    m.innerHTML='<b>The casino isn\u2019t on the server yet.</b><span>The app asked for <code>pmoney.html</code> and got '+why+
+      '. Upload <code>pmoney.html</code> beside <code>index.html</code>, then try again.</span>'+
+      '<button type="button" class="pm-x pm-retry">Try again</button>';
+    m.style.display='';
+    m.querySelector('.pm-retry').addEventListener('click',function(){m.style.display='none';f.style.display='';load();});
+    try{window.DEVLOG&&DEVLOG.data&&DEVLOG.data('casino',{ok:false,latest:'pmoney.html: '+why});}catch(e){}
+  }
+  function load(){
+    var f=el.querySelector('iframe');
+    fetch(SRC(),{cache:'no-store',credentials:'same-origin'}).then(function(r){
+      if(!r.ok)throw new Error('a '+r.status+' from the server');
+      return r.text();
+    }).then(function(t){
+      if(!isCasino(t))throw new Error('a different page (most likely the app itself)');
+      verified=true; f.setAttribute('src',SRC());
+    }).catch(function(err){
+      /* no signal: the service worker may still hold a good copy from an earlier visit — let the frame try it,
+         and the load check below throws it out if it isn't the casino */
+      if(!navigator.onLine){f.setAttribute('src',SRC());return;}
+      fail(err&&err.message?err.message:'no answer');
+    });
+  }
+  function onFrameLoad(){
+    var f=el.querySelector('iframe'); if(!f.getAttribute('src'))return;
+    try{
+      var d=f.contentDocument;
+      if(!d||!d.querySelector('meta[name="pmoney-casino"]'))fail('a different page (most likely the app itself)');
+    }catch(e){}
+  }
   function open(){
     if(!el)build();
     var f=el.querySelector('iframe');
-    if(!f.getAttribute('src'))f.setAttribute('src','pmoney.html?v='+encodeURIComponent(window.SHK_BUILD||''));
+    if(!f._pmHooked){f._pmHooked=true;f.addEventListener('load',onFrameLoad);}
+    if(!f.getAttribute('src')&&!(el.querySelector('.pm-miss')&&el.querySelector('.pm-miss').style.display!=='none'))load();
+    else if(el.querySelector('.pm-miss')&&el.querySelector('.pm-miss').style.display!=='none'){el.querySelector('.pm-miss').style.display='none';f.style.display='';load();}
     el.classList.add('on');
     document.documentElement.classList.add('pm-lock');
     setTimeout(function(){try{f.focus()}catch(e){}},300);
