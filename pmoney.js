@@ -26,10 +26,11 @@
         'padding-bottom:env(safe-area-inset-bottom,0px)}'+
       '#pmCasino.on{display:flex;animation:pmIn .28s cubic-bezier(.2,.9,.3,1)}'+
       '@keyframes pmIn{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:none}}'+
-      '#pmCasino.below .pm-bar{padding-top:16px!important}'+
+      '#pmCasino .pm-bar{height:18px!important;padding:0!important;background:#2a0846!important;border-bottom:0!important;box-shadow:none!important}'+
+      '#pmCasino:not(.below) .pm-bar{height:calc(18px + env(safe-area-inset-top,0px))!important}'+
       '#pmCasino.drag{transition:none!important}'+
       '#pmCasino.snap{transition:transform .25s cubic-bezier(.2,.9,.3,1),opacity .25s}'+
-      '#pmCasino .pm-grip{position:absolute;left:50%;top:5px;width:44px;height:5px;margin-left:-22px;border-radius:3px;background:rgba(255,241,196,.55)}'+
+      '#pmCasino .pm-grip{position:absolute;left:50%;bottom:6px;width:44px;height:5px;margin-left:-22px;border-radius:3px;background:rgba(255,241,196,.55)}'+
       '#pmCasino .pm-bar{position:relative;flex:none;display:flex;align-items:center;gap:10px;touch-action:none;cursor:grab;user-select:none;'+
         'padding:calc(8px + env(safe-area-inset-top,0px)) 12px 8px;'+
         'background:linear-gradient(180deg,#4a0e7a,#2a0846);border-bottom:2px solid #ffd54a;'+
@@ -55,14 +56,12 @@
     el.setAttribute('role','dialog');
     el.setAttribute('aria-modal','true');
     el.setAttribute('aria-label','P Money Casino and Resort');
-    el.innerHTML='<div class="pm-bar"><i class="pm-grip" aria-hidden="true"></i><button type="button" class="pm-x">\u2039 The Order</button>'+
-      '<span class="pm-t">P Money Casino &amp; Resort</span><span class="pm-tag">Port Bucks</span></div>'+
+    el.innerHTML='<div class="pm-bar" aria-label="Pull down to close the casino"><i class="pm-grip" aria-hidden="true"></i></div>'+
       '<iframe title="P Money Casino and Resort" allow="autoplay"></iframe>';
     document.body.appendChild(el);
-    el.querySelector('.pm-x').addEventListener('click',close);
     /* #pmpull — pull the casino down to close it: drag the bar, or pull down from the very top of the casino */
     var bar=el.querySelector('.pm-bar'), y0=null, t0=0, dy=0;
-    bar.addEventListener('pointerdown',function(e){ if(e.target.closest('.pm-x'))return; y0=e.clientY; t0=Date.now(); dy=0; try{bar.setPointerCapture(e.pointerId);}catch(_){} });
+    bar.addEventListener('pointerdown',function(e){ y0=e.clientY; t0=Date.now(); dy=0; try{bar.setPointerCapture(e.pointerId);}catch(_){} });
     bar.addEventListener('pointermove',function(e){ if(y0==null)return; drag(e.clientY-y0); });
     function up(e){ if(y0==null)return; var d=e.clientY-y0; y0=null; dragEnd(d,d/Math.max(1,Date.now()-t0)); }
     bar.addEventListener('pointerup',up); bar.addEventListener('pointercancel',up);
