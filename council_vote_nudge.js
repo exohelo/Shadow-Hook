@@ -20,7 +20,7 @@
     st.textContent=
       '#vnPop{position:fixed;inset:0;z-index:400;display:flex;align-items:flex-end;justify-content:center;background:rgba(3,4,8,.72);'
       +'padding:16px 12px calc(16px + env(safe-area-inset-bottom,0px));opacity:0;transition:opacity .2s;font-family:"Barlow Condensed",Inter,system-ui,sans-serif}'
-      +'#vnPop.on{opacity:1}@media (min-width:560px){#vnPop{align-items:center}}'
+      +'#vnPop[hidden]{display:none!important}#vnPop.on{opacity:1}@media (min-width:560px){#vnPop{align-items:center}}'
       +'#vnPop .vn-box{width:100%;max-width:440px;max-height:calc(100% - 20px);overflow:auto;border-radius:18px;padding:18px 16px 16px;color:#f3ead6;'
       +'background:linear-gradient(180deg,#1c1626,#0d0b12);border:2px solid '+GOLD+';box-shadow:0 0 0 4px rgba(255,213,74,.12),0 18px 50px rgba(0,0,0,.6);'
       +'transform:translateY(24px);transition:transform .25s cubic-bezier(.2,.9,.3,1)}'
