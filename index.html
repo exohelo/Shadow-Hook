@@ -9130,10 +9130,11 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
     return {d:p[0],hr:(+p[1])%24}; }
   setInterval(function(){ if(document.hidden||!window.__shkUid||document.documentElement.classList.contains("at-gate"))return;
     var t=stamp(), k=t.d+"|"+t.hr+"|"+tab(); B[k]=(B[k]||0)+15; },15000);
-  function flush(){ var keys=Object.keys(B); if(!keys.length||!window.SB||!window.__shkUid||!navigator.onLine)return;
+  var ghostSent=null; function ghost(){ try{ return typeof K==="function"?localStorage.getItem(K("ghost"))==="1":null; }catch(e){ return null; } }
+  function flush(){ var keys=Object.keys(B), g=ghost(), sendG=(g!==null&&g!==ghostSent); if((!keys.length&&!sendG)||!window.SB||!window.__shkUid||!navigator.onLine)return;
     var rows=keys.map(function(k){var p=k.split("|");return {d:p[0],hr:+p[1],tab:p[2],secs:B[k]}}), keep=B; B={};
-    try{ window.SB.rpc("usage_log",{p_rows:rows}).then(function(r){ if(r&&r.error)Object.keys(keep).forEach(function(k){B[k]=(B[k]||0)+keep[k]}); },function(){ Object.keys(keep).forEach(function(k){B[k]=(B[k]||0)+keep[k]}); }); }catch(e){} }
-  setInterval(flush,300000);
+    try{ window.SB.rpc("usage_log",{p_rows:rows,p_ghost:g}).then(function(r){ if(r&&!r.error&&sendG)ghostSent=g; if(r&&r.error)Object.keys(keep).forEach(function(k){B[k]=(B[k]||0)+keep[k]}); },function(){ Object.keys(keep).forEach(function(k){B[k]=(B[k]||0)+keep[k]}); }); }catch(e){} }
+  setInterval(flush,300000); setTimeout(flush,45000);
   document.addEventListener("visibilitychange",function(){ if(document.hidden)flush(); });
   /* the Keymaster's panel: busiest hours, tabs, and who's online invisibly */
   var NAME={dockets:"Dockets",take:"Take",ports:"Ports",wire:"Wire",social:"Social",armory:"Armory",mayday:"Mayday",casino:"P Money casino",trivia:"Dock Trivia",messy:"Messy on da Docks",chamber:"The Chamber",dms:"Direct messages",rooms:"Rooms",other:"Other"};
@@ -9146,12 +9147,13 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
       var bars=hrs.map(function(h){var pc=Math.round(h.users/mx*100);return '<div title="'+lbl(h.hr)+' · '+h.users+' members · '+h.mins+' min" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:3px;min-width:0"><div style="width:100%;height:'+Math.max(2,pc*0.7)+'px;border-radius:3px 3px 0 0;background:'+(top&&h.hr===top.hr&&h.users?"#ffb45e":"rgba(255,180,94,.55)")+'"></div><span style="font-size:9px;color:var(--steel)">'+(h.hr%3===0?lbl(h.hr):"")+'</span></div>'}).join("");
       var tabs=u.tabs||[], tm=Math.max(1,...tabs.map(function(t){return t.mins}));
       var trows=tabs.length?tabs.map(function(t){return '<div style="display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:6px 0;border-bottom:1px solid var(--line-soft)"><span style="color:var(--bone)">'+(NAME[t.tab]||t.tab)+'</span><b style="color:var(--bone)">'+t.mins.toLocaleString()+' min</b><div style="grid-column:1/-1;height:5px;border-radius:3px;background:rgba(255,255,255,.06)"><div style="height:100%;width:'+Math.round(t.mins/tm*100)+'%;border-radius:3px;background:#ffb45e"></div></div><span style="grid-column:1/-1;font-size:11px;color:var(--steel)">'+t.users+' member'+(t.users===1?'':'s')+'</span></div>'}).join(""):'<div style="font-size:12px;color:var(--steel)">No time counted yet. It starts as members open the new version.</div>';
-      var pct=u.active7?Math.round(u.hidden/u.active7*1000)/10:0;
+      var gk=u.ghost_known||0, gp=gk?Math.round((u.ghost||0)/gk*1000)/10:0;
       box.innerHTML='<div style="font-size:11px;letter-spacing:.16em;color:#ffb45e;font-weight:700">BUSIEST HOURS \u00b7 LAST 7 DAYS \u00b7 PACIFIC</div>'
         +'<div style="display:flex;gap:2px;align-items:flex-end;height:90px;margin:8px 0 4px">'+bars+'</div>'
         +'<div style="font-size:12px;color:var(--steel);margin-bottom:12px">'+(top&&top.users?'Busiest: '+lbl(top.hr)+' \u00b7 '+top.users+' members. ':'')+(u.today_mins||0).toLocaleString()+' min in the app today.</div>'
         +'<div style="font-size:11px;letter-spacing:.16em;color:#ffb45e;font-weight:700;margin-bottom:4px">TIME BY TAB \u00b7 LAST 7 DAYS</div>'+trows
-        +'<div style="display:flex;justify-content:space-between;gap:10px;padding:10px 0 2px;margin-top:6px"><span>Online invisibly<br><small style="color:var(--steel)">of members active this week \u00b7 '+(u.hidden_all||0)+' of '+(u.members||0)+' members have it on</small></span><b style="color:var(--bone);white-space:nowrap">'+pct+'% \u00b7 '+(u.hidden||0)+'</b></div>'
+        +'<div style="display:flex;justify-content:space-between;gap:10px;padding:10px 0 2px;margin-top:6px"><span>Appear offline<br><small style="color:var(--steel)">'+(gk?'of '+gk+' active members whose phones have reported in':'phones report this once they open the new version')+'</small></span><b style="color:var(--bone);white-space:nowrap">'+gp+'% \u00b7 '+(u.ghost||0)+'</b></div>'
+        +'<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0 2px"><span>Hide when I was last on<br><small style="color:var(--steel)">members with it switched on</small></span><b style="color:var(--bone);white-space:nowrap">'+(u.hidden_all||0)+'</b></div>'
         +(u.since?'<div style="font-size:11px;color:var(--steel);margin-top:6px">Time counted since '+u.since+'.</div>':'');
     },function(){ box.textContent="Couldn\u2019t load usage."; });
   };
