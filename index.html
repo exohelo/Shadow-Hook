@@ -9184,7 +9184,7 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
   };
 })();
 </script>
-<!-- ===================== SHADOWHOOK TV (v24 · live channel) ===================== -->
+<!-- ===================== SHADOWHOOK TV (v26 · live channel) ===================== -->
 <style id="shtvCSS">
 :root{--sh-ease:cubic-bezier(.2,.8,.2,1);--sh-glass:rgba(255,255,255,.055);--sh-line:rgba(255,255,255,.09);--sh-ink:#f4f2fa;--sh-dim:rgba(244,242,250,.62);--sh-faint:rgba(244,242,250,.4);--sh-live:#ff2e63}
 .shtv-art{position:absolute;inset:0;overflow:hidden;background:#140f24}
@@ -9384,6 +9384,7 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
     screenSound: true,                    /* the Social tab screen plays with sound */
     coverSeconds: 3,                      /* logo layover stays over the first seconds of playback (hides TikTok's opening logo) */
     fadeOut: 3,                           /* logo layover comes back this many seconds before the end (hides TikTok's closing logo) */
+    audioFade: 1.2,                       /* seconds the sound takes to fade up as the logo lifts, and down as it returns */
     coverImage: ""                        /* optional: your own image for the cover (e.g. "shadowhook-tv-cover.png"); empty = logo card */
   };
   /* offline fallback lineup; the live lineup comes from Supabase (shtv_creators + shtv_videos) */
@@ -9735,6 +9736,18 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
   /* ================= silent live screen in the Social tab ================= */
   var miniTimer, miniFade, miniOn = false, miniIO, miniCtx = null;
   /* the Social screen learns each video's real length (saved for everyone) and re-times the next hand-off */
+  /* a video finished (or tried to loop): never replay it. Unknown length -> save what actually played and move on;
+     known length -> hold on the logo until its slot is over, then the next video */
+  function miniEnded(){
+    var c = miniCtx; if (!c || c.ended || !c.f.isConnected) return;
+    c.ended = true;
+    miniOutro(c);
+    setTimeout(function(){ if (c.f.isConnected) miniPost(c.f, c.v, isYT(c.v) ? { event: "command", func: "pauseVideo", args: [] } : { type: "pause", "x-tiktok-player": true }); }, 900);
+    if (!c.v.dur) {
+      var played = c.seek + (Date.now() - c.t0) / 1000 - 1;         /* minus about a second of loading */
+      miniLearn(Math.max(3, played));
+    }
+  }
   function miniLearn(d){
     var c = miniCtx; if (!c || !(d > 2) || !c.f.isConnected) return;
     var v = c.v; if (v.dur && Math.abs(v.dur - d) <= 2) return;
@@ -9743,7 +9756,7 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
     var left = effDur(v) - (c.seek + (Date.now() - c.t0) / 1000);
     clearTimeout(miniTimer); clearTimeout(miniFade);
     miniTimer = setTimeout(miniRun, Math.max(1, left) * 1000 + 300);
-    if (TV.fadeOut > 0) miniFade = setTimeout(function(){ if (c.f.isConnected) fadeToLogo(c.box, c.i, c.it, .8); }, Math.max(0, left - TV.fadeOut) * 1000);
+    if (TV.fadeOut > 0) miniFade = setTimeout(function(){ miniOutro(c); }, Math.max(0, left - TV.fadeOut) * 1000);
   }
   function miniBox(){ return document.querySelector("#shtvScreen .sc-box"); }
   function miniPost(f, v, msg){ try { f.contentWindow.postMessage(isYT(v) ? JSON.stringify(msg) : msg, "*"); } catch(x){} }
@@ -9766,7 +9779,7 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
       miniTimer = setTimeout(miniRun, Math.max(.5, now.ident) * 1000 + 150);
       return;
     }
-    var v = it.v, seek = Math.floor(now.seek);
+    var v = it.v, seek = v.dur ? Math.floor(now.seek) : 0;   /* unknown length: play from the start so the length we learn is real */
     var src = isYT(v)
       ? "https://www.youtube.com/embed/" + encodeURIComponent(v.id) + "?autoplay=1&mute=1&controls=0&disablekb=1&fs=0&iv_load_policy=3&playsinline=1&rel=0&modestbranding=1&enablejsapi=1" + (seek > 1 ? "&start=" + seek : "") + "&origin=" + encodeURIComponent(location.origin)
       : "https://www.tiktok.com/player/v1/" + encodeURIComponent(v.id) + "?autoplay=1&controls=0&progress_bar=0&play_button=0&volume_control=0&fullscreen_button=0&timestamp=0&music_info=0&description=0&rel=0&native_context_menu=0&closed_caption=0&loop=0";
@@ -9775,23 +9788,24 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
     box.innerHTML = '<iframe class="'+(isYT(v) ? 'yt' : 'tt')+'" src="'+esc(src)+'" allow="autoplay; encrypted-media" title="ShadowHook TV preview" tabindex="-1" aria-hidden="true"></iframe>' + (TV.coverSeconds > 0 ? coverHTML(now.i, it) : '');
     var f = box.querySelector("iframe"), t0 = Date.now();
     miniFrame = f; miniV = v;
-    armCover(box, f);
+    armCover(box, f, function(){ miniSoundIn(f, v); });
     f.addEventListener("load", function(){
       [200, 900, 2000].forEach(function(ms){ setTimeout(function(){
         if (!f.isConnected) return;
-        if (isYT(v)) miniPost(f, v, wantSound() ? { event: "command", func: "unMute", args: [] } : { event: "command", func: "mute", args: [] });
+        var on = wantSound() && (f._lifted || !TV.coverSeconds);   /* stay quiet while the logo is still covering the start */
+        if (isYT(v)) miniPost(f, v, on ? { event: "command", func: "unMute", args: [] } : { event: "command", func: "mute", args: [] });
         else {
-          miniPost(f, v, { type: wantSound() ? "unMute" : "mute", "x-tiktok-player": true });
+          miniPost(f, v, { type: on ? "unMute" : "mute", "x-tiktok-player": true });
           if (seek > 1 && ms === 200) miniPost(f, v, { type: "seekTo", value: seek + (Date.now() - t0) / 1000, "x-tiktok-player": true });
           miniPost(f, v, { type: "play", "x-tiktok-player": true });
         }
       }, ms); });
     });
-    miniCtx = { v: v, it: it, i: now.i, seek: now.seek, t0: Date.now(), box: box, f: f };
-    var left = (effDur(v) || TV.guessSeconds) - now.seek;
+    miniCtx = { v: v, it: it, i: now.i, seek: seek, t0: Date.now(), box: box, f: f };
+    var left = (effDur(v) || TV.guessSeconds) - (v.dur ? now.seek : 0);
     miniTimer = setTimeout(miniRun, Math.max(1, left) * 1000 + 300);
     clearTimeout(miniFade);
-    if (TV.fadeOut > 0) miniFade = setTimeout(function(){ if (f.isConnected) fadeToLogo(box, now.i, it, .8); }, Math.max(0, left - TV.fadeOut) * 1000);
+    if (TV.fadeOut > 0) miniFade = setTimeout(function(){ miniOutro(miniCtx && miniCtx.f === f ? miniCtx : { f: f, v: v, box: box, i: now.i, it: it }); }, Math.max(0, left - TV.fadeOut) * 1000);
   }
   var miniUserMuted = false, collapsed = false;
   try {
@@ -9846,13 +9860,58 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
     var d = e.data; if (typeof d === "string") { try { d = JSON.parse(d); } catch(x){ return; } }
     if (!d) return;
     if (d.type === "onMute") { miniMuted = !!d.value; miniChip(miniMuted && !miniUserMuted); }
-    if (d.type === "onCurrentTime" && d.value && d.value.duration) miniLearn(+d.value.duration);
+    if (d.type === "onCurrentTime" && d.value) {
+      var ct = +d.value.currentTime;
+      if (miniCtx && isFinite(ct)) {
+        if (miniCtx.lastCT != null && miniCtx.lastCT > 3 && ct < miniCtx.lastCT - 2) miniEnded();   /* TikTok looped it back to the start */
+        miniCtx.lastCT = ct;
+      }
+      if (d.value.duration) miniLearn(+d.value.duration);
+    }
     if (d.event === "infoDelivery" && d.info && d.info.duration) miniLearn(+d.info.duration);
-    if (d.type === "onStateChange" && (d.value === 0 || d.value === "0") && miniCtx && !miniCtx.v.dur) { clearTimeout(miniTimer); miniRun(); }
+    if (d.type === "onStateChange" && (d.value === 0 || d.value === "0")) miniEnded();
+    if (d.event === "onStateChange" && d.info === 0) miniEnded();
+    if (d.event === "infoDelivery" && d.info && d.info.playerState === 0) miniEnded();
     if (d.event === "infoDelivery" && d.info && typeof d.info.muted === "boolean") { miniMuted = d.info.muted; miniChip(miniMuted && !miniUserMuted); }
   });
+  /* ---- sound follows the logo: silent under the logo, fades up as it lifts, fades down as it returns ---- */
+  function miniVol(f, v, vol){
+    if (!f || !f.isConnected) return;
+    if (isYT(v)) miniPost(f, v, { event: "command", func: "setVolume", args: [Math.round(vol)] });
+    else {
+      miniPost(f, v, { type: "volume", value: vol / 100, "x-tiktok-player": true });
+      miniPost(f, v, { type: "setVolume", value: Math.round(vol), "x-tiktok-player": true });
+    }
+  }
+  function miniRamp(f, v, from, to, secs, done){
+    clearInterval(f._ramp);
+    var steps = Math.max(4, Math.round((secs || 1) * 12)), k = 0;
+    miniVol(f, v, from);
+    f._ramp = setInterval(function(){
+      k++; miniVol(f, v, from + (to - from) * Math.min(1, k / steps));
+      if (k >= steps) { clearInterval(f._ramp); done && done(); }
+    }, (secs || 1) * 1000 / steps);
+  }
+  function miniSoundIn(f, v){            /* the logo is lifting */
+    f._lifted = true;
+    if (!wantSound() || !f.isConnected) return;
+    if (isYT(v)) miniPost(f, v, { event: "command", func: "unMute", args: [] }); else miniPost(f, v, { type: "unMute", "x-tiktok-player": true });
+    miniRamp(f, v, 0, 100, TV.audioFade);
+  }
+  function miniSoundOut(f, v, secs){     /* the logo is coming back */
+    f._lifted = false;
+    if (!f || !f.isConnected) return;
+    miniRamp(f, v, 100, 0, secs || TV.audioFade, function(){
+      if (isYT(v)) miniPost(f, v, { event: "command", func: "mute", args: [] }); else miniPost(f, v, { type: "mute", "x-tiktok-player": true });
+    });
+  }
+  function miniOutro(c){                 /* picture and sound fade into the logo together */
+    if (!c || !c.f.isConnected) return;
+    fadeToLogo(c.box, c.i, c.it, .8);
+    miniSoundOut(c.f, c.v, Math.min(TV.audioFade, .9));
+  }
   function miniStart(){ if (miniOn) return; miniOn = true; miniRun(); }
-  function miniStop(){ miniOn = false; miniCtx = null; clearTimeout(miniTimer); clearTimeout(miniFade); miniFrame = null; miniChip(false); var b = miniBox(); if (b) b.innerHTML = ""; }
+  function miniStop(){ miniOn = false; if (miniFrame) clearInterval(miniFrame._ramp); miniCtx = null; clearTimeout(miniTimer); clearTimeout(miniFade); miniFrame = null; miniChip(false); var b = miniBox(); if (b) b.innerHTML = ""; }
   /* ---- mini player: float in the lower left when the screen is scrolled out of view ---- */
   var pipInView = true, pipDismissed = false, pipJustDragged = false, pipIO;
   /* free the player from any parent that would make "fixed" mean "inside this box" instead of "on the phone screen" */
@@ -10197,7 +10256,7 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
 })();
 </script>
-<!-- =================== /SHADOWHOOK TV (v24 · live channel) =================== -->
+<!-- =================== /SHADOWHOOK TV (v26 · live channel) =================== -->
 
 </body>
 </html>
