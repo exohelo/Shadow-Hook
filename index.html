@@ -9184,7 +9184,7 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
   };
 })();
 </script>
-<!-- ===================== SHADOWHOOK TV (v21 · live channel) ===================== -->
+<!-- ===================== SHADOWHOOK TV (v22 · live channel) ===================== -->
 <style id="shtvCSS">
 :root{--sh-ease:cubic-bezier(.2,.8,.2,1);--sh-glass:rgba(255,255,255,.055);--sh-line:rgba(255,255,255,.09);--sh-ink:#f4f2fa;--sh-dim:rgba(244,242,250,.62);--sh-faint:rgba(244,242,250,.4);--sh-live:#ff2e63}
 .shtv-art{position:absolute;inset:0;overflow:hidden;background:#140f24}
@@ -9363,6 +9363,7 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
     identSeconds: 4,                      /* the ShadowHook TV logo spot between videos */
     taglines: ["Built for the casuals", "Straight from the waterfront", "The Order is watching"],
     guessSeconds: 60,                     /* used for a video's length until the real length is known */
+    maxSeconds: 180,                      /* longest any one video stays on the air before the next one (0 = play every video in full) */
     epoch: Date.UTC(2026, 0, 1) / 1000,   /* the channel's "sign-on" time; keeps every viewer in sync */
     logo: "icon-192.png",                 /* your app icon, shown in the lower third and the corner bug */
     socialScreen: true,                   /* a live screen in the Social tab, under the arcade row */
@@ -9468,7 +9469,9 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
     SHTV.forEach(function(c){ c.videos.forEach(function(v){ LINEUP.push({ c: c, v: v }); }); });
     LINEUP.sort(function(a, b){ return (a.v.sort || 0) - (b.v.sort || 0); });
   }
-  function slotLen(it){ return TV.identSeconds + (it.v.dur || TV.guessSeconds); }
+  /* how long a video actually airs: its real length, capped by maxSeconds */
+  function effDur(v){ var d = v && v.dur || 0; return d && TV.maxSeconds > 0 ? Math.min(d, TV.maxSeconds) : d; }
+  function slotLen(it){ return TV.identSeconds + (effDur(it.v) || TV.guessSeconds); }
   /* where the channel is right now, so everyone tuning in lands on the same spot */
   function onAirNow(){
     var total = LINEUP.reduce(function(s, it){ return s + slotLen(it); }, 0);
@@ -9580,7 +9583,7 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
     clearTimeout(endTimer);
     if (!airing) return;
     var it = airing.it, played = (Date.now() - airing.started) / 1000 + airing.seek;
-    var left = (it.v.dur || TV.guessSeconds * 3) - played;
+    var left = (effDur(it.v) || TV.guessSeconds * 3) - played;
     endTimer = setTimeout(next, Math.max(1, left + 1.5) * 1000);
     clearTimeout(outroTimer);
     if (it.v.dur && TV.fadeOut > 0) {
@@ -9725,7 +9728,7 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
     var v = c.v; if (v.dur && Math.abs(v.dur - d) <= 2) return;
     v.dur = Math.round(d);
     if (v.rid && window.SB) { try { window.SB.rpc("shtv_set_duration", { p_id: v.rid, p_secs: v.dur }).then(function(){}); } catch(x){} }
-    var left = v.dur - (c.seek + (Date.now() - c.t0) / 1000);
+    var left = effDur(v) - (c.seek + (Date.now() - c.t0) / 1000);
     clearTimeout(miniTimer); clearTimeout(miniFade);
     miniTimer = setTimeout(miniRun, Math.max(1, left) * 1000 + 300);
     if (TV.fadeOut > 0) miniFade = setTimeout(function(){ if (c.f.isConnected) fadeToLogo(c.box, c.i, c.it, .8); }, Math.max(0, left - TV.fadeOut) * 1000);
@@ -9773,7 +9776,7 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
       }, ms); });
     });
     miniCtx = { v: v, it: it, i: now.i, seek: now.seek, t0: Date.now(), box: box, f: f };
-    var left = (v.dur || TV.guessSeconds) - now.seek;
+    var left = (effDur(v) || TV.guessSeconds) - now.seek;
     miniTimer = setTimeout(miniRun, Math.max(1, left) * 1000 + 300);
     clearTimeout(miniFade);
     if (TV.fadeOut > 0) miniFade = setTimeout(function(){ if (f.isConnected) fadeToLogo(box, now.i, it, .8); }, Math.max(0, left - TV.fadeOut) * 1000);
@@ -9936,6 +9939,7 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
       ALL = fromRows(r[0].data || [], r[1].data || []);
       SHTV = publicList(ALL);
       refresh(); loadThumbs(); renderMgr(); loadLive();
+      if (miniOn) miniRun();               /* switch from the built-in backup list to the real lineup right away */
       return true;
     }).catch(function(){ return false; });
   }
@@ -10149,7 +10153,7 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
 })();
 </script>
-<!-- =================== /SHADOWHOOK TV (v21 · live channel) =================== -->
+<!-- =================== /SHADOWHOOK TV (v22 · live channel) =================== -->
 
 </body>
 </html>
