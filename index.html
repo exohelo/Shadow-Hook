@@ -9184,7 +9184,7 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
   };
 })();
 </script>
-<!-- ===================== SHADOWHOOK TV (v12 · live channel) ===================== -->
+<!-- ===================== SHADOWHOOK TV (v13 · live channel) ===================== -->
 <style id="shtvCSS">
 :root{--sh-ease:cubic-bezier(.2,.8,.2,1);--sh-glass:rgba(255,255,255,.055);--sh-line:rgba(255,255,255,.09);--sh-ink:#f4f2fa;--sh-dim:rgba(244,242,250,.62);--sh-faint:rgba(244,242,250,.4);--sh-live:#ff2e63}
 .shtv-art{position:absolute;inset:0;overflow:hidden;background:#140f24}
@@ -9337,7 +9337,8 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
     guessSeconds: 60,                     /* used for a video's length until the real length is known */
     epoch: Date.UTC(2026, 0, 1) / 1000,   /* the channel's "sign-on" time; keeps every viewer in sync */
     logo: "icon-192.png",                 /* your app icon, shown in the lower third and the corner bug */
-    socialScreen: true,                   /* a live screen in the Social tab, under the arcade row; false = tile only */
+    socialScreen: true,                   /* a live screen in the Social tab, under the arcade row */
+    arcadeTile: false,                    /* the ShadowHook TV tile in the arcade row (off: the screen is the way in) */
     screenSound: true,                    /* the Social tab screen plays with sound */
     coverSeconds: 2,                      /* logo layover held over the start of every video, then it fades out */
     fadeOut: 1.6,                         /* the video fades into the logo this many seconds before it ends */
@@ -9373,13 +9374,29 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
     return '<div class="shtv-cover">'+art(i, it && THUMBS[it.v.id])+'<span class="cv-logo" data-fb=""><img src="'+esc(TV.logo)+'" alt="" onerror="this.parentNode.innerHTML=ANCHOR_SVG"></span><span class="shtv-wm">ShadowHook <em>TV</em></span></div>';
   }
   /* put the cover on, then lift it a couple of seconds after the player has loaded */
+  /* the cover stays up through TikTok's loading screen and only lifts once the video is really playing */
   function armCover(host, iframe){
     var cv = host.querySelector(".shtv-cover"); if (!cv) return;
-    var done = false;
+    var done = false, t0 = Date.now();
     function lift(){ if (done) return; done = true; cv.classList.add("off"); setTimeout(function(){ cv.remove(); }, 950); }
-    iframe.addEventListener("load", function(){ setTimeout(lift, TV.coverSeconds * 1000); });
-    setTimeout(lift, (TV.coverSeconds + 6) * 1000);   /* never leave it stuck */
+    iframe._shtvPlaying = function(){
+      var held = (Date.now() - t0) / 1000;
+      setTimeout(lift, Math.max(.7, TV.coverSeconds - held) * 1000);
+    };
+    setTimeout(lift, (TV.coverSeconds + 8) * 1000);   /* backup if the player never reports playing */
   }
+  window.addEventListener("message", function(e){
+    var d = e.data; if (typeof d === "string") { try { d = JSON.parse(d); } catch(x){ return; } }
+    if (!d) return;
+    var playing = (d.type === "onStateChange" && (d.value === 1 || d.value === "1")) ||
+                  (d.event === "onStateChange" && d.info === 1) ||
+                  (d.event === "infoDelivery" && d.info && d.info.playerState === 1) ||
+                  (d.type === "onCurrentTime" && d.value && d.value.currentTime > .3);
+    if (!playing) return;
+    [].forEach.call(document.querySelectorAll("#shtvTV iframe, #shtvScreen iframe"), function(f){
+      if (f.contentWindow === e.source && f._shtvPlaying) { var go = f._shtvPlaying; f._shtvPlaying = null; go(); }
+    });
+  });
   /* the end of a video: dissolve into the logo */
   function fadeToLogo(host, i, it, secs){
     if (!host || !TV.coverSeconds && !TV.fadeOut) return;
@@ -9871,6 +9888,7 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
       return;
     }
     if (t && t.hasAttribute("data-shtv-manage")) { t.remove(); t = null; }
+    if (TV.arcadeTile === false) { if (t) t.remove(); return; }
     if (!t) {
       t = document.createElement("div");
       t.className = "hcard hk-game gm-shtv"; t.setAttribute("data-shtv", "tv"); t.setAttribute("data-nofloor", "");
@@ -9899,7 +9917,7 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
 })();
 </script>
-<!-- =================== /SHADOWHOOK TV (v12 · live channel) =================== -->
+<!-- =================== /SHADOWHOOK TV (v13 · live channel) =================== -->
 
 </body>
 </html>
