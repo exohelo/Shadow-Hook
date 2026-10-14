@@ -9184,7 +9184,7 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
   };
 })();
 </script>
-<!-- ===================== SHADOWHOOK TV (v18 · live channel) ===================== -->
+<!-- ===================== SHADOWHOOK TV (v19 · live channel) ===================== -->
 <style id="shtvCSS">
 :root{--sh-ease:cubic-bezier(.2,.8,.2,1);--sh-glass:rgba(255,255,255,.055);--sh-line:rgba(255,255,255,.09);--sh-ink:#f4f2fa;--sh-dim:rgba(244,242,250,.62);--sh-faint:rgba(244,242,250,.4);--sh-live:#ff2e63}
 .shtv-art{position:absolute;inset:0;overflow:hidden;background:#140f24}
@@ -9685,6 +9685,7 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
     var x = tv.querySelector(".tv-x"); x && x.focus();
     document.addEventListener("keydown", onKey);
   }
+  document.addEventListener("visibilitychange", function(){ if (document.visibilityState === "visible" && miniOn) miniRun(); });
   function closeTV(){
     if (!tv) return;
     clearTimers(); airing = null;
@@ -9692,8 +9693,7 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
     try { document.body.style.overflow = ""; } catch(e){}
     document.removeEventListener("keydown", onKey);
     try { lastFocus && lastFocus.focus(); } catch(e){}
-    var sc = document.getElementById("shtvScreen");
-    if (sc) { var r = sc.getBoundingClientRect(); if (r.bottom > 0 && r.top < innerHeight && sc.offsetParent) miniStart(); }
+    if (socialShowing()) miniStart();
   }
   function onKey(e){ if (e.key === "Escape" && !(mgr && mgr.classList.contains("on"))) closeTV(); }
   window.shtvOpen = openTV;
@@ -9759,11 +9759,14 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
     clearTimeout(miniFade);
     if (TV.fadeOut > 0) miniFade = setTimeout(function(){ if (f.isConnected) fadeToLogo(box, now.i, it, .8); }, Math.max(0, left - TV.fadeOut) * 1000);
   }
-  var miniFrame = null, miniV = null, miniMuted = !TV.screenSound, miniUserMuted = false;
+  var miniUserMuted = false;
+  try { miniUserMuted = localStorage.getItem("shtv_muted") === "1"; } catch(e){}
+  var miniFrame = null, miniV = null, miniMuted = !TV.screenSound || miniUserMuted;
+  function saveMute(){ try { localStorage.setItem("shtv_muted", miniUserMuted ? "1" : "0"); } catch(e){} }
   function wantSound(){ return TV.screenSound && !miniUserMuted; }
   function miniToggle(){
     var on = miniMuted;                       /* muted -> turn sound on, and the other way round */
-    miniUserMuted = !on;
+    miniUserMuted = !on; saveMute();
     miniSound(on);
     var fl = document.querySelector("#shtvScreen .sc-flash");
     if (fl) { fl.innerHTML = on ? IC.snd : IC.mute; fl.classList.add("on"); clearTimeout(miniToggle.t); miniToggle.t = setTimeout(function(){ fl.classList.remove("on"); }, 700); }
@@ -9790,6 +9793,16 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
   });
   function miniStart(){ if (miniOn) return; miniOn = true; miniRun(); }
   function miniStop(){ miniOn = false; miniCtx = null; clearTimeout(miniTimer); clearTimeout(miniFade); miniFrame = null; miniChip(false); var b = miniBox(); if (b) b.innerHTML = ""; }
+  var miniWatchT;
+  function socialShowing(){ var el = document.getElementById("shtvScreen"); return !!(el && el.offsetParent !== null && el.getClientRects().length); }
+  function miniWatch(){
+    clearInterval(miniWatchT);
+    var check = function(){
+      if (!document.getElementById("shtvScreen")) { clearInterval(miniWatchT); return; }
+      if (socialShowing() && !(tv && tv.classList.contains("on"))) miniStart(); else if (miniOn) miniStop();
+    };
+    check(); miniWatchT = setInterval(check, 1500);
+  }
   function mountScreen(){
     var games = document.querySelector("#msgView .soc-games");
     var el = document.getElementById("shtvScreen");
@@ -9801,16 +9814,13 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
       '<button type="button" class="sc-mg" data-shtv-manage aria-label="Program ShadowHook TV" hidden>'+IC.gear+'</button></div>'+
       '<div class="sc-wrap"><button type="button" class="sc-box" aria-label="Mute ShadowHook TV"></button><span class="sc-flash" aria-hidden="true"></span>'+
       '<button type="button" class="sc-snd" aria-label="Turn sound on">'+IC.mute+'Tap for sound</button></div>';
-    el.querySelector(".sc-snd").addEventListener("click", function(e){ e.stopPropagation(); miniUserMuted = false; miniSound(true); });
+    el.querySelector(".sc-snd").addEventListener("click", function(e){ e.stopPropagation(); miniUserMuted = false; saveMute(); miniSound(true); });
     el.querySelector(".sc-box").addEventListener("click", function(e){ e.preventDefault(); miniToggle(); });
     el.querySelector(".sc-mg").hidden = !window.__isKM;
+    el.querySelector(".sc-box").setAttribute("aria-label", miniUserMuted ? "Turn ShadowHook TV sound on" : "Mute ShadowHook TV");
     games.parentNode.insertBefore(el, games.nextSibling);
-    /* only play while it's actually on screen (saves data, and stops when they leave the Social tab) */
-    if ("IntersectionObserver" in window) {
-      miniIO && miniIO.disconnect();
-      miniIO = new IntersectionObserver(function(es){ es.forEach(function(x){ if (x.isIntersecting && !(tv && tv.classList.contains("on"))) miniStart(); else miniStop(); }); }, { threshold: .35 });
-      miniIO.observe(el);
-    } else miniStart();
+    /* keeps playing while they scroll; pauses only when they switch away from the Social tab */
+    miniWatch();
   }
 
   /* ================= live lineup from Supabase ================= */
@@ -10054,7 +10064,7 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
 })();
 </script>
-<!-- =================== /SHADOWHOOK TV (v18 · live channel) =================== -->
+<!-- =================== /SHADOWHOOK TV (v19 · live channel) =================== -->
 
 </body>
 </html>
