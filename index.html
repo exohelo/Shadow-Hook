@@ -9184,7 +9184,7 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
   };
 })();
 </script>
-<!-- ===================== SHADOWHOOK TV (v15 · live channel) ===================== -->
+<!-- ===================== SHADOWHOOK TV (v17 · live channel) ===================== -->
 <style id="shtvCSS">
 :root{--sh-ease:cubic-bezier(.2,.8,.2,1);--sh-glass:rgba(255,255,255,.055);--sh-line:rgba(255,255,255,.09);--sh-ink:#f4f2fa;--sh-dim:rgba(244,242,250,.62);--sh-faint:rgba(244,242,250,.4);--sh-live:#ff2e63}
 .shtv-art{position:absolute;inset:0;overflow:hidden;background:#140f24}
@@ -9294,6 +9294,13 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
 #shtvTV .shtv-cover .shtv-wm{font-size:42px;gap:9px}
 #shtvTV .shtv-cover .shtv-wm em{padding:6px 8px 5px;border-radius:9px}
 #shtvScreen .sc-wrap{position:relative}
+#shtvScreen .sc-box{cursor:default}
+#shtvScreen .sc-mg{margin-left:8px;width:32px;height:32px;border-radius:50%;border:1px solid var(--sh-line);background:var(--sh-glass);color:var(--sh-ink);display:flex;align-items:center;justify-content:center;cursor:pointer}
+#shtvScreen .sc-mg[hidden]{display:none}
+#shtvScreen .sc-mg svg{width:16px;height:16px}
+#shtvScreen .sc-flash{position:absolute;z-index:3;left:50%;top:50%;width:60px;height:60px;margin:-30px 0 0 -30px;border-radius:50%;background:rgba(10,8,18,.5);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;color:#fff;opacity:0;transform:scale(.85);transition:opacity .25s,transform .3s var(--sh-ease);pointer-events:none}
+#shtvScreen .sc-flash.on{opacity:1;transform:none}
+#shtvScreen .sc-flash svg{width:24px;height:24px}
 #shtvScreen .sc-snd{position:absolute;z-index:3;right:22px;bottom:10px;height:34px;padding:0 12px;border-radius:999px;border:1px solid rgba(255,255,255,.18);background:rgba(10,8,18,.55);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);color:#fff;display:none;align-items:center;gap:6px;font:600 12.5px Inter,system-ui,sans-serif;cursor:pointer}
 #shtvScreen .sc-snd.on{display:flex}
 #shtvScreen .sc-snd svg{width:16px;height:16px}
@@ -9361,8 +9368,8 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
 
   /* ================= helpers ================= */
   function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){ return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]; }); }
-  function isYT(v){ return v && v.platform === "youtube"; }
-  function platName(v){ return isYT(v) ? "YouTube" : "TikTok"; }
+  function isYT(v){ return v && (v.platform === "youtube" || v.platform === "youtube_channel"); }
+  function platName(v){ return isYT(v) ? "YouTube" : v && v.platform === "twitch" ? "Twitch" : v && v.platform === "kick" ? "Kick" : "TikTok"; }
   function vidURL(c,v){ return isYT(v) ? "https://www.youtube.com/watch?v=" + v.id : (c.tiktok || "https://www.tiktok.com") + "/video/" + v.id; }
   function initialsOf(n){ return String(n || "").trim().split(/\s+/).map(function(w){ return w[0] || ""; }).join("").slice(0,2).toUpperCase(); }
   var PAL = [["#7b5cff","#ff3d7f","#ffb36b"],["#2ec5ff","#5b3dff","#ff6fb5"],["#ff9248","#ff3d7f","#6b2bd9"],["#28d7a1","#2b6bff","#9b5cff"]];
@@ -9380,11 +9387,12 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
   }
   /* put the cover on, then lift it a couple of seconds after the player has loaded */
   /* the cover stays up through TikTok's loading screen and only lifts once the video is really playing */
-  function armCover(host, iframe, onLift){
+  function armCover(host, iframe, onLift, simple){
     var cv = host.querySelector(".shtv-cover"); if (!cv) { onLift && onLift(); return; }
     var done = false, t0 = Date.now();
     function lift(){ if (done) return; done = true; cv.classList.add("off"); setTimeout(function(){ cv.remove(); }, 950); onLift && onLift(); }
     iframe._shtvPlaying = function(){ setTimeout(lift, TV.coverSeconds * 1000); };
+    if (simple) iframe.addEventListener("load", function(){ setTimeout(lift, (TV.coverSeconds + 1) * 1000); });
     setTimeout(lift, (TV.coverSeconds + 10) * 1000);  /* backup if the player never reports playing */
   }
   window.addEventListener("message", function(e){
@@ -9414,6 +9422,7 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
     x:'<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
     down:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>',
     gear:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>',
+    snd:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>',
     mute:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H3v6h3l5 4z"/><path d="M22 9l-6 6M16 9l6 6"/></svg>'
   };
 
@@ -9452,6 +9461,36 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
     }
     return { i: 0, ident: TV.identSeconds };
   }
+
+  /* ================= live switch (table shtv_live) ================= */
+  var LIVE = null, liveKey = "";
+  function liveSrc(L, muted){
+    var m = muted ? 1 : 0, host = location.hostname || "localhost", r = encodeURIComponent(L.ref);
+    if (L.platform === "youtube") return "https://www.youtube.com/embed/" + r + "?autoplay=1&mute=" + m + "&controls=0&disablekb=1&fs=0&iv_load_policy=3&playsinline=1&rel=0&modestbranding=1&enablejsapi=1&origin=" + encodeURIComponent(location.origin);
+    if (L.platform === "youtube_channel") return "https://www.youtube.com/embed/live_stream?channel=" + r + "&autoplay=1&mute=" + m + "&controls=0&disablekb=1&fs=0&playsinline=1&rel=0&modestbranding=1&enablejsapi=1&origin=" + encodeURIComponent(location.origin);
+    if (L.platform === "twitch") return "https://player.twitch.tv/?channel=" + r + "&parent=" + encodeURIComponent(host) + "&autoplay=true&muted=" + (muted ? "true" : "false");
+    if (L.platform === "kick") return "https://player.kick.com/" + r + "?autoplay=true&muted=" + (muted ? "true" : "false");
+    return "";
+  }
+  function liveItem(){
+    var c = (ALL || SHTV).filter(function(x){ return x.id === LIVE.creator_id; })[0];
+    return { live: true, c: c || { name: LIVE.title || "ShadowHook TV", initials: "SH", show: "" },
+             v: { platform: LIVE.platform, id: LIVE.ref, title: LIVE.title || "Live now" } };
+  }
+  function loadLive(){
+    var SB = window.SB; if (!SB) return;
+    SB.from("shtv_live").select("*").eq("id", 1).maybeSingle().then(function(r){
+      if (r.error) return;
+      var row = r.data && r.data.active && r.data.platform && r.data.ref ? r.data : null;
+      var key = row ? row.platform + ":" + row.ref + ":" + (row.title || "") : "";
+      if (key === liveKey) return;
+      liveKey = key; LIVE = row;
+      if (tv && tv.classList.contains("on")) tune();
+      if (miniOn) miniRun();
+      renderMgr();
+    });
+  }
+  setInterval(function(){ if (document.visibilityState === "visible") loadLive(); }, 20000);
 
   /* ================= the tile ================= */
   function tileHTML(){
@@ -9531,6 +9570,7 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
     }
   }
   function next(){
+    if (airing && airing.live) { airing = null; hideL3(); fadeToLogo(stage(), 0, null, .7); timer = setTimeout(startLineup, 800); return; }
     if (!LINEUP.length || !airing) return;                     /* !airing: already in the logo spot */
     var nx = (cur + 1) % LINEUP.length, st = stage(), it = airing.it;
     var covered = [].some.call(st.querySelectorAll(".shtv-cover"), function(c){ return !c.classList.contains("off"); });
@@ -9549,7 +9589,7 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
     var l3 = tv.querySelector(".tv-l3");
     l3.innerHTML =
       '<div class="l3-brand">'+logoHTML("l3-logo")+'<span class="l3-name">ShadowHook <em>TV</em></span><span class="l3-live"><b></b>LIVE</span></div>'+
-      '<div class="l3-main"><span class="shtv-av"><span>'+esc(it.c.initials || initialsOf(it.c.name))+'</span></span><div style="min-width:0"><div class="k">Now playing</div><div class="t">'+esc(it.v.title)+'</div><div class="b">'+esc(it.c.name)+(it.c.show ? ' · ' + esc(it.c.show) : '')+'</div></div></div>';
+      '<div class="l3-main"><span class="shtv-av"><span>'+esc(it.c.initials || initialsOf(it.c.name))+'</span></span><div style="min-width:0"><div class="k">'+(it.live ? 'Live now' : 'Now playing')+'</div><div class="t">'+esc(it.v.title)+'</div><div class="b">'+esc(it.c.name)+(it.c.show ? ' · ' + esc(it.c.show) : '')+'</div></div></div>';
     l3.querySelectorAll(".l3-logo").forEach(function(x){ x.setAttribute("data-fb", ANCHOR); });
     requestAnimationFrame(function(){ l3.classList.add("on"); tv.classList.add("l3on"); });
     l3Timer = setTimeout(hideL3, 7000);
@@ -9604,18 +9644,44 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
     }
   });
 
+  function startLineup(){
+    buildLineup();
+    if (!LINEUP.length) { if (LIVE) return playLive(); return; }
+    var now = onAirNow();
+    if (now.ident != null) showIdent(now.i, now.ident); else playVideo(now.i, now.seek);
+  }
+  function playLive(){
+    clearTimers(); cur = -1;
+    var it = liveItem(); airing = { it: it, seek: 0, started: Date.now(), seeked: true, live: true };
+    stage().innerHTML = '<iframe src="'+esc(liveSrc(LIVE, false))+'" allow="autoplay; encrypted-media; picture-in-picture" title="'+esc("Live: " + it.v.title)+'"></iframe>' + coverHTML(0, it);
+    var f = stage().querySelector("iframe");
+    f.addEventListener("load", function(){
+      if (isYT(it.v)) post({ event: "listening", id: 1 });
+      [300, 1000, 2200].forEach(function(t){ setTimeout(function(){ if (airing && airing.it === it) soundOn(true); }, t); });
+    });
+    armCover(stage(), f, function(){ if (airing && airing.it === it) showL3(it); }, true);
+  }
+  /* switch what's on screen when the live switch flips, with a fade through the logo */
+  function tune(){
+    var wantLive = !!LIVE, isLive = !!(airing && airing.live);
+    if (wantLive && isLive && airing.it.v.id === LIVE.ref) return;
+    if (!wantLive && !isLive) return;
+    hideL3(); fadeToLogo(stage(), 0, null, .7);
+    clearTimers(); airing = null;
+    timer = setTimeout(function(){ if (LIVE) playLive(); else startLineup(); }, 800);
+  }
   function openTV(){
     buildLineup();
-    if (!LINEUP.length) return;
+    if (!LINEUP.length && !LIVE) return;
     miniStop();
     if (!tv) buildTV();
     lastFocus = document.activeElement;
     tv.querySelector(".tv-mg").hidden = !window.__isKM;
     tv.classList.add("on");
     try { document.body.style.overflow = "hidden"; } catch(e){}
-    var now = onAirNow();
-    if (now.ident != null) showIdent(now.i, now.ident); else playVideo(now.i, now.seek);
+    if (LIVE) playLive(); else startLineup();
     soundOn(true);
+    loadLive();
     var x = tv.querySelector(".tv-x"); x && x.focus();
     document.addEventListener("keydown", onKey);
   }
@@ -9639,6 +9705,15 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
   function miniRun(){
     clearTimeout(miniTimer); clearTimeout(miniFade);
     var box = miniBox(); if (!box || !miniOn) return;
+    if (LIVE) {
+      var lit = liveItem();
+      miniMuted = !wantSound();
+      box.innerHTML = '<iframe class="yt" src="'+esc(liveSrc(LIVE, !wantSound()))+'" allow="autoplay; encrypted-media" title="ShadowHook TV live" tabindex="-1" aria-hidden="true"></iframe>' + coverHTML(0, lit);
+      var lf = box.querySelector("iframe"); miniFrame = lf; miniV = lit.v;
+      armCover(box, lf, null, true);
+      if (isYT(lit.v) && wantSound()) lf.addEventListener("load", function(){ [300, 1200].forEach(function(ms){ setTimeout(function(){ miniPost(lf, lit.v, { event: "listening", id: 1 }); miniPost(lf, lit.v, { event: "command", func: "unMute", args: [] }); }, ms); }); });
+      return;
+    }
     buildLineup(); if (!LINEUP.length) { box.innerHTML = ""; return; }
     var now = onAirNow(), it = LINEUP[now.i];
     if (now.ident != null) {
@@ -9650,7 +9725,8 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
     var src = isYT(v)
       ? "https://www.youtube.com/embed/" + encodeURIComponent(v.id) + "?autoplay=1&mute=1&controls=0&disablekb=1&fs=0&iv_load_policy=3&playsinline=1&rel=0&modestbranding=1&enablejsapi=1" + (seek > 1 ? "&start=" + seek : "") + "&origin=" + encodeURIComponent(location.origin)
       : "https://www.tiktok.com/player/v1/" + encodeURIComponent(v.id) + "?autoplay=1&controls=0&progress_bar=0&play_button=0&volume_control=0&fullscreen_button=0&timestamp=0&music_info=0&description=0&rel=0&native_context_menu=0&closed_caption=0&loop=0";
-    if (TV.screenSound) src = src.replace("mute=1", "mute=0");
+    if (wantSound()) src = src.replace("mute=1", "mute=0");
+    miniMuted = !wantSound();
     box.innerHTML = '<iframe class="'+(isYT(v) ? 'yt' : 'tt')+'" src="'+esc(src)+'" allow="autoplay; encrypted-media" title="ShadowHook TV preview" tabindex="-1" aria-hidden="true"></iframe>' + (TV.coverSeconds > 0 ? coverHTML(now.i, it) : '');
     var f = box.querySelector("iframe"), t0 = Date.now();
     miniFrame = f; miniV = v;
@@ -9658,9 +9734,9 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
     f.addEventListener("load", function(){
       [200, 900, 2000].forEach(function(ms){ setTimeout(function(){
         if (!f.isConnected) return;
-        if (isYT(v)) miniPost(f, v, TV.screenSound ? { event: "command", func: "unMute", args: [] } : { event: "command", func: "mute", args: [] });
+        if (isYT(v)) miniPost(f, v, wantSound() ? { event: "command", func: "unMute", args: [] } : { event: "command", func: "mute", args: [] });
         else {
-          miniPost(f, v, { type: TV.screenSound ? "unMute" : "mute", "x-tiktok-player": true });
+          miniPost(f, v, { type: wantSound() ? "unMute" : "mute", "x-tiktok-player": true });
           if (seek > 1 && ms === 200) miniPost(f, v, { type: "seekTo", value: seek + (Date.now() - t0) / 1000, "x-tiktok-player": true });
           miniPost(f, v, { type: "play", "x-tiktok-player": true });
         }
@@ -9671,35 +9747,48 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
     clearTimeout(miniFade);
     if (TV.fadeOut > 0) miniFade = setTimeout(function(){ if (f.isConnected) fadeToLogo(box, now.i, it, .8); }, Math.max(0, left - TV.fadeOut) * 1000);
   }
-  var miniFrame = null, miniV = null;
+  var miniFrame = null, miniV = null, miniMuted = !TV.screenSound, miniUserMuted = false;
+  function wantSound(){ return TV.screenSound && !miniUserMuted; }
+  function miniToggle(){
+    var on = miniMuted;                       /* muted -> turn sound on, and the other way round */
+    miniUserMuted = !on;
+    miniSound(on);
+    var fl = document.querySelector("#shtvScreen .sc-flash");
+    if (fl) { fl.innerHTML = on ? IC.snd : IC.mute; fl.classList.add("on"); clearTimeout(miniToggle.t); miniToggle.t = setTimeout(function(){ fl.classList.remove("on"); }, 700); }
+    var b = document.querySelector("#shtvScreen .sc-box"); if (b) b.setAttribute("aria-label", on ? "Mute ShadowHook TV" : "Turn ShadowHook TV sound on");
+  }
   function miniChip(show){ var c = document.querySelector("#shtvScreen .sc-snd"); if (c) c.classList.toggle("on", !!show); }
   function miniSound(on){
     if (!miniFrame || !miniFrame.isConnected) return;
     if (isYT(miniV)) { miniPost(miniFrame, miniV, { event: "command", func: on ? "unMute" : "mute", args: [] }); if (on) miniPost(miniFrame, miniV, { event: "command", func: "setVolume", args: [100] }); }
     else miniPost(miniFrame, miniV, { type: on ? "unMute" : "mute", "x-tiktok-player": true });
-    miniChip(!on);
+    miniMuted = !on;
+    miniChip(!on && !miniUserMuted);          /* the "Tap for sound" hint only when the phone muted it, not when they chose to */
   }
   /* the Social screen's player tells us if the browser forced it to start muted */
   window.addEventListener("message", function(e){
-    if (!miniFrame || e.source !== miniFrame.contentWindow || !TV.screenSound) return;
+    if (!miniFrame || e.source !== miniFrame.contentWindow) return;
     var d = e.data; if (typeof d === "string") { try { d = JSON.parse(d); } catch(x){ return; } }
     if (!d) return;
-    if (d.type === "onMute") miniChip(!!d.value);
-    if (d.event === "infoDelivery" && d.info && typeof d.info.muted === "boolean") miniChip(d.info.muted);
+    if (d.type === "onMute") { miniMuted = !!d.value; miniChip(miniMuted && !miniUserMuted); }
+    if (d.event === "infoDelivery" && d.info && typeof d.info.muted === "boolean") { miniMuted = d.info.muted; miniChip(miniMuted && !miniUserMuted); }
   });
   function miniStart(){ if (miniOn) return; miniOn = true; miniRun(); }
   function miniStop(){ miniOn = false; clearTimeout(miniTimer); clearTimeout(miniFade); miniFrame = null; miniChip(false); var b = miniBox(); if (b) b.innerHTML = ""; }
   function mountScreen(){
     var games = document.querySelector("#msgView .soc-games");
     var el = document.getElementById("shtvScreen");
-    if (!TV.socialScreen || !SHTV.length || !games) { if (el) { miniStop(); el.remove(); } return; }
+    if (!TV.socialScreen || (!SHTV.length && !LIVE) || !games) { if (el) { miniStop(); el.remove(); } return; }
     if (el) return;
     el = document.createElement("section");
     el.id = "shtvScreen"; el.setAttribute("aria-label", "ShadowHook TV");
-    el.innerHTML = '<div class="sc-h"><span class="shtv-wm">ShadowHook <em>TV</em></span><span class="r">Live now</span></div>'+
-      '<div class="sc-wrap"><button type="button" class="sc-box" data-shtv="tv" aria-label="Watch ShadowHook TV, live"></button>'+
+    el.innerHTML = '<div class="sc-h"><span class="shtv-wm">ShadowHook <em>TV</em></span><span class="r">Live now</span>'+
+      '<button type="button" class="sc-mg" data-shtv-manage aria-label="Program ShadowHook TV" hidden>'+IC.gear+'</button></div>'+
+      '<div class="sc-wrap"><button type="button" class="sc-box" aria-label="Mute ShadowHook TV"></button><span class="sc-flash" aria-hidden="true"></span>'+
       '<button type="button" class="sc-snd" aria-label="Turn sound on">'+IC.mute+'Tap for sound</button></div>';
-    el.querySelector(".sc-snd").addEventListener("click", function(e){ e.stopPropagation(); miniSound(true); });
+    el.querySelector(".sc-snd").addEventListener("click", function(e){ e.stopPropagation(); miniUserMuted = false; miniSound(true); });
+    el.querySelector(".sc-box").addEventListener("click", function(e){ e.preventDefault(); miniToggle(); });
+    el.querySelector(".sc-mg").hidden = !window.__isKM;
     games.parentNode.insertBefore(el, games.nextSibling);
     /* only play while it's actually on screen (saves data, and stops when they leave the Social tab) */
     if ("IntersectionObserver" in window) {
@@ -9736,7 +9825,7 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
       if (r[0].error || r[1].error) return false;
       ALL = fromRows(r[0].data || [], r[1].data || []);
       SHTV = publicList(ALL);
-      refresh(); loadThumbs(); renderMgr();
+      refresh(); loadThumbs(); renderMgr(); loadLive();
       return true;
     }).catch(function(){ return false; });
   }
@@ -9759,6 +9848,14 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
     m = u.match(/^(?:https?:\/\/)?(?:www\.|m\.)?youtube\.com\/(@[A-Za-z0-9._-]+|channel\/[A-Za-z0-9_-]+|c\/[A-Za-z0-9._-]+)/);
     return m ? "https://www.youtube.com/" + m[1] : undefined;
   }
+  function parseLive(u){
+    u = String(u || "").trim(); var m, v = parseVideo(u);
+    if (v && v.platform === "youtube") return { platform: "youtube", ref: v.id, label: "YouTube" };
+    if ((m = u.match(/youtube\.com\/channel\/(UC[A-Za-z0-9_-]{20,30})/))) return { platform: "youtube_channel", ref: m[1], label: "YouTube channel" };
+    if ((m = u.match(/twitch\.tv\/([A-Za-z0-9_]{3,25})/))) return { platform: "twitch", ref: m[1].toLowerCase(), label: "Twitch" };
+    if ((m = u.match(/kick\.com\/([A-Za-z0-9_-]{2,30})/))) return { platform: "kick", ref: m[1].toLowerCase(), label: "Kick" };
+    return null;
+  }
   function slugOf(n){ return String(n || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || ("creator-" + Date.now().toString(36)); }
   function say(el, txt, err){ el.textContent = txt; el.className = "mg-msg" + (err ? " err" : ""); }
   function flash(formId, txt){ loadFromDB().then(function(){ var m = mgr && mgr.querySelector("#" + formId + " .mg-msg"); if (m) say(m, txt); }); }
@@ -9776,6 +9873,7 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
       var b = e.target.closest("[data-mg-act]"); if (!b) return;
       var act = b.getAttribute("data-mg-act"), id = b.getAttribute("data-id"), on = b.getAttribute("data-on") === "1", SB = window.SB; if (!SB) return;
       var q;
+      if (act === "end-live") { if (!confirm("End the live stream and go back to the lineup?")) return; q = SB.from("shtv_live").update({ active: false, updated_at: new Date().toISOString() }).eq("id", 1); q.then(function(){ liveKey = "x"; loadLive(); }); return; }
       if (act === "cr-toggle") q = SB.from("shtv_creators").update({ active: !on }).eq("id", id);
       if (act === "v-toggle")  q = SB.from("shtv_videos").update({ active: !on }).eq("id", id);
       if (act === "v-del") { if (!confirm("Take this video off ShadowHook TV?")) return; q = SB.from("shtv_videos").delete().eq("id", id); }
@@ -9798,6 +9896,19 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
       e.preventDefault();
       var f = e.target, msg = f.querySelector(".mg-msg"), btn = f.querySelector(".mg-pri"), SB = window.SB;
       if (!SB) return say(msg, "Not connected. Try again in a moment.", true);
+      if (f.id === "mgGoLive") {
+        var L = parseLive(f.lurl.value);
+        if (/tiktok\.com/.test(f.lurl.value)) return say(msg, "TikTok LIVE can't play inside other apps. Use a YouTube Live, Twitch or Kick link.", true);
+        if (!L) return say(msg, "Paste a YouTube Live, Twitch or Kick link.", true);
+        btn.disabled = true; say(msg, "Going live…");
+        SB.from("shtv_live").upsert({ id: 1, active: true, platform: L.platform, ref: L.ref, title: f.ltitle.value.trim() || null,
+          creator_id: f.lcreator.value || null, started_at: new Date().toISOString(), updated_at: new Date().toISOString() }).then(function(r){
+          btn.disabled = false;
+          if (r.error) return say(msg, r.error.message, true);
+          liveKey = "x"; loadLive();
+        });
+        return;
+      }
       if (f.id === "mgAddVideo") {
         var pv = parseVideo(f.url.value), title = f.vtitle.value.trim(), cr = f.creator.value;
         if (!pv) return say(msg, "Paste a TikTok video link or a YouTube link.", true);
@@ -9851,7 +9962,17 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
         '<button type="button" class="mg-sm'+(on ? '' : ' off')+'" data-mg-act="cr-toggle" data-id="'+esc(c.id)+'" data-on="'+(on ? 1 : 0)+'">'+(on ? 'On air' : 'Off')+'</button>'+
         '<button type="button" class="mg-sm del" data-mg-act="cr-del" data-id="'+esc(c.id)+'">Remove</button></div>';
     }).join("");
+    var liveCard = LIVE
+      ? '<div class="mg-card" style="border-color:rgba(255,46,99,.5)"><div style="display:flex;align-items:center;gap:10px"><span class="shtv-live"><b></b>LIVE</span><div style="flex:1;min-width:0"><div style="font:600 14px Inter,system-ui,sans-serif">'+esc(LIVE.title || "Live now")+'</div><div class="mg-hint">'+esc(platName({ platform: LIVE.platform }))+' · everyone is watching this instead of the lineup</div></div></div>'+
+        '<button type="button" class="mg-pri" data-mg-act="end-live" style="background:#ff2e63;color:#fff">End live</button></div>'
+      : '<form id="mgGoLive" class="mg-card" novalidate>'+
+          '<label>Live stream link<input type="url" name="lurl" placeholder="YouTube Live, Twitch or Kick link" autocomplete="off"></label>'+
+          '<label>Title viewers will see<input type="text" name="ltitle" maxlength="120" placeholder="e.g. Live from the crane"></label>'+
+          '<label>Creator (optional)<select name="lcreator"><option value="">None</option>'+opts+'</select></label>'+
+          '<div class="mg-hint">Everyone watching ShadowHook TV switches to this stream right away. TikTok LIVE can&#39;t be shown in other apps.</div>'+
+          '<button type="submit" class="mg-pri">Go live now</button><div class="mg-msg" aria-live="polite"></div></form>';
     mgr.querySelector(".mg-body").innerHTML =
+      '<h3>Go live</h3>' + liveCard +
       '<h3>The lineup · plays top to bottom, then loops</h3><div class="mg-list">'+(lineup || '<div class="mg-row"><div class="t s">Nothing on the air yet.</div></div>')+'</div>'+
       '<h3>Add a video</h3><form id="mgAddVideo" class="mg-card" novalidate>'+
         '<label>Video link<input type="url" name="url" placeholder="Paste a TikTok or YouTube link" autocomplete="off"></label>'+
@@ -9898,7 +10019,7 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
       row.insertBefore(t, row.firstChild);
     }
   }
-  function refresh(){ mount(); mountScreen(); var t = document.querySelector(".gm-shtv[data-shtv]"); if (t) t.innerHTML = tileHTML(); if (tv && tv.classList.contains("on")) buildLineup(); }
+  function refresh(){ mount(); mountScreen(); var mg = document.querySelector("#shtvScreen .sc-mg"); if (mg) mg.hidden = !window.__isKM; var t = document.querySelector(".gm-shtv[data-shtv]"); if (t) t.innerHTML = tileHTML(); if (tv && tv.classList.contains("on")) buildLineup(); }
 
   document.addEventListener("click", function(e){
     if (!e.target.closest) return;
@@ -9918,7 +10039,7 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
 })();
 </script>
-<!-- =================== /SHADOWHOOK TV (v15 · live channel) =================== -->
+<!-- =================== /SHADOWHOOK TV (v17 · live channel) =================== -->
 
 </body>
 </html>
