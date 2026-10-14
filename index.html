@@ -9184,7 +9184,7 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
   };
 })();
 </script>
-<!-- ===================== SHADOWHOOK TV (v22 · live channel) ===================== -->
+<!-- ===================== SHADOWHOOK TV (v23 · live channel) ===================== -->
 <style id="shtvCSS">
 :root{--sh-ease:cubic-bezier(.2,.8,.2,1);--sh-glass:rgba(255,255,255,.055);--sh-line:rgba(255,255,255,.09);--sh-ink:#f4f2fa;--sh-dim:rgba(244,242,250,.62);--sh-faint:rgba(244,242,250,.4);--sh-live:#ff2e63}
 .shtv-art{position:absolute;inset:0;overflow:hidden;background:#140f24}
@@ -9294,6 +9294,18 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
 #shtvTV .shtv-cover .shtv-wm{font-size:42px;gap:9px}
 #shtvTV .shtv-cover .shtv-wm em{padding:6px 8px 5px;border-radius:9px}
 #shtvScreen .sc-wrap{position:relative}
+#shtvScreen .sc-banner{display:none;align-items:center;gap:12px;width:calc(100% - 24px);margin:0 12px;min-height:56px;box-sizing:border-box;padding:9px 12px 9px 14px;border-radius:14px;border:1px solid rgba(255,255,255,.12);background:linear-gradient(100deg,rgba(91,61,255,.28),rgba(255,61,127,.22));color:var(--sh-ink);text-align:left;cursor:pointer;font-family:Inter,system-ui,sans-serif;box-shadow:0 8px 24px -12px rgba(0,0,0,.7);-webkit-tap-highlight-color:transparent}
+#shtvScreen .sc-banner .b-dot{flex:0 0 auto;width:9px;height:9px;border-radius:50%;background:var(--sh-live);box-shadow:0 0 0 0 rgba(255,46,99,.55);animation:shtvPulse 2s infinite}
+@keyframes shtvPulse{0%{box-shadow:0 0 0 0 rgba(255,46,99,.55)}70%{box-shadow:0 0 0 7px rgba(255,46,99,0)}100%{box-shadow:0 0 0 0 rgba(255,46,99,0)}}
+#shtvScreen .sc-banner .b-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+#shtvScreen .sc-banner .b-top{display:flex;align-items:center;gap:6px;font:500 12.5px Inter,system-ui,sans-serif;color:rgba(244,242,250,.78);white-space:nowrap}
+#shtvScreen .sc-banner .b-top .shtv-wm{font-size:13.5px}
+#shtvScreen .sc-banner .b-now{font:600 13px Inter,system-ui,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#shtvScreen .sc-banner .b-go{flex:0 0 auto;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;color:#fff}
+#shtvScreen .sc-banner .b-go svg{width:17px;height:17px}
+#shtvScreen.collapsed{padding:10px 0}
+#shtvScreen.collapsed .sc-h,#shtvScreen.collapsed .sc-wrap,#shtvScreen.collapsed .sc-spacer{display:none!important}
+#shtvScreen.collapsed .sc-banner{display:flex;animation:shtvIn .35s ease-out}
 #shtvScreen .sc-spacer{display:none;height:206px;margin:0 12px;border-radius:14px;background:rgba(255,255,255,.03);border:1px dashed var(--sh-line)}
 #shtvScreen.pip .sc-spacer{display:block}
 #shtvScreen.pip .sc-wrap{position:fixed;z-index:8500;left:12px;bottom:calc(env(safe-area-inset-bottom,0px) + 92px);width:184px;height:104px;border-radius:12px;overflow:hidden;box-shadow:0 14px 34px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.14);animation:shtvPipIn .35s var(--sh-ease);touch-action:none;transition:transform .3s var(--sh-ease),opacity .3s}
@@ -9781,10 +9793,36 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
     clearTimeout(miniFade);
     if (TV.fadeOut > 0) miniFade = setTimeout(function(){ if (f.isConnected) fadeToLogo(box, now.i, it, .8); }, Math.max(0, left - TV.fadeOut) * 1000);
   }
-  var miniUserMuted = false;
-  try { miniUserMuted = localStorage.getItem("shtv_muted") === "1"; } catch(e){}
+  var miniUserMuted = false, collapsed = false;
+  try {
+    var cs0 = localStorage.getItem("shtv_collapsed");
+    collapsed = cs0 === "1" || (cs0 === null && localStorage.getItem("shtv_muted") === "1");   /* people who muted before stay quiet */
+  } catch(e){}
   var miniFrame = null, miniV = null, miniMuted = !TV.screenSound || miniUserMuted;
-  function saveMute(){ try { localStorage.setItem("shtv_muted", miniUserMuted ? "1" : "0"); } catch(e){} }
+  function saveMute(){ try { localStorage.setItem("shtv_muted", miniUserMuted ? "1" : "0"); localStorage.setItem("shtv_collapsed", collapsed ? "1" : "0"); } catch(e){} }
+  var bannerT;
+  function updateBanner(){
+    var b = document.querySelector("#shtvScreen .b-now"); if (!b) return;
+    if (LIVE) { b.textContent = "Live: " + (LIVE.title || "Live now"); return; }
+    buildLineup(); if (!LINEUP.length) { b.textContent = ""; return; }
+    var now = onAirNow(), it = LINEUP[now.i];
+    b.textContent = now.ident != null ? "Up next: " + it.v.title : it.c.name + " · " + it.v.title;
+  }
+  function collapseScreen(){
+    collapsed = true; miniUserMuted = true; saveMute();
+    var el = document.getElementById("shtvScreen"); if (!el) return;
+    setPip(false); miniStop();
+    el.classList.add("collapsed"); updateBanner();
+    clearInterval(bannerT); bannerT = setInterval(updateBanner, 5000);
+    var bn = el.querySelector(".sc-banner"); bn && bn.focus({ preventScroll: true });
+  }
+  function expandScreen(){
+    collapsed = false; miniUserMuted = false; saveMute();
+    clearInterval(bannerT);
+    var el = document.getElementById("shtvScreen"); if (!el) return;
+    el.classList.remove("collapsed");
+    if (socialShowing()) miniStart();        /* the tap counts as permission to play with sound */
+  }
   function wantSound(){ return TV.screenSound && !miniUserMuted; }
   function miniToggle(){
     var on = miniMuted;                       /* muted -> turn sound on, and the other way round */
@@ -9835,7 +9873,7 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
     var w = el.querySelector(".sc-wrap"); if (w) { w.style.transform = ""; w.style.opacity = ""; }
   }
   function pipUpdate(){
-    if (!TV.miniPlayer) return setPip(false);
+    if (!TV.miniPlayer || collapsed) return setPip(false);
     if (pipInView) { pipDismissed = false; setPip(false); return; }
     setPip(miniOn && !pipDismissed);
   }
@@ -9884,7 +9922,7 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
     clearInterval(miniWatchT);
     var check = function(){
       if (!document.getElementById("shtvScreen")) { clearInterval(miniWatchT); return; }
-      var ok = socialShowing() && !(tv && tv.classList.contains("on")) && !(pipDismissed && !pipInView);
+      var ok = socialShowing() && !collapsed && !(tv && tv.classList.contains("on")) && !(pipDismissed && !pipInView);
       if (ok) miniStart(); else if (miniOn) miniStop();
       if (!socialShowing()) setPip(false); else pipUpdate();
     };
@@ -9900,12 +9938,17 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
     el.innerHTML = '<div class="sc-h"><span class="shtv-wm">ShadowHook <em>TV</em></span><span class="r">Live now</span>'+
       '<button type="button" class="sc-mg" data-shtv-manage aria-label="Program ShadowHook TV" hidden>'+IC.gear+'</button></div>'+
       '<div class="sc-spacer" aria-hidden="true"></div><div class="sc-wrap"><button type="button" class="sc-box" aria-label="Mute ShadowHook TV"></button><span class="sc-flash" aria-hidden="true"></span>'+
-      '<button type="button" class="sc-snd" aria-label="Turn sound on">'+IC.mute+'Tap for sound</button></div>';
+      '<button type="button" class="sc-snd" aria-label="Turn sound on">'+IC.mute+'Tap for sound</button></div>'+
+      '<button type="button" class="sc-banner" aria-label="Open ShadowHook TV with sound"><span class="b-dot" aria-hidden="true"></span>'+
+        '<span class="b-txt"><span class="b-top">Playing now on <span class="shtv-wm">ShadowHook <em>TV</em></span></span><span class="b-now"></span></span>'+
+        '<span class="b-go" aria-hidden="true">'+IC.snd+'</span></button>';
     el.querySelector(".sc-snd").addEventListener("click", function(e){ e.stopPropagation(); miniUserMuted = false; saveMute(); miniSound(true); });
-    el.querySelector(".sc-box").addEventListener("click", function(e){ e.preventDefault(); if (pipJustDragged) return; miniToggle(); });
+    el.querySelector(".sc-box").addEventListener("click", function(e){ e.preventDefault(); if (pipJustDragged) return; collapseScreen(); });
+    el.querySelector(".sc-banner").addEventListener("click", function(e){ e.preventDefault(); expandScreen(); });
+    if (collapsed) { el.classList.add("collapsed"); updateBanner(); clearInterval(bannerT); bannerT = setInterval(updateBanner, 5000); }
     pipSetup(el);
     el.querySelector(".sc-mg").hidden = !window.__isKM;
-    el.querySelector(".sc-box").setAttribute("aria-label", miniUserMuted ? "Turn ShadowHook TV sound on" : "Mute ShadowHook TV");
+    el.querySelector(".sc-box").setAttribute("aria-label", "Mute and collapse ShadowHook TV");
     games.parentNode.insertBefore(el, games.nextSibling);
     /* keeps playing while they scroll; pauses only when they switch away from the Social tab */
     miniWatch();
@@ -9940,6 +9983,7 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
       SHTV = publicList(ALL);
       refresh(); loadThumbs(); renderMgr(); loadLive();
       if (miniOn) miniRun();               /* switch from the built-in backup list to the real lineup right away */
+      if (collapsed) updateBanner();
       return true;
     }).catch(function(){ return false; });
   }
@@ -10153,7 +10197,7 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
 })();
 </script>
-<!-- =================== /SHADOWHOOK TV (v22 · live channel) =================== -->
+<!-- =================== /SHADOWHOOK TV (v23 · live channel) =================== -->
 
 </body>
 </html>
