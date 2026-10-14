@@ -9184,7 +9184,7 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
   };
 })();
 </script>
-<!-- ===================== SHADOWHOOK TV (v26 · live channel) ===================== -->
+<!-- ===================== SHADOWHOOK TV (v30 · live channel) ===================== -->
 <style id="shtvCSS">
 :root{--sh-ease:cubic-bezier(.2,.8,.2,1);--sh-glass:rgba(255,255,255,.055);--sh-line:rgba(255,255,255,.09);--sh-ink:#f4f2fa;--sh-dim:rgba(244,242,250,.62);--sh-faint:rgba(244,242,250,.4);--sh-live:#ff2e63}
 .shtv-art{position:absolute;inset:0;overflow:hidden;background:#140f24}
@@ -9738,6 +9738,20 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
   /* the Social screen learns each video's real length (saved for everyone) and re-times the next hand-off */
   /* a video finished (or tried to loop): never replay it. Unknown length -> save what actually played and move on;
      known length -> hold on the logo until its slot is over, then the next video */
+  /* keep the picture at the channel's "now": TikTok drops commands until playback starts, so jump once it's playing and re-check */
+  function miniKeepLive(mc, ct){
+    if (!mc || mc.ended || !mc.f.isConnected) return;
+    var should = mc.seek + (Date.now() - mc.t0) / 1000 - 1;
+    if (mc.seek > 1 && (mc.tries || 0) < 3 && Date.now() - (mc.lastTry || 0) > 1500 && (ct == null ? !mc.tries : ct < should - 3)) {
+      mc.tries = (mc.tries || 0) + 1; mc.lastTry = Date.now(); mc.jumping = true;
+      miniPost(mc.f, mc.v, { type: "seekTo", value: Math.max(0, Math.round(should)), "x-tiktok-player": true });
+      return;
+    }
+    if (ct == null) return;
+    if (mc.jumping && ct >= should - 3) { mc.jumping = false; mc.lastCT = null; }
+    if (!mc.jumping && mc.lastCT != null && mc.lastCT > 3 && ct < mc.lastCT - 2) miniEnded();   /* TikTok looped it back to the start */
+    mc.lastCT = ct;
+  }
   function miniEnded(){
     var c = miniCtx; if (!c || c.ended || !c.f.isConnected) return;
     c.ended = true;
@@ -9780,6 +9794,13 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
       return;
     }
     var v = it.v, seek = v.dur ? Math.floor(now.seek) : 0;   /* unknown length: play from the start so the length we learn is real */
+    var tail = effDur(v) ? effDur(v) - now.seek : 99;
+    if (tail < TV.fadeOut + 3) {                               /* tuned in during the last few seconds: hold on the logo until the next video */
+      box.innerHTML = '<div class="sc-id">'+brandBG()+'<span class="shtv-wm">ShadowHook <em>TV</em></span></div>';
+      miniFrame = null; miniCtx = null;
+      miniTimer = setTimeout(miniRun, Math.max(.5, tail) * 1000 + 300);
+      return;
+    }
     var src = isYT(v)
       ? "https://www.youtube.com/embed/" + encodeURIComponent(v.id) + "?autoplay=1&mute=1&controls=0&disablekb=1&fs=0&iv_load_policy=3&playsinline=1&rel=0&modestbranding=1&enablejsapi=1" + (seek > 1 ? "&start=" + seek : "") + "&origin=" + encodeURIComponent(location.origin)
       : "https://www.tiktok.com/player/v1/" + encodeURIComponent(v.id) + "?autoplay=1&controls=0&progress_bar=0&play_button=0&volume_control=0&fullscreen_button=0&timestamp=0&music_info=0&description=0&rel=0&native_context_menu=0&closed_caption=0&loop=0";
@@ -9790,14 +9811,14 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
     miniFrame = f; miniV = v;
     armCover(box, f, function(){ miniSoundIn(f, v); });
     f.addEventListener("load", function(){
-      [200, 900, 2000].forEach(function(ms){ setTimeout(function(){
+      [300, 1500].forEach(function(ms){ setTimeout(function(){
         if (!f.isConnected) return;
         var on = wantSound() && (f._lifted || !TV.coverSeconds);   /* stay quiet while the logo is still covering the start */
         if (isYT(v)) miniPost(f, v, on ? { event: "command", func: "unMute", args: [] } : { event: "command", func: "mute", args: [] });
         else {
           miniPost(f, v, { type: on ? "unMute" : "mute", "x-tiktok-player": true });
-          if (seek > 1 && ms === 200) miniPost(f, v, { type: "seekTo", value: seek + (Date.now() - t0) / 1000, "x-tiktok-player": true });
-          miniPost(f, v, { type: "play", "x-tiktok-player": true });
+          if (seek > 1 && ms === 300) miniPost(f, v, { type: "seekTo", value: seek + (Date.now() - t0) / 1000, "x-tiktok-player": true });
+          if (ms === 300) miniPost(f, v, { type: "play", "x-tiktok-player": true });
         }
       }, ms); });
     });
@@ -9862,13 +9883,11 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
     if (d.type === "onMute") { miniMuted = !!d.value; miniChip(miniMuted && !miniUserMuted); }
     if (d.type === "onCurrentTime" && d.value) {
       var ct = +d.value.currentTime;
-      if (miniCtx && isFinite(ct)) {
-        if (miniCtx.lastCT != null && miniCtx.lastCT > 3 && ct < miniCtx.lastCT - 2) miniEnded();   /* TikTok looped it back to the start */
-        miniCtx.lastCT = ct;
-      }
+      if (miniCtx && isFinite(ct)) miniKeepLive(miniCtx, ct);
       if (d.value.duration) miniLearn(+d.value.duration);
     }
     if (d.event === "infoDelivery" && d.info && d.info.duration) miniLearn(+d.info.duration);
+    if (d.type === "onStateChange" && (d.value === 1 || d.value === "1") && miniCtx) miniKeepLive(miniCtx, null);   /* playback started: TikTok will accept a jump now */
     if (d.type === "onStateChange" && (d.value === 0 || d.value === "0")) miniEnded();
     if (d.event === "onStateChange" && d.info === 0) miniEnded();
     if (d.event === "infoDelivery" && d.info && d.info.playerState === 0) miniEnded();
@@ -9876,15 +9895,12 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
   });
   /* ---- sound follows the logo: silent under the logo, fades up as it lifts, fades down as it returns ---- */
   function miniVol(f, v, vol){
-    if (!f || !f.isConnected) return;
-    if (isYT(v)) miniPost(f, v, { event: "command", func: "setVolume", args: [Math.round(vol)] });
-    else {
-      miniPost(f, v, { type: "volume", value: vol / 100, "x-tiktok-player": true });
-      miniPost(f, v, { type: "setVolume", value: Math.round(vol), "x-tiktok-player": true });
-    }
+    if (!f || !f.isConnected || !isYT(v)) return;      /* only YouTube has a real volume control; TikTok scratches if you try */
+    miniPost(f, v, { event: "command", func: "setVolume", args: [Math.round(vol)] });
   }
   function miniRamp(f, v, from, to, secs, done){
     clearInterval(f._ramp);
+    if (!isYT(v)) { f._ramp = setTimeout(function(){ done && done(); }, (secs || 1) * 1000); return; }   /* TikTok: one clean switch at the end */
     var steps = Math.max(4, Math.round((secs || 1) * 12)), k = 0;
     miniVol(f, v, from);
     f._ramp = setInterval(function(){
@@ -9895,11 +9911,11 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
   function miniSoundIn(f, v){            /* the logo is lifting */
     f._lifted = true;
     if (!wantSound() || !f.isConnected) return;
-    if (isYT(v)) miniPost(f, v, { event: "command", func: "unMute", args: [] }); else miniPost(f, v, { type: "unMute", "x-tiktok-player": true });
-    miniRamp(f, v, 0, 100, TV.audioFade);
+    if (isYT(v)) { miniPost(f, v, { event: "command", func: "unMute", args: [] }); miniRamp(f, v, 0, 100, TV.audioFade); }
+    else miniPost(f, v, { type: "unMute", "x-tiktok-player": true });
   }
   function miniSoundOut(f, v, secs){     /* the logo is coming back */
-    f._lifted = false;
+    f._lifted = false; clearTimeout(f._ramp); clearInterval(f._ramp);
     if (!f || !f.isConnected) return;
     miniRamp(f, v, 100, 0, secs || TV.audioFade, function(){
       if (isYT(v)) miniPost(f, v, { event: "command", func: "mute", args: [] }); else miniPost(f, v, { type: "mute", "x-tiktok-player": true });
@@ -10248,6 +10264,17 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
     if ((e.key === "Enter" || e.key === " ") && t && t.classList && t.classList.contains("gm-shtv")) { e.preventDefault(); if (t.hasAttribute("data-shtv-manage")) openMgr(); else openTV(); }
     if (e.key === "Escape" && mgr && mgr.classList.contains("on")) closeMgr();
   });
+  /* The app pauses its goo/ember animations when the window "blurs" (html.shk-rest). Focus moving into one of our
+     video players also counts as a blur even though the viewer never left, so take focus back and lift the pause. */
+  function ourFrame(el){ return !!(el && el.tagName === "IFRAME" && el.closest && el.closest("#shtvScreen, #shtvTV")); }
+  window.addEventListener("blur", function(){
+    setTimeout(function(){
+      if (document.visibilityState !== "visible" || !ourFrame(document.activeElement)) return;   /* really left: let the app rest */
+      try { document.activeElement.blur(); } catch(e){}
+      try { window.focus(); } catch(e){}
+      document.documentElement.classList.remove("shk-rest");
+    }, 0);
+  });
   function start(){
     mount(); mountScreen(); loadThumbs(); waitAndLoad();
     var host = document.getElementById("msgView") || document.body, pending = false;
@@ -10256,7 +10283,7 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
 })();
 </script>
-<!-- =================== /SHADOWHOOK TV (v26 · live channel) =================== -->
+<!-- =================== /SHADOWHOOK TV (v30 · live channel) =================== -->
 
 </body>
 </html>
