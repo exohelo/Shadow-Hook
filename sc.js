@@ -1276,14 +1276,31 @@ function myCardHTML(w){
 }
 function profileHTML(p,w){
   var nm=p.full_name?properCase(p.full_name):p.handle,role=p.role==="keymaster"?"The Keymaster":p.role==="seat"?"Seat of "+p.letter:"Applicant for "+p.letter,self=p.uid===w.uid,ck=p.checks||{};
-  var h='<div class="sheet-card"><button type="button" class="sc-close" data-scx>\u2715</button><div class="sc-pp"><div class="ph">'+(p.photo_url?'<img src="'+esc(p.photo_url)+'" alt="">':esc(nm.charAt(0)))+'</div><div class="nm">'+esc(nm)+'</div><div class="rl">'+esc(role)+'</div><div class="hd">@'+esc(p.handle)+(p.home?" \u00B7 "+esc(p.home):"")+"</div>"+(p.bio?'<div class="bio">\u201C'+esc(p.bio)+"\u201D</div>":"")+"</div>";
+  var h='<div class="sheet-card"><button type="button" class="sc-close" data-scx>\u2715</button><div class="sc-pp"><div class="ph"'+(p.photo_url?' data-sclb="'+esc(p.photo_url)+'" style="cursor:zoom-in"':"")+'>'+(p.photo_url?'<img src="'+esc(p.photo_url)+'" alt="">':esc(nm.charAt(0)))+'</div><div class="nm">'+esc(nm)+'</div><div class="rl">'+esc(role)+'</div><div class="hd">@'+esc(p.handle)+(p.home?" \u00B7 "+esc(p.home):"")+"</div>"+(p.bio?'<div class="bio">\u201C'+esc(p.bio)+"\u201D</div>":"")+"</div>";
   h+='<div class="sc-pstats"><div><b>'+fact(p.hrs!=null?Math.round(+p.hrs):null)+'</b><span>hours on the book</span></div><div><b>'+(p.member_since?new Date(ts(p.member_since)).toLocaleDateString(void 0,{month:"short",year:"2-digit"}):"\u2014")+'</b><span>member since</span></div><div><b>'+(p.seated_at?new Date(ts(p.seated_at)).toLocaleDateString(void 0,{month:"short",year:"2-digit"}):"\u2014")+'</b><span>seated</span></div><div><b>'+(p.days_active_30||0)+'</b><span>days in, 30d</span></div><div><b>'+(p.jobs_paid||0)+' \u00B7 '+(p.bucks_paid||0)+' \u2693</b><span>jobs \u00B7 paid</span></div><div><b>'+(p.votes_cast||0)+' \u00B7 '+(p.motions_put||0)+'</b><span>votes \u00B7 motions</span></div></div>';
   h+='<div class="sc-pline"><i>\u2302</i>'+(p.last_seen?"Last seen "+ago(ts(p.last_seen)):"")+"<small>"+(p.said||0)+" said at the table</small></div>";
   p.facebook_url&&(h+='<div class="sc-pline"><i>f</i><a href="'+esc(p.facebook_url)+'" target="_blank" rel="noopener">Facebook profile</a></div>');
   p.phone&&(h+='<div class="sc-pline"><i>\u260E</i><a href="tel:'+esc(p.phone)+'">'+esc(p.phone)+"</a><small>council only</small></div>");
   Object.keys(ck).length&&(h+='<div class="sc-sec">Facebook groups</div><div class="sc-grp">'+GROUPS.map(function(g){var k=ck[g[0]],s2=k?k.s:"o";return '<div class="g"><i class="'+s2+'">'+({y:"\u2713",n:"\u2717",q:"?",o:"\u00B7"})[s2]+"</i><b>"+g[1]+(k&&k.note?"<small>"+esc(k.note)+"</small>":"")+"</b></div>"}).join("")+"</div>");
-  self&&(h+='<div class="sc-row"><button type="button" class="sc-btn ghost" data-scc="prof-edit">Edit my profile</button></div>');
+  self&&(h+='<div class="sc-row"><button type="button" class="sc-btn ghost" data-scc="my-votes">\u2713 Votes I cast</button><button type="button" class="sc-btn ghost" data-scc="prof-edit">Edit my profile</button></div>');
   return h+"</div>";
+}
+function openMyVotes(){
+  var sh=sheetEl("scMyVotes","sc-sheet",97);
+  sh.innerHTML='<div class="sheet-card"><button type="button" class="sc-close" data-scx>\u2715</button><div class="sc-sec">Votes you cast</div><p class="sc-p dim">Loading\u2026</p></div>';sh.classList.add("on");
+  rpc("sc_my_votes").then(function(rows){
+    rows=rows||[];var mo=rows.filter(function(r){return r.kind==="motion"}),se=rows.filter(function(r){return r.kind==="seat"}),su=rows.filter(function(r){return r.kind==="succession"});
+    var line=function(r){
+      var when=r.at?new Date(ts(r.at)).toLocaleDateString(void 0,{month:"short",day:"numeric"}):"",st=r.kind==="motion"?(r.state==="open"?"still open":r.state==="carried"||r.state==="decreed"?"carried":r.state==="failed"?"failed":r.state):(r.state==="asked"?"election open":r.state==="seated"?"seated":r.state==="declined"?"declined":r.state||""),
+          ch=r.kind==="motion"?(r.choice==="aye"?"Aye":r.choice==="nay"?"Nay":"Abstain"):"Voted for";
+      return '<div class="sc-li"><div class="L'+(r.choice==="nay"?'" style="background:#e07a6e;color:#fff':r.choice==="pass"?' open':"")+'">'+(r.kind==="motion"?(r.choice==="aye"?"\u2713":r.choice==="nay"?"\u2717":"\u2013"):esc(r.letter||"\u269C"))+'</div><div class="d">'+(r.kind==="motion"?esc(r.title):esc(r.title)+" \u00B7 the seat of "+esc(r.letter||""))+"<small>"+ch+" \u00B7 "+when+" \u00B7 "+st+"</small></div></div>";
+    };
+    sh.innerHTML='<div class="sheet-card"><button type="button" class="sc-close" data-scx>\u2715</button><div class="sc-h2" style="margin-bottom:6px"><div class="crest">\u269C</div><div><h1 style="font-size:16px">Votes you cast</h1><div class="who">'+rows.length+" in all</div></div></div>"
+      +'<div class="sc-sec">Motions <em>'+mo.length+"</em></div>"+(mo.map(line).join("")||'<p class="sc-p dim">You haven\u2019t voted on a motion yet.</p>')
+      +'<div class="sc-sec">Seat elections <em>'+se.length+"</em></div>"+(se.map(line).join("")||'<p class="sc-p dim">No election votes yet.</p>')
+      +(su.length?'<div class="sc-sec">Succession</div>'+su.map(line).join(""):"")
+      +'<div class="sc-row"><button type="button" class="sc-btn ghost" data-scx>Close</button></div></div>';
+  }).catch(function(e){sh.innerHTML='<div class="sheet-card"><button type="button" class="sc-close" data-scx>\u2715</button><p class="sc-p">\u2717 '+esc(e&&e.message||e)+"</p></div>"});
 }
 function openProfile(handle){
   var p=personOf(handle);if(!p){say("No profile yet.");return}
@@ -1306,6 +1323,7 @@ function deskHTML(w){
     h+='<div class="sc-sec">Misconduct</div>'+(SC._banOpen?'<p class="sc-p dim">A regular member, and what they did. Council members can\u2019t be named here.</p><input class="sc-in" id="scBanWho" maxlength="24" placeholder="Handle" style="margin-bottom:8px"><textarea class="sc-in" id="scBanWhy" rows="2" maxlength="240" placeholder="What happened, plainly" style="margin-bottom:8px"></textarea><div class="sc-row"><button type="button" class="sc-btn ghost" data-scc="ban-cancel">Never mind</button><button type="button" class="sc-btn red" data-scc="ban-ask">Request the ban</button></div>':'<div class="sc-row"><button type="button" class="sc-btn ghost" data-scc="ban-open">Report serious misconduct</button></div>');
     h+='<div class="sc-sec">Your seat</div><div class="sc-li"><div class="L">'+esc(w.seat)+'</div><div class="d">Seat of '+esc(w.seat)+"<small>seated "+ago((SC.seats[w.seat]||{}).since||Date.now())+'</small></div><div class="act"><button type="button" class="n" data-scgo="giveup">Retire the seat</button></div></div>';
   }
+  h+='<div class="sc-sec">Your record</div><div class="sc-row" style="margin-top:0"><button type="button" class="sc-btn ghost" data-scc="my-votes">\u2713 Votes I cast</button><button type="button" class="sc-btn ghost" data-scpp="'+esc(w.handle)+'">\u269C My profile</button></div>';
   h+=myCardHTML(w);
   h+='<div class="sc-sec">The council</div>'+LETTERS.map(function(L){var s=SC.seats[L];return '<div class="sc-li"'+(s?' data-scpp="'+esc(s.handle)+'"':"")+'><div class="L'+(s?"":" open")+'">'+L+'</div><div class="d">'+(s?esc(nameOf(s.handle,s.holder))+"<small>@"+esc(s.handle)+" · seated "+ago(s.since)+"</small>":'<span style="color:var(--sc-dim)">open seat</span>')+"</div></div>"}).join("");
   w.head&&!SC.succession&&(h+='<div class="sc-sec" style="margin-top:26px">Succession</div>'+(SC._succOpen?'<p class="sc-p dim">When you move up to the union, open the seat here. Every seat holder votes for one of their own; the Keeper of the Count seals it and announces your successor. This can\u2019t be taken back.</p><div class="sc-row"><button type="button" class="sc-btn ghost" data-scc="succ-cancel">Not yet</button><button type="button" class="sc-btn red" data-scc="open-seat">Open the Keymaster\u2019s seat</button></div>':'<p class="sc-p dim">For the day you move up to the union.</p><div class="sc-row"><button type="button" class="sc-btn ghost" data-scc="succ-open">Give up the table\u2026</button></div>'));
@@ -1717,6 +1735,7 @@ function headerHTML(w,N,realHead,pvL){
                     return
                 }
                 if (kind === "floor") { SC._floorOff = !SC._floorOff; var fw = sh.querySelector(".sc-floorwrap"); fw && fw.classList.toggle("on", !SC._floorOff); c.classList.toggle("on", !SC._floorOff); return }
+                if (kind === "my-votes") { openMyVotes(); return }
                 if (kind === "prof-save") {
                     rpc("sc_profile_set", { p_photo: SC._phUrl || ((personOf(w.handle, w.uid) || {}).photo_url) || "", p_bio: ($("scPBio").value || "").trim(), p_facebook: ($("scPFb").value || "").trim(), p_phone: ($("scPPhone").value || "").trim(), p_home: ($("scPHome").value || "").trim() }).then(function() { SC._phUrl = null; after("Profile saved. Council only.", [12])() }).catch(nope); return
                 }
