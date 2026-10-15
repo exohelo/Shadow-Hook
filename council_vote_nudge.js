@@ -50,14 +50,14 @@
 
   function paint(){
     var m=Q[at]; if(!m){ shut(); return; }
-    var cast=m.aye+m.nay, carries=cast>0&&m.aye*3>=cast*2, hrs=Math.max(0,Math.ceil((new Date(m.created_at).getTime()+48*36e5-Date.now())/36e5));
+    var cast=m.aye+m.nay, carries=cast>0&&(m.kind==='remove'?m.aye*3>=cast*2:m.aye>m.nay), hrs=Math.max(0,Math.ceil((new Date(m.created_at).getTime()+48*36e5-Date.now())/36e5));
     el.querySelector('.vn-box').innerHTML=
       '<div class="vn-k"><span>THE COUNCIL IS WAITING ON YOUR VOTE</span><span>'+(Q.length>1?(at+1)+' of '+Q.length:'')+'</span></div>'
       +'<h2 id="vnT">'+esc(m.title)+'</h2>'
       +'<div class="vn-by">Put up by '+esc(m.by||'a member')+' · open '+ago(m.created_at)+(m.target?' · seat '+esc(m.target):'')+'</div>'
       +(m.body?'<div class="vn-body">'+esc(m.body)+'</div>':'')
       +'<div class="vn-tally"><div><b>'+m.aye+'</b>AYE</div><div><b>'+m.nay+'</b>NAY</div><div><b>'+m.pass+'</b>PASS</div><div><b>'+(m.seated-m.aye-m.nay-m.pass)+'</b>NOT IN</div></div>'
-      +'<p class="vn-need">Voting closes in '+hrs+' hour'+(hrs===1?'':'s')+'. It needs \u2154 of the votes cast. '+(cast?'Right now it '+(carries?'carries':'fails')+', '+m.aye+' of '+cast+'.':'No votes yet.')+'</p>'
+      +'<p class="vn-need">Voting closes in '+hrs+' hour'+(hrs===1?'':'s')+'. It needs '+(m.kind==='remove'?'\u2154 of':'a majority of')+' the votes cast. '+(cast?'Right now it '+(carries?'carries':'fails')+', '+m.aye+' of '+cast+'.':'No votes yet.')+'</p>'
       +'<div class="vn-vote"><button class="vn-aye" data-vn="aye">AYE</button><button class="vn-nay" data-vn="nay">NAY</button><button class="vn-pass" data-vn="pass">PASS</button></div>'
       +'<button class="vn-later" data-vn="later">Later</button>';
     var f=el.querySelector('.vn-aye'); if(f)setTimeout(function(){ try{ f.focus(); }catch(e){} },60);
