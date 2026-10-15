@@ -151,7 +151,7 @@
             ascending: !1
         }).limit(100), SB.from("sc_line").select("*").is("answered_at", null).order("created_at"), SB.rpc("sc_inbox"), SB.from("sc_bans").select("*").order("created_at", {
             ascending: !1
-        }).limit(50), SB.from("sc_house").select("*").eq("id", 1).maybeSingle(), SB.from("sc_succ_votes").select("handle,candidate,candidate_handle"), SB.rpc("sc_traffic"), SB.rpc("sc_names"), SB.rpc("sc_applicant_extras"), SB.from("sc_hall_line").select("*").order("key", {ascending: !1}).limit(12), SB.rpc("sc_card_mine"), SB.rpc("sc_profiles")]);
+        }).limit(50), SB.from("sc_house").select("*").eq("id", 1).maybeSingle(), SB.from("sc_succ_votes").select("handle,candidate,candidate_handle"), SB.rpc("sc_traffic"), SB.rpc("sc_names"), SB.rpc("sc_applicant_extras"), SB.from("sc_hall_line").select("*").order("key", {ascending: !1}).limit(12), SB.rpc("sc_card_mine"), SB.rpc("sc_profiles"), SB.rpc("sc_ban_record")]);
         SC.table = (rs[0].data || []).map(function(x) {
             return {
                 id: x.id,
@@ -248,6 +248,7 @@
         SC.hall = {};
         (rs[12].data || []).forEach(function(x) { SC.hall[x.key] = { key: x.key, calls: x.calls || 0, caller: x.caller, caller_handle: x.caller_handle, started_at: x.started_at ? ts(x.started_at) : 0, last_call_at: x.last_call_at ? ts(x.last_call_at) : 0, done_at: x.done_at ? ts(x.done_at) : 0, logged_handle: x.logged_handle } });
         SC.myCard = ((rs[13].data || [])[0]) || null;
+        SC.banRecord = rs[15].data || [];
         SC.people = {};
         (rs[14].data || []).forEach(function(p) { SC.people["u:" + p.uid] = p; p.handle && (SC.people["h:" + String(p.handle).toLowerCase()] = p); if (p.full_name && !SC.names["u:" + p.uid]) { var nm2 = properCase(p.full_name); SC.names["u:" + p.uid] = nm2; SC.names["h:" + String(p.handle).toLowerCase()] = nm2 } });
         var tr = (rs[9].data || [])[0];
@@ -1064,7 +1065,7 @@ async function uploadAtt(file){
 async function uploadProfilePhoto(file){
   SC._phUp=1;paintChamber();
   try{var a=await uploadAtt(file);SC._phUrl=a.url;SC._phUp=0;paintChamber();
-    await rpc("sc_profile_set",{p_photo:a.url,p_bio:($("scPBio")||{}).value||"",p_facebook:($("scPFb")||{}).value||"",p_phone:($("scPPhone")||{}).value||"",p_home:($("scPHome")||{}).value||""});
+    await rpc("sc_profile_set",{p_photo:a.url,p_bio:($("scPBio")||{}).value||"",p_facebook:($("scPFb")||{}).value||"",p_phone:"",p_home:($("scPHome")||{}).value||""});
     say("\u2713 Picture set, council only");reload().then(paintChamber)}
   catch(e){SC._phUp=0;paintChamber();say("\u2717 "+(e&&e.message||e))}
 }
@@ -1141,6 +1142,47 @@ function choreDone(kind,key){ /* a house chore is done when a done/paid job from
 }
 function choreJob(kind,key){return SC.jobs.filter(function(j){return j.by==="THE HOUSE"&&String(j.rawBody||"").indexOf("· "+kind+" · "+key)>=0})[0]||null}
 function hallOf(key){return (SC.hall||{})[key]||{key:key,calls:0}}
+
+/* ===== Chamber alerts: the table, motions, votes ===== */
+function alertsOn(){try{return localStorage.getItem("shk_sc_alerts")!=="0"}catch(e){return true}}
+var _alT={};
+function scNotify(title,body,tag){
+  if(!alertsOn()||!council())return;
+  var now=Date.now();if(_alT[tag]&&now-_alT[tag]<4000)return;_alT[tag]=now;
+  try{if(typeof shkNotify==="function"){shkNotify(title,body,tag,[60,40,60]);return}}catch(e){}
+  try{if(!document.hidden){say(title+" \u2014 "+body);hum([60,40,60]);return}}catch(e){}
+  try{if(typeof Notification!=="undefined"&&Notification.permission==="granted"){var o={body:body,tag:tag,vibrate:[60,40,60]};window.SW_REG&&SW_REG.showNotification?SW_REG.showNotification(title,o).catch(function(){try{new Notification(title,o)}catch(e){}}):new Notification(title,o)}}catch(e){}
+}
+function scAlert(table,ev,row,old){
+  try{
+    var w=me();if(!row||!w.uid)return;
+    var inRoomNow=(function(){var sh=$("scChamber");return sh&&sh.classList.contains("on")&&!document.hidden})();
+    if(table==="sc_table"&&ev==="INSERT"){
+      if(row.uid===w.uid)return;if(inRoomNow&&tab==="table")return;
+      var who=row.kind==="house"?"The Table":nameOf(row.handle,row.uid),txt=String(row.body||"").slice(0,110)||(Array.isArray(row.media)&&row.media.length?"sent "+(row.media[0].kind==="image"?"a photo":row.media[0].kind==="video"?"a video":"a file"):"");
+      scNotify("\u269C "+who,txt,"shadowhook-chamber-table");return;
+    }
+    if(table==="sc_motions"&&ev==="INSERT"){
+      if(row.by_uid===w.uid)return;
+      scNotify(row.kind==="remove"?"\u2620 A removal is on the floor":"\u269C A motion is on the floor",String(row.title||"")+" \u2014 by "+nameOf(row.by_handle,row.by_uid)+". Your vote is needed.","shadowhook-chamber-motion-"+row.id);return;
+    }
+    if(table==="sc_motions"&&ev==="UPDATE"){
+      if(row.state&&row.state!=="open"&&(!old||old.state==="open"||!old.state)){
+        scNotify(row.state==="failed"?"The motion fails":"\u269C The motion carries",String(row.title||""),"shadowhook-chamber-result-"+row.id);
+      }return;
+    }
+    if(table==="sc_votes"&&ev==="INSERT"){
+      if(row.uid===w.uid)return;
+      var m=SC.motions.filter(function(x){return x.id===row.motion_id})[0];
+      if(m&&m.by===w.handle){scNotify("\u269C A vote on your motion",nameOf(row.handle,row.uid)+" voted "+(row.choice==="pass"?"abstain":row.choice)+" on \u201C"+m.title+"\u201D","shadowhook-chamber-vote-"+row.motion_id)}
+      return;
+    }
+    if(table==="sc_claim_votes"&&ev==="INSERT"){
+      if(!w.head||row.uid===w.uid)return;
+      scNotify("\u269C A vote on the seat of "+row.letter,nameOf(row.handle,row.uid)+" cast a vote.","shadowhook-chamber-seat-"+row.letter);return;
+    }
+  }catch(e){}
+}
 
 /* ===== TABLE ===== */
 function tableHTML(w){
@@ -1258,7 +1300,7 @@ function applicantsHTML(w){
       var x=X[a.uid]||{},nm=x.full_name?properCase(x.full_name):a.handle,isNew=a.since&&Date.now()-ts(a.since)<2592e6,idle=a.days===0,pct=tot?a.votes/tot*100:0,hl=String(a.handle||"").toLowerCase();
       var c='<div class="sc-cand"><div class="top"><div class="pav'+(x.photo_url?"":" none")+(w.head?" km":"")+'" data-scpp="'+esc(a.handle)+'"'+(w.head?' data-scsetph="'+a.uid+'" title="Set a picture"':"")+'>'+(x.photo_url?'<img src="'+esc(x.photo_url)+'" alt="">':esc(nm.charAt(0)))+(w.head?'<input type="file" accept="image/*" hidden data-scprof="for" data-u="'+a.uid+'">':"")+'</div><div class="nmw"><b data-scpp="'+esc(a.handle)+'">'+esc(nm)+"</b><small>"+esc(hl)+" · "+(isNew?"new this month":idle?"quiet lately":"active")+" · filed "+ago(a.at)+'</small></div><div class="lead"><b>'+a.votes+"</b><span>vote"+(a.votes===1?"":"s")+'</span></div></div><div class="bd"><div class="vbar"><b style="width:'+pct+'%"></b></div>';
       c+='<div class="facts"><span><b>'+fact(a.hrs!=null?Math.round(+a.hrs):null)+"</b>hours on the book</span><span><b>"+(a.since?new Date(ts(a.since)).toLocaleDateString(void 0,{month:"short",year:"2-digit"}):"\u2014")+"</b>member since</span><span><b>"+a.days+"</b>days in, 30d</span><span><b>"+(a.seen?ago(a.seen):"\u2014")+"</b>last seen</span></div>";
-      c+='<div class="sub">About</div><div class="about">'+(a.note?"<em>\u201C"+esc(a.note)+"\u201D</em> "+(x.bio?"<br>":""):"")+(x.bio?"<em>\u201C"+esc(x.bio)+"\u201D</em>":(a.note?"":'<span class="none">Hasn\u2019t filled in their profile yet.</span>'))+(x.facebook_url?'<br><a class="sc-fb" href="'+esc(x.facebook_url)+'" target="_blank" rel="noopener"><i>f</i>Open Facebook profile</a>':'<br><span class="sc-fb none"><i>f</i>No Facebook linked</span>')+"</div>";
+      c+='<div class="sub">About</div><div class="about">'+(a.note?"<em>\u201C"+esc(a.note)+"\u201D</em> "+(x.bio?"<br>":""):"")+(x.bio?"<em>\u201C"+esc(x.bio)+"\u201D</em>":(a.note?"":'<span class="none">Hasn\u2019t filled in their profile yet.</span>'))+(x.facebook_url?'<br><a class="sc-fb" href="'+esc(x.facebook_url)+'" target="_blank" rel="noopener"><i>f</i>Open Facebook profile</a>'+(w.head?' <button type="button" class="sc-fb none" data-scfb="'+a.uid+'" style="font-size:11px"><i>f</i>Change</button>':""):(w.head?'<br><button type="button" class="sc-fb none" data-scfb="'+a.uid+'"><i>f</i>Add their Facebook link</button>':'<br><span class="sc-fb none"><i>f</i>No Facebook linked</span>'))+"</div>";
       var ck=x.checks||{},latest=0,allSet=true;
       c+='<div class="sub">Facebook groups</div><div class="sc-grp">'+GROUPS.map(function(g){var k=ck[g[0]],s=k?k.s:"o";k&&(latest=Math.max(latest,ts(k.at)));k||(allSet=false);
         return '<div class="g"><i class="'+s+'">'+({y:"\u2713",n:"\u2717",q:"?",o:"\u00B7"})[s]+"</i><b>"+g[1]+(k&&k.note?"<small>"+esc(k.note)+"</small>":"")+"</b>"+(w.head?'<span class="mk"><button type="button"'+(s==="y"?' class="on"':"")+' data-scck="y" data-u="'+a.uid+'" data-g="'+g[0]+'">\u2713</button><button type="button"'+(s==="q"?' class="on"':"")+' data-scck="q" data-u="'+a.uid+'" data-g="'+g[0]+'">?</button><button type="button"'+(s==="n"?' class="on"':"")+' data-scck="n" data-u="'+a.uid+'" data-g="'+g[0]+'">\u2717</button></span><a class="go" href="'+g[2]+'" target="_blank" rel="noopener">Open \u2197</a>':"")+"</div>"}).join("")
@@ -1270,9 +1312,20 @@ function applicantsHTML(w){
     return h;
   }).join("");
 }
+function banRecordHTML(w){
+  var R=SC.banRecord||[];
+  var h='<div class="sc-sec">Banned from marking <em>'+(R.length?R.filter(function(r){return r.active}).length+" now · "+R.length+" on record":"the record")+"</em></div>";
+  if(!R.length)return h+'<p class="sc-p dim">Nobody has been banned from the wire.</p>';
+  return h+R.map(function(r){
+    var nm=r.full_name?properCase(r.full_name):r.handle,until=r.last_until?ts(r.last_until):0;
+    return '<div class="sc-cand" style="margin-bottom:8px"><div class="top"><div class="pav none" data-scpp="'+esc(r.handle||"")+'">'+esc((nm||"?").charAt(0))+'</div><div class="nmw"><b data-scpp="'+esc(r.handle||"")+'">'+esc(nm)+'</b><small>'+esc(String(r.handle||"").toLowerCase())+(r.card_id?" · "+esc(r.card_id):"")+" · "+(r.active?'<span style="color:#e07a6e;font-weight:600">banned until '+new Date(until).toLocaleDateString(void 0,{month:"short",day:"numeric"})+"</span>":"ban over · watching")+'</small></div><div class="lead"><b>'+r.times+'</b><span>time'+(r.times===1?"":"s")+'</span></div></div><div class="bd">'
+      +(r.history||[]).map(function(x){return '<div class="sc-pline"><i>'+(ts(x.until)>Date.now()?"\u2716":"\u00B7")+"</i><span>"+esc(x.reason||"")+"</span><small>"+new Date(ts(x.at)).toLocaleDateString(void 0,{month:"short",day:"numeric"})+" \u2192 "+new Date(ts(x.until)).toLocaleDateString(void 0,{month:"short",day:"numeric"})+(x.by?" · "+esc(x.by):"")+"</small></div>"}).join("")
+      +"</div></div>";
+  }).join("");
+}
 function myCardHTML(w){
   var c=personOf(w.handle,w.uid)||{},nm=nameOf(w.handle,w.uid),pic=SC._phUrl||c.photo_url;
-  return '<div class="sc-sec">Your council profile</div><div class="sc-mycard sc-pedit"><p class="sc-p dim" style="margin:0 0 10px">Seen only inside the Chamber. Your picture here is separate from the one on the rest of the app.</p><label class="ph'+(SC._phUp?" up":"")+'">'+(pic?'<img src="'+esc(pic)+'" alt="">':esc((nm||"?").charAt(0)))+'<input type="file" accept="image/*" hidden data-scprof="photo"></label><label class="phl"><input type="file" accept="image/*" hidden data-scprof="photo">'+(SC._phUp?"Uploading\u2026":(pic?"Change the picture":"Add a picture"))+'</label><textarea class="sc-in" id="scPBio" rows="2" maxlength="280" placeholder="One or two lines about you">'+esc(c.bio||"")+'</textarea><input class="sc-in" id="scPFb" maxlength="200" placeholder="facebook.com/your.profile" value="'+esc(c.facebook_url||"")+'"><input class="sc-in" id="scPHome" maxlength="60" placeholder="Where you\u2019re from (optional)" value="'+esc(c.home||"")+'"><input class="sc-in" id="scPPhone" maxlength="24" placeholder="Phone, council only (optional)" value="'+esc(c.phone||"")+'"><div class="sc-row"><button type="button" class="sc-btn" data-scc="prof-save">Save the profile</button></div></div>';
+  return '<div class="sc-sec">Your council profile</div><div class="sc-mycard sc-pedit"><p class="sc-p dim" style="margin:0 0 10px">Seen only inside the Chamber. Your picture here is separate from the one on the rest of the app.</p><label class="ph'+(SC._phUp?" up":"")+'">'+(pic?'<img src="'+esc(pic)+'" alt="">':esc((nm||"?").charAt(0)))+'<input type="file" accept="image/*" hidden data-scprof="photo"></label><label class="phl"><input type="file" accept="image/*" hidden data-scprof="photo">'+(SC._phUp?"Uploading\u2026":(pic?"Change the picture":"Add a picture"))+'</label><textarea class="sc-in" id="scPBio" rows="2" maxlength="280" placeholder="One or two lines about you">'+esc(c.bio||"")+'</textarea><input class="sc-in" id="scPFb" maxlength="200" placeholder="facebook.com/your.profile" value="'+esc(c.facebook_url||"")+'"><input class="sc-in" id="scPHome" maxlength="60" placeholder="Where you\u2019re from (optional)" value="'+esc(c.home||"")+'"><div class="sc-row"><button type="button" class="sc-btn" data-scc="prof-save">Save the profile</button></div></div>';
 }
 function profileHTML(p,w){
   var nm=p.full_name?properCase(p.full_name):p.handle,role=p.role==="keymaster"?"The Keymaster":p.role==="seat"?"Seat of "+p.letter:"Applicant for "+p.letter,self=p.uid===w.uid,ck=p.checks||{};
@@ -1280,7 +1333,6 @@ function profileHTML(p,w){
   h+='<div class="sc-pstats"><div><b>'+fact(p.hrs!=null?Math.round(+p.hrs):null)+'</b><span>hours on the book</span></div><div><b>'+(p.member_since?new Date(ts(p.member_since)).toLocaleDateString(void 0,{month:"short",year:"2-digit"}):"\u2014")+'</b><span>member since</span></div><div><b>'+(p.seated_at?new Date(ts(p.seated_at)).toLocaleDateString(void 0,{month:"short",year:"2-digit"}):"\u2014")+'</b><span>seated</span></div><div><b>'+(p.days_active_30||0)+'</b><span>days in, 30d</span></div><div><b>'+(p.jobs_paid||0)+' \u00B7 '+(p.bucks_paid||0)+' \u2693</b><span>jobs \u00B7 paid</span></div><div><b>'+(p.votes_cast||0)+' \u00B7 '+(p.motions_put||0)+'</b><span>votes \u00B7 motions</span></div></div>';
   h+='<div class="sc-pline"><i>\u2302</i>'+(p.last_seen?"Last seen "+ago(ts(p.last_seen)):"")+"<small>"+(p.said||0)+" said at the table</small></div>";
   p.facebook_url&&(h+='<div class="sc-pline"><i>f</i><a href="'+esc(p.facebook_url)+'" target="_blank" rel="noopener">Facebook profile</a></div>');
-  p.phone&&(h+='<div class="sc-pline"><i>\u260E</i><a href="tel:'+esc(p.phone)+'">'+esc(p.phone)+"</a><small>council only</small></div>");
   Object.keys(ck).length&&(h+='<div class="sc-sec">Facebook groups</div><div class="sc-grp">'+GROUPS.map(function(g){var k=ck[g[0]],s2=k?k.s:"o";return '<div class="g"><i class="'+s2+'">'+({y:"\u2713",n:"\u2717",q:"?",o:"\u00B7"})[s2]+"</i><b>"+g[1]+(k&&k.note?"<small>"+esc(k.note)+"</small>":"")+"</b></div>"}).join("")+"</div>");
   self&&(h+='<div class="sc-row"><button type="button" class="sc-btn ghost" data-scc="my-votes">\u2713 Votes I cast</button><button type="button" class="sc-btn ghost" data-scc="prof-edit">Edit my profile</button></div>');
   return h+"</div>";
@@ -1309,6 +1361,7 @@ function openProfile(handle){
 function deskHTML(w){
   var T=SC.traffic,h='<div class="sc-stat"><div><b>'+T.today+"</b><span>in today</span></div><div><b>"+T.week+"</b><span>this week</span></div><div><b>"+T.month+'</b><span>30 days</span></div></div>';
   h+=applicantsHTML(w);
+  h+=banRecordHTML(w);
   if(w.head){
     h+='<div class="sc-sec">Keeper of the Count</div><div class="sc-li"><div class="L">'+(SC.teller&&seatOf(SC.teller)||"?")+'</div><div class="d">'+esc(SC.teller?nameOf(SC.teller):"Nobody")+'<small>seals the vote, works the count, announces it</small></div></div><select class="sc-in" id="scTeller" style="margin:8px 0">'+seated().map(function(L){return '<option value="'+esc(SC.seats[L].holder)+'"'+(SC.seats[L].holder===SC.tellerUid?" selected":"")+">"+L+" · "+esc(nameOf(SC.seats[L].handle))+"</option>"}).join("")+'</select><div class="sc-row"><button type="button" class="sc-btn ghost" data-scc="teller">Appoint</button></div>';
     var asks=SC.bans.filter(function(b){return b.state==="asked"});
@@ -1334,7 +1387,7 @@ function deskHTML(w){
 function headerHTML(w,N,realHead,pvL){
   var inN=0;try{inN=seated().filter(function(L){return inRoom(SC.seats[L].handle)}).length+(inRoom(SC.head.handle)?1:0)}catch(e){}
   return '<div class="sc-h2"><div class="crest">\u269C</div><div><h1>The Chamber</h1><div class="who">'+(w.head?"You hold the table":"<b>"+esc(nameOf(w.handle,w.uid))+"</b> · Seat of "+esc(w.seat))+" <b>·</b> "+N+" seated, "+(26-N)+' open</div></div><button type="button" class="sc-close" data-scx>\u2715</button></div>'
-    +'<div class="sc-tools"><button type="button" class="sc-chip'+(SC._floorOff?"":" on")+'" data-scc="floor">\u2302 The floor · '+inN+' in</button><button type="button" class="sc-chip" data-scc="charter">\u2696 Charter</button>'+(realHead?'<button type="button" class="sc-chip" data-scpv="'+(pvL?"off":"on")+'">\uD83D\uDC41 '+(pvL?"Back to the table":"Seat view")+"</button>":"")+"</div>"
+    +'<div class="sc-tools"><button type="button" class="sc-chip'+(SC._floorOff?"":" on")+'" data-scc="floor">\u2302 The floor · '+inN+' in</button><button type="button" class="sc-chip" data-scc="charter">\u2696 Charter</button><button type="button" class="sc-chip'+(alertsOn()?" on":"")+'" data-scc="alerts">\uD83D\uDD14 Alerts '+(alertsOn()?"on":"off")+'</button>'+(realHead?'<button type="button" class="sc-chip" data-scpv="'+(pvL?"off":"on")+'">\uD83D\uDC41 '+(pvL?"Back to the table":"Seat view")+"</button>":"")+"</div>"
     +(pvL?'<div class="sc-pv">\uD83D\uDC41 Previewing what <b>'+esc(nameOf(w.handle))+"</b> (Seat of "+esc(pvL)+") sees · votes here don\u2019t count</div>":"");
 }
 
@@ -1482,6 +1535,8 @@ function headerHTML(w,N,realHead,pvL){
                 tab = t.getAttribute("data-sct"), paintChamber(), hum([8]);
                 return
             }
+            var fb = ev.target.closest && ev.target.closest("[data-scfb]");
+            if (fb && w.head) { var cur = ((SC.extras || {})[fb.getAttribute("data-scfb")] || {}).facebook_url || "", u = prompt("Their Facebook profile link", cur); if (u === null) return; rpc("sc_profile_fb_for", { p_uid: fb.getAttribute("data-scfb"), p_facebook: u.trim() }).then(after(u.trim() ? "\u2713 Facebook link added" : "Link removed", [12])).catch(nope); return }
             var sph = ev.target.closest && ev.target.closest("[data-scsetph]");
             if (sph && w.head && !ev.target.closest("input")) { var fi = sph.querySelector("input[type=file]"); fi && fi.click(); return }
             var pp = ev.target.closest && ev.target.closest("[data-scpp]");
@@ -1735,9 +1790,10 @@ function headerHTML(w,N,realHead,pvL){
                     return
                 }
                 if (kind === "floor") { SC._floorOff = !SC._floorOff; var fw = sh.querySelector(".sc-floorwrap"); fw && fw.classList.toggle("on", !SC._floorOff); c.classList.toggle("on", !SC._floorOff); return }
+                if (kind === "alerts") { var on = !alertsOn(); try { localStorage.setItem("shk_sc_alerts", on ? "1" : "0") } catch (e) {} say(on ? "\uD83D\uDD14 Chamber alerts on" : "Chamber alerts off"); paintChamber(); if (on) try { typeof Notification !== "undefined" && Notification.permission === "default" && Notification.requestPermission() } catch (e) {} return }
                 if (kind === "my-votes") { openMyVotes(); return }
                 if (kind === "prof-save") {
-                    rpc("sc_profile_set", { p_photo: SC._phUrl || ((personOf(w.handle, w.uid) || {}).photo_url) || "", p_bio: ($("scPBio").value || "").trim(), p_facebook: ($("scPFb").value || "").trim(), p_phone: ($("scPPhone").value || "").trim(), p_home: ($("scPHome").value || "").trim() }).then(function() { SC._phUrl = null; after("Profile saved. Council only.", [12])() }).catch(nope); return
+                    rpc("sc_profile_set", { p_photo: SC._phUrl || ((personOf(w.handle, w.uid) || {}).photo_url) || "", p_bio: ($("scPBio").value || "").trim(), p_facebook: ($("scPFb").value || "").trim(), p_phone: "", p_home: ($("scPHome").value || "").trim() }).then(function() { SC._phUrl = null; after("Profile saved. Council only.", [12])() }).catch(nope); return
                 }
                 if (kind === "prof-edit") { var ps = $("scProfile"); ps && ps.classList.remove("on"); tab = "desk"; paintChamber(); setTimeout(function() { var e2 = sh.querySelector(".sc-pedit"); e2 && e2.scrollIntoView({ block: "start", behavior: "smooth" }) }, 80); return }
                 if (kind === "att-open") { var tr = $("scTray"); tr && tr.classList.toggle("on"); return }
@@ -1912,12 +1968,14 @@ function headerHTML(w,N,realHead,pvL){
     function rtOn() {
         try {
             if (!window.SB || window.__scRT) return;
-            window.__scRT = SB.channel("shadow-council"), ["sc_seats", "sc_claims", "sc_claim_votes", "sc_table", "sc_motions", "sc_votes", "sc_jobs", "sc_line", "sc_bans", "sc_house", "sc_succ_votes", "sc_hall_line", "sc_applicant_checks", "sc_applicant_card", "sc_profile"].forEach(function(t) {
+            window.__scRT = SB.channel("shadow-council"), ["sc_seats", "sc_claims", "sc_claim_votes", "sc_table", "sc_motions", "sc_votes", "sc_jobs", "sc_line", "sc_bans", "sc_house", "sc_succ_votes", "sc_hall_line", "sc_applicant_checks", "sc_applicant_card", "sc_profile", "wire_ban_log"].forEach(function(t) {
                 window.__scRT.on("postgres_changes", {
                     event: "*",
                     schema: "public",
                     table: t
                 }, rtKick)
+            }), [["sc_table", "INSERT"], ["sc_motions", "INSERT"], ["sc_motions", "UPDATE"], ["sc_votes", "INSERT"], ["sc_claim_votes", "INSERT"]].forEach(function(t) {
+                window.__scRT.on("postgres_changes", { event: t[1], schema: "public", table: t[0] }, function(p) { try { scAlert(t[0], t[1], p && p.new, p && p.old) } catch (e) {} })
             }), window.__scRT.subscribe()
         } catch (e) {
             console.warn("[sc] realtime", e)
