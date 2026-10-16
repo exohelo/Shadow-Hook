@@ -62,9 +62,11 @@
     var mins={}; try{ mins=JSON.parse(localStorage.getItem(LS_MIN)||'{}'); }catch(e){}
     h2.innerHTML=ROWS.map(function(r){
       var th=r.theme||'plain', ph=phase(r), tl=left(r.closes_at), st=ST[r.id]||{};
-      if(ph==='drawn') return '<button class="rfl-rail t-'+E(th)+'" type="button" data-rfl2="reveal" data-id="'+E(r.id)+'"><b>\uD83C\uDFC6 WINNER</b><span>'+E(r.title)+' \u00B7 '+E(String(r.winner_handle||'\u2014'))+' \u00B7 ticket #'+num(r.winner_ticket)+' of '+num(r.total_at_draw)+'</span>\u25B8</button>';
+      if(ph==='drawn') return '<button class="rfl-rail" type="button" data-rfl2="reveal" data-id="'+E(r.id)+'"'+(th==='spooky'?' style="background:linear-gradient(92deg,#c2188f,#8a1cff);border:1.5px solid #b6ff3d;color:#fff"':'')+'><b'+(th==='spooky'?' style="color:#b6ff3d"':'')+'>\uD83C\uDFC6 WINNER</b><span>'+E(r.title)+' \u00B7 '+E(String(r.winner_handle||'\u2014'))+' \u00B7 ticket #'+num(r.winner_ticket)+' of '+num(r.total_at_draw)+'</span>\u25B8</button>';
       var t=E(r.title)+' \u00B7 '+num(r.ticket_price)+' \u2B21'+(ph==='live'&&tl?' \u00B7 ends '+tl:ph==='soon'?' \u00B7 opens '+left(r.opens_at):ph==='closed'?' \u00B7 draw soon':'')+(st.mine?' \u00B7 you hold '+st.mine:'');
-      return '<button class="rfl-rail t-'+E(th)+'" type="button" data-rfl2="open" data-id="'+E(r.id)+'"><b>'+icon(r)+' RAFFLE</b><span>'+t+'</span>\u25B8</button>';
+      /* same row as the main raffle's rail (label · text · arrow); a spooky raffle keeps its colors by inline style, not by the t-spooky layout */
+      var sty=th==='spooky'?' style="background:linear-gradient(92deg,#c2188f,#8a1cff);border:1.5px solid #b6ff3d;color:#fff"':'', bsty=th==='spooky'?' style="color:#b6ff3d"':'';
+      return '<button class="rfl-rail" type="button" data-rfl2="open" data-id="'+E(r.id)+'"'+sty+'><b'+bsty+'>'+icon(r)+' RAFFLE</b><span>'+t+'</span>\u25B8</button>';
     }).join('');
   }
   function paint(){ cloneCss(); paintChips(); paintBanners(); }
