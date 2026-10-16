@@ -43,47 +43,17 @@
     if(document.getElementById('rfl2CSS'))return;
     var out=[];
     try{ Array.prototype.forEach.call(document.styleSheets,function(sh){ var rules; try{ rules=sh.cssRules; }catch(e){ return; } if(!rules)return;
-      Array.prototype.forEach.call(rules,function(rule){ var t=rule.cssText||''; if(/#rflFlyer|#rflTag|\.rfl-bn|\.rfl-fly|\.rfl-step|\.rfl-buy/.test(t)&&/#rflFlyer|#rflTag/.test(t)) out.push(t.replace(/#rflFlyer\b/g,'#rflFlyer2').replace(/#rflTag\b/g,'#rflTag2')); }); }); }catch(e){}
+      Array.prototype.forEach.call(rules,function(rule){ var t=rule.cssText||''; if(/#rflFlyer/.test(t)) out.push(t.replace(/#rflFlyer\b/g,'#rflFlyer2').replace(/#rflTag\b/g,'#rflTag2')); }); }); }catch(e){}
     var st=document.createElement('style'); st.id='rfl2CSS';
     st.textContent=out.join('\n')+
-      '\n#rflTag2{margin-left:6px}#rflHost2{margin-top:10px}'+
+      '\n#rflHost2 .rfl-rail{margin-top:8px}'+
       '#rflFlyer2 .rfl2-stats{display:flex;justify-content:space-around;text-align:center;margin:10px 0 6px}#rflFlyer2 .rfl2-stats b{display:block;font-size:19px;color:var(--copper-hi)}#rflFlyer2 .rfl2-stats span{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--steel)}'+
       '#rflFlyer2 .rfl2-clock{border:1.5px solid rgba(238,180,107,.55);border-radius:14px;padding:10px 12px 9px;text-align:center;background:linear-gradient(180deg,rgba(238,180,107,.12),rgba(238,180,107,.04));margin-bottom:8px}#rflFlyer2 .rfl2-clock .k{font-family:Inter,system-ui,sans-serif;font-size:11px;font-weight:700;letter-spacing:.24em;color:var(--copper-hi)}#rflFlyer2 .rfl2-clock b{display:block;font-family:Inter,system-ui,sans-serif;font-size:24px;letter-spacing:.04em;color:#fff;margin-top:4px}#rflFlyer2 .rfl2-clock small{display:block;font-size:12.5px;color:var(--steel);margin-top:2px}'+
       '.rfl2-min{display:inline-flex;align-items:center;gap:8px;margin:8px 0 0;padding:8px 14px;border-radius:999px;border:1px solid rgba(238,180,107,.5);background:linear-gradient(184deg,var(--btn-hi),var(--btn-lo));color:var(--copper-hi);font:700 12px/1 "Barlow Condensed",sans-serif;letter-spacing:.12em;cursor:pointer}';
     document.head.appendChild(st);
   }
 
-  /* ---- chip next to the header chip, one per extra raffle ---- */
-  function paintChips(){
-    var tag=document.getElementById('rflTag'); if(!tag)return;
-    document.querySelectorAll('[data-rfl2chip]').forEach(function(e){ e.remove(); });
-    ROWS.forEach(function(r){
-      var c=tag.cloneNode(true); c.id='rflTag2'; c.setAttribute('data-rfl2chip',r.id); c.style.display='';
-      var walker=document.createTreeWalker(c,NodeFilter.SHOW_TEXT), t, done=0;
-      while((t=walker.nextNode())){ var v=t.nodeValue; if(/RAFFLE/i.test(v)&&!done){ t.nodeValue=icon(r)+' '+String(r.tag_title||r.title||'RAFFLE').toUpperCase().slice(0,14); done=1; } else if(/\u2B21|\d/.test(v)){ t.nodeValue=num(r.ticket_price)+' \u2B21 \u00B7 '+(phase(r)==='soon'?'opens '+left(r.opens_at):left(r.closes_at)); } }
-      c.onclick=function(ev){ ev.stopPropagation(); ev.preventDefault(); openFlyer(r); };
-      tag.parentNode.insertBefore(c,tag.nextSibling);
-    });
-    stack();
-  }
-  /* the header pill is absolutely positioned; put ours right under it, same width rules, and give the page the room */
-  function stack(){
-    var tag=document.getElementById('rflTag'), st=document.querySelector('#app>.stage'); if(!st)return;
-    if(!('rfl2pad' in st.dataset)){ st.dataset.rfl2pad=''; }
-    var chips=document.querySelectorAll('[data-rfl2chip]');
-    if(!tag||!tag.classList.contains('on')||!chips.length){ st.style.paddingTop=st.dataset.rfl2pad||''; return; }
-    /* both pills skinny: one line each, same height, same padding, same type */
-    tag.classList.add('l1');
-    var h=tag.offsetHeight||34, y=h+6, extra=0, cs=getComputedStyle(tag);
-    chips.forEach(function(c){
-      c.classList.add('l1'); c.classList.remove('boo');
-      c.style.top='calc(100% + '+(7+y)+'px)'; c.style.display='flex'; c.style.flexDirection='row'; c.style.alignItems='center'; c.style.height=h+'px'; c.style.minHeight=''; c.style.padding=cs.padding; c.style.borderRadius=cs.borderRadius;
-      ['t1','t2','t3'].forEach(function(k){ var a=tag.querySelector('.'+k), b=c.querySelector('.'+k); if(a&&b){ var f=getComputedStyle(a); b.style.fontFamily=f.fontFamily; b.style.fontSize=f.fontSize; b.style.fontWeight=f.fontWeight; b.style.letterSpacing=f.letterSpacing; b.style.lineHeight=f.lineHeight; } });
-      extra+=h+6; y+=h+6; });
-    if(!st.dataset.rfl2base){ st.style.paddingTop=''; st.dataset.rfl2base=String(parseFloat(getComputedStyle(st).paddingTop)||0); }
-    st.style.paddingTop=(parseFloat(st.dataset.rfl2base)+extra)+'px';
-  }
-  window.addEventListener('resize',stack);
+  function paintChips(){ document.querySelectorAll('[data-rfl2chip]').forEach(function(e){ e.remove(); }); }
 
   /* ---- banner under the main one (or the minimized button) ---- */
   function paintBanners(){
@@ -91,13 +61,10 @@
     var h2=document.getElementById('rflHost2'); if(!h2){ h2=document.createElement('div'); h2.id='rflHost2'; host.parentNode.insertBefore(h2,host.nextSibling); }
     var mins={}; try{ mins=JSON.parse(localStorage.getItem(LS_MIN)||'{}'); }catch(e){}
     h2.innerHTML=ROWS.map(function(r){
-      var th=r.theme||'plain', src=safeUrl(r.banner_url);
-      if(phase(r)==='drawn'){ var wh=String(r.winner_handle||'\u2014');
-        return '<div class="rfl-bn t-'+E(th)+'" data-rfl2="reveal" data-id="'+E(r.id)+'" role="button" tabindex="0" style="padding:14px 16px"><div style="font:700 11px/1 Inter,system-ui,sans-serif;letter-spacing:.2em;color:var(--copper-hi)">\uD83C\uDFC6 THE WINNER \u00B7 '+E(String(r.title||'').toUpperCase())+'</div><div style="font:400 26px/1.1 Anton,sans-serif;color:#fff;margin-top:6px;word-break:break-all">'+E(wh)+'</div><div class="sub" style="margin-top:4px">ticket <b>#'+num(r.winner_ticket)+'</b> of <b>'+num(r.total_at_draw)+'</b> \u00B7 drawn '+E(when(r.drawn_at))+' \u00B7 tap to see the draw</div></div>'; }
-      if(mins[r.id]) return '<button type="button" class="rfl2-min" data-rfl2="open" data-id="'+E(r.id)+'">'+icon(r)+' '+E(String(r.tag_title||r.title||'RAFFLE').toUpperCase())+' \u00B7 '+E(left(r.closes_at))+' \u25B8</button>';
-      var x='<button type="button" class="rfl-x" data-rfl2="min" data-id="'+E(r.id)+'" aria-label="Shrink the raffle banner">\u2715</button>';
-      if(src) return '<div class="rfl-bn img-only t-'+E(th)+'" data-rfl2="open" data-id="'+E(r.id)+'" role="button" tabindex="0"><img src="'+E(src)+'" alt="'+E(r.title)+'">'+x+'</div>';
-      return '<div class="rfl-bn t-'+E(th)+'" data-rfl2="open" data-id="'+E(r.id)+'" role="button" tabindex="0" style="padding:14px"><b>'+icon(r)+' '+E(r.title)+'</b><div class="sub">'+num(r.ticket_price)+' \u2B21 a ticket \u00B7 '+E(left(r.closes_at))+'</div>'+x+'</div>';
+      var th=r.theme||'plain', ph=phase(r), tl=left(r.closes_at), st=ST[r.id]||{};
+      if(ph==='drawn') return '<button class="rfl-rail t-'+E(th)+'" type="button" data-rfl2="reveal" data-id="'+E(r.id)+'"><b>\uD83C\uDFC6 WINNER</b><span>'+E(r.title)+' \u00B7 '+E(String(r.winner_handle||'\u2014'))+' \u00B7 ticket #'+num(r.winner_ticket)+' of '+num(r.total_at_draw)+'</span>\u25B8</button>';
+      var t=E(r.title)+' \u00B7 '+num(r.ticket_price)+' \u2B21'+(ph==='live'&&tl?' \u00B7 ends '+tl:ph==='soon'?' \u00B7 opens '+left(r.opens_at):ph==='closed'?' \u00B7 draw soon':'')+(st.mine?' \u00B7 you hold '+st.mine:'');
+      return '<button class="rfl-rail t-'+E(th)+'" type="button" data-rfl2="open" data-id="'+E(r.id)+'"><b>'+icon(r)+' RAFFLE</b><span>'+t+'</span>\u25B8</button>';
     }).join('');
   }
   function paint(){ cloneCss(); paintChips(); paintBanners(); }
@@ -183,7 +150,6 @@
   /* clocks */
   setInterval(function(){ var c=document.getElementById('rfl2Clock'); if(c&&OPEN)c.textContent=clock(phase(OPEN)==='soon'?OPEN.opens_at:OPEN.closes_at); },1000);
   setInterval(function(){ if(ROWS.length)paintChips(); },60000);
-  setInterval(function(){ if(ROWS.length&&!document.querySelector('[data-rfl2chip]'))paintChips(); else stack(); },2000);
   /* load once the member is known, then every few minutes, and whenever the main raffle reloads */
   var lastUid=null; setInterval(function(){ var u=window.__shkUid||null; if(u!==lastUid){ lastUid=u; setTimeout(load,1200); } },1000);
   setInterval(load,5*60*1000);
