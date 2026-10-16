@@ -19,7 +19,7 @@
   function clock(ts){ var ms=Math.max(0,new Date(ts).getTime()-Date.now()); var d=Math.floor(ms/864e5),h=Math.floor(ms%864e5/36e5),m=Math.floor(ms%36e5/6e4),s=Math.floor(ms%6e4/1e3); return d+'d '+h+'h '+m+'m '+s+'s'; }
   function when(ts){ try{ return new Date(ts).toLocaleString([], {weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); }catch(e){ return ''; } }
   function bal(){ try{ if(typeof window.CREDITS==='number')return window.CREDITS; }catch(e){} try{ return +String((document.getElementById('meBucksV')||{}).textContent||'0').replace(/[^\d]/g,'')||0; }catch(e){ return 0; } }
-  function safeUrl(u){ u=String(u||'').trim(); return /^(https:\/\/|data:image\/(png|jpe?g|webp|gif);base64,)/i.test(u)?u:''; }
+  function safeUrl(u){ u=String(u||'').trim(); var m=/^builtin:([a-z0-9-]+)$/i.exec(u); if(m)return 'shk-raffle-'+m[1].toLowerCase()+'.webp'; return /^(https:\/\/|data:image\/(png|jpe?g|webp|gif);base64,)/i.test(u)?u:''; }
   function icon(r){ return r.theme==='spooky'?'\uD83C\uDF83':'\uD83C\uDFC0'; }
 
   /* ---- the main module keeps the newest live raffle; everything else live is ours ---- */
@@ -64,7 +64,26 @@
       c.onclick=function(ev){ ev.stopPropagation(); ev.preventDefault(); openFlyer(r); };
       tag.parentNode.insertBefore(c,tag.nextSibling);
     });
+    stack();
   }
+  /* the header pill is absolutely positioned; put ours right under it, same width rules, and give the page the room */
+  function stack(){
+    var tag=document.getElementById('rflTag'), st=document.querySelector('#app>.stage'); if(!st)return;
+    if(!('rfl2pad' in st.dataset)){ st.dataset.rfl2pad=''; }
+    var chips=document.querySelectorAll('[data-rfl2chip]');
+    if(!tag||!tag.classList.contains('on')||!chips.length){ st.style.paddingTop=st.dataset.rfl2pad||''; return; }
+    /* both pills skinny: one line each, same height, same padding, same type */
+    tag.classList.add('l1');
+    var h=tag.offsetHeight||34, y=h+6, extra=0, cs=getComputedStyle(tag);
+    chips.forEach(function(c){
+      c.classList.add('l1'); c.classList.remove('boo');
+      c.style.top='calc(100% + '+(7+y)+'px)'; c.style.display='flex'; c.style.flexDirection='row'; c.style.alignItems='center'; c.style.height=h+'px'; c.style.minHeight=''; c.style.padding=cs.padding; c.style.borderRadius=cs.borderRadius;
+      ['t1','t2','t3'].forEach(function(k){ var a=tag.querySelector('.'+k), b=c.querySelector('.'+k); if(a&&b){ var f=getComputedStyle(a); b.style.fontFamily=f.fontFamily; b.style.fontSize=f.fontSize; b.style.fontWeight=f.fontWeight; b.style.letterSpacing=f.letterSpacing; b.style.lineHeight=f.lineHeight; } });
+      extra+=h+6; y+=h+6; });
+    if(!st.dataset.rfl2base){ st.style.paddingTop=''; st.dataset.rfl2base=String(parseFloat(getComputedStyle(st).paddingTop)||0); }
+    st.style.paddingTop=(parseFloat(st.dataset.rfl2base)+extra)+'px';
+  }
+  window.addEventListener('resize',stack);
 
   /* ---- banner under the main one (or the minimized button) ---- */
   function paintBanners(){
@@ -164,6 +183,7 @@
   /* clocks */
   setInterval(function(){ var c=document.getElementById('rfl2Clock'); if(c&&OPEN)c.textContent=clock(phase(OPEN)==='soon'?OPEN.opens_at:OPEN.closes_at); },1000);
   setInterval(function(){ if(ROWS.length)paintChips(); },60000);
+  setInterval(function(){ if(ROWS.length&&!document.querySelector('[data-rfl2chip]'))paintChips(); else stack(); },2000);
   /* load once the member is known, then every few minutes, and whenever the main raffle reloads */
   var lastUid=null; setInterval(function(){ var u=window.__shkUid||null; if(u!==lastUid){ lastUid=u; setTimeout(load,1200); } },1000);
   setInterval(load,5*60*1000);
