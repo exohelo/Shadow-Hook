@@ -149,6 +149,11 @@
     }
   },true);
 
+  /* the main raffle's rail: one tap opens its full-page flyer, same as ours (the app's default restores the banner first) */
+  document.addEventListener('click',function(e){
+    var m=e.target.closest('#rflHost [data-rfl="max"]'); if(!m||typeof window.rflFlyer!=='function')return;
+    e.preventDefault(); e.stopPropagation(); try{ window.rflFlyer(); }catch(x){}
+  },true);
   /* clocks */
   setInterval(function(){ var c=document.getElementById('rfl2Clock'); if(c&&OPEN)c.textContent=clock(phase(OPEN)==='soon'?OPEN.opens_at:OPEN.closes_at); },1000);
   setInterval(function(){ if(ROWS.length)paintChips(); },60000);
