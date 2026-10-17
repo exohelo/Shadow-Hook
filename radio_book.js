@@ -12,12 +12,12 @@
 (function(){
   'use strict';
   if(window.__radioBook)return; window.__radioBook=true;
-  var TITLES=['Dock Boss','Discharge','Loadout','Flip line','Dock work','Rails','Clerks','Trans','Top','Security','PowerShop','Supercargo','Other'];
+  var TITLES=['Dock Boss','UTR','Clerks','Supercargo','Discharge','Loadout','Flip line','Dock work','Rails','Trans','Top','Security','PowerShop','Other'];
   var E=function(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
   var say=function(m){ try{ toast(m); }catch(e){} };
   var dock=null, rows=[], mine={}, busy=false, rt=null, filt='';
 
-  var HUE={'Dock Boss':'#eeb46b','Dispatch':'#eeb46b','Supercargo':'#eeb46b','Discharge':'#9fe870','Loadout':'#6cc7ff','Flip line':'#6cc7ff','Dock work':'#5dcaa5','Rails':'#5dcaa5','Clerks':'#b9a6ff','Trans':'#f0997b','Top':'#f0997b','Security':'#ff6b6b','PowerShop':'#ffb347'};
+  var HUE={'Dock Boss':'#eeb46b','UTR':'#9fe870','Dispatch':'#eeb46b','Supercargo':'#eeb46b','Discharge':'#9fe870','Loadout':'#6cc7ff','Flip line':'#6cc7ff','Dock work':'#5dcaa5','Rails':'#5dcaa5','Clerks':'#b9a6ff','Trans':'#f0997b','Top':'#f0997b','Security':'#ff6b6b','PowerShop':'#ffb347'};
   function hue(t){ return HUE[t]||'#c9c3b6'; }
   var st=document.createElement('style'); st.textContent=
     '@keyframes rbIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}@keyframes rbLed{0%,100%{opacity:1}50%{opacity:.35}}@keyframes rbUp{from{transform:translateY(100%)}to{transform:none}}'+
