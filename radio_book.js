@@ -12,7 +12,7 @@
 (function(){
   'use strict';
   if(window.__radioBook)return; window.__radioBook=true;
-  var TITLES=['Dock Boss','Dispatch','Discharge','Loadout','Flip line','Dock work','Rails','Clerks','Trans','Top','Security','PowerShop','Supercargo','Other'];
+  var TITLES=['Dock Boss','Discharge','Loadout','Flip line','Dock work','Rails','Clerks','Trans','Top','Security','PowerShop','Supercargo','Other'];
   var E=function(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
   var say=function(m){ try{ toast(m); }catch(e){} };
   var dock=null, rows=[], mine={}, busy=false, rt=null, filt='';
@@ -46,9 +46,15 @@
     '#rbSheet .rb-form{display:none;margin:10px 0 0;max-height:52vh;overflow:auto;padding:12px;border-radius:14px;background:#0b0d10;border:1px solid rgba(238,180,107,.25)}#rbSheet .rb-form.on{display:block;animation:rbIn .2s}#rbSheet .rb-form .r2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}#rbSheet .rb-form .r1{margin-top:8px}#rbSheet .rb-form label{display:block;font:700 10px Inter,system-ui,sans-serif;letter-spacing:.18em;color:#8f979e;margin:0 0 4px}'+
     '#rbSheet .rb-form select,#rbSheet .rb-form input{box-sizing:border-box;width:100%;border-radius:10px;border:1px solid rgba(220,214,201,.16);background:#000;color:#dcd6c9;font:500 16px Inter,system-ui,sans-serif;padding:10px 12px;outline:none}#rbSheet .rb-form select:focus,#rbSheet .rb-form input:focus{border-color:#eeb46b;box-shadow:0 0 0 3px #eeb46b22}#rbSheet .rb-form .big input{font:400 28px Anton,sans-serif;letter-spacing:.04em;text-align:center;color:#d8ffb0;text-shadow:0 0 12px #9fe87088;background:linear-gradient(180deg,#05070a,#0c1008)}'+
     '#rbSheet .rb-form .go{margin-top:12px;width:100%;height:48px;border-radius:14px;border:0;background:linear-gradient(180deg,#ffd27a,#e9a94f);color:#1a1206;font:700 14px "Barlow Condensed",sans-serif;letter-spacing:.18em;cursor:pointer;box-shadow:0 6px 18px #eeb46b40}#rbSheet .rb-form .go:disabled{opacity:.5}';
+  st.textContent+='#rbSheet .rb-my{margin-top:6px}#rbSheet .rb-my button{height:24px;padding:0 9px;border-radius:12px;border:1px dashed rgba(220,214,201,.25);background:none;color:#8f979e;font:600 11px Inter,system-ui,sans-serif;cursor:pointer}#rbSheet .rb-my .mt{display:block;font-size:12px;line-height:1.35;color:#ffd27a;padding:6px 9px;border-radius:9px;background:#eeb46b12;border:1px solid #eeb46b33;cursor:pointer;overflow-wrap:anywhere}#rbSheet .rb-my .mt:before{content:"🔒 my note · ";font-size:10px;letter-spacing:.1em;color:#8f979e}#rbSheet .rb-my input{box-sizing:border-box;width:100%;margin-top:4px;border-radius:9px;border:1px solid rgba(238,180,107,.4);background:#000;color:#ffd27a;font:500 14px Inter,system-ui,sans-serif;padding:8px 10px;outline:none}';
   st.textContent+='@media (prefers-reduced-motion:reduce){#rbSheet *,#rbSheet .rb-in{animation:none!important}}';
   document.head.appendChild(st);
 
+  /* my own notes on a line: private, on this account only (synced to my other phones with the rest of my log) */
+  function pkey(){ try{ return typeof K==='function'?K('rbnotes'):null; }catch(e){ return null; } }
+  function pall(){ var k=pkey(); if(!k)return {}; try{ return JSON.parse(localStorage.getItem(k)||'{}')||{}; }catch(e){ return {}; } }
+  function pget(id){ return pall()[id]||''; }
+  function pput(id,v){ var k=pkey(); if(!k)return; var a=pall(); v=String(v||'').trim(); if(v)a[id]=v; else delete a[id]; try{ localStorage.setItem(k,JSON.stringify(a)); }catch(e){} }
   function docks(){ try{ return (typeof TERMINALS!=='undefined'?TERMINALS:window.TERMINALS||[]).map(function(t){ return {key:t.berths,name:[t.aka,t.operator].filter(Boolean).join(' \u00B7 ')+(t.berths&&t.berths!==t.operator?' \u00B7 '+t.berths:'')}; }); }catch(e){ return []; } }
   function dockName(k){ var d=docks().filter(function(x){ return x.key===k; })[0]; return d?d.name:k; }
   function me(){ try{ return (typeof loadAcct==='function'&&(loadAcct()||{}).handle)||null; }catch(e){ return null; } }
@@ -66,13 +72,15 @@
       '<div class="r1" id="rbOtherWrap" style="display:none"><label>NAME IT</label><input id="rbOther" maxlength="30" placeholder="Hatch boss, Gear, Gate\u2026"></div>'+
       '<div class="r2 big"><div><label>ZONE</label><input id="rbZone" maxlength="12" placeholder="2"></div><div><label>CHANNEL</label><input id="rbChan" maxlength="16" placeholder="13"></div></div>'+
       '<div class="r2"><div><label>CRANE (IF ANY)</label><input id="rbCrane" maxlength="16" placeholder="C26"></div><div><label>CALL SIGN (IF ANY)</label><input id="rbHandle" maxlength="30" placeholder="Dock Boss 2"></div></div>'+
-      '<div class="r1"><label>NOTE</label><input id="rbNote" maxlength="140" placeholder="UTR side \u00B7 nights only \u00B7 ask for Manny"></div>'+
+      '<div class="r1"><label>NOTE \u00B7 EVERYBODY SEES IT</label><input id="rbNote" maxlength="140" placeholder="UTR side \u00B7 nights only \u00B7 ask for Manny"></div>'+
+      '<div class="r1"><label>\uD83D\uDD12 MY NOTE \u00B7 ONLY YOU</label><input id="rbMine" maxlength="200" placeholder="What to remember next time you\u2019re here"></div>'+
       '<button type="button" class="go">ADD IT TO THE BOOK</button></div>';
     sh.querySelector('#rbTitle').addEventListener('change',function(){ document.getElementById('rbOtherWrap').style.display=this.value==='Other'?'block':'none'; });
     sh.addEventListener('click',function(e){
       if(e.target===sh||e.target.closest('.rb-x')){ shut(); return; }
       var v=e.target.closest('[data-vote]'); if(v){ vote(+v.getAttribute('data-id'),v.getAttribute('data-vote')); return; }
       var d=e.target.closest('[data-del]'); if(d){ strike(+d.getAttribute('data-del'),d); return; }
+      var my=e.target.closest('.rb-my'); if(my&&!e.target.closest('input')){ var id=my.getAttribute('data-my'); my.innerHTML='<input maxlength="200" placeholder="For you only \u2014 what to remember next time" value="'+E(pget(id))+'">'; var inp=my.querySelector('input'); inp.focus(); var done=function(){ pput(id,inp.value); my.innerHTML=pget(id)?'<span class="mt">'+E(pget(id))+'</span>':'<button type="button">\u270E my note \u00B7 only you</button>'; }; inp.addEventListener('blur',done); inp.addEventListener('keydown',function(ev){ if(ev.key==='Enter'){ ev.preventDefault(); inp.blur(); } }); return; }
       if(e.target.closest('.rb-add')){ var f=document.getElementById('rbForm'), on=!f.classList.contains('on'); f.classList.toggle('on',on); document.getElementById('rbFoot').classList.toggle('open',on); e.target.closest('.rb-add').textContent=on?'\u2715 NEVER MIND':'+ ADD A CHANNEL'; if(on)f.querySelector('select').focus(); return; }
       var c=e.target.closest('#rbChips button'); if(c){ filt=c.getAttribute('data-f'); paint(); return; }
       if(e.target.closest('.rb-form .go')){ add(); return; }
@@ -121,6 +129,7 @@
         return '<div class="rb-row'+(bad?' bad':'')+(own?' me':'')+'" style="--h:'+hue(t)+';animation-delay:'+Math.min(ix*35,300)+'ms"><div class="rb-ch">'+(ok?'<span class="ok">\u2713 SOLID</span>':'')+'<i class="z">'+(r.zone?'ZONE '+E(r.zone):'ZONE ?')+'</i><b>'+E(r.channel)+'</b><i>CHANNEL</i></div>'+
           '<div class="rb-nn"><b>'+E(r.title)+'</b>'+(tags.length?'<span class="tg">'+tags.map(function(x){ return '<em>'+E(x)+'</em>'; }).join('')+'</span>':'')+(r.note?'<span>'+E(r.note)+'</span>':'')+
           (bad?'<span style="color:#e8967a">\u26A0 '+r.reports+' said this is wrong</span>':'')+
+          '<div class="rb-my" data-my="'+r.id+'">'+(pget(r.id)?'<span class="mt">'+E(pget(r.id))+'</span>':'<button type="button">\u270E my note \u00B7 only you</button>')+'</div>'+
           '<div class="rb-v"><button type="button" class="'+(m==='confirm'?'on':'')+'" data-vote="confirm" data-id="'+r.id+'">\u2713 '+(r.confirms||0)+'</button><button type="button" class="rep'+(m==='report'?' on':'')+'" data-vote="report" data-id="'+r.id+'">\uD83D\uDEA9 '+(r.reports||0)+'</button>'+
           '<span class="by">'+(own?'you':E(r.by_handle||'a casual'))+'</span>'+((km||own)?'<button type="button" class="del" data-del="'+r.id+'" title="Strike it">\u2715</button>':'')+'</div></div></div>';
       }).join('');
@@ -148,11 +157,12 @@
     var dup=rows.some(function(r){ return r.title.toLowerCase()===title.toLowerCase()&&String(r.channel).toLowerCase()===chan.toLowerCase()&&String(r.zone||'').toLowerCase()===zone.toLowerCase()&&String(r.crane||'').toLowerCase()===g('rbCrane').toLowerCase(); });
     if(dup){ say('That one\u2019s already in the book \u2014 give it a \u2713 instead.'); return; }
     var btn=document.querySelector('#rbForm .go'); btn.disabled=true;
-    window.SB.from('radio_channels').insert({dock:dock,dock_name:dockName(dock),title:title,zone:zone||null,channel:chan,crane:g('rbCrane')||null,handle:g('rbHandle')||null,note:g('rbNote')||null,by_uid:window.__shkUid||null,by_handle:me()}).then(function(r){
+    window.SB.from('radio_channels').insert({dock:dock,dock_name:dockName(dock),title:title,zone:zone||null,channel:chan,crane:g('rbCrane')||null,handle:g('rbHandle')||null,note:g('rbNote')||null,by_uid:window.__shkUid||null,by_handle:me()}).select('id').then(function(r){
       btn.disabled=false;
       if(r.error){ say('\u2717 '+(r.error.message||'didn\u2019t save')); return; }
+      try{ var nid=r.data&&r.data[0]&&r.data[0].id; if(nid&&g('rbMine'))pput(nid,g('rbMine')); }catch(x){}
       say('\u2713 In the book. Every casual on '+dockName(dock).split(' \u00B7 ')[0]+' can see it now.');
-      ['rbZone','rbChan','rbCrane','rbHandle','rbNote','rbOther'].forEach(function(id){ document.getElementById(id).value=''; }); document.getElementById('rbForm').classList.remove('on'); document.getElementById('rbFoot').classList.remove('open'); document.querySelector('#rbFoot .rb-add').textContent='+ ADD A CHANNEL'; load();
+      ['rbZone','rbChan','rbCrane','rbHandle','rbNote','rbMine','rbOther'].forEach(function(id){ document.getElementById(id).value=''; }); document.getElementById('rbForm').classList.remove('on'); document.getElementById('rbFoot').classList.remove('open'); document.querySelector('#rbFoot .rb-add').textContent='+ ADD A CHANNEL'; load();
     },function(){ btn.disabled=false; say('\u2717 No connection.'); });
   }
 
