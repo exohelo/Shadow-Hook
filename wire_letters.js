@@ -37,7 +37,7 @@
       var cyc=w.cycles>0?' \u00B7 <b>cycles \u00D7'+w.cycles+'</b>':'';
       mv.innerHTML='about <b>'+Math.round(o.med*a)+' casuals</b> \u00B7 '+start+' &rarr; <b>'+stop+'</b>'+band+cyc;
     }
-    strip(o,w,lo,hi);
+    var old=document.getElementById('wlStrip'); if(old)old.remove();
   }
   /* the letter strip: what the Keymaster set, thin letters dim and small; tap to change when you're the Keymaster */
   function strip(o,w,lo,hi){
