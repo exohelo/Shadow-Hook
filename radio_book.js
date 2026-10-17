@@ -180,7 +180,8 @@
       var k=dockOfRow(r); if(!k)return;
       var b=document.createElement('button'); b.type='button'; b.className='rb-job'; b.setAttribute('data-dock',k); b.innerHTML='\uD83D\uDCFB <b>RADIO BOOK</b><span>'+E(dockName(k).split(' \u00B7 ').slice(0,2).join(' \u00B7 '))+' \u203A</span>';
       b.addEventListener('click',function(e){ e.stopPropagation(); open(k); });
-      var dk=p.querySelector('.dkn'); if(dk)dk.parentNode.insertBefore(b,dk); else (p.querySelector('.jx')||p).appendChild(b);
+      var dock=p.querySelector('.jx-sec.jx-dock'), dk=p.querySelector('.dkn');
+      if(dock)dock.parentNode.insertBefore(b,dock.nextSibling); else if(dk)dk.parentNode.insertBefore(b,dk); else (p.querySelector('.jx')||p).appendChild(b);
     });
   }
   var t=null;
