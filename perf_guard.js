@@ -49,5 +49,34 @@
     try{ console.info('perf_guard: calm mode after a '+Math.round(ms)+'ms stall'); }catch(e){}
   }
   window.perfGuardCalm=function(on){ if(on===false){ calm=false; document.documentElement.classList.remove('shk-calm'); try{ localStorage.removeItem(LS); }catch(e){} } else goCalm(0); };
+  /* 4. the floor's presence sync: every member arriving or leaving made every phone repaint the roster at once.
+        Coalesce: repaint at most every 3 s (trailing edge, so the last state always lands), never while hidden. */
+  function wrapChannel(){
+    var SB=window.SB; if(!SB||SB.__pgWrapped||typeof SB.channel!=='function')return false;
+    var orig=SB.channel;
+    SB.channel=function(topic){
+      var ch=orig.apply(this,arguments);
+      try{
+        var isFloor=/^floor/i.test(String(topic||''))||String(topic||'')===String(window.SHK_FLOOR||'');
+        if(isFloor&&typeof ch.on==='function'){
+          var on=ch.on;
+          ch.on=function(type,filter,fn){
+            if(type==='presence'&&filter&&filter.event==='sync'&&typeof fn==='function'){
+              var t=null,last=0,GAP=3000, run=function(){ last=Date.now(); t=null; try{ fn.apply(ch,arguments); }catch(e){} };
+              var wrapped=function(){ var args=arguments; if(t)return; var wait=Math.max(0,GAP-(Date.now()-last)); if(document.hidden)wait=Math.max(wait,1500); t=setTimeout(function(){ if(document.hidden){ t=null; var onVis=function(){ document.removeEventListener('visibilitychange',onVis); wrapped.apply(null,args); }; document.addEventListener('visibilitychange',onVis); return; } run.apply(null,args); },wait); };
+              return on.call(ch,type,filter,wrapped);
+            }
+            return on.apply(ch,arguments);
+          };
+        }
+      }catch(e){}
+      return ch;
+    };
+    SB.__pgWrapped=true;
+    /* if the floor was joined before we got here, rejoin through the wrapper */
+    try{ if(typeof window.floorRekey==='function'&&window.__shkUid)window.floorRekey(); }catch(e){}
+    return true;
+  }
+  if(!wrapChannel()){ var wt=setInterval(function(){ if(wrapChannel())clearInterval(wt); },300); setTimeout(function(){ clearInterval(wt); },60000); }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start); else start();
 })();
