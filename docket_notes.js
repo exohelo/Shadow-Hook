@@ -28,6 +28,8 @@
   var CH=[ ['utr','UTR CH','UTR'], ['clerk','CLERK CH','Clerks'], ['boss','DOCK BOSS','Dock Boss'], ['super','SUPERCARGO','Supercargo'] ]; /* key · label · Radio Book title */
   function jobOf(id){ try{ return (typeof DOCKETS!=='undefined'?DOCKETS:window.DOCKETS||[]).filter(function(x){ return String(x._id)===String(id); })[0]||null; }catch(e){ return null; } }
   function shiftOf(id){ var j=jobOf(id); return j&&j.shift==='Day'?'Day':'Night'; }
+  var opened={}; /* slips where the member asked for crane/lane on a non-ship job (this session) */
+  function shipWork(id){ try{ var j=jobOf(id); if(!j)return true; var w=typeof dktWorkside==='function'?dktWorkside(j):null; if(!w)return true; return w.side==='ship'&&w.craft!=='clerk'; }catch(e){ return true; } }
   function dockOf(id){ try{ var j=jobOf(id); if(!j)return null; var t=typeof dkTerminal==='function'?dkTerminal(j):null; if(!t&&typeof findTerminal==='function')t=findTerminal(j.terminal); return t?{key:t.berths,name:[t.aka,t.operator].filter(Boolean).join(' \u00B7 ')}:null; }catch(e){ return null; } }
   var E=function(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
   function clock(){ var d=new Date(),h=d.getHours(),m=d.getMinutes(); return (h%12||12)+':'+(m<10?'0':'')+m+(h<12?' AM':' PM'); }
@@ -79,12 +81,13 @@
     return '<div class="dkn-f" data-ch="'+key+'"><label>'+label+'</label><input type="text" maxlength="16" data-chin="'+key+'" value="'+E(val||'')+'" placeholder="\u2014">'+(chips?'<div class="dkn-sg">'+chips+'</div>':'')+'</div>';
   }
   function block(id){
-    var n=get(id), ch=n.ch||{}, dock=dockOf(id), lanes='';
+    var n=get(id), ch=n.ch||{}, dock=dockOf(id), lanes='', ship=shipWork(id)||opened[id]||!!((n.crane||'').trim()||n.lane||(n.utr||'').trim()||(n.row||'').trim());
     for(var i=1;i<=6;i++)lanes+='<button type="button" class="dkn-lane'+(String(n.lane)===String(i)?' on':'')+'" data-lane="'+i+'">'+i+'</button>';
     var d=document.createElement('div'); d.className='dkn'; d.setAttribute('data-dkn',id);
     d.innerHTML='<div class="dkn-h">\uD83D\uDCCB JOB SLIP<small class="dkn-s">only you see this</small>'+(hasAny(n)?'<button type="button" class="dkn-clr" title="Clear this slip">\u2715 CLEAR</button>':'')+'</div>'+
-      '<div class="dkn-top"><div class="dkn-f dkn-cr"><label>CRANE #</label><input type="text" class="big dkn-crane" maxlength="12" inputmode="numeric" value="'+E(n.crane||'')+'" placeholder="\u2014"></div><div class="dkn-f dkn-ln"><label>LANE #</label><div class="dkn-lanes">'+lanes+'</div></div></div>'+
-      '<div class="dkn-g"><div class="dkn-f"><label>UTR #</label><input type="text" class="dkn-utr" maxlength="12" value="'+E(n.utr||'')+'" placeholder="\u2014"></div><div class="dkn-f"><label>ROW</label><input type="text" class="dkn-row" maxlength="12" value="'+E(n.row||'')+'" placeholder="\u2014"></div></div>'+
+      (ship?'<div class="dkn-top"><div class="dkn-f dkn-cr"><label>CRANE #</label><input type="text" class="big dkn-crane" maxlength="12" inputmode="numeric" value="'+E(n.crane||'')+'" placeholder="\u2014"></div><div class="dkn-f dkn-ln"><label>LANE #</label><div class="dkn-lanes">'+lanes+'</div></div></div>'+
+      '<div class="dkn-g"><div class="dkn-f"><label>UTR #</label><input type="text" class="dkn-utr" maxlength="12" value="'+E(n.utr||'')+'" placeholder="\u2014"></div><div class="dkn-f"><label>ROW</label><input type="text" class="dkn-row" maxlength="12" value="'+E(n.row||'')+'" placeholder="\u2014"></div></div>'
+      :'<button type="button" class="dkn-more dkn-ship" style="margin:0 0 10px">+ CRANE \u00B7 LANE \u00B7 UTR \u00B7 ROW</button>')+
       '<div class="dkn-f" style="margin-bottom:10px"><label>LUNCH</label><div class="dkn-lun">'+LUNCH[shiftOf(id)].map(function(o){ return '<button type="button" data-lunch="'+o[0]+'" class="'+(n.lunch===o[0]?'on':'')+'" title="'+E(o[2])+'">'+o[1]+'</button>'; }).join('')+'<button type="button" class="oth'+(n.lunch==='other'?' on':'')+'" data-lunch="other">\u270E OTHER</button></div></div>'+
       '<div class="dkn-ld">'+E(lunchText(id,n))+'</div>'+
       '<div class="dkn-sec">CHANNELS'+(dock?' \u00B7 '+E(dock.name.split(' \u00B7 ')[0].toUpperCase()):'')+'</div>'+
@@ -104,8 +107,9 @@
     var on=d.querySelector('.dkn-lane.on'), id=d.getAttribute('data-dkn'), old=get(id), ch={}, extra=[];
     d.querySelectorAll('[data-chin]').forEach(function(i){ ch[i.getAttribute('data-chin')]=i.value; });
     d.querySelectorAll('.dkn-x').forEach(function(x){ extra.push({k:x.querySelector('[data-xk]').value,v:x.querySelector('[data-xv]').value}); });
-    return {crane:d.querySelector('.dkn-crane').value, lane:on?+on.getAttribute('data-lane'):0, utr:d.querySelector('.dkn-utr').value, row:d.querySelector('.dkn-row').value,
-      lunch:old.lunch||'', lunchText:old.lunchText||'', ch:ch, extra:extra, txt:d.querySelector('.dkn-txt').value};
+    var v=function(sel,fb){ var el=d.querySelector(sel); return el?el.value:(fb||''); };
+    return {crane:v('.dkn-crane',old.crane), lane:d.querySelector('.dkn-lanes')?(on?+on.getAttribute('data-lane'):0):(old.lane||0), utr:v('.dkn-utr',old.utr), row:v('.dkn-row',old.row),
+      lunch:old.lunch||'', lunchText:old.lunchText||'', ch:ch, extra:extra, txt:v('.dkn-txt',old.txt)};
   }
   var saveT=null;
   function save(d){ var n=read(d); put(d.getAttribute('data-dkn'),n); var s=d.querySelector('.dkn-s'); if(s)s.textContent='saved \u2713';
@@ -123,6 +127,7 @@
     var d=e.target.closest&&e.target.closest('.dkn'); if(!d)return;
     e.stopPropagation();
     var id=d.getAttribute('data-dkn');
+    if(e.target.closest('.dkn-ship')){ opened[id]=1; d.replaceWith(block(id)); var ci=document.querySelector('.dkn[data-dkn="'+CSS.escape(id)+'"] .dkn-crane'); ci&&ci.focus(); return; }
     var clr=e.target.closest('.dkn-clr');
     if(clr){ if(!clr.classList.contains('arm')){ clr.classList.add('arm'); clr.textContent='\u2715 CLEAR IT?'; setTimeout(function(){ clr.classList.remove('arm'); clr.textContent='\u2715 CLEAR'; },3000); return; }
       var k=key(); if(k){ var a=all(); delete a[id]; try{ localStorage.setItem(k,JSON.stringify(a)); }catch(x){} } d.replaceWith(block(id)); mark(); try{ toast('Slip cleared'); }catch(x){} return; }
