@@ -29,7 +29,8 @@
   function jobOf(id){ try{ return (typeof DOCKETS!=='undefined'?DOCKETS:window.DOCKETS||[]).filter(function(x){ return String(x._id)===String(id); })[0]||null; }catch(e){ return null; } }
   function shiftOf(id){ var j=jobOf(id); return j&&j.shift==='Day'?'Day':'Night'; }
   var opened={}; /* slips where the member asked for crane/lane on a non-ship job (this session) */
-  function shipWork(id){ try{ var j=jobOf(id); if(!j)return true; var w=typeof dktWorkside==='function'?dktWorkside(j):null; if(!w)return true; return w.side==='ship'&&w.craft!=='clerk'; }catch(e){ return true; } }
+  function isSwing(id){ try{ var j=jobOf(id), c=String(j&&j.category||'').toUpperCase().replace(/[^A-Z]/g,''); return c==='S'||/SWING/.test(c); }catch(e){ return false; } }
+  function shipWork(id){ try{ var j=jobOf(id); if(!j)return true; if(isSwing(id))return false; var w=typeof dktWorkside==='function'?dktWorkside(j):null; if(!w)return true; return w.side==='ship'&&w.craft!=='clerk'; }catch(e){ return true; } }
   function dockOf(id){ try{ var j=jobOf(id); if(!j)return null; var t=typeof dkTerminal==='function'?dkTerminal(j):null; if(!t&&typeof findTerminal==='function')t=findTerminal(j.terminal); return t?{key:t.berths,name:[t.aka,t.operator].filter(Boolean).join(' \u00B7 ')}:null; }catch(e){ return null; } }
   var E=function(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
   function clock(){ var d=new Date(),h=d.getHours(),m=d.getMinutes(); return (h%12||12)+':'+(m<10?'0':'')+m+(h<12?' AM':' PM'); }
@@ -75,7 +76,7 @@
     '.dkn-clr{margin-left:8px;height:24px;padding:0 9px;border-radius:12px;border:1px solid rgba(224,73,46,.45);background:none;color:#e8967a;font:700 10px Inter,system-ui,sans-serif;letter-spacing:.12em;cursor:pointer}.dkn-clr.arm{background:#e0492e;border-color:#e0492e;color:#fff}';
   document.head.appendChild(st);
 
-  function lunchText(id,n){ if(!n.lunch)return ''; if(n.lunch==='other')return 'Lunch: '+(n.lunchText||'\u2014'); var o=LUNCH[shiftOf(id)].filter(function(x){ return x[0]===n.lunch; })[0]; return o?'Lunch '+o[2]:''; }
+  function lunchText(id,n){ if(!n.lunch)return ''; if(n.lunch==='none')return 'No lunch \u00B7 swing went home'; if(n.lunch==='other')return (isSwing(id)?'Long finish \u00B7 lunch ':'Lunch: ')+(n.lunchText||'\u2014'); var o=LUNCH[shiftOf(id)].filter(function(x){ return x[0]===n.lunch; })[0]; return o?'Lunch '+o[2]:''; }
   function chBox(key,label,val,sugs){
     var chips=sugs.slice(0,5).map(function(s){ return '<button type="button" data-sug="'+E(s.v)+'" class="'+(String(val).toUpperCase()===s.v.toUpperCase()?'on':'')+'">'+E(s.v)+(s.crane?' <i style="opacity:.6;font-style:normal">\u00B7 '+E(s.crane)+'</i>':'')+'</button>'; }).join('');
     return '<div class="dkn-f" data-ch="'+key+'"><label>'+label+'</label><input type="text" maxlength="16" data-chin="'+key+'" value="'+E(val||'')+'" placeholder="\u2014">'+(chips?'<div class="dkn-sg">'+chips+'</div>':'')+'</div>';
@@ -88,7 +89,9 @@
       (ship?'<div class="dkn-top"><div class="dkn-f dkn-cr"><label>CRANE #</label><input type="text" class="big dkn-crane" maxlength="12" inputmode="numeric" value="'+E(n.crane||'')+'" placeholder="\u2014"></div><div class="dkn-f dkn-ln"><label>LANE #</label><div class="dkn-lanes">'+lanes+'</div></div></div>'+
       '<div class="dkn-g"><div class="dkn-f"><label>UTR #</label><input type="text" class="dkn-utr" maxlength="12" value="'+E(n.utr||'')+'" placeholder="\u2014"></div><div class="dkn-f"><label>ROW</label><input type="text" class="dkn-row" maxlength="12" value="'+E(n.row||'')+'" placeholder="\u2014"></div></div>'
       :'<button type="button" class="dkn-more dkn-ship" style="margin:0 0 10px">+ CRANE \u00B7 LANE \u00B7 UTR \u00B7 ROW</button>')+
-      '<div class="dkn-f" style="margin-bottom:10px"><label>LUNCH</label><div class="dkn-lun">'+LUNCH[shiftOf(id)].map(function(o){ return '<button type="button" data-lunch="'+o[0]+'" class="'+(n.lunch===o[0]?'on':'')+'" title="'+E(o[2])+'">'+o[1]+'</button>'; }).join('')+'<button type="button" class="oth'+(n.lunch==='other'?' on':'')+'" data-lunch="other">\u270E OTHER</button></div></div>'+
+      '<div class="dkn-f" style="margin-bottom:10px"><label>LUNCH</label><div class="dkn-lun">'+(isSwing(id)
+        ?'<button type="button" data-lunch="none" class="'+(n.lunch==='none'?'on':'')+'">NO LUNCH \u00B7 HOME EARLY</button><button type="button" class="oth'+(n.lunch==='other'?' on':'')+'" data-lunch="other">\u270E LONG FINISH</button>'
+        :LUNCH[shiftOf(id)].map(function(o){ return '<button type="button" data-lunch="'+o[0]+'" class="'+(n.lunch===o[0]?'on':'')+'" title="'+E(o[2])+'">'+o[1]+'</button>'; }).join('')+'<button type="button" class="oth'+(n.lunch==='other'?' on':'')+'" data-lunch="other">\u270E OTHER</button>')+'</div></div>'+
       '<div class="dkn-ld">'+E(lunchText(id,n))+'</div>'+
       '<div class="dkn-sec">CHANNELS'+(dock?' \u00B7 '+E(dock.name.split(' \u00B7 ')[0].toUpperCase()):'')+'</div>'+
       '<div class="dkn-ch">'+CH.map(function(c){ return chBox(c[0],c[1],ch[c[0]]||'',suggest(dock,c[2])); }).join('')+'</div>'+
@@ -135,7 +138,7 @@
     if(ln){ var was=ln.classList.contains('on'); d.querySelectorAll('.dkn-lane').forEach(function(b){ b.classList.remove('on'); }); if(!was)ln.classList.add('on'); save(d); return; }
     var lu=e.target.closest('[data-lunch]');
     if(lu){ var cur=get(id), pick=lu.getAttribute('data-lunch');
-      if(pick==='other'){ var v=prompt('What was the lunch? (e.g. 10\u201311 & 1\u20132, clerk split)', cur.lunchText||''); if(v==null)return; v=String(v).trim(); cur.lunch=v?'other':''; cur.lunchText=v; }
+      if(pick==='other'){ var v=prompt(isSwing(id)?'Long finish \u2014 what lunch did they give you?':'What was the lunch? (e.g. 10\u201311 & 1\u20132, clerk split)', cur.lunchText||''); if(v==null)return; v=String(v).trim(); cur.lunch=v?'other':''; cur.lunchText=v; }
       else { cur.lunch=cur.lunch===pick?'':pick; cur.lunchText=''; }
       var now=read(d); now.lunch=cur.lunch; now.lunchText=cur.lunchText; put(id,now);
       d.querySelectorAll('[data-lunch]').forEach(function(b){ b.classList.toggle('on',b.getAttribute('data-lunch')===cur.lunch); });
