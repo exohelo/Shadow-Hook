@@ -12,6 +12,26 @@
   if(window.__wireLetters)return; window.__wireLetters=true;
   var AZ='ABCDEFGHIJKLMNOPQRSTUVWXYZ', NORMAL=45, PRESET={thin:10,normal:45,thick:90};
   var CNT={}, loadedAt=0, lastO=null, walked=null;
+  /* #wl4 (oct 18): calibrate on what boards actually did. For each of the last boards with a result and a hall count
+     we add up the real headcount of every letter it moved through, so "hall jobs per casual hired" is learned with
+     the same standings the walk uses. Learned per shift from the last 10; the band is the rule's recent error. */
+  var CAL={AM:null,PM:null}, calAt=0;
+  function casualsBetween(start,end){ var a=AZ.indexOf(String(start||'')[0]), b=AZ.indexOf(String(end||'')[0]); if(a<0||b<0)return 0; var n=0, i=a; while(i!==b){ n+=count(AZ[i]); i=(i+1)%26; if(n>5000)break; } return n; }
+  function calibrate(){
+    if(!window.SB)return;
+    window.SB.rpc('wire_recent_boards',{p_n:24}).then(function(r){ if(r.error||!Array.isArray(r.data))return;
+      ['AM','PM'].forEach(function(sh){
+        var rows=r.data.filter(function(x){ return x.k.slice(-2)===sh; }).slice(0,10), jobs=0, cas=0, errs=[];
+        rows.forEach(function(x){ var c=casualsBetween(x.start_card,x.end_card); if(c>0){ jobs+=x.hall; cas+=c; } });
+        if(cas>0){ var jpc=jobs/cas;
+          /* how far off this rule was on each of those boards, in letters */
+          rows.forEach(function(x){ var c=casualsBetween(x.start_card,x.end_card); if(c<=0)return; var predL=walk(AZ.indexOf(x.start_card[0]),x.hall/jpc).letters; errs.push(Math.abs(predL-x.act)); });
+          var mae=errs.length?errs.reduce(function(a,b){ return a+b; },0)/errs.length:2.5;
+          CAL[sh]={jpc:jpc,n:rows.length,mae:Math.max(1.5,mae),upto:rows[0]&&rows[0].k}; }
+      });
+      calAt=Date.now(); if(lastO)paint(lastO);
+    },function(){});
+  }
   function count(L){ var v=CNT[L]; return typeof v==='number'?v:NORMAL; }
   function counts(){ return AZ.split('').map(count); }
   function avg(){ var c=counts(), s=c.reduce(function(a,x){ return a+x; },0); return s/26||NORMAL; }
@@ -25,19 +45,32 @@
     while(left>0){ var n=c[i]||1; if(left<=n)break; left-=n; i=(i+1)%26; moved++; }
     return {idx:i,cycles:cycles,letters:moved};
   }
+  function walkLetters(base,L){ var n=Math.max(0,Math.round(L)); return {idx:(base+n)%26,cycles:Math.floor(n/26),letters:n}; }
+  var walkedCal=null;
   function paint(o){
     if(!o||typeof o.base!=='number')return;
     /* #wl3 (oct 18): ONE number of casual hires drives everything. The app's own count ("→ ~311 to casuals",
        window._pmaLadder.casual) wins when it's there; letters-moved × average headcount only fills in when it isn't.
        The low/high band scales off the same number. Pumpkin, "about N casuals", the letter track and the Hall card
        all read this one walk. */
-    var a=avg(), start=AZ[o.base], lg=window._pmaLadder, hires;
-    if(lg&&!lg.stop&&+lg.casual>0&&o.med>0) hires=+lg.casual; else hires=Math.max(0,o.med)*a;
-    var per=o.med>0?hires/o.med:a;     /* casuals per letter-moved, so lo/hi stay in step with the main number */
-    var w=walk(o.base,hires), lo=walk(o.base,Math.max(0,o.lo)*per), hi=walk(o.base,Math.max(0,o.hi)*per);
-    if(lo.letters>w.letters)lo=w; if(hi.letters<w.letters)hi=w;
+    var a=avg(), start=AZ[o.base], lg=window._pmaLadder, hires, lo, hi, w, source='app';
+    var slot=''; try{ slot=typeof callSlot!=='undefined'?String(callSlot):String(window.callSlot||''); }catch(e){} var sh=/PM$/.test(slot)?'PM':'AM', cal=CAL[sh], H=lg&&!lg.stop&&+lg.H>0?+lg.H:0;
+    if(cal&&H>0&&o.med>0){
+      /* calibrated: hall jobs ÷ learned jobs-per-casual, then walked through the real headcounts */
+      hires=H/cal.jpc; source='calib';
+      w=walk(o.base,hires);
+      var bandL=cal.mae;   /* letters either side */
+      lo=walkLetters(o.base,Math.max(0,w.letters-bandL)); hi=walkLetters(o.base,w.letters+bandL);
+    } else {
+      if(lg&&!lg.stop&&+lg.casual>0&&o.med>0){ hires=+lg.casual; source='app-casual'; } else hires=Math.max(0,o.med)*a;
+      var per=o.med>0?hires/o.med:a;
+      w=walk(o.base,hires); lo=walk(o.base,Math.max(0,o.lo)*per); hi=walk(o.base,Math.max(0,o.hi)*per);
+      if(lo.letters>w.letters)lo=w; if(hi.letters<w.letters)hi=w;
+    }
+    walkedCal={source:source,H:H,jpc:cal&&cal.jpc};
     var stop=AZ[w.idx], loL=AZ[lo.idx], hiL=AZ[hi.idx], holds=o.med<=0||(lg&&lg.stop);
-    walked={stop:holds?start:stop,lo:loL,hi:hiL,o:o,hires:Math.round(hires)};   /* the Hall card reads this too (see _lastCall below) */
+    walked={stop:holds?start:stop,lo:loL,hi:hiL,o:o,hires:Math.round(hires),letters:w.letters};   /* the Hall card reads this too (see _lastCall below) */
+    logPred(o,walked,holds);
     try{ var lc=window._lastCall; if(lc&&(lc.stop!==walked.stop||lc.lo!==walked.lo||lc.hi!==walked.hi))window._lastCall=Object.assign({},lc); }catch(e){}
     var ps=document.getElementById('predStop'), mv=document.getElementById('wMoves'); if(!ps||!mv)return;
     if(holds){ ps.textContent=start; mv.innerHTML='likely <b>holds</b> on '+start; }
@@ -99,7 +132,7 @@
   }
   function load(){
     if(!window.SB)return;
-    window.SB.from('wire_letters').select('letter,standing').then(function(r){ if(r.error||!Array.isArray(r.data))return; CNT={}; r.data.forEach(function(x){ CNT[String(x.letter).toUpperCase()]=+x.standing; }); loadedAt=Date.now(); if(lastO)paint(lastO); });
+    window.SB.from('wire_letters').select('letter,standing').then(function(r){ if(r.error||!Array.isArray(r.data))return; CNT={}; r.data.forEach(function(x){ CNT[String(x.letter).toUpperCase()]=+x.standing; }); loadedAt=Date.now(); if(!calAt)calibrate(); if(lastO)paint(lastO); });
   }
   /* hook the Wire's renderer: the app draws, then we re-derive the stop from real headcounts */
   function hook(){
@@ -116,7 +149,15 @@
       if(v&&walked&&lastO&&walked.o===lastO){ v=Object.assign({},v,{stop:walked.stop,lo:walked.lo,hi:walked.hi,headcount:true}); }
       cur=v; }}); }catch(e){}
   })();
-  function start(){ load(); if(!hook()){ var t=setInterval(function(){ if(hook())clearInterval(t); },500); } setInterval(load,5*60*1000); }
+  var _logged='';
+  function logPred(o,wk,holds){
+    try{
+      if(!window.SB||!window.__shkUid)return; var k=''; try{ k=(window._pmaLadder&&window._pmaLadder._key)||(typeof _predKey==='function'?_predKey():'')||window._publishedKey||''; }catch(e){} if(!k)return;
+      var sig=k+'|'+wk.stop+'|'+wk.lo+'|'+wk.hi+'|'+wk.hires; if(sig===_logged)return; _logged=sig;
+      window.SB.rpc('wire_pred_put',{p:{k:k,stop:wk.stop,lo:wk.lo,hi:wk.hi,letters:wk.letters,hires:wk.hires,hall:walkedCal&&walkedCal.H||null,jpl:walkedCal&&walkedCal.jpc?Math.round(walkedCal.jpc*100)/100:null,source:walkedCal&&walkedCal.source||'app',app_stop:AZ[((o.base+o.med)%26+26)%26],app_med:o.med}}).then(function(){},function(){});
+    }catch(e){}
+  }
+  function start(){ load(); calibrate(); setInterval(calibrate,30*60*1000); if(!hook()){ var t=setInterval(function(){ if(hook())clearInterval(t); },500); } setInterval(load,5*60*1000); }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start); else start();
   window.wireLettersReload=load;
 })();
