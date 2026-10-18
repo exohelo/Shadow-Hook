@@ -28,7 +28,22 @@
       if(!spooky&&c.firstChild&&c.firstChild.nodeType===3&&/\uD83C\uDF83/.test(c.firstChild.nodeValue)) c.firstChild.nodeValue=c.firstChild.nodeValue.replace(/\uD83C\uDF83/,'\uD83C\uDFC0');
     });
   }
-  function scan(){ ['rflFlyBuy','rflSheet'].forEach(function(id){ var el=document.getElementById(id); el&&nudge(el); }); clockIcon(); }
+  /* #rflshort (oct 18): a member who's short used to get a greyed-out BUY that did nothing when tapped. Now BUY stays
+     live and a short tap goes straight to the Bank — the main raffle's flyer and sheet (raffle_two.js does its own). */
+  function unlock(box){
+    if(!box)return;
+    box.querySelectorAll('.rfl-buy[disabled]').forEach(function(b){ if(b.closest('[data-rfl2b]')||b.hasAttribute('data-rfl2b'))return; b.disabled=false; b.setAttribute('data-short','1'); });
+  }
+  document.addEventListener('click',function(e){
+    var b=e.target.closest&&e.target.closest('.rfl-buy[data-short]'); if(!b||b.hasAttribute('data-rfl2b'))return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    var note=null, box=b.closest('#rflFlyBuy,#rflSheet'); if(box)box.querySelectorAll('.rfl-fly-note, .sub').forEach(function(p){ var m=/You need ([\d,]+) more/.exec(p.textContent||''); if(m&&!note)note=m[1]; });
+    try{ toast('\u2B21 '+(note?'You need '+note+' more \u2B21 \u2014 ':'Not enough \u2B21 \u2014 ')+'opening the Bank'); }catch(x){}
+    try{ var sh=document.getElementById('rflFlyer'); sh&&sh.classList.remove('on'); }catch(x){}
+    try{ var s2=document.getElementById('rflSheet'); s2&&s2.classList.remove('on'); }catch(x){}
+    setTimeout(function(){ try{ typeof window.bankOpen==='function'?window.bankOpen():(typeof gotoTab==='function'&&gotoTab('armory')); }catch(x){} },150);
+  },true);
+  function scan(){ ['rflFlyBuy','rflSheet'].forEach(function(id){ var el=document.getElementById(id); if(el){ nudge(el); unlock(el); } }); clockIcon(); }
   new MutationObserver(scan).observe(document.body,{childList:true,subtree:true});
   scan();
 })();

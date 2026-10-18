@@ -120,9 +120,9 @@
     else if(cap&&room<=0) h+='<p class="sub rfl-fly-note">You hold the max \u2014 '+cap+' tickets. Good luck at the draw.</p>';
     else{
       h+='<div class="rfl-fly-row"><div class="rfl-step"><button type="button" data-rfl2b="minus" aria-label="One fewer">\u2212</button><div class="n">'+qty+'</div><button type="button" data-rfl2b="plus" aria-label="One more">+</button></div>'
-        +'<button class="btn rfl-buy rfl-fly-go" type="button" data-rfl2b="buy"'+(b<cost?' disabled':'')+'>'+(armed===1?'TAP AGAIN TO CONFIRM \u00B7 ':'\uD83C\uDF9F BUY '+qty+' TICKET'+(qty>1?'S':'')+' \u00B7 ')+num(cost)+' \u2B21</button></div>';
+        +'<button class="btn rfl-buy rfl-fly-go" type="button" data-rfl2b="buy"'+(b<cost?' data-short="'+(cost-b)+'"':'')+'>'+(armed===1?'TAP AGAIN TO CONFIRM \u00B7 ':'\uD83C\uDF9F BUY '+qty+' TICKET'+(qty>1?'S':'')+' \u00B7 ')+num(cost)+' \u2B21</button></div>';
       var bq=+r.bundle_qty||0, bp=+r.bundle_price||0;
-      if(bq&&bp&&room>=bq){ var save=bq*r.ticket_price-bp; h+='<button class="btn-line gold rfl-buy rfl-fly-bundle" type="button" data-rfl2b="bundle"'+(b<bp?' disabled':'')+'>'+(armed===2?'TAP AGAIN TO CONFIRM \u00B7 ':'')+bq+' TICKETS \u00B7 '+num(bp)+' \u2B21'+(save>0?' \u00B7 SAVE '+num(save):'')+'</button>'; }
+      if(bq&&bp&&room>=bq){ var save=bq*r.ticket_price-bp; h+='<button class="btn-line gold rfl-buy rfl-fly-bundle" type="button" data-rfl2b="bundle"'+(b<bp?' data-short="'+(bp-b)+'"':'')+'>'+(armed===2?'TAP AGAIN TO CONFIRM \u00B7 ':'')+bq+' TICKETS \u00B7 '+num(bp)+' \u2B21'+(save>0?' \u00B7 SAVE '+num(save):'')+'</button>'; }
       if(b<r.ticket_price) h+='<p class="sub rfl-fly-note">You need '+num(r.ticket_price-b)+' more \u2B21 for a ticket.</p>'+(typeof window.bankOpen==='function'?'<button class="btn" type="button" data-rfl2b="bank" style="width:100%;margin-top:6px">\u2B21 OPEN THE BANK</button>':'');
     }
     h+='<div class="rfl-msg sub" id="rfl2Msg"></div>';
@@ -135,6 +135,12 @@
     if(k==='plus'){ var cap=+r.max_per_member||0, st=ST[r.id]||{}; qty=Math.min(cap?Math.max(1,cap-(+st.mine||0)):99,qty+1); armed=0; flyPaint(); return; }
     if(k==='sign'){ shut(); try{ typeof goGateForHandle==='function'&&goGateForHandle(); }catch(x){} return; }
     if(k==='bank'){ shut(); try{ window.bankOpen(); }catch(x){} return; }
+    if((k==='buy'||k==='bundle')&&b.hasAttribute('data-short')){
+      var need=+b.getAttribute('data-short')||0;
+      say('\u2B21 You need '+num(need)+' more \u2B21 \u2014 opening the Bank');
+      try{ sessionStorage.setItem('shk_rfl_back',r.id); }catch(x){}
+      shut(); setTimeout(function(){ try{ typeof window.bankOpen==='function'?window.bankOpen():(typeof gotoTab==='function'&&gotoTab('armory')); }catch(x){} },150); return;
+    }
     if(k==='buy'||k==='bundle'){
       var want=k==='buy'?1:2;
       if(armed!==want){ armed=want; flyPaint(); setTimeout(function(){ if(armed===want){ armed=0; flyPaint(); } },4000); return; }
