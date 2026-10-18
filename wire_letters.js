@@ -27,19 +27,44 @@
   }
   function paint(o){
     if(!o||typeof o.base!=='number')return;
-    var a=avg(), start=AZ[o.base], w=walk(o.base,o.med*a), lo=walk(o.base,Math.max(0,o.lo)*a), hi=walk(o.base,Math.max(0,o.hi)*a);
-    var stop=AZ[w.idx], loL=AZ[lo.idx], hiL=AZ[hi.idx];
-    walked={stop:o.med<=0?start:stop,lo:loL,hi:hiL,o:o};   /* the Hall card reads this too (see _lastCall below) */
+    /* #wl3 (oct 18): ONE number of casual hires drives everything. The app's own count ("→ ~311 to casuals",
+       window._pmaLadder.casual) wins when it's there; letters-moved × average headcount only fills in when it isn't.
+       The low/high band scales off the same number. Pumpkin, "about N casuals", the letter track and the Hall card
+       all read this one walk. */
+    var a=avg(), start=AZ[o.base], lg=window._pmaLadder, hires;
+    if(lg&&!lg.stop&&+lg.casual>0&&o.med>0) hires=+lg.casual; else hires=Math.max(0,o.med)*a;
+    var per=o.med>0?hires/o.med:a;     /* casuals per letter-moved, so lo/hi stay in step with the main number */
+    var w=walk(o.base,hires), lo=walk(o.base,Math.max(0,o.lo)*per), hi=walk(o.base,Math.max(0,o.hi)*per);
+    if(lo.letters>w.letters)lo=w; if(hi.letters<w.letters)hi=w;
+    var stop=AZ[w.idx], loL=AZ[lo.idx], hiL=AZ[hi.idx], holds=o.med<=0||(lg&&lg.stop);
+    walked={stop:holds?start:stop,lo:loL,hi:hiL,o:o,hires:Math.round(hires)};   /* the Hall card reads this too (see _lastCall below) */
     try{ var lc=window._lastCall; if(lc&&(lc.stop!==walked.stop||lc.lo!==walked.lo||lc.hi!==walked.hi))window._lastCall=Object.assign({},lc); }catch(e){}
     var ps=document.getElementById('predStop'), mv=document.getElementById('wMoves'); if(!ps||!mv)return;
-    if(o.med<=0){ ps.textContent=start; mv.innerHTML='likely <b>holds</b> on '+start; }
+    if(holds){ ps.textContent=start; mv.innerHTML='likely <b>holds</b> on '+start; }
     else{
-      ps.textContent=stop;
+      ps.textContent=w.cycles>0?'CYCLE':stop;
       var band=(loL===hiL)?'':' \u00B7 between <b>'+loL+'</b> and <b>'+hiL+'</b>';
       var cyc=w.cycles>0?' \u00B7 <b>cycles \u00D7'+w.cycles+'</b>':'';
-      mv.innerHTML='about <b>'+Math.round(o.med*a)+' casuals</b> \u00B7 '+start+' &rarr; <b>'+stop+'</b>'+band+cyc;
+      mv.innerHTML='about <b>'+Math.round(hires).toLocaleString()+' casuals</b> \u00B7 '+start+' &rarr; <b>'+stop+'</b>'+band+cyc;
     }
+    track(holds?{letters:0,cycles:0}:w,holds?{letters:0}:lo,holds?{letters:0}:hi);
     var old=document.getElementById('wlStrip'); if(old)old.remove();
+  }
+  /* the letter track under the pumpkin: STOP and the band come from the same walk */
+  function track(w,lo,hi){
+    var tr=document.getElementById('wTrack'); if(!tr)return;
+    var cells=tr.querySelectorAll('.wire-cell'); if(!cells.length)return;
+    var cyc=w.cycles>0;
+    cells.forEach(function(c,k){
+      c.classList.toggle('band',!cyc&&k>=lo.letters&&k<=hi.letters);
+      var isStop=!cyc&&k===w.letters&&k>0;
+      c.classList.toggle('stop',isStop);
+      var t=c.querySelector('.tick:not(.fresh)');
+      if(t&&t.textContent==='STOP'&&!isStop)t.remove();
+      if(isStop&&!(t&&t.textContent==='STOP')){ if(t&&t.textContent!=='START')t.remove(); var n=document.createElement('span'); n.className='tick'; n.textContent='STOP'; c.appendChild(n); }
+    });
+    /* the stop may be past the end of the track the app drew */
+    if(!cyc&&w.letters>=cells.length){ var last=cells[cells.length-1]; last.classList.add('band'); }
   }
   /* the letter strip: what the Keymaster set, thin letters dim and small; tap to change when you're the Keymaster */
   function strip(o,w,lo,hi){
