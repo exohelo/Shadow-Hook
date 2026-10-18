@@ -2,6 +2,8 @@
    your break, and the radio channels — typed into the app so it's there after the paper is gone.
    Open a job in DOCKETS (tap the row) → 📋 JOB SLIP sits right under "⚓ The dock":
      · CRANE · LANE (tap 1–6) · UTR # · ROW
+     · SWING: just the crane and WHICH HALF — day: first 8–12 · second 1–5 · night: first start–10 PM · second 11 PM–3 AM.
+       Either half pays 8 hours. No lane, UTR, row or lunch on a swing slip.
      · LUNCH — tap which lunch the job got. Day: EARLY (8–10 & 12–1) · 11–1 · 12–2 · EARLY GO (12–1, home ~2:30).
        Night: EARLY (6–8 & 10–11) · 9–11 · 10–12 · EARLY GO (10–11, home ~12:30). OTHER for a split break.
      · CHANNELS — UTR · CLERK · DOCK BOSS · SUPERCARGO, plus "+ another" for anything else the slip names
@@ -11,7 +13,7 @@
      · NOTES with ⏱ TIME for anything that happened
    Saves as you type. A 📋 on the row means the job has a slip. The slip is private to the member and follows
    their account to their other phones. Nothing here is used for scanning dockets or pay.
-   Load once from index.html, after sc_jobs_links.js:  <script src="docket_notes.js?v=oct17b" defer></script> */
+   Load once from index.html, after sc_jobs_links.js:  <script src="docket_notes.js?v=oct17c" defer></script> */
 (function(){
   'use strict';
   if(window.__dkNotes)return; window.__dkNotes=true;
@@ -25,6 +27,7 @@
     Day:[ ['early','EARLY','8\u201310 & 12\u20131'], ['11-1','11\u20131','11 AM \u2013 1 PM'], ['12-2','12\u20132','12 \u2013 2 PM'], ['go','EARLY GO','12\u20131 \u00B7 home about 2:30'] ],
     Night:[ ['early','EARLY','6\u20138 & 10\u201311'], ['9-11','9\u201311','9 \u2013 11 PM'], ['10-12','10\u201312','10 PM \u2013 12'], ['go','EARLY GO','10\u201311 \u00B7 home about 12:30'] ]
   };
+  var HALF={ Day:[ ['1st','FIRST HALF','8 AM \u2013 12'], ['2nd','SECOND HALF','1 \u2013 5 PM'] ], Night:[ ['1st','FIRST HALF','start \u2013 10 PM'], ['2nd','SECOND HALF','11 PM \u2013 3 AM'] ] };
   var CH=[ ['utr','UTR CH','UTR'], ['clerk','CLERK CH','Clerks'], ['boss','DOCK BOSS','Dock Boss'], ['super','SUPERCARGO','Supercargo'] ]; /* key · label · Radio Book title */
   function jobOf(id){ try{ return (typeof DOCKETS!=='undefined'?DOCKETS:window.DOCKETS||[]).filter(function(x){ return String(x._id)===String(id); })[0]||null; }catch(e){ return null; } }
   function shiftOf(id){ var j=jobOf(id); return j&&j.shift==='Day'?'Day':'Night'; }
@@ -52,6 +55,7 @@
     var rows=book[dock.key]||[]; crane=String(crane||'').trim().toUpperCase();
     if(rows.some(function(r){ return r.title===title&&String(r.channel).toUpperCase()===chan&&String(r.crane||'').toUpperCase()===crane; }))return;
     var me=null; try{ me=(typeof loadAcct==='function'&&(loadAcct()||{}).handle)||null; }catch(e){}
+    (book[dock.key]=book[dock.key]||[]).push({id:0,title:title,channel:chan,crane:crane||'',confirms:0,reports:0,hidden:false}); /* so a second blur can't add it twice */
     window.SB.from('radio_channels').insert({dock:dock.key,dock_name:dock.name,title:title,channel:chan,crane:crane||null,note:'from a job slip',by_uid:window.__shkUid||null,by_handle:me}).select('id').then(function(r){ if(!r.error)bookLoad(dock); },function(){});
   }
 
@@ -76,7 +80,7 @@
     '.dkn-clr{margin-left:8px;height:24px;padding:0 9px;border-radius:12px;border:1px solid rgba(224,73,46,.45);background:none;color:#e8967a;font:700 10px Inter,system-ui,sans-serif;letter-spacing:.12em;cursor:pointer}.dkn-clr.arm{background:#e0492e;border-color:#e0492e;color:#fff}';
   document.head.appendChild(st);
 
-  function lunchText(id,n){ if(!n.lunch)return ''; if(n.lunch==='none')return 'No lunch \u00B7 swing went home'; if(n.lunch==='other')return (isSwing(id)?'Long finish \u00B7 lunch ':'Lunch: ')+(n.lunchText||'\u2014'); var o=LUNCH[shiftOf(id)].filter(function(x){ return x[0]===n.lunch; })[0]; return o?'Lunch '+o[2]:''; }
+  function lunchText(id,n){ if(!n.lunch)return ''; if(isSwing(id)){ var hh=HALF[shiftOf(id)].filter(function(x){ return x[0]===n.lunch; })[0]; return hh?hh[1].charAt(0)+hh[1].slice(1).toLowerCase()+' \u00B7 '+hh[2]+' \u00B7 pays 8 hours':''; } if(n.lunch==='other')return 'Lunch: '+(n.lunchText||'\u2014'); var o=LUNCH[shiftOf(id)].filter(function(x){ return x[0]===n.lunch; })[0]; return o?'Lunch '+o[2]:''; }
   function chBox(key,label,val,sugs){
     var chips=sugs.slice(0,5).map(function(s){ return '<button type="button" data-sug="'+E(s.v)+'" class="'+(String(val).toUpperCase()===s.v.toUpperCase()?'on':'')+'">'+E(s.v)+(s.crane?' <i style="opacity:.6;font-style:normal">\u00B7 '+E(s.crane)+'</i>':'')+'</button>'; }).join('');
     return '<div class="dkn-f" data-ch="'+key+'"><label>'+label+'</label><input type="text" maxlength="16" data-chin="'+key+'" value="'+E(val||'')+'" placeholder="\u2014">'+(chips?'<div class="dkn-sg">'+chips+'</div>':'')+'</div>';
@@ -86,13 +90,13 @@
     for(var i=1;i<=6;i++)lanes+='<button type="button" class="dkn-lane'+(String(n.lane)===String(i)?' on':'')+'" data-lane="'+i+'">'+i+'</button>';
     var d=document.createElement('div'); d.className='dkn'; d.setAttribute('data-dkn',id);
     d.innerHTML='<div class="dkn-h">\uD83D\uDCCB JOB SLIP<small class="dkn-s">only you see this</small>'+(hasAny(n)?'<button type="button" class="dkn-clr" title="Clear this slip">\u2715 CLEAR</button>':'')+'</div>'+
-      (ship?'<div class="dkn-top"><div class="dkn-f dkn-cr"><label>CRANE #</label><input type="text" class="big dkn-crane" maxlength="12" inputmode="numeric" value="'+E(n.crane||'')+'" placeholder="\u2014"></div><div class="dkn-f dkn-ln"><label>LANE #</label><div class="dkn-lanes">'+lanes+'</div></div></div>'+
+      (isSwing(id)?'<div class="dkn-top"><div class="dkn-f dkn-cr"><label>CRANE #</label><input type="text" class="big dkn-crane" maxlength="12" inputmode="numeric" value="'+E(n.crane||'')+'" placeholder="\u2014"></div><div class="dkn-f"><label>WHICH HALF</label><div class="dkn-lun dkn-half">'+HALF[shiftOf(id)].map(function(o){ return '<button type="button" data-lunch="'+o[0]+'" class="'+(n.lunch===o[0]?'on':'')+'" style="flex:1 1 100%;height:38px"><b>'+o[1]+'</b> \u00B7 '+E(o[2])+'</button>'; }).join('')+'</div></div></div>'+
+      '<div class="dkn-ld">'+E(lunchText(id,n))+'</div>'
+      :ship?'<div class="dkn-top"><div class="dkn-f dkn-cr"><label>CRANE #</label><input type="text" class="big dkn-crane" maxlength="12" inputmode="numeric" value="'+E(n.crane||'')+'" placeholder="\u2014"></div><div class="dkn-f dkn-ln"><label>LANE #</label><div class="dkn-lanes">'+lanes+'</div></div></div>'+
       '<div class="dkn-g"><div class="dkn-f"><label>UTR #</label><input type="text" class="dkn-utr" maxlength="12" value="'+E(n.utr||'')+'" placeholder="\u2014"></div><div class="dkn-f"><label>ROW</label><input type="text" class="dkn-row" maxlength="12" value="'+E(n.row||'')+'" placeholder="\u2014"></div></div>'
       :'<button type="button" class="dkn-more dkn-ship" style="margin:0 0 10px">+ CRANE \u00B7 LANE \u00B7 UTR \u00B7 ROW</button>')+
-      '<div class="dkn-f" style="margin-bottom:10px"><label>LUNCH</label><div class="dkn-lun">'+(isSwing(id)
-        ?'<button type="button" data-lunch="none" class="'+(n.lunch==='none'?'on':'')+'">NO LUNCH \u00B7 HOME EARLY</button><button type="button" class="oth'+(n.lunch==='other'?' on':'')+'" data-lunch="other">\u270E LONG FINISH</button>'
-        :LUNCH[shiftOf(id)].map(function(o){ return '<button type="button" data-lunch="'+o[0]+'" class="'+(n.lunch===o[0]?'on':'')+'" title="'+E(o[2])+'">'+o[1]+'</button>'; }).join('')+'<button type="button" class="oth'+(n.lunch==='other'?' on':'')+'" data-lunch="other">\u270E OTHER</button>')+'</div></div>'+
-      '<div class="dkn-ld">'+E(lunchText(id,n))+'</div>'+
+      (isSwing(id)?'':'<div class="dkn-f" style="margin-bottom:10px"><label>LUNCH</label><div class="dkn-lun">'+LUNCH[shiftOf(id)].map(function(o){ return '<button type="button" data-lunch="'+o[0]+'" class="'+(n.lunch===o[0]?'on':'')+'" title="'+E(o[2])+'">'+o[1]+'</button>'; }).join('')+'<button type="button" class="oth'+(n.lunch==='other'?' on':'')+'" data-lunch="other">\u270E OTHER</button></div></div>'+
+      '<div class="dkn-ld">'+E(lunchText(id,n))+'</div>')+
       '<div class="dkn-sec">CHANNELS'+(dock?' \u00B7 '+E(dock.name.split(' \u00B7 ')[0].toUpperCase()):'')+'</div>'+
       '<div class="dkn-ch">'+CH.map(function(c){ return chBox(c[0],c[1],ch[c[0]]||'',suggest(dock,c[2])); }).join('')+'</div>'+
       '<div class="dkn-extra">'+(n.extra||[]).map(function(x,i){ return '<div class="dkn-x" data-xi="'+i+'"><div class="k dkn-f"><label>WHAT</label><input type="text" maxlength="20" data-xk="'+i+'" value="'+E(x.k||'')+'" placeholder="VSL CLK"></div><div class="v dkn-f"><label>CHANNEL</label><input type="text" maxlength="16" data-xv="'+i+'" value="'+E(x.v||'')+'" placeholder="\u2014"></div><button type="button" class="rm" data-xrm="'+i+'">\u2715</button></div>'; }).join('')+'</div>'+
@@ -100,10 +104,10 @@
       '<div class="dkn-sec">NOTES</div>'+
       '<div class="dkn-q"><button type="button" data-stamp="">\u23F1 TIME</button></div>'+
       '<textarea class="dkn-txt" maxlength="4000" placeholder="Reminders, anything that happened\u2026">'+E(n.txt||'')+'</textarea>';
-    if(dock&&!book[dock.key])bookLoad(dock,function(){ /* refresh the suggestion chips once the book is in */
-      var live=document.querySelector('.dkn[data-dkn="'+CSS.escape(id)+'"]'); if(!live)return; var cur=get(live.getAttribute('data-dkn')), cc=cur.ch||{};
+    if(dock&&!book[dock.key])bookLoad(dock,function(){ setTimeout(function(){ /* refresh the suggestion chips once the book is in */
+      var live=null; document.querySelectorAll('.dkn[data-dkn]').forEach(function(x){ if(x.getAttribute('data-dkn')===String(id))live=x; }); if(!live)return; var cur=get(live.getAttribute('data-dkn')), cc=cur.ch||{};
       CH.forEach(function(c){ var f=live.querySelector('.dkn-f[data-ch="'+c[0]+'"]'); if(!f)return; var inp=f.querySelector('input'); f.outerHTML=chBox(c[0],c[1],inp.value||cc[c[0]]||'',suggest(dock,c[2])); });
-    });
+    },0); });
     return d;
   }
   function read(d){
@@ -122,7 +126,7 @@
   document.addEventListener('input',function(e){ var d=e.target.closest&&e.target.closest('.dkn'); if(d)save(d); });
   /* a channel box, once left, feeds the Radio Book */
   document.addEventListener('focusout',function(e){
-    var i=e.target; if(!i||!i.closest||!i.closest('.dkn'))return; var d=i.closest('.dkn'), id=d.getAttribute('data-dkn'), dock=dockOf(id), crane=d.querySelector('.dkn-crane').value;
+    var i=e.target; if(!i||!i.closest||!i.closest('.dkn'))return; var d=i.closest('.dkn'), id=d.getAttribute('data-dkn'), dock=dockOf(id), crane=(d.querySelector('.dkn-crane')||{}).value||'';
     if(i.hasAttribute('data-chin')){ var c=CH.filter(function(x){ return x[0]===i.getAttribute('data-chin'); })[0]; if(c)contribute(dock,c[2],i.value,crane); }
     if(i.hasAttribute('data-xv')){ var x=i.closest('.dkn-x'), k=(x.querySelector('[data-xk]').value||'').trim(); if(k)contribute(dock,k.replace(/\s+/g,' ').replace(/\b\w/g,function(m){ return m.toUpperCase(); }),i.value,crane); }
   },true);
@@ -130,7 +134,7 @@
     var d=e.target.closest&&e.target.closest('.dkn'); if(!d)return;
     e.stopPropagation();
     var id=d.getAttribute('data-dkn');
-    if(e.target.closest('.dkn-ship')){ opened[id]=1; d.replaceWith(block(id)); var ci=document.querySelector('.dkn[data-dkn="'+CSS.escape(id)+'"] .dkn-crane'); ci&&ci.focus(); return; }
+    if(e.target.closest('.dkn-ship')){ opened[id]=1; d.replaceWith(block(id)); var ci=null; document.querySelectorAll('.dkn[data-dkn]').forEach(function(x){ if(x.getAttribute('data-dkn')===String(id))ci=x.querySelector('.dkn-crane'); }); ci&&ci.focus(); return; }
     var clr=e.target.closest('.dkn-clr');
     if(clr){ if(!clr.classList.contains('arm')){ clr.classList.add('arm'); clr.textContent='\u2715 CLEAR IT?'; setTimeout(function(){ clr.classList.remove('arm'); clr.textContent='\u2715 CLEAR'; },3000); return; }
       var k=key(); if(k){ var a=all(); delete a[id]; try{ localStorage.setItem(k,JSON.stringify(a)); }catch(x){} } d.replaceWith(block(id)); mark(); try{ toast('Slip cleared'); }catch(x){} return; }
@@ -138,7 +142,7 @@
     if(ln){ var was=ln.classList.contains('on'); d.querySelectorAll('.dkn-lane').forEach(function(b){ b.classList.remove('on'); }); if(!was)ln.classList.add('on'); save(d); return; }
     var lu=e.target.closest('[data-lunch]');
     if(lu){ var cur=get(id), pick=lu.getAttribute('data-lunch');
-      if(pick==='other'){ var v=prompt(isSwing(id)?'Long finish \u2014 what lunch did they give you?':'What was the lunch? (e.g. 10\u201311 & 1\u20132, clerk split)', cur.lunchText||''); if(v==null)return; v=String(v).trim(); cur.lunch=v?'other':''; cur.lunchText=v; }
+      if(pick==='other'){ var v=prompt('What was the lunch? (e.g. 10\u201311 & 1\u20132, clerk split)', cur.lunchText||''); if(v==null)return; v=String(v).trim(); cur.lunch=v?'other':''; cur.lunchText=v; }
       else { cur.lunch=cur.lunch===pick?'':pick; cur.lunchText=''; }
       var now=read(d); now.lunch=cur.lunch; now.lunchText=cur.lunchText; put(id,now);
       d.querySelectorAll('[data-lunch]').forEach(function(b){ b.classList.toggle('on',b.getAttribute('data-lunch')===cur.lunch); });
@@ -157,7 +161,7 @@
     var list=document.getElementById('docketList'); if(!list)return; var a=all();
     list.querySelectorAll('.jx-row[data-id]').forEach(function(r){
       var n=a[r.getAttribute('data-id')], has=!!n, b=r.querySelector('.n b'), i=r.querySelector('.dkn-has');
-      var sum=has?[n.crane?'Crane '+n.crane:'',n.lane?'Lane '+n.lane:'',(n.ch&&n.ch.utr)?'UTR ch '+n.ch.utr:''].filter(Boolean).join(' \u00B7 '):'';
+      var sum=has?[n.crane?'Crane '+n.crane:'',n.lane?'Lane '+n.lane:'',isSwing(r.getAttribute('data-id'))&&/^(1st|2nd)$/.test(n.lunch||'')?(n.lunch==='1st'?'First half':'Second half'):'',(n.ch&&n.ch.utr)?'UTR ch '+n.ch.utr:''].filter(Boolean).join(' \u00B7 '):'';
       if(has&&!i&&b){ i=document.createElement('i'); i.className='dkn-has'; i.title='Has a job slip'; b.appendChild(i); }
       if(has&&i)i.textContent='\uD83D\uDCCB'+(sum?' '+sum:'');
       else if(!has&&i)i.remove();
