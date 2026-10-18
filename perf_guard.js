@@ -10,7 +10,7 @@
 (function(){
   'use strict';
   if(window.__perfGuard)return; window.__perfGuard=true;
-  var DECOR=/hwlCandle|hwlEmber|snNeck3|snDrop|snFlyX|snFlyY|snFlap|cgClaw|dpPulse|cgHaunt|hvFall|hvFlutter/;
+  var DECOR=/hwlCandle|hwlEmber|hwlCreep|hwlMoon|snNeck3|snDrop|snFlyX|snFlyY|snFlap|snDrift|cgClaw|dpPulse|dpTapR|cgHaunt|hvFall|hvFlutter|arcDrift|gLet|gEmber/;   /* oct18: + the loops the latest alarms named */
   var CAP={hwlCandle:8,hwlEmber:6}, LS='shadowhook_calm_until', calm=false;
   function st(){ var s=document.createElement('style'); s.id='pgCSS'; s.textContent=
     '.pg-paused{animation-play-state:paused!important}'+
