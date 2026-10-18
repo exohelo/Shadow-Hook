@@ -11,7 +11,7 @@
   'use strict';
   if(window.__wireLetters)return; window.__wireLetters=true;
   var AZ='ABCDEFGHIJKLMNOPQRSTUVWXYZ', NORMAL=45, PRESET={thin:10,normal:45,thick:90};
-  var CNT={}, loadedAt=0, lastO=null;
+  var CNT={}, loadedAt=0, lastO=null, walked=null;
   function count(L){ var v=CNT[L]; return typeof v==='number'?v:NORMAL; }
   function counts(){ return AZ.split('').map(count); }
   function avg(){ var c=counts(), s=c.reduce(function(a,x){ return a+x; },0); return s/26||NORMAL; }
@@ -27,9 +27,11 @@
   }
   function paint(o){
     if(!o||typeof o.base!=='number')return;
-    var ps=document.getElementById('predStop'), mv=document.getElementById('wMoves'); if(!ps||!mv)return;
     var a=avg(), start=AZ[o.base], w=walk(o.base,o.med*a), lo=walk(o.base,Math.max(0,o.lo)*a), hi=walk(o.base,Math.max(0,o.hi)*a);
     var stop=AZ[w.idx], loL=AZ[lo.idx], hiL=AZ[hi.idx];
+    walked={stop:o.med<=0?start:stop,lo:loL,hi:hiL,o:o};   /* the Hall card reads this too (see _lastCall below) */
+    try{ var lc=window._lastCall; if(lc&&(lc.stop!==walked.stop||lc.lo!==walked.lo||lc.hi!==walked.hi))window._lastCall=Object.assign({},lc); }catch(e){}
+    var ps=document.getElementById('predStop'), mv=document.getElementById('wMoves'); if(!ps||!mv)return;
     if(o.med<=0){ ps.textContent=start; mv.innerHTML='likely <b>holds</b> on '+start; }
     else{
       ps.textContent=stop;
@@ -82,6 +84,13 @@
     if(window._lastStageO){ lastO=window._lastStageO; paint(lastO); }
     return true;
   }
+  /* #wl2 (oct 17): the Hall card's PREDICTION tile reads window._lastCall, which the app sets from letters-moved
+     right after it draws the Wire. Swap in the headcount walk so both screens say the same letter. */
+  (function(){ var cur=window._lastCall||null;
+    try{ Object.defineProperty(window,'_lastCall',{configurable:true,get:function(){ return cur; },set:function(v){
+      if(v&&walked&&lastO&&walked.o===lastO){ v=Object.assign({},v,{stop:walked.stop,lo:walked.lo,hi:walked.hi,headcount:true}); }
+      cur=v; }}); }catch(e){}
+  })();
   function start(){ load(); if(!hook()){ var t=setInterval(function(){ if(hook())clearInterval(t); },500); } setInterval(load,5*60*1000); }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start); else start();
   window.wireLettersReload=load;
