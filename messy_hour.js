@@ -130,7 +130,7 @@
     var b=shell(); if(!b)return;
     var ae=document.activeElement; if(ae&&b.contains(ae)&&ae.tagName==='TEXTAREA'){ if(!pend){ pend=true; ae.addEventListener('blur',function(){ pend=false; setTimeout(paintBoard,200); },{once:true}); } return; }
     var unread=INBOX.reduce(function(a,t){ return a+(+t.unread||0); },0);
-    var rs=RS?'<div class="mh-rsvp"><div class="n"><b>'+(+RS.coming||0)+'</b>RSVP\u2019d to date tonight'+(RS.for_you!=null?' \u00B7 <span style="color:#fff">'+(+RS.for_you||0)+' for you</span>':'')+'<br><span style="font-size:11px;color:#9a8fb0">'+E(W&&W.label||'10:00 PM \u2013 11:00 PM')+' \u00B7 tell them you\u2019ll be there</span></div><button type="button" data-mb="rsvp" class="'+(RS.mine?'on':'')+'">'+(RS.mine?'\u2713 RSVP\u2019D':'RSVP FOR TONIGHT')+'</button></div>':'';
+    var rs=RS?'<div class="mh-rsvp"><div class="n"><b>'+(+RS.coming||0)+'</b>RSVP\u2019d to date tonight'+(RS.for_you!=null?' \u00B7 <span style="color:#fff">'+(+RS.for_you||0)+' for you</span>':'')+'<br><span style="font-size:11px;color:#9a8fb0">'+E(W&&W.label||'10:00 PM \u2013 11:00 PM')+(RS.mine?' \u00B7 we\u2019ll ping you the moment someone for you steps on':' \u00B7 RSVP and we ping you when someone for you steps on')+'</span></div><button type="button" data-mb="rsvp" class="'+(RS.mine?'on':'')+'">'+(RS.mine?'\u2713 RSVP\u2019D':'RSVP FOR TONIGHT')+'</button></div>':'';
     var list;
     if(tab==='board'){
       list=FEED.length?FEED.map(function(n){
