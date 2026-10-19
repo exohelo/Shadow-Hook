@@ -108,7 +108,23 @@
     var via=P&&P.dW>0?' \u00B7 <span style="opacity:.75">'+Math.round(P.drops).toLocaleString()+' dropped so far</span>':'';
     mv.innerHTML='moves about <b>'+nL+' letter'+(nL===1?'':'s')+'</b> \u00B7 '+start+' &rarr; <b>'+stop+'</b>'+band+(cycles>0?' \u00B7 <b>cycles \u00D7'+cycles+'</b>':'')+via;
     track(nL,nLo,nHi);
+    dropLine(P,nL);
     var old=document.getElementById('wlStrip'); if(old)old.remove();
+  }
+  /* #wldrops (oct 19): the gold box's "→ ~N to casuals" was the app's old hall-sheet guess (507), not what the Wire
+     predicts. It now says how many jobs the Wire expects to DROP: before drops, letters × drops-per-letter for this
+     shift (recorded drops — the 50–100 unreported adds are already inside that rate); once drops post, the count
+     so far projected to its usual finish. */
+  function dropLine(P,nL){
+    try{
+      var el=document.getElementById('wSrc'); if(!el||!P)return; var m=MODEL&&MODEL[P.sh]; if(!m||!(+m.dpl>0))return;
+      var est, how;
+      if(P.drops>0&&P.share>=0.25){ est=Math.round(P.drops/P.share); how=Math.round(P.drops).toLocaleString()+' in, ~'+est.toLocaleString()+' by the finish'; }
+      else { est=Math.round(nL*(+m.dpl)/10)*10; how='~'+est.toLocaleString()+' jobs to drop'; }
+      var t=el.textContent, nt=t.replace(/\u2192 ~[\d,]+ to casuals|\u2192 ~[\d,]+ jobs to drop|\u2192 [\d,]+ in, ~[\d,]+ by the finish/, '\u2192 '+how);
+      if(nt===t&&t.indexOf('\u2192 ')<0)return;
+      if(nt!==t)el.textContent=nt;
+    }catch(e){}
   }
   /* the letter row under the pumpkin: STOP and band from the same answer */
   function track(nL,nLo,nHi){
