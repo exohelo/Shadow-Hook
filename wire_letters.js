@@ -76,12 +76,12 @@
     var pH=H/(+m.jpl||130), pA=+m.a10||9, pP=(m.prev!=null?+m.prev:pA), w=m.w||{}, w0=m.w0||{};
     var base0=(+w0.hall||0)*pH+(+w0.avg||0)*pA+(+w0.prev||0)*pP;
     pmaNow(key); var pP2=pmaPredict(sh);   /* the PMA sheet: leads before the drops, still counts after */
-    if(pP2!=null)base0=0.6*pP2+0.4*base0;
+    if(pP2!=null)base0=0.3*pP2+0.7*base0;   /* oct19 backtest: PMA untested past 6 boards — a voice, not the lead, until it earns more */
     var L=base0, band=+m.band0||3.5, mae=+m.mae0||2.5, dW=0, pD=0;
     if(dn>0&&share>=0.25){
       pD=(dn/share)/(+m.dpl||45);
       var full=(+w.hall||0)*pH+(+w.drops||0)*pD+(+w.avg||0)*pA+(+w.prev||0)*pP;
-      if(pP2!=null)full=0.4*pP2+0.6*full;
+      /* once drops are in, drops alone beat every blend on day boards (oct19 backtest, 46 boards) */
       dW=Math.min(1,share/0.86);            /* drops phase in as they arrive; fully weighted once the usual bulk is in */
       L=(1-dW)*base0+dW*full; band=(1-dW)*(+m.band0||3.5)+dW*(+m.band||2.5); mae=(1-dW)*(+m.mae0||2.5)+dW*(+m.mae||2);
     }
