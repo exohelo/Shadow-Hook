@@ -1,5 +1,5 @@
-/* council_mod.js — #councilmod (oct 17). Every seat holder can now strike marks and void job drops that members post.
-   A ⚖ STRIKE button sits at the top of the Wire for council members only. It opens a sheet listing the last 36 hours
+/* council_mod.js — #councilmod (oct 17, moved oct 18). Every seat holder can strike marks and void job drops that members post.
+   A ⚖ STRIKE button sits in the Dispatch Post room's dock, beside LOG JOBS · MARK · CLICK, for council members only. It opens a sheet listing the last 36 hours
    of marks (the count) and drops (what came down), newest first, each with a ✕ — tap once to arm, again to strike.
    Strikes go through council_strike_mark / council_void_drop on the server, which check the seat and log every strike
    (council_strikes: what, who, when, and a snapshot of the row) so nothing disappears without a record.
@@ -11,7 +11,7 @@
   var say=function(m){ try{ toast(m); }catch(e){} };
   var council=false, rows=[], armed=null, busy=false, lastUid=null;
   function css(){ var s=document.createElement('style'); s.id='cmCSS'; s.textContent=
-    '#cmBtn{display:none;align-items:center;gap:8px;margin:0 0 10px;padding:9px 14px;border-radius:12px;border:1px solid rgba(205,75,42,.5);background:linear-gradient(184deg,#2a1812,#140c0a);color:#e8967a;font:700 12px "Barlow Condensed",sans-serif;letter-spacing:.16em;cursor:pointer}#cmBtn.on{display:inline-flex}'+
+    '#cmBtn{display:none}#cmBtn.on{display:flex}#dpRoomDock .cm-strike{color:#e8967a;border-color:rgba(205,75,42,.5)}'+
     '#cmSheet{position:fixed;inset:0;z-index:420;display:none;background:#05060aeb;align-items:flex-end;justify-content:center}#cmSheet.on{display:flex}'+
     '#cmSheet .cm-in{width:100%;max-width:520px;max-height:88%;display:flex;flex-direction:column;border-radius:18px 18px 0 0;background:linear-gradient(180deg,#1b1f23,#0b0d0f);border:1px solid rgba(220,214,201,.14);border-bottom:0;padding-bottom:env(safe-area-inset-bottom,0px)}'+
     '#cmSheet .cm-h{display:flex;align-items:center;gap:10px;padding:14px 16px 10px;border-bottom:1px solid rgba(220,214,201,.08)}#cmSheet .cm-h b{font:400 18px Anton,sans-serif;letter-spacing:.06em;color:#dcd6c9}#cmSheet .cm-h small{font:600 11px Inter,system-ui,sans-serif;letter-spacing:.1em;color:#8f979e}#cmSheet .cm-x{margin-left:auto;width:32px;height:32px;border-radius:50%;border:0;background:#000a;color:#fff;cursor:pointer}'+
@@ -22,12 +22,16 @@
     '#cmSheet .cm-empty{padding:30px 10px;text-align:center;color:#8f979e;font-size:14px}';
     document.head.appendChild(s); }
   function when(ts){ var d=new Date(+ts); var h=d.getHours(),m=d.getMinutes(); return (h%12||12)+':'+(m<10?'0':'')+m+(h<12?'a':'p'); }
+  /* #cmdock (oct 18): the strike lives where marks and drops are made — the Dispatch Post room's dock, beside
+     LOG JOBS · MARK · CLICK — and only for seat holders. Nothing on the Wire's front page. */
   function btn(){
-    var b=document.getElementById('cmBtn'); if(b)return b;
-    var scr=document.getElementById('scr-board'); if(!scr)return null;
-    var t=scr.querySelector('.screen-title'); b=document.createElement('button'); b.id='cmBtn'; b.type='button'; b.innerHTML='\u2696 STRIKE A MARK OR DROP'; b.addEventListener('click',open);
-    if(t&&t.parentNode)t.parentNode.insertBefore(b,t.nextSibling); else scr.insertBefore(b,scr.firstChild);
-    return b;
+    var dock=document.getElementById('dpRoomDock'); if(!dock||!dock.querySelector('[data-dp="log"]'))return null;
+    var b=dock.querySelector('#cmBtn'); if(b)return b;
+    b=document.createElement('button'); b.id='cmBtn'; b.type='button'; b.className='dp-dk cm-strike';
+    b.setAttribute('aria-label','Council: strike a mark or a job drop');
+    b.innerHTML='<span style="font-size:18px;line-height:1">\u2696</span><span>STRIKE</span>';
+    b.addEventListener('click',function(e){ e.stopPropagation(); open(); });
+    dock.appendChild(b); return b;
   }
   var tab='mark';
   function sheet(){
@@ -62,8 +66,9 @@
     },function(){ busy=false; say('\u2717 No connection. Try again.'); paint(); });
   }
   function load(){ if(!window.SB||!council)return; window.SB.rpc('council_wire_recent').then(function(r){ if(r.error||!Array.isArray(r.data))return; rows=r.data; paint(); }); }
-  function check(){ if(!window.SB||!window.__shkUid)return; window.SB.rpc('sc_am_council').then(function(r){ council=!r.error&&r.data===true; var b=btn(); if(b)b.classList.toggle('on',council); },function(){}); }
+  function check(){ if(!window.SB||!window.__shkUid)return; window.SB.rpc('sc_am_council').then(function(r){ council=!r.error&&r.data===true; if(council){ var b=btn(); if(b)b.classList.add('on'); } else { var x=document.getElementById('cmBtn'); x&&x.remove(); } },function(){}); }
   css();
+  try{ var oldB=document.querySelector('#scr-board #cmBtn'); oldB&&oldB.remove(); }catch(e){}
   setInterval(function(){ var u=window.__shkUid||null; if(u!==lastUid){ lastUid=u; council=false; var b=document.getElementById('cmBtn'); if(b)b.classList.remove('on'); if(u)setTimeout(check,1500); } },1000);
   new MutationObserver(function(){ if(council){ var b=btn(); if(b)b.classList.add('on'); } }).observe(document.body,{childList:true,subtree:true});
   window.councilModOpen=open;
