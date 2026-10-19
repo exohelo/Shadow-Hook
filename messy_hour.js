@@ -108,6 +108,8 @@
 
   /* ---------- #messyboard: I'M COMING TONIGHT + THE DOCK BOARD ---------- */
   var AGE={a:'18–24',b:'25–34',c:'35–44',d:'45–54',e:'55+'}, SEXW={m:'MAN',w:'WOMAN'};
+  /* the example in the empty note box — rotates hourly; plain, friendly, nothing that reads like a hire */
+  var EX=['Into hiking and taco trucks. Say hi at 10.','Love to cook, need someone to try it. On at 10.','Looking for a friend to grab a beer with.','Old school, looking for something real. Maybe a wife someday.','Fishing on my days off. Who else? On at 10.','Dodgers fan, decent cook, terrible dancer. Say hello.','Looking for good people to talk to.','Gym in the morning, movies on Sunday.'];
   var RS=null, FEED=[], INBOX=[], tab='board', openTh=null, bBusy=false, bAt=0;
   function ago(iso){ var m=Math.max(0,Math.round((Date.now()-Date.parse(iso))/60000)); return m<1?'just now':m<60?m+'m ago':Math.round(m/60)+'h ago'; }
   function rpc(fn,args){ return window.SB?window.SB.rpc(fn,args||{}):Promise.reject(); }
@@ -134,7 +136,7 @@
       list=FEED.length?FEED.map(function(n){
         return '<div class="mh-note"><div class="who">'+(n.mine?'YOUR NOTE':(SEXW[n.sex]||'')+(AGE[n.age]?' \u00B7 '+AGE[n.age]:''))+' <span>\u00B7 '+ago(n.at)+'</span></div><p>'+E(n.body)+'</p><div class="acts">'+
           (n.mine?'<button type="button" data-mb="del" data-id="'+n.id+'">TAKE IT DOWN</button>':'<button type="button" data-mb="ans" data-id="'+n.id+'">'+(n.replied?'\uD83D\uDCAC KEEP TALKING':'\uD83D\uDC8C ANSWER PRIVATELY')+'</button><button type="button" class="rep" data-mb="rep" data-id="'+n.id+'">\uD83D\uDEA9</button>')+'</div></div>'; }).join('')
-        :'<div class="mh-empty">The board is quiet. Leave the first note \u2014<br>whoever reads it next could be on at 10.</div>';
+        :'<div class="mh-empty">The board is quiet. Say what you\u2019re into \u2014 hiking, cooking,<br>a beer with friends \u2014 whoever reads it next could be on at 10.</div>';
     } else {
       list=INBOX.length?INBOX.map(function(t){
         var open=openTh===t.thread;
@@ -145,8 +147,8 @@
     }
     var focusTh=document.activeElement&&document.activeElement.getAttribute&&document.activeElement.getAttribute('data-mb-in'), keep=focusTh?document.activeElement.value:'';
     var draft=b.querySelector('textarea'); var dv=draft?draft.value:'';
-    b.innerHTML=rs+'<div class="mh-board"><div class="hd"><b>THE DOCK BOARD</b><small>gone in 48h</small></div><div class="sub">Leave a note for whoever comes by. Only people you could match with see it \u2014 no names, no numbers. Answers are private.</div>'+
-      '<textarea maxlength="200" placeholder="On at 10 tonight\u2026 night shift at TTI\u2026 looking for good company"></textarea><div class="row"><i data-mb="cnt">200</i><button type="button" class="post" data-mb="post">POST NOTE</button></div>'+
+    b.innerHTML=rs+'<div class="mh-board"><div class="hd"><b>THE DOCK BOARD</b><small>gone in 48h</small></div><div class="sub">Leave a note for whoever comes by. Only people you could match with see it. Keep it about <b>you</b> \u2014 no names, numbers, or where you work. Answers are private.</div>'+
+      '<textarea maxlength="200" placeholder="'+E(EX[Math.floor(Date.now()/36e5)%EX.length])+'"></textarea><div class="row"><i data-mb="cnt">200</i><button type="button" class="post" data-mb="post">POST NOTE</button></div>'+
       '<div class="mh-tabs"><button type="button" data-mb="tab" data-t="board" class="'+(tab==='board'?'on':'')+'">THE BOARD</button><button type="button" data-mb="tab" data-t="inbox" class="'+(tab==='inbox'?'on':'')+'">YOUR NOTES'+(unread?'<em>'+unread+'</em>':'')+'</button></div>'+list+'</div>';
     var ta=b.querySelector('textarea'); if(ta&&dv){ ta.value=dv; }
     if(focusTh){ var inp=b.querySelector('[data-mb-in="'+focusTh+'"]'); if(inp){ inp.value=keep; inp.focus(); } }
