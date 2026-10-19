@@ -37,6 +37,36 @@
   function dropsNow(key){ try{ if(typeof dropKey==='function'&&dropKey()===key&&typeof dropUnion==='function')return +(dropUnion().total||0); }catch(e){} return 0; }
   function dropShare(m,sh){ try{ var n=new Date(), mi=n.getHours()*60+n.getMinutes()-(sh==='AM'?360:960); if(mi<0)return 0; var b=Math.min(9,Math.floor(mi/30)), c=m.curve||{}; var f0=+c[b]||0, f1=b<9?(+c[b+1]||f0):f0; return Math.max(0,Math.min(1,f0+(f1-f0)*((mi%30)/30))); }catch(e){ return 0; } }
   function casualsFor(base,letters){ var n=0; for(var k=0;k<letters;k++)n+=count(AZ[(base+k)%26]); return n; }
+  /* #wlpma (oct 19): the PMA sheet. On DAY boards, how far the board moves follows the PMA total (more → further),
+     the come-backs (more → further) and the steady (more → shorter) — tested leave-one-out on every day board with a
+     PMA sheet: about 2.3 letters average miss including the Oct 16 cycle, 1.4 without, better than the hall count alone.
+     Night boards showed no pattern with the PMA numbers yet, so nights don't use them. The model refits itself every
+     time a new day board finishes, so the weights grow with the data. */
+  var PMA={rows:{},now:null,nowKey:'',fit:{}};
+  function pmaLoad(){
+    if(!window.SB)return;
+    ['AM'].forEach(function(sh){ window.SB.rpc('wire_pma_rows',{p_sh:sh}).then(function(r){ if(r.error||!Array.isArray(r.data))return; PMA.rows[sh]=r.data; PMA.fit[sh]=pmaFit(r.data); if(lastO)paint(lastO); },function(){}); });
+  }
+  function pmaNow(key){
+    if(!window.SB||!key||PMA.nowKey===key)return; PMA.nowKey=key; PMA.now=null;
+    window.SB.from('pma_sheets').select('data').eq('key',key).limit(1).then(function(r){ var d=r&&!r.error&&r.data&&r.data[0]&&r.data[0].data; var t=d&&d.los&&d.los['Total Longshore']&&d.los['Total Longshore'].Total;
+      if(t&&+t.T>1000){ PMA.now={pt:+t.T,pb:+t.B||0,ps:+t.S||0}; if(lastO)paint(lastO); } },function(){});
+  }
+  /* ridge regression, letters ~ PMA total + come-backs + steady (standardized, lambda 2) */
+  function pmaFit(rows){
+    rows=(rows||[]).filter(function(r){ return r.pt>0&&r.act>0; }); if(rows.length<8)return null;
+    var F=['pt','pb','ps'], n=rows.length, mu=[0,0,0], sd=[0,0,0];
+    F.forEach(function(f,i){ var m=0; rows.forEach(function(r){ m+=+r[f]; }); m/=n; var v=0; rows.forEach(function(r){ v+=Math.pow(+r[f]-m,2); }); mu[i]=m; sd[i]=Math.sqrt(v/n)||1; });
+    var X=rows.map(function(r){ return [1].concat(F.map(function(f,i){ return (+r[f]-mu[i])/sd[i]; })); }), y=rows.map(function(r){ return +r.act; });
+    var A=[[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0]], b=[0,0,0,0];
+    for(var a=0;a<n;a++)for(var i=0;i<4;i++){ b[i]+=X[a][i]*y[a]; for(var j=0;j<4;j++)A[i][j]+=X[a][i]*X[a][j]; }
+    for(var d=1;d<4;d++)A[d][d]+=2;
+    for(var c=0;c<4;c++){ var piv=c; for(var r2=c+1;r2<4;r2++)if(Math.abs(A[r2][c])>Math.abs(A[piv][c]))piv=r2; var t=A[c];A[c]=A[piv];A[piv]=t; var tb=b[c];b[c]=b[piv];b[piv]=tb; if(Math.abs(A[c][c])<1e-9)return null;
+      for(var r3=0;r3<4;r3++){ if(r3===c)continue; var f2=A[r3][c]/A[c][c]; for(var j2=c;j2<4;j2++)A[r3][j2]-=f2*A[c][j2]; b[r3]-=f2*b[c]; } }
+    var w=b.map(function(v,i){ return v/A[i][i]; });
+    return {w:w,mu:mu,sd:sd,n:n};
+  }
+  function pmaPredict(sh){ var f=PMA.fit[sh], x=PMA.now; if(!f||!x)return null; var v=[x.pt,x.pb,x.ps]; var L=f.w[0]; for(var i=0;i<3;i++)L+=f.w[i+1]*(v[i]-f.mu[i])/f.sd[i]; return Math.max(0,Math.min(26,L)); }
   function model(){ if(!window.SB)return; window.SB.rpc('wire_model').then(function(r){ if(r.error||!r.data)return; MODEL=r.data; modelAt=Date.now(); if(lastO)paint(lastO); },function(){}); }
 
   /* the prediction: letters moved, with a band */
@@ -45,27 +75,30 @@
     var key=boardKey(), dn=dropsNow(key), share=dn>0?dropShare(m,sh):0;
     var pH=H/(+m.jpl||130), pA=+m.a10||9, pP=(m.prev!=null?+m.prev:pA), w=m.w||{}, w0=m.w0||{};
     var base0=(+w0.hall||0)*pH+(+w0.avg||0)*pA+(+w0.prev||0)*pP;
+    pmaNow(key); var pP2=pmaPredict(sh);   /* the PMA sheet: leads before the drops, still counts after */
+    if(pP2!=null)base0=0.6*pP2+0.4*base0;
     var L=base0, band=+m.band0||3.5, mae=+m.mae0||2.5, dW=0, pD=0;
     if(dn>0&&share>=0.25){
       pD=(dn/share)/(+m.dpl||45);
       var full=(+w.hall||0)*pH+(+w.drops||0)*pD+(+w.avg||0)*pA+(+w.prev||0)*pP;
+      if(pP2!=null)full=0.4*pP2+0.6*full;
       dW=Math.min(1,share/0.86);            /* drops phase in as they arrive; fully weighted once the usual bulk is in */
       L=(1-dW)*base0+dW*full; band=(1-dW)*(+m.band0||3.5)+dW*(+m.band||2.5); mae=(1-dW)*(+m.mae0||2.5)+dW*(+m.mae||2);
     }
-    return {letters:Math.max(0,L), band:band, mae:mae, hall:H, drops:dn, share:share, dW:dW, pH:pH, pD:pD, sh:sh, key:key};
+    return {letters:Math.max(0,L), band:band, mae:mae, hall:H, drops:dn, share:share, dW:dW, pH:pH, pD:pD, pma:pP2, sh:sh, key:key};
   }
 
   function paint(o){
     if(!o||typeof o.base!=='number')return;
     var start=AZ[o.base], lg=window._pmaLadder, holds=!!(lg&&lg.stop), P=holds?null:predict(o), L, lo, hi, source;
-    if(P){ L=P.letters; lo=Math.max(0,L-P.band); hi=L+P.band; source=P.dW>0?'model+drops':'model'; }
+    if(P){ L=P.letters; lo=Math.max(0,L-P.band); hi=L+P.band; source=(P.dW>0?'model+drops':'model')+(P.pma!=null?'+pma':''); }
     else { L=Math.max(0,o.med); lo=Math.max(0,o.lo); hi=Math.max(L,o.hi); source='app'; if(o.med<=0)holds=true; }
     var nL=Math.round(L), nLo=Math.round(lo), nHi=Math.round(hi);
     if(nL<1&&!holds&&P)nL=0;
     var stop=AZ[(o.base+nL)%26], loL=AZ[(o.base+nLo)%26], hiL=AZ[(o.base+nHi)%26], cycles=Math.floor(nL/26), hires=casualsFor(o.base,nL);
     if(holds||nL===0){ stop=start; }
     walked={stop:stop,lo:loL,hi:hiL,o:o,hires:hires,letters:nL};
-    info=P?{source:source,hall:P.hall,drops:P.drops,share:Math.round(P.share*100)/100,dW:Math.round(P.dW*100)/100,mae:Math.round(P.mae*10)/10}:{source:source};
+    info=P?{source:source,pma:P.pma!=null?Math.round(P.pma*10)/10:null,hall:P.hall,drops:P.drops,share:Math.round(P.share*100)/100,dW:Math.round(P.dW*100)/100,mae:Math.round(P.mae*10)/10}:{source:source};
     try{ var lc=window._lastCall; if(lc&&(lc.stop!==walked.stop||lc.lo!==walked.lo||lc.hi!==walked.hi))window._lastCall=Object.assign({},lc); }catch(e){}
     logPred(o);
     var ps=document.getElementById('predStop'), mv=document.getElementById('wMoves'); if(!ps||!mv)return;
@@ -136,7 +169,7 @@
     if(window._lastStageO){ lastO=window._lastStageO; paint(lastO); }
     return true;
   }
-  function start(){ load(); model(); if(!hook()){ var t=setInterval(function(){ if(hook())clearInterval(t); },500); }
+  function start(){ load(); model(); pmaLoad(); setInterval(pmaLoad,30*60*1000); if(!hook()){ var t=setInterval(function(){ if(hook())clearInterval(t); },500); }
     setInterval(load,5*60*1000); setInterval(model,30*60*1000);
     setInterval(function(){ if(lastO)paint(lastO); },60000);   /* drops keep coming in: re-figure every minute */ }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start); else start();
