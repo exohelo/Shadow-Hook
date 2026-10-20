@@ -1,81 +1,78 @@
-// Two-rate stop prediction for The Wire.
-// Letters before the published stop fill at the full rate.
-// Letters near and past it run thin (people see the prediction and stay home),
-// as do letters the previous shift already worked.
+// The Wire: stop prediction from the sheet numbers.
+//
+// What the history (Oct 5-20) showed:
+//  - Normal shifts move 7-15 letters; the ILWU total nudges it, it doesn't scale it.
+//  - Nights: hall orders / ILWU total matter a little, comebacks don't.
+//    Days: comebacks and PMA total are the strongest signals.
+//  - Letters the previous shift already worked run thin. After a big run,
+//    the next shift usually runs too (Fri 10/16 PM, Tue 10/20 AM).
+//  - Letters past the published stop run thin (people stay home).
 
 const ABC = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-const step = (from, n) => ABC[(ABC.indexOf(from) + n) % 26];
-const dist = (from, to) => (ABC.indexOf(to) - ABC.indexOf(from) + 26) % 26 || 26;
+const idx = (L) => ABC.indexOf(L);
+const step = (from, n) => ABC[(idx(from) + n) % 26];
+
+// letters from..to inclusive, walking forward and wrapping
+function span(from, to) {
+  const out = [];
+  for (let i = 0; i < 26; i++) { const L = step(from, i); out.push(L); if (L === to) break; }
+  return out;
+}
+
+/**
+ * Normal-shift capacity in letters: median letters moved on past shifts of the
+ * same type (AM/PM) with a similar size, skipping shifts that followed a big run.
+ * history: [{ shift:'AM'|'PM', ilwu, comebacks, pmaTotal, act, prevAct }]
+ */
+export function baseLetters(history, shift, today) {
+  const key = shift === 'PM' ? 'ilwu' : 'comebacks';
+  const pool = history.filter(h => h.shift === shift && h.prevAct < 20 && h.act < 26 && h[key] != null);
+  const near = pool
+    .map(h => ({ h, d: Math.abs(h[key] - today[key]) }))
+    .sort((a, b) => a.d - b.d)
+    .slice(0, 5)
+    .map(x => x.h.act)
+    .sort((a, b) => a - b);
+  if (!near.length) return 10;
+  return near[Math.floor(near.length / 2)];
+}
 
 /**
  * @param {object} o
- * @param {string} o.start        letter the board starts on, e.g. 'L'
- * @param {number} o.jobs         hall jobs expected to drop
- * @param {number} o.fullJpl      jobs a full letter absorbs (current model value, ~85)
- * @param {string} [o.published]  stop already shown to members; omit to solve for a stable one
- * @param {number} [o.edge=2]     thinning starts this many letters before the published stop
- * @param {number} [o.thin=0.35]  thin letter = this fraction of a full one (learned below)
- * @param {string[]} [o.worked=[]] letters the previous shift already dispatched
- * @param {number} [o.workedThin=0.4]
+ * @param {string} o.start          starting letter, e.g. 'L'
+ * @param {number} o.base           normal capacity in letters (from baseLetters)
+ * @param {string} [o.prevStart]    where the previous shift started
+ * @param {string} [o.prevEnd]      where the previous shift stopped
+ * @param {string} [o.published]    stop already shown to members, if any
+ * @param {number} [o.startLeft=0.5]  share of the start letter still to go
+ * @param {number} [o.thinWorked=1/3]    worked-this-shift letter, as a fraction of full
+ * @param {number} [o.thinPastStop=1/3]  letter past the published stop
  */
 export function predictStop(o) {
-  const { start, jobs, fullJpl, edge = 2, thin = 0.35, worked = [], workedThin = 0.4 } = o;
+  const { start, base, prevStart, prevEnd, published, startLeft = 0.5, thinWorked = 1 / 3, thinPastStop = 1 / 3 } = o;
+  const worked = prevStart && prevEnd ? new Set(span(prevStart, prevEnd)) : new Set();
+  const pubDist = published ? (idx(published) - idx(start) + 26) % 26 : Infinity;
 
-  const run = (pub, j, th) => {
-    const thinFrom = pub ? dist(start, pub) - edge : Infinity;
-    let left = j, n = 0;
+  const run = (cap, tw) => {
+    let left = cap - startLeft, n = 0;
     while (left > 0 && n < 52) {
-      const L = step(start, n);
-      let f = n >= thinFrom ? th : 1;
-      if (worked.includes(L)) f = Math.min(f, workedThin);
-      left -= fullJpl * f;
-      n++;
+      const L = step(start, n + 1);
+      let f = 1;
+      if (worked.has(L)) f = Math.min(f, tw);
+      if (n + 1 > pubDist - 2) f = Math.min(f, thinPastStop);
+      left -= f; n++;
     }
-    return n; // letters moved; the stop is the last letter reached
+    return n;
   };
 
-  // The prediction changes turnout, so find a stop that stays put once published.
-  let pub = o.published;
-  if (!pub) {
-    let n = run(null, jobs, thin);
-    for (let i = 0; i < 10; i++) {
-      const next = run(step(start, n - 1), jobs, thin);
-      if (next === n) break;
-      n = next;
-    }
-    pub = step(start, n - 1);
-  }
-
-  const mid = run(pub, jobs, thin);
-  const lo = run(pub, jobs * 0.85, Math.min(1, thin * 1.4));
-  const hi = run(pub, jobs * 1.15, thin * 0.7);
+  const mid = run(base, thinWorked);
+  const lo = run(base * 0.85, Math.min(1, thinWorked * 1.5));
+  const hi = run(base * 1.15, thinWorked * 0.75);
+  const fmt = (n) => (n >= 26 ? 'cycle' : step(start, n));
   return {
-    stop: step(start, mid - 1), letters: mid,
-    lo: step(start, lo - 1), hi: step(start, hi - 1),
-    loLetters: lo, hiLetters: hi, // over 26 means a full cycle, so show the count, not just the letter
-    runawayPastStop: hi - mid,
+    stop: fmt(mid), lo: fmt(lo), hi: fmt(hi),
+    letters: mid, loLetters: lo, hiLetters: hi,
+    // what it would be if the worked letters were full (the "sheets only" read)
+    sheetsOnly: fmt(run(base, 1)),
   };
-}
-
-/**
- * Learn the thin factor from one finished shift. Average this over recent shifts
- * (log the stop that was actually published, including keymaster locks).
- */
-export function learnThin({ jobs, fullJpl, actual, publishedLetters, edge = 2 }) {
-  const fullSteps = Math.min(actual, Math.max(0, publishedLetters - edge));
-  const thinSteps = actual - fullSteps;
-  if (thinSteps <= 0) return null; // stopped before the thin zone, nothing to learn
-  const t = (jobs / fullJpl - fullSteps) / thinSteps;
-  return Math.max(0.05, Math.min(1, t));
-}
-
-/**
- * Learn the full-letter rate from one finished shift, holding the thin factor fixed
- * (pace data from the live board puts thin letters at roughly a third of full).
- * Use the median over recent shifts of the same type (AM vs PM).
- */
-export function learnFullJpl({ jobs, actual, publishedLetters, edge = 2, thin = 0.35 }) {
-  const fullSteps = Math.min(actual, Math.max(0, publishedLetters - edge));
-  const thinSteps = actual - fullSteps;
-  return jobs / (fullSteps + thin * thinSteps);
 }
