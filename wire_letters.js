@@ -67,6 +67,21 @@
     return {w:w,mu:mu,sd:sd,n:n};
   }
   function pmaPredict(sh){ var f=PMA.fit[sh], x=PMA.now; if(!f||!x)return null; var v=[x.pt,x.pb,x.ps]; var L=f.w[0]; for(var i=0;i<3;i++)L+=f.w[i+1]*(v[i]-f.mu[i])/f.sd[i]; return Math.max(0,Math.min(26,L)); }
+  /* #wlheard (oct 19): the count the hall's recording announces ("we have 922"). On day boards it has run about
+     1 letter per 100, within ~1.5 letters — the best single number we have, and it's known the night before. */
+  var HEARD={key:'',v:null};
+  function heardLoad(key){ if(!window.SB||!key||HEARD.key===key)return; HEARD.key=key; HEARD.v=null;
+    window.SB.rpc('wire_heard',{p_key:key}).then(function(r){ if(!r.error&&r.data){ HEARD.v=r.data; if(lastO)paint(lastO); } },function(){}); }
+  function heardLetters(sh){ var v=HEARD.v; if(!v||!(+v.n>200)||!v[sh]||!(+v[sh].per>0))return null; return +v.n*(+v[sh].per); }
+  /* #wlthin (oct 19): thin letters. When the app knows the start letters were worked on the last board (only the
+     flops left), each of those letters costs only part of a full letter (o.cycle.thinW, ~58%) until the fresh
+     letter (o.cycle.fd letters out). The model's answer is in FULL letters; this walks it through the thin ones. */
+  function thinWalk(o,L){
+    var c=o&&o.cycle; if(!c||!c.opensThin||!(+c.fd>0))return L;
+    var w=+window.WIRE_THIN_W||+c.thinW||0.58; w=Math.max(0.15,Math.min(1,w));
+    var k=0, rem=L; while(rem>1e-6&&k<60){ rem-=(k<c.fd?w:1); k++; }
+    return k-(rem<0?(-rem)/(k-1<c.fd?w:1):0);   /* fractional, so rounding stays fair */
+  }
   function model(){ if(!window.SB)return; window.SB.rpc('wire_model').then(function(r){ if(r.error||!r.data)return; MODEL=r.data; modelAt=Date.now(); if(lastO)paint(lastO); },function(){}); }
 
   /* the prediction: letters moved, with a band */
@@ -76,29 +91,32 @@
     var pH=H/(+m.jpl||130), pA=+m.a10||9, pP=(m.prev!=null?+m.prev:pA), w=m.w||{}, w0=m.w0||{};
     var base0=(+w0.hall||0)*pH+(+w0.avg||0)*pA+(+w0.prev||0)*pP;
     pmaNow(key); var pP2=pmaPredict(sh);   /* the PMA sheet: leads before the drops, still counts after */
+    heardLoad(key); var pHd=heardLetters(sh);
+    if(pHd!=null)base0=(sh==='AM'?0.6:0.4)*pHd+(sh==='AM'?0.4:0.6)*base0;
     if(pP2!=null)base0=0.3*pP2+0.7*base0;   /* oct19 backtest: PMA untested past 6 boards — a voice, not the lead, until it earns more */
     var L=base0, band=+m.band0||3.5, mae=+m.mae0||2.5, dW=0, pD=0;
     if(dn>0&&share>=0.25){
       pD=(dn/share)/(+m.dpl||45);
       var full=(+w.hall||0)*pH+(+w.drops||0)*pD+(+w.avg||0)*pA+(+w.prev||0)*pP;
       /* once drops are in, drops alone beat every blend on day boards (oct19 backtest, 46 boards) */
+      if(pHd!=null)full=0.7*full+0.3*pHd;
       dW=Math.min(1,share/0.86);            /* drops phase in as they arrive; fully weighted once the usual bulk is in */
       L=(1-dW)*base0+dW*full; band=(1-dW)*(+m.band0||3.5)+dW*(+m.band||2.5); mae=(1-dW)*(+m.mae0||2.5)+dW*(+m.mae||2);
     }
-    return {letters:Math.max(0,L), band:band, mae:mae, hall:H, drops:dn, share:share, dW:dW, pH:pH, pD:pD, pma:pP2, sh:sh, key:key};
+    return {letters:Math.max(0,L), band:band, mae:mae, hall:H, drops:dn, share:share, dW:dW, pH:pH, pD:pD, pma:pP2, heard:pHd, sh:sh, key:key};
   }
 
   function paint(o){
     if(!o||typeof o.base!=='number')return;
     var start=AZ[o.base], lg=window._pmaLadder, holds=!!(lg&&lg.stop), P=holds?null:predict(o), L, lo, hi, source;
-    if(P){ L=P.letters; lo=Math.max(0,L-P.band); hi=L+P.band; source=(P.dW>0?'model+drops':'model')+(P.pma!=null?'+pma':''); }
+    if(P){ var Lf=P.letters; L=thinWalk(o,Lf); lo=thinWalk(o,Math.max(0,Lf-P.band)); hi=thinWalk(o,Lf+P.band); source=(P.dW>0?'model+drops':'model')+(P.pma!=null?'+pma':'')+(P.heard!=null?'+heard':'')+(L!==Lf?'+thin':''); }
     else { L=Math.max(0,o.med); lo=Math.max(0,o.lo); hi=Math.max(L,o.hi); source='app'; if(o.med<=0)holds=true; }
     var nL=Math.round(L), nLo=Math.round(lo), nHi=Math.round(hi);
     if(nL<1&&!holds&&P)nL=0;
     var stop=AZ[(o.base+nL)%26], loL=AZ[(o.base+nLo)%26], hiL=AZ[(o.base+nHi)%26], cycles=Math.floor(nL/26), hires=casualsFor(o.base,nL);
     if(holds||nL===0){ stop=start; }
     walked={stop:stop,lo:loL,hi:hiL,o:o,hires:hires,letters:nL};
-    info=P?{source:source,pma:P.pma!=null?Math.round(P.pma*10)/10:null,hall:P.hall,drops:P.drops,share:Math.round(P.share*100)/100,dW:Math.round(P.dW*100)/100,mae:Math.round(P.mae*10)/10}:{source:source};
+    info=P?{source:source,heard:P.heard!=null?Math.round(P.heard*10)/10:null,full:Math.round(P.letters*10)/10,pma:P.pma!=null?Math.round(P.pma*10)/10:null,hall:P.hall,drops:P.drops,share:Math.round(P.share*100)/100,dW:Math.round(P.dW*100)/100,mae:Math.round(P.mae*10)/10}:{source:source};
     try{ var lc=window._lastCall; if(lc&&(lc.stop!==walked.stop||lc.lo!==walked.lo||lc.hi!==walked.hi))window._lastCall=Object.assign({},lc); }catch(e){}
     logPred(o);
     var ps=document.getElementById('predStop'), mv=document.getElementById('wMoves'); if(!ps||!mv)return;
@@ -120,7 +138,7 @@
       var el=document.getElementById('wSrc'); if(!el||!P)return; var m=MODEL&&MODEL[P.sh]; if(!m||!(+m.dpl>0))return;
       var est, how;
       if(P.drops>0&&P.share>=0.25){ est=Math.round(P.drops/P.share); how=Math.round(P.drops).toLocaleString()+' in, ~'+est.toLocaleString()+' by the finish'; }
-      else { est=Math.round(nL*(+m.dpl)/10)*10; how='~'+est.toLocaleString()+' jobs to drop'; }
+      else { est=Math.round((+P.letters||nL)*(+m.dpl)/10)*10; how='~'+est.toLocaleString()+' jobs to drop'; }   /* full letters, not thin ones */
       var t=el.textContent, nt=t.replace(/\u2192 ~[\d,]+ to casuals|\u2192 ~[\d,]+ jobs to drop|\u2192 [\d,]+ in, ~[\d,]+ by the finish/, '\u2192 '+how);
       if(nt===t&&t.indexOf('\u2192 ')<0)return;
       if(nt!==t)el.textContent=nt;
