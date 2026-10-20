@@ -173,7 +173,7 @@
   }
   function ways(){
     var scr=document.getElementById('scr-ports');
-    if(scr&&!document.getElementById('rbBtn')){ var t=scr.querySelector('.screen-title'), b=document.createElement('button'); b.id='rbBtn'; b.type='button'; b.innerHTML='<span class="ic">\uD83D\uDCFB</span><span><b>THE RADIO BOOK</b><span>Zone and channel for every dock \u00B7 everybody adds</span></span><i>\u203A</i>'; b.addEventListener('click',function(){ open(null); }); if(t&&t.parentNode)t.parentNode.insertBefore(b,t.nextSibling); else scr.insertBefore(b,scr.firstChild); }
+    if(false&&scr&&!document.getElementById('rbBtn')){   /* oct20: no Radio Book card on THE PORTS (Keymaster) */ var t=scr.querySelector('.screen-title'), b=document.createElement('button'); b.id='rbBtn'; b.type='button'; b.innerHTML='<span class="ic">\uD83D\uDCFB</span><span><b>THE RADIO BOOK</b><span>Zone and channel for every dock \u00B7 everybody adds</span></span><i>\u203A</i>'; b.addEventListener('click',function(){ open(null); }); if(t&&t.parentNode)t.parentNode.insertBefore(b,t.nextSibling); else scr.insertBefore(b,scr.firstChild); }
     var list=document.getElementById('docketList'); if(!list)return;
     list.querySelectorAll('.jx-row.lit[data-id]').forEach(function(r){
       var p=r.nextElementSibling; if(!p||p.querySelector('.rb-job'))return;
@@ -186,6 +186,7 @@
   }
   var t=null;
   new MutationObserver(function(){ clearTimeout(t); t=setTimeout(ways,60); }).observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['class']});
+  try{ var oldB=document.getElementById('rbBtn'); oldB&&oldB.remove(); }catch(e){}
   ways();
   window.radioOpen=open;
 })();
