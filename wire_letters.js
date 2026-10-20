@@ -106,8 +106,37 @@
     return {letters:Math.max(0,L), band:band, mae:mae, hall:H, drops:dn, share:share, dW:dW, pH:pH, pD:pD, pma:pP2, heard:pHd, sh:sh, key:key};
   }
 
+  /* #wlock (oct 20): once dispatch is live (flex 6:30 AM / 4:30 PM) the call is LOCKED — the first phone past the line
+     writes it to the server, every phone shows that same answer until the next board, and the scorecard grades it. */
+  var LOCK={key:'',v:null,asked:0,putting:false};
+  function flexOf(key){ var m=/^(\d{4})-(\d{2})-(\d{2})_[A-Za-z]{3}_(AM|PM)$/.exec(key||''); if(!m)return null; return new Date(+m[1],+m[2]-1,+m[3],m[4]==='AM'?6:16,30).getTime(); }
+  function lockGet(key){ if(!window.SB||!key)return; if(LOCK.key!==key){ LOCK={key:key,v:null,asked:0,putting:false,got:false}; } var fx=flexOf(key), live=fx&&Date.now()>=fx; if((LOCK.v&&live)||Date.now()-LOCK.asked<(live?20000:120000))return; LOCK.asked=Date.now();
+    window.SB.rpc('wire_lock_get',{p_key:key}).then(function(r){ if(LOCK.key!==key)return; LOCK.got=true; if(r&&!r.error&&r.data&&r.data.stop)LOCK.v=r.data; if(lastO)paint(lastO); },function(){}); }
+  function lockPut(key,ans){ if(!window.SB||LOCK.putting||LOCK.v)return; LOCK.putting=true;
+    window.SB.rpc('wire_lock_put',{p_key:key,p:ans}).then(function(r){ LOCK.putting=false; if(LOCK.key===key&&r&&!r.error&&r.data&&r.data.stop){ LOCK.v=r.data; if(lastO)paint(lastO); } },function(){ LOCK.putting=false; }); }
+  function lockedPaint(o,L){
+    var ps=document.getElementById('predStop'), mv=document.getElementById('wMoves'); if(!ps||!mv)return;
+    var start=AZ[o.base], n=Math.round(+L.letters||0), at=new Date(L.at), hh=at.getHours(), t=(hh%12||12)+':'+String(at.getMinutes()).padStart(2,'0')+(hh<12?' AM':' PM');
+    if(ps.textContent!==L.stop)ps.textContent=L.stop;
+    var html=(L.km?'\uD83D\uDD11 <b>the Keymaster\u2019s call</b> \u00B7 ':'\uD83D\uDD12 <b>locked</b> at '+t)+' \u00B7 '+start+' &rarr; <b>'+L.stop+'</b>'+(L.lo&&L.hi&&L.lo!==L.hi?' \u00B7 between <b>'+L.lo+'</b> and <b>'+L.hi+'</b>':'');
+    if(mv.innerHTML!==html)mv.innerHTML=html;
+    var loN=((AZ.indexOf(L.lo)-o.base)%26+26)%26, hiN=((AZ.indexOf(L.hi)-o.base)%26+26)%26; if(hiN<loN)hiN+=26;
+    track(n,loN,hiN);
+  }
+  (function(){ var t=null;
+    document.addEventListener('pointerdown',function(e){ if(!window.__isKM||!e.target.closest||!e.target.closest('#predStop'))return; t=setTimeout(function(){ t=null;
+      var key=boardKey(); if(!key||!lastO)return; var v=prompt('Your call for this board — the letter it ends on (optionally the range, like J or J H L):', LOCK.v&&LOCK.v.stop||(walked&&walked.stop)||''); if(v==null)return;
+      var parts=String(v).toUpperCase().match(/[A-Z]/g)||[]; if(!parts.length)return;
+      var stop=parts[0], lo=parts[1]||stop, hi=parts[2]||stop, n=((AZ.indexOf(stop)-lastO.base)%26+26)%26;
+      window.SB.rpc('wire_lock_put',{p_key:key,p:{km:true,stop:stop,lo:lo,hi:hi,letters:n}}).then(function(r){ if(r&&r.data&&r.data.stop){ LOCK.key=key; LOCK.v=r.data; LOCK.got=true; paint(lastO); try{ toast('\uD83D\uDD11 Locked: '+stop); }catch(x){} } else { try{ toast('\u2717 '+((r&&r.data&&r.data.why)||'did not lock')); }catch(x){} } });
+    },700); },true);
+    ['pointerup','pointercancel','pointerleave'].forEach(function(ev){ document.addEventListener(ev,function(){ if(t){ clearTimeout(t); t=null; } },true); });
+  })();
   function paint(o){
     if(!o||typeof o.base!=='number')return;
+    var _k=boardKey(), _fx=flexOf(_k), _live=_fx&&Date.now()>=_fx;
+    lockGet(_k);
+    if(_live||(LOCK.key===_k&&LOCK.v&&LOCK.v.km)){ if(LOCK.key===_k&&LOCK.v){ walked={stop:LOCK.v.stop,lo:LOCK.v.lo,hi:LOCK.v.hi,o:o,letters:+LOCK.v.letters||0,hires:0}; lockedPaint(o,LOCK.v); return; } }
     var start=AZ[o.base], lg=window._pmaLadder, holds=!!(lg&&lg.stop), P=holds?null:predict(o), L, lo, hi, source;
     if(P){ var Lf=P.letters; L=thinWalk(o,Lf); lo=thinWalk(o,Math.max(0,Lf-P.band)); hi=thinWalk(o,Lf+P.band); source=(P.dW>0?'model+drops':'model')+(P.pma!=null?'+pma':'')+(P.heard!=null?'+heard':'')+(L!==Lf?'+thin':''); }
     else { L=Math.max(0,o.med); lo=Math.max(0,o.lo); hi=Math.max(L,o.hi); source='app'; if(o.med<=0)holds=true; }
@@ -119,6 +148,7 @@
     info=P?{source:source,heard:P.heard!=null?Math.round(P.heard*10)/10:null,full:Math.round(P.letters*10)/10,pma:P.pma!=null?Math.round(P.pma*10)/10:null,hall:P.hall,drops:P.drops,share:Math.round(P.share*100)/100,dW:Math.round(P.dW*100)/100,mae:Math.round(P.mae*10)/10}:{source:source};
     try{ var lc=window._lastCall; if(lc&&(lc.stop!==walked.stop||lc.lo!==walked.lo||lc.hi!==walked.hi))window._lastCall=Object.assign({},lc); }catch(e){}
     logPred(o);
+    if(_live&&!holds&&P&&LOCK.key===_k&&LOCK.got&&!LOCK.v)lockPut(_k,{stop:walked.stop,lo:walked.lo,hi:walked.hi,letters:walked.letters,note:(info&&info.source||'')});
     var ps=document.getElementById('predStop'), mv=document.getElementById('wMoves'); if(!ps||!mv)return;
     if(holds||nL===0){ ps.textContent=start; mv.innerHTML='likely <b>holds</b> on '+start; track(0,0,0); return; }
     ps.textContent=cycles>0?'CYCLE':stop;
