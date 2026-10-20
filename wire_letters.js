@@ -11,7 +11,9 @@
    ONE answer feeds everything: the pumpkin, "moves about N letters" (no second casual count beside the gold box's),
    the STOP and band on the letter row, and the Hall card. Every prediction is logged next to the result
    (wire_pred_log / wire_scorecard) so the misses stay measured.
-   Load once from index.html, after the Wire script:  <script src="wire_letters.js?v=oct18c" defer></script> */
+   oct20: the letter row always reaches the stop and the whole band (#wlstrip); Runaway / cycle watch odds come from
+   the Wire's own answer (#wlrun); thin letters are walked per letter with the app's ladder, anywhere ahead (#wlladder).
+   Load once from index.html, after the Wire script:  <script src="wire_letters.js?v=oct20c" defer></script> */
 (function(){
   'use strict';
   if(window.__wireLetters)return; window.__wireLetters=true;
@@ -76,7 +78,14 @@
   /* #wlthin (oct 19): thin letters. When the app knows the start letters were worked on the last board (only the
      flops left), each of those letters costs only part of a full letter (o.cycle.thinW, ~58%) until the fresh
      letter (o.cycle.fd letters out). The model's answer is in FULL letters; this walks it through the thin ones. */
+  /* #wlladder (oct 20): walk the full-letter answer through the app's own per-letter thin weights (o.ladder.w,
+     1 = full letter, less = only the flops left because those cards worked the last board). This covers thin
+     letters anywhere ahead (like F→L tonight, 20 out), not only when the board opens on them. */
+  function ladW(o){ var lad=o&&o.ladder; if(shiftNow()!=='PM'||!lad||!lad.any||!Array.isArray(lad.w))return null;   /* nights only until days are tested */ var f=+window.WIRE_THIN_W, tw=+lad.thinW||0.58;
+    return lad.w.map(function(x){ x=+x; if(!(x>0))x=1; if(f>0&&tw<1){ var th=(1-x)/(1-tw); x=1-th*(1-Math.max(0.15,Math.min(1,f))); } return Math.max(0.15,Math.min(1,x)); }); }
   function thinWalk(o,L){
+    var w=ladW(o);
+    if(w){ var cum=0; for(var K=0;K<w.length;K++){ if(cum+w[K]>=L)return K+(L-cum)/w[K]; cum+=w[K]; } return w.length+(L-cum); }
     var c=o&&o.cycle; if(!c||!c.opensThin||!(+c.fd>0))return L;
     var w=+window.WIRE_THIN_W||+c.thinW||0.58; w=Math.max(0.15,Math.min(1,w));
     var k=0, rem=L; while(rem>1e-6&&k<60){ rem-=(k<c.fd?w:1); k++; }
@@ -136,7 +145,7 @@
     if(!o||typeof o.base!=='number')return;
     var _k=boardKey(), _fx=flexOf(_k), _live=_fx&&Date.now()>=_fx;
     lockGet(_k);
-    if(_live||(LOCK.key===_k&&LOCK.v&&LOCK.v.km)){ if(LOCK.key===_k&&LOCK.v){ walked={stop:LOCK.v.stop,lo:LOCK.v.lo,hi:LOCK.v.hi,o:o,letters:+LOCK.v.letters||0,hires:0}; lockedPaint(o,LOCK.v); return; } }
+    if(_live||(LOCK.key===_k&&LOCK.v&&LOCK.v.km)){ if(LOCK.key===_k&&LOCK.v){ walked={stop:LOCK.v.stop,lo:LOCK.v.lo,hi:LOCK.v.hi,o:o,letters:+LOCK.v.letters||0,hires:0,full:fullAt(o,+LOCK.v.letters||0),sd:2.5}; lockedPaint(o,LOCK.v); return; } }
     var start=AZ[o.base], lg=window._pmaLadder, holds=!!(lg&&lg.stop), P=holds?null:predict(o), L, lo, hi, source;
     if(P){ var Lf=P.letters; L=thinWalk(o,Lf); lo=thinWalk(o,Math.max(0,Lf-P.band)); hi=thinWalk(o,Lf+P.band); source=(P.dW>0?'model+drops':'model')+(P.pma!=null?'+pma':'')+(P.heard!=null?'+heard':'')+(L!==Lf?'+thin':''); }
     else { L=Math.max(0,o.med); lo=Math.max(0,o.lo); hi=Math.max(L,o.hi); source='app'; if(o.med<=0)holds=true; }
@@ -144,7 +153,7 @@
     if(nL<1&&!holds&&P)nL=0;
     var stop=AZ[(o.base+nL)%26], loL=AZ[(o.base+nLo)%26], hiL=AZ[(o.base+nHi)%26], cycles=Math.floor(nL/26), hires=casualsFor(o.base,nL);
     if(holds||nL===0){ stop=start; }
-    walked={stop:stop,lo:loL,hi:hiL,o:o,hires:hires,letters:nL};
+    walked={stop:stop,lo:loL,hi:hiL,o:o,hires:hires,letters:nL,full:P?P.letters:null,sd:P?Math.max(1.5,(P.mae||2.5)*1.25):null};
     info=P?{source:source,heard:P.heard!=null?Math.round(P.heard*10)/10:null,full:Math.round(P.letters*10)/10,pma:P.pma!=null?Math.round(P.pma*10)/10:null,hall:P.hall,drops:P.drops,share:Math.round(P.share*100)/100,dW:Math.round(P.dW*100)/100,mae:Math.round(P.mae*10)/10}:{source:source};
     try{ var lc=window._lastCall; if(lc&&(lc.stop!==walked.stop||lc.lo!==walked.lo||lc.hi!==walked.hi))window._lastCall=Object.assign({},lc); }catch(e){}
     logPred(o);
@@ -174,9 +183,50 @@
       if(nt!==t)el.textContent=nt;
     }catch(e){}
   }
+  /* #wlrun (oct 20): Runaway Watch / cycle watch used the app's old odds while the pumpkin showed the Wire's call
+     (16 letters next to "10+ about even"). The odds now come from the same answer: full letters Lf with spread sd,
+     walked through the same thin letters. */
+  function oddsWord(p){ return p>=.85?'near certain':p>=.6?'better than even':p>=.4?'about even':'about 1-in-'+Math.max(2,Math.round(1/Math.max(p,1e-6))); }
+  function ncdf(z){ var t=1/(1+0.2316419*Math.abs(z)), d=0.3989423*Math.exp(-z*z/2), q=d*t*(0.3193815+t*(-0.3565638+t*(1.781478+t*(-1.821256+t*1.330274)))); return z>0?1-q:q; }
+  function fullAt(o,x){ var w=ladW(o); if(!w)return x; var s2=0; for(var k=0;k<x&&k<w.length;k++)s2+=w[k]; return s2+Math.max(0,x-w.length); }
+  function pAtLeast(o,Lf,sd,x){ return 1-ncdf((fullAt(o,x)-0.5-Lf)/sd); }
+  function runLine(o,Lf,sd){
+    var run=document.getElementById('wRun'); if(!run||!o)return; sd=Math.max(1.5,sd||2.5);
+    var c=o.cycle, html, cls;
+    if(c&&c.opensThin&&c.fresh&&+c.fd>0){
+      var pf=pAtLeast(o,Lf,sd,+c.fd), thinPct=Math.round((+c.thinW||0.58)*100);
+      var body='<span class="rw-c"><b>'+c.letter+'</b>&rarr;<b>'+c.end+'</b> worked '+c.when+' &mdash; only the flops left, about '+thinPct+'% of a full letter &middot; fresh from <b>'+c.fresh+'</b>, <b>'+c.fd+' letter'+(c.fd===1?'':'s')+'</b> out</span>';
+      cls=pf>=.5?'wire-runaway cyc':'wire-runaway cyc watch';
+      html='<span class="rw-l">&#10227; thin letters &middot; '+(pf>=.12?oddsWord(pf)+(pf>=.5?' the call reaches the fresh ones':' it reaches the fresh ones'):'expect movement')+'</span>'+body;
+    } else if(c&&c.opensThin){ return; }
+    else {
+      var pc=(c&&+c.d>0)?pAtLeast(o,Lf,sd,+c.d):0;
+      if(pc>=.12){
+        var body2='<span class="rw-c"><b>'+c.letter+'</b> is <b>'+c.d+' letter'+(c.d===1?'':'s')+'</b> out &middot; '+c.letter+'&rarr;'+c.end+' worked '+c.when+'</span>';
+        cls=pc>=.5?'wire-runaway cyc':'wire-runaway cyc watch';
+        html='<span class="rw-l">&#10227; cycle '+(pc>=.5?'alert':'watch')+' &middot; '+oddsWord(pc)+'</span>'+body2;
+      } else {
+        var p6=pAtLeast(o,Lf,sd,6), p10=pAtLeast(o,Lf,sd,10);
+        if(p6>=.12){ cls='wire-runaway'; html='<span class="rw-l">&#9888; runaway watch</span><span class="rw-n">6+ letters <b>'+oddsWord(p6)+'</b>'+(p10>=.08?' &middot; 10+ <b>'+oddsWord(p10)+'</b>':'')+'</span>'; }
+        else { cls='wire-runaway steady'; html='steady run &middot; no blowout signal'; }
+      }
+    }
+    run.style.display='block'; if(run.className!==cls)run.className=cls; if(run.innerHTML!==html)run.innerHTML=html;
+  }
   /* the letter row under the pumpkin: STOP and band from the same answer */
   function track(nL,nLo,nHi){
     var tr=document.getElementById('wTrack'); if(!tr)return; var cells=tr.querySelectorAll('.wire-cell'); if(!cells.length)return;
+    /* #wlstrip (oct 20): the app draws the row only as far as its own guess (+2). When the Wire's call or band runs
+       past that, the stop and the end of the band went missing. Add the missing letters, and wrap the row when long. */
+    var need=Math.min(26,Math.max(nL,nHi)+1);
+    if(cells.length<=need&&lastO){
+      var o=lastO, w=ladW(o), restAt=o.cycle&&+o.cycle.d>0?+o.cycle.d:-1;
+      for(var k2=cells.length;k2<=need;k2++){
+        var d=document.createElement('div'); d.className='wire-cell'+((w?w[k2]<0.9:(restAt>0&&k2>=restAt))?' rest':''); d.textContent=AZ[(o.base+k2)%26]; tr.appendChild(d);
+      }
+      cells=tr.querySelectorAll('.wire-cell');
+    }
+    tr.classList.toggle('wide',cells.length>17);
     cells.forEach(function(c,k){
       c.classList.toggle('band',nL>0&&k>=nLo&&k<=nHi);
       var isStop=nL>0&&k===nL; c.classList.toggle('stop',isStop);
@@ -185,6 +235,7 @@
       if(isStop&&!(t&&t.textContent==='STOP')){ if(t&&t.textContent!=='START')t.remove(); var n=document.createElement('span'); n.className='tick'; n.textContent='STOP'; c.appendChild(n); }
     });
     if(nL>=cells.length)cells[cells.length-1].classList.add('band');
+    if(lastO)try{ runLine(lastO,(walked&&walked.full!=null)?walked.full:nL,walked&&walked.sd); }catch(e){}
   }
   /* what the Wire told people, next to what happened */
   var _logged='';
