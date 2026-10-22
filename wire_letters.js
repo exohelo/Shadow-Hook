@@ -13,10 +13,13 @@
    (wire_pred_log / wire_scorecard) so the misses stay measured.
    oct20: the letter row always reaches the stop and the whole band (#wlstrip); Runaway / cycle watch odds come from
    the Wire's own answer (#wlrun); thin letters are walked per letter with the app's ladder, anywhere ahead (#wlladder).
-   Load once from index.html, after the Wire script:  <script src="wire_letters.js?v=oct20c" defer></script> */
+   Load once from index.html, after the Wire script:  <script src="wire_letters.js?v=oct22a" defer></script> */
 (function(){
   'use strict';
   if(window.__wireLetters)return; window.__wireLetters=true;
+  /* #thinfit (oct 22): fitted on 63 nights since Aug 15 — a thin letter counts about a third of a full one (best 0.30;
+     0.35 chosen to be safe). Days unchanged: the ladder made no difference on 61 morning boards. */
+  if(!(+window.WIRE_THIN_W>0))window.WIRE_THIN_W=0.35;
   var AZ='ABCDEFGHIJKLMNOPQRSTUVWXYZ', NORMAL=45, PRESET={thin:10,normal:45,thick:90};
   var CNT={}, loadedAt=0, lastO=null, walked=null, MODEL=null, modelAt=0, info=null;
   function count(L){ var v=CNT[L]; return typeof v==='number'?v:NORMAL; }
@@ -127,7 +130,7 @@
     var ps=document.getElementById('predStop'), mv=document.getElementById('wMoves'); if(!ps||!mv)return;
     var start=AZ[o.base], n=Math.round(+L.letters||0), at=new Date(L.at), hh=at.getHours(), t=(hh%12||12)+':'+String(at.getMinutes()).padStart(2,'0')+(hh<12?' AM':' PM');
     if(ps.textContent!==L.stop)ps.textContent=L.stop;
-    var html=(L.km?'\uD83D\uDD11 <b>the Keymaster\u2019s call</b> \u00B7 ':'\uD83D\uDD12 <b>locked</b> at '+t)+' \u00B7 '+start+' &rarr; <b>'+L.stop+'</b>'+(L.lo&&L.hi&&L.lo!==L.hi?' \u00B7 between <b>'+L.lo+'</b> and <b>'+L.hi+'</b>':'');
+    var th=thinList(o,n), html=(L.km?'\uD83D\uDD11 <b>the Keymaster\u2019s call</b>':'\uD83D\uDD12 <b>locked</b> at '+t+' \u00B7 does not move during dispatch')+' \u00B7 '+start+' &rarr; <b>'+L.stop+'</b>'+(L.lo&&L.hi&&L.lo!==L.hi?' \u00B7 between <b>'+L.lo+'</b> and <b>'+L.hi+'</b>':'')+(th.length?' \u00B7 thin: '+th.join(', '):'');
     if(mv.innerHTML!==html)mv.innerHTML=html;
     var loN=((AZ.indexOf(L.lo)-o.base)%26+26)%26, hiN=((AZ.indexOf(L.hi)-o.base)%26+26)%26; if(hiN<loN)hiN+=26;
     track(n,loN,hiN);
@@ -163,7 +166,7 @@
     ps.textContent=cycles>0?'CYCLE':stop;
     var band=(loL===hiL)?'':' \u00B7 between <b>'+loL+'</b> and <b>'+hiL+'</b>';
     var via=P&&P.dW>0?' \u00B7 <span style="opacity:.75">'+Math.round(P.drops).toLocaleString()+' dropped so far</span>':'';
-    mv.innerHTML='moves about <b>'+nL+' letter'+(nL===1?'':'s')+'</b> \u00B7 '+start+' &rarr; <b>'+stop+'</b>'+band+(cycles>0?' \u00B7 <b>cycles \u00D7'+cycles+'</b>':'')+via;
+    mv.innerHTML=whyLine(o,P?Math.round(P.letters):nL,nL,start,stop,band,(cycles>0?' \u00B7 <b>cycles \u00D7'+cycles+'</b>':'')+via);
     track(nL,nLo,nHi);
     dropLine(P,nL);
     var old=document.getElementById('wlStrip'); if(old)old.remove();
@@ -188,6 +191,9 @@
      walked through the same thin letters. */
   function oddsWord(p){ return p>=.85?'near certain':p>=.6?'better than even':p>=.4?'about even':'about 1-in-'+Math.max(2,Math.round(1/Math.max(p,1e-6))); }
   function ncdf(z){ var t=1/(1+0.2316419*Math.abs(z)), d=0.3989423*Math.exp(-z*z/2), q=d*t*(0.3193815+t*(-0.3565638+t*(1.781478+t*(-1.821256+t*1.330274)))); return z>0?1-q:q; }
+  /* #wlwhy (oct 22): the line says what the call did, not a constant — "10 full letters · thin: D, G · lands on H" */
+  function thinList(o,n){ var w=ladW(o); if(!w)return []; var out=[]; for(var k=1;k<=n&&k<w.length;k++)if(w[k]<0.9)out.push(AZ[(o.base+k)%26]); return out; }
+  function whyLine(o,fullN,nL,start,stop,band,extra){ var th=thinList(o,nL); return '<b>'+fullN+' full letter'+(fullN===1?'':'s')+'</b>'+(th.length?' \u00B7 thin: <b>'+th.join(', ')+'</b>':'')+' \u00B7 '+start+' &rarr; <b>'+stop+'</b>'+band+extra; }
   function fullAt(o,x){ var w=ladW(o); if(!w)return x; var s2=0; for(var k=0;k<x&&k<w.length;k++)s2+=w[k]; return s2+Math.max(0,x-w.length); }
   function pAtLeast(o,Lf,sd,x){ return 1-ncdf((fullAt(o,x)-0.5-Lf)/sd); }
   function runLine(o,Lf,sd){
@@ -222,11 +228,12 @@
     if(cells.length<=need&&lastO){
       var o=lastO, w=ladW(o), restAt=o.cycle&&+o.cycle.d>0?+o.cycle.d:-1;
       for(var k2=cells.length;k2<=need;k2++){
-        var d=document.createElement('div'); d.className='wire-cell'+((w?w[k2]<0.9:(restAt>0&&k2>=restAt))?' rest':''); d.textContent=AZ[(o.base+k2)%26]; tr.appendChild(d);
+        var d=document.createElement('div'); d.className='wire-cell'+((w?(w[k2]!=null&&w[k2]<0.9):(restAt>0&&k2>=restAt))?' rest':''); d.textContent=AZ[(o.base+k2)%26]; tr.appendChild(d);
       }
       cells=tr.querySelectorAll('.wire-cell');
     }
     tr.classList.toggle('wide',cells.length>17);
+    if(lastO){ var wr=ladW(lastO); if(wr)cells.forEach(function(c,k){ c.classList.toggle('rest',k>0&&k<wr.length&&wr[k]<0.9); }); }
     cells.forEach(function(c,k){
       c.classList.toggle('band',nL>0&&k>=nLo&&k<=nHi);
       var isStop=nL>0&&k===nL; c.classList.toggle('stop',isStop);
@@ -244,7 +251,7 @@
       if(!window.SB||!window.__shkUid||!walked)return; var k=boardKey(); if(!k)return;
       var sig=k+'|'+walked.stop+'|'+walked.lo+'|'+walked.hi; if(sig===_logged)return; _logged=sig;
       window.SB.rpc('wire_pred_put',{p:{k:k,stop:walked.stop,lo:walked.lo,hi:walked.hi,letters:walked.letters,hires:walked.hires,hall:info&&info.hall||null,jpl:MODEL&&MODEL[shiftNow()]?MODEL[shiftNow()].jpl:null,
-        source:(info&&info.source||'app')+(info&&info.drops?' d'+info.drops+'@'+info.share:''),app_stop:AZ[((o.base+o.med)%26+26)%26],app_med:o.med}}).then(function(){},function(){});
+        source:(info&&info.source||'app')+(info&&info.drops?' d'+info.drops+'@'+info.share:''),app_stop:AZ[((o.base+o.med)%26+26)%26],app_med:o.med,full:walked.full,thin_w:(+window.WIRE_THIN_W||(o.ladder&&+o.ladder.thinW)||0.58),ladder:(function(){ var w=ladW(o); return w?w.slice(0,27).map(function(x){ return Math.round(x*100)/100; }):null; })()}}).then(function(){},function(){});
     }catch(e){}
   }
   /* the Hall card reads window._lastCall: keep it on the same answer */
