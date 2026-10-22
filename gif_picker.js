@@ -1,4 +1,4 @@
-/* gif_picker.js — #gifs (oct 22c). A 🎞 GIF button in the Chamber's attach tray (beside Link and YouTube).
+/* gif_picker.js — #gifs (oct 22d). A 🎞 GIF button in the Chamber's attach tray (beside Link and YouTube).
    Tap it → a sheet with a search box and a grid of GIFs. Tap a GIF and it posts to the table right away,
    with whatever is typed in the message box as the caption. The GIF goes out as an image attachment (sc_say,
    media [{kind:"image"}]), so it shows up, plays and opens in the lightbox like a photo — no server change.
@@ -9,11 +9,11 @@
      GIPHY: key at https://developers.giphy.com      → paste into GIPHY_KEY below
    (or set window.SHK_KLIPY_KEY / window.SHK_GIPHY_KEY before this script loads).
    Until a key is set, members don't see the GIF button at all; the Keymaster sees it with a setup note.
-   Load once from index.html, after chamber_sheet.js:  <script src="gif_picker.js?v=oct22c" defer></script> */
+   Load once from index.html, after chamber_sheet.js:  <script src="gif_picker.js?v=oct22d" defer></script> */
 (function(){
   'use strict';
   if(window.__gifPicker)return; window.__gifPicker=true;
-  var KLIPY_KEY='';                          /* ← paste the KLIPY key here */
+  var KLIPY_KEY='ohQ3SvGCdWnGKTkxpafXpLZ48T5sV7Z2VLyKLisMzKp79RrM3QJvHi0BR5uw2C4v';   /* KLIPY key (ShadowHook-WEB, test tier) */
   var GIPHY_KEY='';                          /* ← or a GIPHY key here */
   var LIMIT=24, RATING='pg-13';              /* GIPHY content rating: g | pg | pg-13 | r */
   function kKey(){ return String(window.SHK_KLIPY_KEY||KLIPY_KEY||'').trim(); }
