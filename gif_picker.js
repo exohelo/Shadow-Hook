@@ -4,7 +4,7 @@
    media [{kind:"image"}]), so it shows up, plays and opens in the lightbox like a photo — no server change.
    SETUP (once): a free Tenor API key from https://developers.google.com/tenor — paste it into TENOR_KEY below
    (or set window.SHK_TENOR_KEY before this script loads). Until then the button says the key is missing.
-   Load once from index.html, after chamber_sheet.js:  <script src="gif_picker.js?v=oct22a" defer></script> */
+   Load once from index.html, after chamber_sheet.js:  <script src="gif_picker.js?v=oct22b" defer></script> */
 (function(){
   'use strict';
   if(window.__gifPicker)return; window.__gifPicker=true;
@@ -23,8 +23,7 @@
     '#gifSheet .g-grid{flex:1;overflow:auto;padding:0 10px 12px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;align-content:start;-webkit-overflow-scrolling:touch}'+
     '#gifSheet .g-grid button{all:unset;cursor:pointer;aspect-ratio:1;border-radius:10px;overflow:hidden;background:#1d0a10;position:relative}#gifSheet .g-grid button img{width:100%;height:100%;object-fit:cover;display:block}'+
     '#gifSheet .g-grid button.busy{opacity:.45}#gifSheet .g-note{grid-column:1/-1;padding:28px 10px;text-align:center;color:#b89a7a;font:500 14px Inter,system-ui,sans-serif;line-height:1.5}'+
-    '#gifSheet .g-f{padding:6px 14px 10px;text-align:center;color:#8f7a66;font:500 10.5px Inter,system-ui,sans-serif;letter-spacing:.14em;text-transform:uppercase}'+
-    /* a GIF in the table shows whole, not cropped like a photo */
+        /* a GIF in the table shows whole, not cropped like a photo */
     '#scChamber .sc-att.img .ph img[src*="tenor.com"]{object-fit:contain;background:#000}';
   document.head.appendChild(st);
 
@@ -45,8 +44,8 @@
     var sh=document.getElementById('gifSheet'); if(sh)return sh;
     sh=document.createElement('div'); sh.id='gifSheet'; sh.setAttribute('role','dialog'); sh.setAttribute('aria-modal','true');
     sh.innerHTML='<div class="g-in"><div class="g-h"><b>\uD83C\uDF9E A GIF FOR THE TABLE</b><button class="g-x" type="button" aria-label="Close">\u2715</button></div>'+
-      '<div class="g-s"><input id="gifQ" type="search" placeholder="Search GIFs\u2026" autocomplete="off" enterkeyhint="search"><button type="button" id="gifGo">SEARCH</button></div>'+
-      '<div class="g-grid" id="gifGrid"></div><div class="g-f">Powered by Tenor \u00B7 tap a GIF to post it</div></div>';
+      '<div class="g-s"><input id="gifQ" type="search" placeholder="Search Tenor GIFs\u2026" autocomplete="off" enterkeyhint="search"><button type="button" id="gifGo">SEARCH</button></div>'+
+      '<div class="g-grid" id="gifGrid"></div></div>';
     document.body.appendChild(sh);
     sh.addEventListener('click',function(e){
       if(e.target===sh||e.target.closest('.g-x')){ shut(); return; }
