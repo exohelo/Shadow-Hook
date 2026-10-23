@@ -13,7 +13,7 @@
    (wire_pred_log / wire_scorecard) so the misses stay measured.
    oct20: the letter row always reaches the stop and the whole band (#wlstrip); Runaway / cycle watch odds come from
    the Wire's own answer (#wlrun); thin letters are walked per letter with the app's ladder, anywhere ahead (#wlladder).
-   Load once from index.html, after the Wire script:  <script src="wire_letters.js?v=oct22a" defer></script> */
+   Load once from index.html, after the Wire script:  <script src="wire_letters.js?v=oct23a" defer></script> */
 (function(){
   'use strict';
   if(window.__wireLetters)return; window.__wireLetters=true;
@@ -130,7 +130,7 @@
     var ps=document.getElementById('predStop'), mv=document.getElementById('wMoves'); if(!ps||!mv)return;
     var start=AZ[o.base], n=Math.round(+L.letters||0), at=new Date(L.at), hh=at.getHours(), t=(hh%12||12)+':'+String(at.getMinutes()).padStart(2,'0')+(hh<12?' AM':' PM');
     if(ps.textContent!==L.stop)ps.textContent=L.stop;
-    var th=thinList(o,n), html=(L.km?'\uD83D\uDD11 <b>the Keymaster\u2019s call</b>':'\uD83D\uDD12 <b>locked</b> at '+t+' \u00B7 does not move during dispatch')+' \u00B7 '+start+' &rarr; <b>'+L.stop+'</b>'+(L.lo&&L.hi&&L.lo!==L.hi?' \u00B7 between <b>'+L.lo+'</b> and <b>'+L.hi+'</b>':'')+(th.length?' \u00B7 thin: '+th.join(', '):'');
+    var th=thinList(o,n), html=(L.km?'\uD83D\uDD11 <b>the Keymaster\u2019s call</b>':'\uD83D\uDD12 <b>locked</b> \u00B7 does not move during dispatch')+' \u00B7 '+start+' &rarr; <b>'+L.stop+'</b>'+(L.lo&&L.hi&&L.lo!==L.hi?' \u00B7 between <b>'+L.lo+'</b> and <b>'+L.hi+'</b>':'')+(th.length?' \u00B7 thin: '+th.join(', '):'');
     if(mv.innerHTML!==html)mv.innerHTML=html;
     var loN=((AZ.indexOf(L.lo)-o.base)%26+26)%26, hiN=((AZ.indexOf(L.hi)-o.base)%26+26)%26; if(hiN<loN)hiN+=26;
     track(n,loN,hiN);
@@ -148,7 +148,7 @@
     if(!o||typeof o.base!=='number')return;
     var _k=boardKey(), _fx=flexOf(_k), _live=_fx&&Date.now()>=_fx;
     lockGet(_k);
-    if(_live||(LOCK.key===_k&&LOCK.v&&LOCK.v.km)){ if(LOCK.key===_k&&LOCK.v){ walked={stop:LOCK.v.stop,lo:LOCK.v.lo,hi:LOCK.v.hi,o:o,letters:+LOCK.v.letters||0,hires:0,full:fullAt(o,+LOCK.v.letters||0),sd:2.5}; lockedPaint(o,LOCK.v); return; } }
+    if(_live||(LOCK.key===_k&&LOCK.v)){ if(LOCK.key===_k&&LOCK.v){ walked={stop:LOCK.v.stop,lo:LOCK.v.lo,hi:LOCK.v.hi,o:o,letters:+LOCK.v.letters||0,hires:0,full:fullAt(o,+LOCK.v.letters||0),sd:2.5}; lockedPaint(o,LOCK.v); return; } }
     var start=AZ[o.base], lg=window._pmaLadder, holds=!!(lg&&lg.stop), P=holds?null:predict(o), L, lo, hi, source;
     if(P){ var Lf=P.letters; L=thinWalk(o,Lf); lo=thinWalk(o,Math.max(0,Lf-P.band)); hi=thinWalk(o,Lf+P.band); source=(P.dW>0?'model+drops':'model')+(P.pma!=null?'+pma':'')+(P.heard!=null?'+heard':'')+(L!==Lf?'+thin':''); }
     else { L=Math.max(0,o.med); lo=Math.max(0,o.lo); hi=Math.max(L,o.hi); source='app'; if(o.med<=0)holds=true; }
