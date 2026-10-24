@@ -1208,6 +1208,11 @@ function composeHTML(){
 
 /* ===== MOTIONS ===== */
 /* #poll (oct 24): a vote with several options, open for days; the most votes wins, a tie goes to the Keymaster */
+var _extAt=0;
+function scExtLoad(force){
+  if(!window.SB||(!force&&Date.now()-_extAt<60000))return; _extAt=Date.now();
+  SB.from("sc_vote_extensions").select("*").then(function(r){ SC.ext=r.data||[]; try{paintChamber()}catch(e){} },function(){});
+}
 function pollCard(m,w,seatsL){
   var v=m.votes||{},opts=m.options||[],cnt=opts.map(function(){return 0}),pass=0,mine=v[w.handle]||"";
   Object.keys(v).forEach(function(k){var c=v[k];if(c==="pass")pass++;else if(/^opt:\d+$/.test(c)){var i=+c.slice(4);if(i<cnt.length)cnt[i]++}});
@@ -1225,7 +1230,16 @@ function pollCard(m,w,seatsL){
   var h='<div class="sc-mo"><div class="k"><span>\u269C Vote \u00B7 '+esc(nameOf(m.by))+'</span><em class="'+m.state+'">'+st+'</em></div><div class="t">'+esc(m.title)+"</div>"+(m.body?'<div class="b">'+esc(m.body)+"</div>":"")+'<div style="margin-top:10px">'+rows+'</div>';
   h+='<div class="sc-tally"><span><b>'+cast+'</b> voted</span><span><b>'+pass+'</b> abstain</span><span>'+Math.max(0,tot-cast-pass)+' not in</span></div>';
   if(open){
-    h+='<div class="sc-voters">'+voters+'</div>'+(m.mandatory?'<p class="sc-p" style="margin:8px 0 0;color:#e07a6e"><b>Every seat must vote.</b> A seat that has not voted when this closes is released to another casual.'+(mine?' Your vote is in.':' You have not voted yet.')+'</p>':'')+'<p class="sc-p dim" style="margin:8px 0 0">One vote per seat; you can change it until it closes. The most votes wins; a tie goes to the Keymaster.</p>';
+    var ext=null,asks=[];
+    if(m.mandatory){ if(!SC.ext)scExtLoad(false); (SC.ext||[]).forEach(function(e){ if(e.motion_id!==m.id)return; if(e.uid===w.uid)ext=e; if(!e.granted_until&&!e.denied_at)asks.push(e); }); }
+    var extLine="";
+    if(m.mandatory&&w.seat&&!mine){
+      if(ext&&ext.granted_until)extLine='<p class="sc-p dim" style="margin:6px 0 0">\u23F3 You have until '+new Date(ext.granted_until).toLocaleDateString(void 0,{month:"short",day:"numeric"})+' to vote.</p>';
+      else if(ext&&!ext.denied_at)extLine='<p class="sc-p dim" style="margin:6px 0 0">\u23F3 You asked for more time \u00B7 waiting on the Keymaster.</p>';
+      else extLine='<div class="sc-vote" style="margin-top:6px"><button type="button" data-scext="ask" data-m="'+m.id+'">\u23F3 Ask for more time</button></div>';
+    }
+    if(m.mandatory&&w.head&&asks.length)extLine+='<div class="sc-sec" style="margin-top:10px">Asking for more time</div>'+asks.map(function(e){return '<div class="sc-pline"><i>\u23F3</i><span><b>'+esc(e.handle||"")+'</b>'+(e.letter?' \u00B7 seat of '+esc(e.letter):'')+(e.reason?' \u2014 '+esc(e.reason):'')+'</span></div><div class="sc-vote" style="margin:4px 0 10px"><button type="button" class="dec" data-scext="grant" data-m="'+m.id+'" data-u="'+e.uid+'">Grant days\u2026</button><button type="button" class="dec" data-scext="deny" data-m="'+m.id+'" data-u="'+e.uid+'">Deny</button></div>'}).join("");
+    h+='<div class="sc-voters">'+voters+'</div>'+(m.mandatory?'<p class="sc-p" style="margin:8px 0 0;color:#e07a6e"><b>Every seat must vote.</b> A seat that has not voted when this closes is released to another casual.'+(mine?' Your vote is in.':' You have not voted yet.')+'</p>'+extLine:'')+'<p class="sc-p dim" style="margin:8px 0 0">One vote per seat; you can change it until it closes. The most votes wins; a tie goes to the Keymaster.</p>';
     w.seat&&(h+='<div class="sc-vote"><button type="button" class="'+(mine==="pass"?"on":"")+'" data-scv="pass" data-m="'+m.id+'">Abstain</button></div>');
   } else if(m.result){
     h+='<p class="sc-p" style="margin:8px 0 0"><b>'+esc(m.result)+'</b></p>';
@@ -1652,6 +1666,22 @@ function headerHTML(w,N,realHead,pvL){
                         ch.disabled = !1, say("\u2717 " + (e && e.message || e))
                     });
                     return
+                }
+                return
+            }
+            var xb = ev.target.closest && ev.target.closest("[data-scext]");
+            if (xb) {
+                var xa = xb.getAttribute("data-scext"), xm = xb.getAttribute("data-m");
+                if (SC._preview) { say("Preview only."); return }
+                if (xa === "ask") {
+                    var why = prompt("Why do you need more time to vote? (the Keymaster decides)"); if (why === null) return;
+                    rpc("sc_vote_extension_ask", { p_motion: xm, p_reason: why }).then(function() { say("\u23F3 Asked. The Keymaster decides."); scExtLoad(true) }).catch(nope);
+                } else if (xa === "grant") {
+                    var dd = parseInt(prompt("How many more days?", "3") || "0", 10); if (!(dd > 0)) return;
+                    rpc("sc_vote_extension_decide", { p_motion: xm, p_uid: xb.getAttribute("data-u"), p_days: dd }).then(function() { say("\u2713 " + dd + " more day" + (dd === 1 ? "" : "s")); scExtLoad(true); reload() }).catch(nope);
+                } else if (xa === "deny") {
+                    if (!confirm("Deny the extension?")) return;
+                    rpc("sc_vote_extension_decide", { p_motion: xm, p_uid: xb.getAttribute("data-u"), p_days: 0 }).then(function() { say("Denied."); scExtLoad(true) }).catch(nope);
                 }
                 return
             }
