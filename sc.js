@@ -182,7 +182,8 @@
                 target: x.target_letter,
                 options: Array.isArray(x.options) ? x.options : null,
                 closes: x.closes_at ? ts(x.closes_at) : 0,
-                result: x.result || ""
+                result: x.result || "",
+                mandatory: !!x.mandatory
             }
         }), SC.jobs = (rs[3].data || []).map(function(x) {
             return {
@@ -1224,7 +1225,7 @@ function pollCard(m,w,seatsL){
   var h='<div class="sc-mo"><div class="k"><span>\u269C Vote \u00B7 '+esc(nameOf(m.by))+'</span><em class="'+m.state+'">'+st+'</em></div><div class="t">'+esc(m.title)+"</div>"+(m.body?'<div class="b">'+esc(m.body)+"</div>":"")+'<div style="margin-top:10px">'+rows+'</div>';
   h+='<div class="sc-tally"><span><b>'+cast+'</b> voted</span><span><b>'+pass+'</b> abstain</span><span>'+Math.max(0,tot-cast-pass)+' not in</span></div>';
   if(open){
-    h+='<div class="sc-voters">'+voters+'</div><p class="sc-p dim" style="margin:8px 0 0">One vote per seat; you can change it until it closes. The most votes wins; a tie goes to the Keymaster.</p>';
+    h+='<div class="sc-voters">'+voters+'</div>'+(m.mandatory?'<p class="sc-p" style="margin:8px 0 0;color:#e07a6e"><b>Every seat must vote.</b> A seat that has not voted when this closes is released to another casual.'+(mine?' Your vote is in.':' You have not voted yet.')+'</p>':'')+'<p class="sc-p dim" style="margin:8px 0 0">One vote per seat; you can change it until it closes. The most votes wins; a tie goes to the Keymaster.</p>';
     w.seat&&(h+='<div class="sc-vote"><button type="button" class="'+(mine==="pass"?"on":"")+'" data-scv="pass" data-m="'+m.id+'">Abstain</button></div>');
   } else if(m.result){
     h+='<p class="sc-p" style="margin:8px 0 0"><b>'+esc(m.result)+'</b></p>';
