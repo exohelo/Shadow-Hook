@@ -1348,12 +1348,16 @@ function banRecordHTML(w){
   var R=SC.banRecord||[];
   var h='<div class="sc-sec">Banned from marking <em>'+(R.length?R.filter(function(r){return r.active}).length+" now · "+R.length+" on record":"the record")+"</em></div>";
   if(!R.length)return h+'<p class="sc-p dim">Nobody has been banned from the wire.</p>';
-  return h+R.map(function(r){
+  /* #banfold (oct 24): past bans fold away under one line; tap it to see them */
+  var cardOf=function(r){
     var nm=r.full_name?properCase(r.full_name):r.handle,until=r.last_until?ts(r.last_until):0;
     return '<div class="sc-cand" style="margin-bottom:8px"><div class="top"><div class="pav none" data-scpp="'+esc(r.handle||"")+'">'+esc((nm||"?").charAt(0))+'</div><div class="nmw"><b data-scpp="'+esc(r.handle||"")+'">'+esc(nm)+'</b><small>'+esc(String(r.handle||"").toLowerCase())+(r.card_id?" · "+esc(r.card_id):"")+" · "+(r.active?'<span style="color:#e07a6e;font-weight:600">banned until '+new Date(until).toLocaleDateString(void 0,{month:"short",day:"numeric"})+"</span>":"ban over · watching")+'</small></div><div class="lead"><b>'+r.times+'</b><span>time'+(r.times===1?"":"s")+'</span></div></div><div class="bd">'
       +(r.history||[]).map(function(x){return '<div class="sc-pline"><i>'+(ts(x.until)>Date.now()?"\u2716":"\u00B7")+"</i><span>"+esc(x.reason||"")+"</span><small>"+new Date(ts(x.at)).toLocaleDateString(void 0,{month:"short",day:"numeric"})+" \u2192 "+new Date(ts(x.until)).toLocaleDateString(void 0,{month:"short",day:"numeric"})+(x.by?" · "+esc(x.by):"")+"</small></div>"}).join("")
       +"</div></div>";
-  }).join("");
+  },live=R.filter(function(r){return r.active}),over=R.filter(function(r){return !r.active});
+  h+=live.map(cardOf).join("");
+  if(over.length)h+='<details class="sc-fold" style="margin:6px 0 10px"><summary style="cursor:pointer;list-style:none;font:600 13px Inter,system-ui,sans-serif;color:var(--sc-dim);padding:8px 2px">\u25B8 '+over.length+' past ban'+(over.length===1?"":"s")+' \u00B7 ban over, watching</summary><div style="margin-top:8px">'+over.map(cardOf).join("")+"</div></details>";
+  return h;
 }
 function myCardHTML(w){
   var c=personOf(w.handle,w.uid)||{},nm=nameOf(w.handle,w.uid),pic=SC._phUrl||c.photo_url;
