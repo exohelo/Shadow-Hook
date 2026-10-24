@@ -179,7 +179,10 @@
                 closed: x.closed_at ? ts(x.closed_at) : 0,
                 votes: votes[x.id] || {},
                 state: x.state,
-                target: x.target_letter
+                target: x.target_letter,
+                options: Array.isArray(x.options) ? x.options : null,
+                closes: x.closes_at ? ts(x.closes_at) : 0,
+                result: x.result || ""
             }
         }), SC.jobs = (rs[3].data || []).map(function(x) {
             return {
@@ -1169,7 +1172,7 @@ function scAlert(table,ev,row,old){
     }
     if(table==="sc_motions"&&ev==="UPDATE"){
       if(row.state&&row.state!=="open"&&(!old||old.state==="open"||!old.state)){
-        scNotify(row.state==="failed"?"The motion fails":"\u269C The motion carries",String(row.title||""),"shadowhook-chamber-result-"+row.id);
+        row.kind==="poll"?scNotify("\u269C The vote is in",String(row.title||"")+(row.result?" \u00B7 "+row.result:""),"shadowhook-chamber-result-"+row.id):scNotify(row.state==="failed"?"The motion fails":"\u269C The motion carries",String(row.title||""),"shadowhook-chamber-result-"+row.id);
       }return;
     }
     if(table==="sc_votes"&&ev==="INSERT"){
@@ -1203,10 +1206,36 @@ function composeHTML(){
 }
 
 /* ===== MOTIONS ===== */
+/* #poll (oct 24): a vote with several options, open for days; the most votes wins, a tie goes to the Keymaster */
+function pollCard(m,w,seatsL){
+  var v=m.votes||{},opts=m.options||[],cnt=opts.map(function(){return 0}),pass=0,mine=v[w.handle]||"";
+  Object.keys(v).forEach(function(k){var c=v[k];if(c==="pass")pass++;else if(/^opt:\d+$/.test(c)){var i=+c.slice(4);if(i<cnt.length)cnt[i]++}});
+  var cast=cnt.reduce(function(a,b){return a+b},0),top=Math.max.apply(null,cnt.concat([0])),tot=seatsL.length||1,
+      left=Math.max(0,(m.closes||0)-Date.now()),dd=Math.floor(left/864e5),hh=Math.floor(left%864e5/36e5),
+      st=m.state==="open"?(left?"closes in "+(dd?dd+"d ":"")+hh+"h":"closing"):"Decided",open=m.state==="open";
+  var rows=opts.map(function(o,i){
+    var pct=cast?cnt[i]/cast*100:0,me=mine==="opt:"+i,lead=cast&&cnt[i]===top;
+    var bar='<span style="position:absolute;left:0;top:0;bottom:0;width:'+pct+'%;background:'+(lead?"rgba(212,179,106,.28)":"rgba(255,255,255,.07)")+';border-radius:9px"></span>';
+    var inner=bar+'<span style="position:relative;flex:1;text-align:left">'+(me?"\u2713 ":"")+esc(o)+'</span><span style="position:relative;font-weight:800">'+cnt[i]+'</span>';
+    var css='position:relative;display:flex;align-items:center;gap:10px;width:100%;min-height:44px;margin:0 0 6px;padding:0 12px;border-radius:10px;border:1px solid '+(me?"var(--sc-gold-hi)":"rgba(212,179,106,.25)")+';background:rgba(0,0,0,.25);color:var(--sc-ink);font:600 15px Inter,system-ui,sans-serif;overflow:hidden';
+    return open&&w.seat?'<button type="button" data-scv="opt:'+i+'" data-m="'+m.id+'" style="'+css+';cursor:pointer">'+inner+'</button>':'<div style="'+css+'">'+inner+'</div>';
+  }).join("");
+  var voters=seatsL.map(function(L){var c=v[SC.seats[L].handle];return '<i class="'+(c?(c==="pass"?"p":""):"w")+'" title="'+esc(nameOf(SC.seats[L].handle))+'">'+L+"</i>"}).join("");
+  var h='<div class="sc-mo"><div class="k"><span>\u269C Vote \u00B7 '+esc(nameOf(m.by))+'</span><em class="'+m.state+'">'+st+'</em></div><div class="t">'+esc(m.title)+"</div>"+(m.body?'<div class="b">'+esc(m.body)+"</div>":"")+'<div style="margin-top:10px">'+rows+'</div>';
+  h+='<div class="sc-tally"><span><b>'+cast+'</b> voted</span><span><b>'+pass+'</b> abstain</span><span>'+Math.max(0,tot-cast-pass)+' not in</span></div>';
+  if(open){
+    h+='<div class="sc-voters">'+voters+'</div><p class="sc-p dim" style="margin:8px 0 0">One vote per seat; you can change it until it closes. The most votes wins; a tie goes to the Keymaster.</p>';
+    w.seat&&(h+='<div class="sc-vote"><button type="button" class="'+(mine==="pass"?"on":"")+'" data-scv="pass" data-m="'+m.id+'">Abstain</button></div>');
+  } else if(m.result){
+    h+='<p class="sc-p" style="margin:8px 0 0"><b>'+esc(m.result)+'</b></p>';
+  }
+  return h+"</div>";
+}
 function motionsHTML(w){
   var seatsL=seated(),open=[],done=[];
   SC.motions.slice().sort(function(a,b){return b.at-a.at}).forEach(function(m){(m.state==="open"?open:done).push(m)});
   var card=function(m){
+    if(m.kind==="poll")return pollCard(m,w,seatsL);
     var v=m.votes||{},aye=0,nay=0,pass=0;Object.keys(v).forEach(function(k){v[k]==="aye"?aye++:v[k]==="nay"?nay++:pass++});
     var mine=v[w.handle]||"",cast=aye+nay,tot=seatsL.length||1,pa=aye/tot*100,pn=nay/tot*100,mark=m.kind==="remove"?66.67:50,
         hrs=Math.max(0,Math.ceil((m.at+48*36e5-Date.now())/36e5)),now_=cast&&(m.kind==="remove"?aye*3>=cast*2:aye>nay),
