@@ -289,7 +289,7 @@
             loading = null
         })(), loading)
     }
-    window.scReload = reload;
+    window.scReload = reload, window.scRepaint = function() { try { paintChamber() } catch (e) {} };
 
     function markCheck() {
         try {
@@ -1460,7 +1460,7 @@ function headerHTML(w,N,realHead,pvL){
             jobsOpen = w.head ? SC.jobs.filter(function(j) {
                 return j.state === "done"
             }).length : openJobs().length,
-            h = '<div class="sheet-card">' + headerHTML(w, N, realHead, pvL) + (SC.announce ? '<div class="sc-announce">\u269C ' + SC.announce + "</div>" : "") + '<div class="sc-tabs"><button type="button" data-sct="table" class="' + (tab === "table" ? "on" : "") + '">Table</button><button type="button" data-sct="motions" class="' + (tab === "motions" ? "on" : "") + '">Motions' + (open ? "<i>" + open + "</i>" : "") + '</button><button type="button" data-sct="jobs" class="' + (tab === "jobs" ? "on" : "") + '">Jobs' + (jobsOpen ? "<i>" + jobsOpen + "</i>" : "") + '</button><button type="button" data-sct="desk" class="' + (tab === "desk" ? "on" : "") + '">Desk' + (wait ? "<i>" + wait + "</i>" : "") + '</button></div><div class="sc-body">' + (tab === "table" ? tableHTML(w) : tab === "motions" ? motionsHTML(w) : tab === "jobs" ? jobsHTML(w) : deskHTML(w)) + "</div>" + (tab === "table" ? composeHTML() : "") + "</div>",
+            h = '<div class="sheet-card">' + headerHTML(w, N, realHead, pvL) + (SC.announce ? '<div class="sc-announce">\u269C ' + SC.announce + "</div>" : "") + '<div class="sc-tabs"><button type="button" data-sct="table" class="' + (tab === "table" ? "on" : "") + '">Table</button><button type="button" data-sct="motions" class="' + (tab === "motions" ? "on" : "") + '">Motions' + (open ? "<i>" + open + "</i>" : "") + '</button><button type="button" data-sct="jobs" class="' + (tab === "jobs" ? "on" : "") + '">Jobs' + (jobsOpen ? "<i>" + jobsOpen + "</i>" : "") + '</button><button type="button" data-sct="desk" class="' + (tab === "desk" ? "on" : "") + '">Desk' + (wait ? "<i>" + wait + "</i>" : "") + '</button><button type="button" data-sct="treasury" class="' + (tab === "treasury" ? "on" : "") + '">Treasury</button></div><div class="sc-body">' + (tab === "table" ? tableHTML(w) : tab === "motions" ? motionsHTML(w) : tab === "jobs" ? jobsHTML(w) : tab === "treasury" ? (window.scTreasuryHTML ? window.scTreasuryHTML(w) : "") : deskHTML(w)) + "</div>" + (tab === "table" ? composeHTML() : "") + "</div>",
             card = sh.querySelector(".sheet-card");
         if (!card || sh._scTab !== tab) {
             sh.innerHTML = h, sh._scTab = tab, sh._scHTML = h;
