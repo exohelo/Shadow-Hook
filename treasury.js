@@ -56,13 +56,16 @@
     },function(){ busy=false; err='No connection'; try{ window.scRepaint&&window.scRepaint(); }catch(e){} });
   }
 
-  window.scTreasuryHTML=function(){
+  window.scTreasuryHTML=function(w){
     load(false);
     if(!D) return '<p class="sc-p dim">'+(err?E(err):'Opening the ledger\u2026')+'</p>';
+    /* the Keymaster previewing a seat sees exactly what that seat sees: the form and buttons only if that seat is the Treasurer */
+    var pv=!!(D.is_km&&w&&w.head===false), isKm=pv?false:!!D.is_km,
+        canW=pv?!!(D.treasurer&&w.handle&&String(w.handle).toUpperCase()===String(D.treasurer).toUpperCase()):!!D.can_write;
     var h='<div class="sc-tre">';
     h+='<div class="tb"><small>COUNCIL FUND</small><b>'+$m(D.balance_cents)+'</b><div class="r"><span>In <em>'+$m(D.in_cents)+'</em></span><span>Spent <em>'+$m(D.out_cents)+'</em></span>'+((+D.pending_cents)?'<span>Awaiting sign-off <em>'+$m(D.pending_cents)+'</em></span>':'')+'</div></div>';
-    h+='<div class="who">Treasurer: <b>'+(D.treasurer?E(D.treasurer):'not appointed yet')+'</b>'+(D.is_km?' \u00B7 <a href="#" data-tre="appoint" style="color:#8fd3a5">'+(D.treasurer?'change':'appoint')+'</a>':'')+'</div>';
-    if(D.can_write){
+    h+='<div class="who">Treasurer: <b>'+(D.treasurer?E(D.treasurer):'not appointed yet')+'</b>'+(isKm?' \u00B7 <a href="#" data-tre="appoint" style="color:#8fd3a5">'+(D.treasurer?'change':'appoint')+'</a>':'')+'</div>';
+    if(canW){
       var mo=(D.motions||[]).map(function(m){ return '<option value="'+E(m.id)+'">'+E(m.title)+(m.state?' \u00B7 '+E(m.state):'')+'</option>'; }).join('');
       h+='<div class="fm"><div class="k"><button type="button" data-tre="k-in" class="'+(kind==='in'?'on':'')+'">+ Money in</button><button type="button" data-tre="k-out" class="'+(kind==='out'?'on out':'')+'">\u2212 Money out</button></div>'+
         '<div class="row"><div><label for="treAmt">Amount ($)</label><input id="treAmt" inputmode="decimal" placeholder="250.00"></div><div><label for="treOn">Date</label><input id="treOn" type="date"></div></div>'+
@@ -76,13 +79,13 @@
       var tag=t.voided?'':wait?'<span class="tag wait">Awaiting the Keymaster\u2019s sign-off</span>':(t.kind==='out'?'<span class="tag ok">\u2713 Signed off by '+E(t.signed)+'</span>':'');
       var act='';
       if(!t.voided){
-        if(wait&&D.is_km) act+='<button type="button" class="sign" data-tre="sign" data-id="'+t.id+'">Sign off</button>';
-        if(D.can_write) act+='<button type="button" data-tre="void" data-id="'+t.id+'">Void</button>';
+        if(wait&&isKm) act+='<button type="button" class="sign" data-tre="sign" data-id="'+t.id+'">Sign off</button>';
+        if(canW) act+='<button type="button" data-tre="void" data-id="'+t.id+'">Void</button>';
       }
       return '<div class="ln'+(t.voided?' void':'')+'"><div class="m"><b>'+E(t.memo)+'</b><span>'+sub+'</span>'+tag+(act?'<div class="act">'+act+'</div>':'')+'</div><div class="a '+t.kind+'">'+(t.kind==='in'?'+':'\u2212')+$m(t.cents)+'</div></div>';
     }).join('');
     h+='<div class="sc-sec">The ledger</div>'+(rows||'<p class="sc-p dim">Nothing on the books yet.</p>');
-    h+='<p class="rule">The council fund is the council\u2019s 50% of app profit. It is spent only on events and things that benefit the Order as a whole. Spending needs a council vote and the Keymaster\u2019s sign-off. Only the Treasurer and the Keymaster can enter lines; every seat can see them.</p>';
+    h+='<p class="rule">The council fund is the council\u2019s 50% of app profit. It is spent only on events and things that benefit the Order as a whole. Spending needs a council vote and the Keymaster\u2019s sign-off. Only the Treasurer and the Keymaster can enter lines.</p>';
     return h+'</div>';
   };
 
