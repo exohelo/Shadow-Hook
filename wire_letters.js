@@ -13,7 +13,7 @@
    (wire_pred_log / wire_scorecard) so the misses stay measured.
    oct20: the letter row always reaches the stop and the whole band (#wlstrip); Runaway / cycle watch odds come from
    the Wire's own answer (#wlrun); thin letters are walked per letter with the app's ladder, anywhere ahead (#wlladder).
-   Load once from index.html, after the Wire script:  <script src="wire_letters.js?v=oct23a" defer></script> */
+   Load once from index.html, after the Wire script:  <script src="wire_letters.js?v=oct25a" defer></script> */
 (function(){
   'use strict';
   if(window.__wireLetters)return; window.__wireLetters=true;
@@ -115,7 +115,10 @@
       dW=Math.min(1,share/0.86);            /* drops phase in as they arrive; fully weighted once the usual bulk is in */
       L=(1-dW)*base0+dW*full; band=(1-dW)*(+m.band0||3.5)+dW*(+m.band||2.5); mae=(1-dW)*(+m.mae0||2.5)+dW*(+m.mae||2);
     }
-    return {letters:Math.max(0,L), band:band, mae:mae, hall:H, drops:dn, share:share, dW:dW, pH:pH, pD:pD, pma:pP2, heard:pHd, sh:sh, key:key};
+    /* #learn (oct 25): the server measures the model's recent misses (graded against the board) and the call
+       corrects for them; the correction fades as the night's own drops come in. */
+    var bias=+m.bias||0; L=L-bias*(1-dW);
+    return {letters:Math.max(0,L), band:band, mae:mae, bias:bias, hall:H, drops:dn, share:share, dW:dW, pH:pH, pD:pD, pma:pP2, heard:pHd, sh:sh, key:key};
   }
 
   /* #wlock (oct 20): once dispatch is live (flex 6:30 AM / 4:30 PM) the call is LOCKED — the first phone past the line
