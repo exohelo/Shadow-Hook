@@ -1,3 +1,61 @@
+/* #lbzoom(oct26) — the Chamber's picture viewer zooms: pinch, double-tap, wheel or the + / − buttons; drag to look around. */
+function scZoomLb(src) {
+  var old = document.querySelector(".sc-lb"); old && old.remove();
+  var box = document.createElement("div"); box.className = "sc-lb";
+  box.innerHTML = '<div class="sc-lb-stage"><img alt="" draggable="false"></div><button type="button" class="sc-lb-x" aria-label="Close">\u2715</button><div class="sc-lb-z"><button type="button" data-z="-" aria-label="Zoom out">\u2212</button><button type="button" data-z="0" aria-label="Fit">FIT</button><button type="button" data-z="+" aria-label="Zoom in">+</button></div>';
+  var img = box.querySelector("img"), stage = box.querySelector(".sc-lb-stage");
+  img.src = src;
+  var S = 1, X = 0, Y = 0, MIN = 1, MAX = 6, pts = {}, last = null, moved = false, lastTap = 0;
+  function clamp() {
+    if (S <= 1) { S = 1; X = 0; Y = 0; }
+    var w = img.offsetWidth * S, h = img.offsetHeight * S, vw = stage.clientWidth, vh = stage.clientHeight;
+    var mx = Math.max(0, (w - vw) / 2), my = Math.max(0, (h - vh) / 2);
+    X = Math.max(-mx, Math.min(mx, X)); Y = Math.max(-my, Math.min(my, Y));
+  }
+  function paint() { clamp(); img.style.transform = "translate(" + X + "px," + Y + "px) scale(" + S + ")"; box.classList.toggle("zoomed", S > 1.01); }
+  function zoomAt(ns, cx, cy) {
+    ns = Math.max(MIN, Math.min(MAX, ns));
+    var r = stage.getBoundingClientRect(), ox = cx - (r.left + r.width / 2), oy = cy - (r.top + r.height / 2);
+    X = ox - (ox - X) * (ns / S); Y = oy - (oy - Y) * (ns / S); S = ns; paint();
+  }
+  function close() { document.removeEventListener("keydown", key); box.remove(); }
+  function key(e) { if (e.key === "Escape") close(); else if (e.key === "+" || e.key === "=") zoomAt(S * 1.4, innerWidth / 2, innerHeight / 2); else if (e.key === "-") zoomAt(S / 1.4, innerWidth / 2, innerHeight / 2); }
+  document.addEventListener("keydown", key);
+  box.querySelector(".sc-lb-x").onclick = function (e) { e.stopPropagation(); close(); };
+  box.querySelector(".sc-lb-z").addEventListener("click", function (e) {
+    e.stopPropagation(); var b = e.target.closest("[data-z]"); if (!b) return; var z = b.getAttribute("data-z");
+    if (z === "0") { S = 1; paint(); } else zoomAt(z === "+" ? S * 1.5 : S / 1.5, innerWidth / 2, innerHeight / 2);
+  });
+  stage.addEventListener("wheel", function (e) { e.preventDefault(); zoomAt(S * (e.deltaY < 0 ? 1.15 : 1 / 1.15), e.clientX, e.clientY); }, { passive: false });
+  stage.addEventListener("pointerdown", function (e) {
+    try { stage.setPointerCapture(e.pointerId); } catch (x) {}
+    pts[e.pointerId] = { x: e.clientX, y: e.clientY }; moved = false;
+    var ids = Object.keys(pts); last = ids.length === 2 ? { d: dist(), s: S } : { x: e.clientX, y: e.clientY, X: X, Y: Y };
+  });
+  function dist() { var p = Object.keys(pts).map(function (k) { return pts[k]; }); return Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) || 1; }
+  function mid() { var p = Object.keys(pts).map(function (k) { return pts[k]; }); return { x: (p[0].x + p[1].x) / 2, y: (p[0].y + p[1].y) / 2 }; }
+  stage.addEventListener("pointermove", function (e) {
+    if (!pts[e.pointerId] || !last) return;
+    pts[e.pointerId] = { x: e.clientX, y: e.clientY };
+    var ids = Object.keys(pts);
+    if (ids.length === 2 && last.d) { var m = mid(); zoomAt(last.s * dist() / last.d, m.x, m.y); moved = true; }
+    else if (ids.length === 1 && last.x != null) { var dx = e.clientX - last.x, dy = e.clientY - last.y; if (Math.abs(dx) + Math.abs(dy) > 4) moved = true; if (S > 1) { X = last.X + dx; Y = last.Y + dy; paint(); } }
+  });
+  function up(e) {
+    var was = Object.keys(pts).length; delete pts[e.pointerId];
+    if (was === 2) { var k = Object.keys(pts)[0]; last = k ? { x: pts[k].x, y: pts[k].y, X: X, Y: Y } : null; return; }
+    last = null;
+    if (moved || e.type === "pointercancel") return;
+    var now = Date.now();
+    if (now - lastTap < 300) { lastTap = 0; zoomAt(S > 1.01 ? 1 : 2.5, e.clientX, e.clientY); return; }
+    lastTap = now;
+    var onImg = e.target === img;
+    setTimeout(function () { if (lastTap === now && S <= 1.01 && !onImg) close(); }, 310);
+  }
+  stage.addEventListener("pointerup", up); stage.addEventListener("pointercancel", up);
+  img.onload = paint;
+  document.body.appendChild(box);
+}
 (function() {
     "use strict";
     var LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""),
@@ -932,7 +990,7 @@ function v2CSS(){
     "#scChamber .sc-plus{flex:none;width:40px;height:40px;border-radius:50%;border:1px solid var(--sc-gold-lo);background:rgba(0,0,0,.3);color:var(--sc-gold);font-size:22px;line-height:1;cursor:pointer}#scChamber .sc-compose .sc-btn{height:40px;padding:0 16px}",
     "#scChamber .sc-tray{display:none;width:100%;gap:8px}#scChamber .sc-tray.on{display:flex}#scChamber .sc-tray label,#scChamber .sc-tray button{flex:1;padding:9px 4px;border-radius:10px;border:1px solid var(--sc-gold-lo);background:rgba(0,0,0,.3);color:var(--sc-ink);font:500 12.5px 'Barlow Condensed',sans-serif;cursor:pointer;text-align:center}#scChamber .sc-tray i{display:block;font-style:normal;font-size:18px;margin-bottom:2px}",
     "#scChamber .sc-pend{display:flex;gap:6px;flex-wrap:wrap;width:100%}#scChamber .sc-pend:empty{display:none}#scChamber .sc-pend span{display:inline-flex;align-items:center;gap:6px;padding:4px 8px 4px 6px;border-radius:8px;background:rgba(212,179,106,.14);border:1px solid var(--sc-gold-lo);font-family:'Barlow Condensed',sans-serif;font-size:12.5px;color:var(--sc-ink);max-width:100%}#scChamber .sc-pend span i{font-style:normal;flex:none}#scChamber .sc-pend span em{font-style:normal;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#scChamber .sc-pend span b{color:var(--sc-gold);cursor:pointer;font-weight:400;margin-left:2px;flex:none}#scChamber .sc-pend span.up{opacity:.6}",
-    ".sc-lb{position:fixed;inset:0;z-index:99990;background:#000;display:flex;align-items:center;justify-content:center}.sc-lb img{max-width:100%;max-height:100%}.sc-lb button{position:absolute;top:calc(14px + env(safe-area-inset-top));right:14px;width:36px;height:36px;border-radius:50%;border:1px solid rgba(255,255,255,.3);background:rgba(0,0,0,.5);color:#fff;font-size:16px}",
+    ".sc-lb{position:fixed;inset:0;z-index:99990;background:#000;display:flex;align-items:center;justify-content:center}.sc-lb-stage{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:none;cursor:zoom-in}.sc-lb.zoomed .sc-lb-stage{cursor:grab}.sc-lb-stage img{transform-origin:center center;user-select:none;-webkit-user-drag:none;will-change:transform}.sc-lb-z{position:absolute;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));transform:translateX(-50%);display:flex;gap:8px;z-index:2}.sc-lb-z button{min-width:44px;height:40px;padding:0 12px;border-radius:20px;border:1px solid rgba(255,255,255,.3);background:rgba(0,0,0,.55);color:#fff;font-size:18px;font-weight:700;letter-spacing:.06em}.sc-lb-z button[data-z=0]{font-size:12px}.sc-lb-x{z-index:2}.sc-lb img{max-width:100%;max-height:100%}.sc-lb .sc-lb-x{position:absolute;top:calc(14px + env(safe-area-inset-top));right:14px;width:36px;height:36px;border-radius:50%;border:1px solid rgba(255,255,255,.3);background:rgba(0,0,0,.5);color:#fff;font-size:16px}",
     /* motions */
     "#scChamber .sc-bar u{position:absolute;right:0;top:0;bottom:0;background:rgba(224,122,110,.5)}#scChamber .sc-bar i{background:#fff;opacity:.8}",
     "#scChamber .sc-voters{display:flex;gap:4px;flex-wrap:wrap;margin-top:8px}#scChamber .sc-voters i{font-style:normal;width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font:700 10px Cinzel,serif;color:var(--sc-velvet);background:var(--sc-gold)}#scChamber .sc-voters i.n{background:#e07a6e;color:#fff}#scChamber .sc-voters i.p{background:transparent;color:var(--sc-dim);border:1px solid var(--sc-gold-lo)}#scChamber .sc-voters i.w{background:transparent;color:rgba(239,227,200,.3);border:1px dashed rgba(212,179,106,.25)}",
@@ -1595,7 +1653,7 @@ function headerHTML(w,N,realHead,pvL){
             var tg = ev.target.closest && ev.target.closest("[data-sctog]");
             if (tg) { var kk = tg.getAttribute("data-sctog"); SC._jobOpen = SC._jobOpen || {}; SC._jobOpen[kk] = SC._jobOpen[kk] === false; tg.parentNode.classList.toggle("open", SC._jobOpen[kk] !== false); return }
             var lb = ev.target.closest && ev.target.closest("[data-sclb]");
-            if (lb) { var box = document.createElement("div"); box.className = "sc-lb"; box.innerHTML = '<img src="' + esc(lb.getAttribute("data-sclb")) + '" alt=""><button type="button">\u2715</button>'; box.onclick = function() { box.remove() }; document.body.appendChild(box); return }
+            if (lb) { scZoomLb(lb.getAttribute("data-sclb")); return }
             var yt = ev.target.closest && ev.target.closest("[data-scyt]");
             if (yt && !yt.querySelector("iframe")) { var vid = yt.getAttribute("data-scyt"); SC._playing = vid; yt.innerHTML = '<iframe src="https://www.youtube.com/embed/' + encodeURIComponent(vid) + '?autoplay=1&playsinline=1&rel=0&modestbranding=1" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>'; return }
             var rm = ev.target.closest && ev.target.closest("[data-scrm]");
