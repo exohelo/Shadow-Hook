@@ -27,6 +27,23 @@ function scZoomLb(src) {
     if (z === "0") { S = 1; paint(); } else zoomAt(z === "+" ? S * 1.5 : S / 1.5, innerWidth / 2, innerHeight / 2);
   });
   stage.addEventListener("wheel", function (e) { e.preventDefault(); zoomAt(S * (e.deltaY < 0 ? 1.15 : 1 / 1.15), e.clientX, e.clientY); }, { passive: false });
+  /* touch pinch: real two-finger pinch on phones (iPhone Safari included); pointer events below handle the mouse */
+  var tp = null;
+  function tdist(t) { return Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY) || 1; }
+  stage.addEventListener("touchstart", function (e) {
+    if (e.touches.length === 2) { e.preventDefault(); tp = { d: tdist(e.touches), s: S, mx: (e.touches[0].clientX + e.touches[1].clientX) / 2, my: (e.touches[0].clientY + e.touches[1].clientY) / 2, X: X, Y: Y }; moved = true; pts = {}; last = null; }
+  }, { passive: false });
+  stage.addEventListener("touchmove", function (e) {
+    if (tp && e.touches.length === 2) {
+      e.preventDefault();
+      var mx = (e.touches[0].clientX + e.touches[1].clientX) / 2, my = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      X = tp.X + (mx - tp.mx); Y = tp.Y + (my - tp.my); S = tp.s;
+      zoomAt(tp.s * tdist(e.touches) / tp.d, mx, my);
+    } else if (e.touches.length === 1 && S > 1) e.preventDefault();
+  }, { passive: false });
+  stage.addEventListener("touchend", function (e) { if (e.touches.length < 2) tp = null; });
+  stage.addEventListener("gesturestart", function (e) { e.preventDefault(); }, { passive: false });
+  stage.addEventListener("gesturechange", function (e) { e.preventDefault(); }, { passive: false });
   stage.addEventListener("pointerdown", function (e) {
     try { stage.setPointerCapture(e.pointerId); } catch (x) {}
     pts[e.pointerId] = { x: e.clientX, y: e.clientY }; moved = false;
@@ -35,6 +52,7 @@ function scZoomLb(src) {
   function dist() { var p = Object.keys(pts).map(function (k) { return pts[k]; }); return Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) || 1; }
   function mid() { var p = Object.keys(pts).map(function (k) { return pts[k]; }); return { x: (p[0].x + p[1].x) / 2, y: (p[0].y + p[1].y) / 2 }; }
   stage.addEventListener("pointermove", function (e) {
+    if (tp && e.pointerType === "touch") return;
     if (!pts[e.pointerId] || !last) return;
     pts[e.pointerId] = { x: e.clientX, y: e.clientY };
     var ids = Object.keys(pts);
@@ -574,21 +592,22 @@ function scZoomLb(src) {
                 tag && tag.remove(), b.classList.remove("beckon"), b.title = "The Shadow Council";
                 return
             }
+            /* #seatopen(oct26) — the badge only shows a member whose OWN letter's seat is empty,
+               and it just says SEAT OPEN (no count). Seated members and anyone whose letter is
+               already taken see the plain crest. */
             var w = me(),
-                open = 26 - seated().length,
-                mine = atTable(w);
-            if (tag || (tag = document.createElement("span"), tag.className = "sc-open", tag.setAttribute("aria-hidden", "true"), b.appendChild(tag)), mine) {
-                tag.textContent = open <= 0 ? "FULL" : open + " OPEN", tag.classList.toggle("full", open <= 0), b.classList.remove("beckon");
-                var sm = "The Shadow Council \u2014 your seat \xB7 " + open + " of 26 seats open";
-                b.title = sm, b.setAttribute("aria-label", sm);
+                mine = atTable(w),
+                L = w && w.letter,
+                free = !!L && !SC.seats[L];
+            if (mine || !free) {
+                tag && tag.remove(), b.classList.remove("beckon");
+                var say = mine ? "The Shadow Council \u2014 your seat" : "The Shadow Council" + (L ? " \u2014 the Seat of " + L + " is held" : "");
+                b.title = say, b.setAttribute("aria-label", say);
                 return
             }
-            if (open <= 0) {
-                tag.textContent = "FULL", tag.classList.add("full"), b.classList.remove("beckon"), b.title = "The Shadow Council \u2014 every seat is taken", b.setAttribute("aria-label", "The Shadow Council \u2014 every seat is taken");
-                return
-            }
-            tag.textContent = open + " OPEN", tag.classList.remove("full"), b.classList.add("beckon");
-            var say2 = "The Shadow Council \u2014 " + open + " of 26 seats open. Tap to claim yours.";
+            tag || (tag = document.createElement("span"), tag.className = "sc-open", tag.setAttribute("aria-hidden", "true"), b.appendChild(tag));
+            tag.textContent = "SEAT OPEN", tag.classList.remove("full"), b.classList.add("beckon");
+            var say2 = "The Shadow Council \u2014 the Seat of " + L + " is open. Tap to claim it.";
             b.title = say2, b.setAttribute("aria-label", say2)
         }
     }
