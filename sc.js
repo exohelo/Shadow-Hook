@@ -161,12 +161,13 @@ function scZoomLb(src) {
         return !!window.__shkUid && (isCrown() || !!seatOf_uid(window.__shkUid))
     }
     async function loadSeats() {
-        var r = await SB.from("sc_seats").select("letter,seated_at");
+        var r = await SB.from("sc_seats").select("letter,seated_at,released_at");
         if (r.error) throw r.error;
         LETTERS.forEach(function(L) {
             SC.seats[L] = null
         }), (r.data || []).forEach(function(x) {
-            x.seated_at && (SC.seats[x.letter] = {
+            /* #seatfix(oct27): a released seat keeps its old seated_at — only count it if it was seated after the release */
+            x.seated_at && !(x.released_at && ts(x.released_at) >= ts(x.seated_at)) && (SC.seats[x.letter] = {
                 handle: "",
                 since: ts(x.seated_at),
                 holder: null
