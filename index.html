@@ -1752,6 +1752,14 @@ html.daylight .arm-bucks .ab-v,html.daylight .arm-bucks .ab-coin{color:#1f7a94}
           <a href="https://maps.google.com/?q=627+N+Fries+Ave,+Wilmington,+CA+90744" target="_blank" rel="noopener">Directions ▸</a> · <a href="tel:+13108471600">(310) 847-1600</a></div>
       </div>
 
+      <div class="albox" id="adfreeBox" hidden>
+        <h4>🚫 Ad-free · $2.99 a month</h4>
+        <p class="alnote">Skip the sponsor banners and full-screen ads. Cancel any time. The small “sponsored by” line on the boards stays.</p>
+        <p class="sub" id="adfreeStat" style="margin:4px 0 8px"></p>
+        <button type="button" class="btn" id="adfreeGo">GO AD-FREE · $2.99/MO</button>
+        <button type="button" class="btn-ghost" id="adfreeManage" hidden style="width:100%;margin-top:8px">Manage or cancel</button>
+      </div>
+
       <div class="albox" id="aboutBox" style="display:none">
         <h4>🪪 About me</h4>
         
@@ -10530,6 +10538,54 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
     window.SB.rpc("wire_lock_get",{p_key:k}).then(function(r){ busy[k]=0; if(r&&r.error) return; C[k]=r&&r.data&&r.data.stop?r.data:null; paint(k); },
       function(){ busy[k]=0; });
   };
+})();
+</script>
+<script>
+/* #adfree(oct28) — $2.99/mo to skip sponsor banners and Takeovers (the "sponsored by" board credit stays).
+   window.SHK_ADFREE is true for members who paid; the ad code checks it before showing a banner or Takeover,
+   and listens for the "shk:adfree" event. The Settings box shows from Dec 1, 2026 (when ads start), or on this
+   phone with localStorage shk_adfree_preview=1. Payment and status run through the "adfree" edge function. */
+(function(){
+  var KEY='shk_adfree', LAUNCH=new Date(2026,11,1), st={on:false};
+  try{ st=JSON.parse(localStorage.getItem(KEY)||'{"on":false}')||{on:false}; }catch(e){}
+  window.SHK_ADFREE=!!st.on;
+  var $=function(id){ return document.getElementById(id); };
+  var say=function(m){ try{ toast(m); }catch(e){} };
+  function day(d){ try{ return new Date(d).toLocaleDateString('en-US',{month:'short',day:'numeric'}); }catch(e){ return ''; } }
+  function shown(){ var p=false; try{ p=localStorage.getItem('shk_adfree_preview')==='1'; }catch(e){} return p||new Date()>=LAUNCH||st.on; }
+  function paint(){
+    var box=$('adfreeBox'); if(!box) return; box.hidden=!shown();
+    var go=$('adfreeGo'), mg=$('adfreeManage'), stat=$('adfreeStat');
+    if(st.on){
+      stat.textContent=st.cancel_at_period_end?('Ad-free until '+day(st.until)+'. It won\u2019t renew.'):('\u2713 You\u2019re ad-free'+(st.until?' \u00B7 renews '+day(st.until):'')+'.');
+      go.hidden=!st.cancel_at_period_end; go.textContent='KEEP IT ON \u00B7 $2.99/MO'; mg.hidden=false;
+    }else{ stat.textContent=''; go.hidden=false; go.textContent='GO AD-FREE \u00B7 $2.99/MO'; mg.hidden=true; }
+  }
+  function set(r){
+    var was=!!window.SHK_ADFREE; st=r||{on:false}; window.SHK_ADFREE=!!st.on;
+    try{ localStorage.setItem(KEY,JSON.stringify(st)); }catch(e){}
+    paint(); if(was!==window.SHK_ADFREE){ try{ window.dispatchEvent(new CustomEvent('shk:adfree',{detail:st})); }catch(e){} }
+  }
+  function call(body){
+    return window.SB.functions.invoke('adfree',{body:body}).then(function(r){
+      if(r.error){ var m=r.error.message||'refused'; try{ return r.error.context&&r.error.context.json?r.error.context.json().then(function(j){ throw new Error(j&&j.error||m); }):Promise.reject(new Error(m)); }catch(e){ throw new Error(m); } }
+      return r.data; });
+  }
+  function ready(fn,tries){ tries=tries||0; if(window.SB&&window.SB.functions&&window.__shkUid) return fn(); if(tries<60) setTimeout(function(){ ready(fn,tries+1); },1000); }
+  ready(function(){
+    var q=new URLSearchParams(location.search), sid=q.get('adfree_paid');
+    if(sid||q.get('adfree_cancel')){ try{ history.replaceState(null,'',location.pathname+location.hash); }catch(e){} }
+    if(sid){ call({action:'confirm',session:sid}).then(function(r){ set(r); say(r&&r.on?'\u2713 You\u2019re ad-free. Thanks for backing the app.':'Payment still processing \u2014 check back in a minute'); },function(e){ say('\u2717 '+e.message); }); }
+    else{ if(q.get('adfree_cancel')) say('No charge. You\u2019re still on the free app.'); call({action:'status'}).then(set,function(){}); }
+  });
+  document.addEventListener('click',function(ev){
+    var b=ev.target.closest&&ev.target.closest('#adfreeGo,#adfreeManage'); if(!b||!window.SB) return;
+    ev.preventDefault(); b.disabled=true;
+    call({action:b.id==='adfreeGo'?(st.on&&st.cancel_at_period_end?'portal':'create'):'portal', return_url:location.origin+location.pathname})
+      .then(function(r){ if(r&&r.url) location.href=r.url; else{ b.disabled=false; if(r&&r.already){ set(r); say('\u2713 You\u2019re already ad-free'); } } },
+            function(e){ b.disabled=false; say('\u2717 '+e.message); });
+  },true);
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',paint); else paint();
 })();
 </script>
 </body>
