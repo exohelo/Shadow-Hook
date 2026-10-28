@@ -441,6 +441,8 @@ input[type=range]{width:100%;accent-color:#4DE2FF;height:28px}
             <div class="field"><label for="f-email" class="lbl">EMAIL · FOR RECEIPTS</label><input id="f-email" type="email" autocomplete="email"></div>
             <div class="field"><label for="f-phone" class="lbl">MOBILE</label><input id="f-phone" type="tel" autocomplete="tel"></div>
           </div>
+          <div class="field"><label for="f-code" class="lbl">COUNCIL CODE · OPTIONAL</label><input id="f-code" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="12" placeholder="e.g. HOOKR" style="text-transform:uppercase;letter-spacing:.12em">
+            <div class="help" id="codeHelp">Got a code from a council member? First-time sponsors save 10% on the package.</div></div>
           <div class="field" id="pwField"><label for="f-pass" class="lbl">CREATE A PASSWORD · YOUR SPONSOR ACCOUNT</label><input id="f-pass" type="password" autocomplete="new-password" minlength="8">
             <div class="help">8+ characters. Sign in later to see your stats, edit your ad, get receipts or cancel. Already a sponsor? Use your password, or <a href="#" id="pwSignIn">sign in</a>.</div></div>
           <div class="help" id="signedAs" hidden></div>
@@ -464,6 +466,7 @@ input[type=range]{width:100%;accent-color:#4DE2FF;height:28px}
               <span id="sumListLbl"></span><span id="sumList"></span>
               <span id="sumSaveLbl"></span><span class="gold" id="sumSave"></span>
               <span id="sumAddonLbl"></span><span id="sumAddon"></span>
+              <span id="sumCodeLbl"></span><span class="gold" id="sumCode"></span>
               <span id="sumSubtotalLbl"></span><span id="sumSubtotal"></span>
               <span id="sumTaxLbl"></span><span id="sumTax"></span>
             </div>
@@ -645,10 +648,12 @@ input[type=range]{width:100%;accent-color:#4DE2FF;height:28px}
   var dsel = function(){ if(!isTake()) return designs()[0]; return designs().filter(function(d){return d.id===S.design;})[0] || designs()[0]; };
   var calc = function(){
     var p=plan(), t=term(), unit=isTake()?'week':'month';
-    var due=p.mo*t.bill, fee=dsel().fee, total=due+fee, list=p.mo*t.run;
+    var due=p.mo*t.bill, fee=dsel().fee, list=p.mo*t.run;
+    /* #council(oct28) — a valid council code takes 10% off the package's first payment (never the add-ons) */
+    var codeOff=S.codeOk?Math.round(due*10)/100:0; due=due-codeOff; var total=due+fee;
     var startD=parse(S.start)||nextMon;
     var endD=isTake()?addDays(startD,t.run*7-1):addDays(new Date(startD.getFullYear(),startD.getMonth()+t.run,startD.getDate()),-1);
-    return { p:p,t:t,unit:unit,due:due,fee:fee,total:total,list:list,startD:startD,endD:endD,hired:dsel().id!=='diy',waitlisted:(p.id==='banner'&&bLeft===0),tax:Math.round((due+fee)*TAX_RATE*100)/100,grand:Math.round((due+fee)*(1+TAX_RATE)*100)/100 };
+    return { p:p,t:t,unit:unit,due:due,fee:fee,total:total,codeOff:codeOff,list:list,startD:startD,endD:endD,hired:dsel().id!=='diy',waitlisted:(p.id==='banner'&&bLeft===0),tax:Math.round((due+fee)*TAX_RATE*100)/100,grand:Math.round((due+fee)*(1+TAX_RATE)*100)/100 };
   };
 
   /* ─── plans ───────────────────────────────────────────────────────── */
@@ -717,6 +722,7 @@ input[type=range]{width:100%;accent-color:#4DE2FF;height:28px}
     $('sumSaveLbl').textContent=c.list-c.due>0?'You save':'Savings'; $('sumSave').textContent=c.list-c.due>0?'−'+money(c.list-c.due):'—';
     $('sumAddonLbl').textContent=c.hired?(dsel().id==='anim'?'Animate it':'Design service'):'Design'; $('sumAddon').textContent=c.hired?'+'+money(c.fee)+' one-time':'You made it · $0';
     $('sumTaxLbl').textContent='CA sales tax ('+(TAX_RATE*100).toFixed(2).replace(/\.?0+$/,'')+'%)'; $('sumTax').textContent=c.waitlisted?'—':money(c.tax);
+    $('sumCodeLbl').textContent=c.codeOff?('Council code '+S.codeNorm):''; $('sumCode').textContent=c.codeOff?('−'+money(c.codeOff)):'';
     $('sumSubtotalLbl').textContent='Subtotal'; $('sumSubtotal').textContent=money(c.total);
     $('sumDue').textContent=c.waitlisted?'$0':money(c.grand);
     $('renewText').textContent=c.waitlisted?'You’re joining the waitlist. We’ll text you when a banner spot opens; you confirm, then '+money(c.grand)+' is charged.':((t.id==='m1'?'Renews monthly at '+money(Math.round(p.mo*(1+TAX_RATE)*100)/100)+' with tax on the same date. Cancel any time; unused time is refunded.':'One payment for the whole run. It doesn’t renew automatically; we’ll remind you before it ends.')+(c.hired?' The design fee is charged once.':'')+(LIVE||PRELAUNCH?'':' Sponsor ads switch on in the app soon; your run starts on your start date once we’re live.'));
@@ -869,13 +875,32 @@ input[type=range]{width:100%;accent-color:#4DE2FF;height:28px}
     dcall({action:'email_link',email:em}).then(function(j){ $('siErr').hidden=false; $('siErr').textContent=j.emailed?'If that email has an account, a sign-in link is on its way.':'Password reset by email isn’t set up yet. Contact The Shadow Hook and we’ll get you back in.'; });
   });
 
+  /* ─── #council(oct28): council code box ──────────────────────────── */
+  S.codeOk=false; S.codeNorm='';
+  (function(){
+    var inp=$('f-code'), help=$('codeHelp'), t=null, base=help.textContent;
+    var check=function(){
+      var v=String(inp.value||'').toUpperCase().replace(/[^A-Z]/g,'');
+      if(!v){ S.codeOk=false; S.codeNorm=''; help.textContent=base; help.style.color=''; render(); return; }
+      if(!/^HOOK[A-Z]$/.test(v)){ S.codeOk=false; S.codeNorm=''; help.textContent=v.length<5?'Keep typing…':'That code doesn’t look right. Codes are HOOK plus one letter.'; help.style.color=v.length<5?'':'#FFB4A3'; render(); return; }
+      fetch(FN,{method:'POST',headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY},body:JSON.stringify({action:'code',code:v})})
+        .then(function(r){return r.json();}).then(function(j){
+          if(String(inp.value||'').toUpperCase().replace(/[^A-Z]/g,'')!==v) return;
+          S.codeOk=!!(j&&j.ok); S.codeNorm=S.codeOk?v:'';
+          help.textContent=S.codeOk?('\u2713 Code accepted · 10% off your package'):'That code isn’t active. Check it with the council member who gave it to you.';
+          help.style.color=S.codeOk?'#7FAE6A':'#FFB4A3'; render();
+        }).catch(function(){});
+    };
+    inp.addEventListener('input',function(){ clearTimeout(t); t=setTimeout(check,350); });
+  })();
+
   /* ─── pay: Stripe Checkout via the sponsor-checkout function ──────── */
   $('payBtn').addEventListener('click',function(){
     var e=err3(); $('err3').hidden=!e; $('err3').textContent=e; if(e) return;
     var c=calc(); S.busy=true; render();
     var body={ action:'checkout', return_url: location.origin+location.pathname,
       order:{ plan:c.p.id, term:c.t.id, start_date:S.start, business_name:S.name.trim(), line:S.line.trim(), action:S.action, contact:S.contact.trim(),
-              design: isTake()?dsel().id:'diy', brief:S.brief.trim(), show_text: isTake()?S.showText:true, contact_name:S.who.trim(), email:S.email.trim(), phone:S.phone.trim(), waitlist:c.waitlisted, password: ACCT?undefined:(S.pass||'') },
+              design: isTake()?dsel().id:'diy', brief:S.brief.trim(), show_text: isTake()?S.showText:true, contact_name:S.who.trim(), email:S.email.trim(), phone:S.phone.trim(), waitlist:c.waitlisted, password: ACCT?undefined:(S.pass||''), ref_code: S.codeOk?S.codeNorm:'' },
       logo_data_url: S.src||'' };
     if(ACCT && SESS) body.session=SESS;
     fetch(FN,{ method:'POST', headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY}, body:JSON.stringify(body) })
