@@ -833,7 +833,7 @@ $('pwGo').addEventListener('click', async()=>{
 function buildTabs(){
   const t=$('tabs');
   const tabs = ME.km
-    ? [['orders','⚓ ORDERS'],['vendors','🤝 VENDORS'],['ambs','🎖 AMBASSADORS'],['service','🧰 SERVICE'],['work','🛠 WORKBENCH'],['brand','🎨 THE MARK'],['ledger','💰 LEDGER'],['wire','📻 THE WIRE'],['floor','🏬 THE FLOOR']]
+    ? [['orders','⚓ ORDERS'],['vendors','🤝 VENDORS'],['ambs','🎖 AMBASSADORS'],['service','🧰 SERVICE'],['work','🛠 WORKBENCH'],['brand','🎨 THE MARK'],['ledger','💰 LEDGER'],['till','🏦 THE TILL'],['wire','📻 THE WIRE'],['floor','🏬 THE FLOOR']]
     : ME.amb
     ? [['myvend','🤝 MY VENDORS'],['ledger','💰 MY LEDGER'],['brand','🎨 THE MARK'],['wire','📻 THE WIRE'],['floor','🏬 THE FLOOR']]
     : [['orders','⚓ ORDERS'],['ledger','💰 MY LEDGER'],['wire','📻 THE WIRE'],['gear','🛡 MY GEAR'],['brand','🎨 THE MARK'],['floor','🏬 THE FLOOR']];
@@ -855,6 +855,89 @@ function openTab(k){
   else if(k==='gear') renderGear();
   else if(k==='brand') renderBrand();   /* #mark */
   else if(k==='floor') renderFloor();
+  else if(k==='till') renderTill();   /* #till */
+}
+
+
+/* ════════ THE TILL (#till oct28) ════════
+   Every dollar the app brings in — Port Buck packs, sponsor ads, the store's house margin — and the split
+   between the house and the Order. Keymaster only (km_money_report). The Chamber's treasury sees only the
+   Order's share per month, never the percent or these totals. A split change counts from its start date on. */
+let TILL=null, TILL_AT=0;
+async function loadTill(){
+  const r=await SB.rpc('km_money_report');
+  if(r.error){ toast('⚠ '+r.error.message); return null; }
+  TILL=r.data; TILL_AT=Date.now(); return TILL;
+}
+function renderTill(){
+  const host=$('panel');
+  if(!ME.km){ host.innerHTML=''; return; }
+  if(!TILL||Date.now()-TILL_AT>60000){
+    if(!TILL) host.innerHTML='<p class="sub" style="text-align:center;margin-top:30px">Counting the till…</p>';
+    loadTill().then(d=>{ if(d&&TAB==='till') paintTill(); });
+    if(!TILL) return;
+  }
+  paintTill();
+}
+function paintTill(){
+  const host=$('panel'), D=TILL, T=D.totals||{};
+  const c=n=>money(Number(n||0)/100);
+  const pct=Number(D.order_pct_now||0), keep=Math.round((100-pct)*100)/100;
+  const pp=n=>(Math.round(Number(n)*100)/100)+'%';
+  const mName=m=>{ const p=String(m).split('-'); return new Date(+p[0],+p[1]-1,1).toLocaleDateString([], {month:'long',year:'numeric'}); };
+  const day=d=>{ try{ const p=String(d).split('-'); return new Date(+p[0],+p[1]-1,+p[2]).toLocaleDateString([], {month:'short',day:'numeric',year:'numeric'}); }catch(e){ return d; } };
+  const owedFund=Math.max(0, Number(T.order_share||0)-Number(T.paid_to_fund||0));
+  const months=(D.months||[]);
+  const thisMonth=String(D.today||'').slice(0,7);
+  host.innerHTML =
+    '<div class="tiles">'
+    +'<div class="tile"><div class="v">'+c(T.base)+'</div><div class="k">Brought in · all time</div></div>'
+    +'<div class="tile grn"><div class="v">'+c(Number(T.base||0)-Number(T.order_share||0))+'</div><div class="k">You keep</div></div>'
+    +'<div class="tile dim"><div class="v">'+c(T.order_share)+'</div><div class="k">The Order’s share'+(owedFund>0?' · '+c(owedFund)+' not paid in yet':'')+'</div></div>'
+    +'</div>'
+
+    +'<div class="card"><div class="card-h">💵 WHERE IT CAME FROM<span class="tag">all time · before the split</span></div><div class="card-b">'
+    +'<div class="vrow"><span class="n"><b>⬡ Port Bucks sold</b><i>'+(T.bucks_packs||0)+' pack'+(T.bucks_packs===1?'':'s')+' through the mint</i></span><span class="m" style="color:var(--copper-hi)">'+c(T.bucks)+'</span></div>'
+    +'<div class="vrow"><span class="n"><b>📣 Sponsor ads</b><i>'+(T.sponsor_orders||0)+' paid order'+(T.sponsor_orders===1?'':'s')+' · before sales tax</i></span><span class="m" style="color:var(--copper-hi)">'+c(T.sponsors)+'</span></div>'
+    +'<div class="vrow"><span class="n"><b>🏬 The store</b><i>'+(T.store_orders||0)+' paid order'+(T.store_orders===1?'':'s')+' · '+c(T.store_sales)+' in sales, after vendor cuts and ambassador commission</i></span><span class="m" style="color:var(--copper-hi)">'+c(T.store_house)+'</span></div>'
+    +'</div></div>'
+
+    +'<div class="card"><div class="card-h">⚖ THE SPLIT<span class="tag">only you see this</span></div><div class="card-b">'
+    +'<p class="sub" style="margin:0 0 12px">Right now <b style="color:var(--bone)">the Order gets '+pp(pct)+'</b> and <b style="color:var(--bone)">you keep '+pp(keep)+'</b>. The Chamber’s treasury only ever sees the Order’s share in dollars, never this percent or the totals above.</p>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;align-items:end">'
+    +'<div><div class="lbl">THE ORDER’S %</div><input class="field mono" id="tillPct" inputmode="decimal" value="'+pct+'"></div>'
+    +'<div><div class="lbl">STARTING ON</div><input class="field mono" id="tillFrom" type="date" value="'+esc(D.today||'')+'"></div>'
+    +'<div><div class="lbl">NOTE (OPTIONAL)</div><input class="field" id="tillNote" maxlength="120" placeholder="why it changed"></div>'
+    +'</div>'
+    +'<p class="sub" style="margin:8px 0 0;font-size:12px">A change counts from its start date on. Money that came in before then keeps the split that was in force.</p>'
+    +'<div class="msgline" id="tillMsg"></div>'
+    +'<button class="btn" id="tillSet" style="margin-top:10px">SET THE SPLIT</button>'
+    +'<div style="margin-top:14px">'+(D.split_history||[]).map(h=>'<div class="vrow"><span class="n"><b>From '+esc(day(h.from))+'</b><i>'+(h.note?esc(h.note)+' · ':'')+'set by '+esc(h.by||'—')+'</i></span><span class="m">Order '+pp(h.order_pct)+' · you '+pp(100-Number(h.order_pct))+'</span></div>').join('')+'</div>'
+    +'</div></div>'
+
+    +'<div class="card"><div class="card-h">📅 MONTH BY MONTH<span class="tag">Order’s share is paid into the fund from the Chamber’s treasury</span></div><div class="card-b">'
+    +(months.length?months.map(m=>{
+        const owed=Math.max(0, Number(m.order_share)-Number(m.paid_to_fund));
+        return '<div class="vrow"><span class="n"><b>'+esc(mName(m.month))+(m.month===thisMonth?' · so far':'')+'</b>'
+          +'<i>⬡ '+c(m.bucks)+' · 📣 '+c(m.sponsors)+' · 🏬 '+c(m.store_house)+' &nbsp;→&nbsp; you keep '+c(m.house_keeps)+'</i>'
+          +'<i>Order’s share '+c(m.order_share)+' · paid into the fund '+c(m.paid_to_fund)+(owed>0?' · <span style="color:var(--copper-hi)">'+c(owed)+' to pay in</span>':'')+'</i></span>'
+          +'<span class="m" style="color:var(--copper-hi)">'+c(m.base)+'</span></div>';
+      }).join(''):'<p class="sub">Nothing in the till yet.</p>')
+    +'</div></div>'
+    +'<p class="sub" style="margin:4px 2px 18px;font-size:12px">Counted: Port Buck packs paid through Stripe (your own test buys left out), sponsor ads at their price before sales tax, and the store’s house margin. Stripe fees aren’t taken out. Sponsor monthly renewals only count once Stripe reports them back.</p>';
+
+  $('tillSet').addEventListener('click', async()=>{
+    const v=parseFloat(String($('tillPct').value||'').replace(/[%\s]/g,''));
+    const from=$('tillFrom').value;
+    if(!(v>=0&&v<=100)){ $('tillMsg').textContent='> enter a percent from 0 to 100'; return; }
+    if(!from){ $('tillMsg').textContent='> pick the day it starts'; return; }
+    if(!confirm('From '+day(from)+': the Order gets '+v+'% and you keep '+(Math.round((100-v)*100)/100)+'%. Set it?'))return;
+    const b=$('tillSet'); b.disabled=true;
+    const r=await SB.rpc('km_money_split_set',{p_pct:v,p_from:from,p_note:$('tillNote').value||null});
+    b.disabled=false;
+    if(r.error){ $('tillMsg').textContent='> '+r.error.message; return; }
+    TILL=r.data; TILL_AT=Date.now(); toast('⚖ Split set'); paintTill();
+  });
 }
 
 /* ════════ DATA ════════ */

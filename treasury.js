@@ -1,5 +1,6 @@
 /* treasury.js — #treasury (oct 24). The Chamber's TREASURY tab: the council fund's ledger.
-   The council's 50% of app profit goes here and is spent only on events and things that benefit the Order.
+   The Order's share of the money the app brings in goes here and is spent only on events and things that benefit the Order.
+   #till(oct28): the server reports that share per month (app_share) as dollars only; the split behind it is the Keymaster's and is never sent here.
    Rules (enforced on the server):
      · every seat holder and the Keymaster can see the ledger; regular members can't.
      · the Treasurer (appointed by the Keymaster, must hold a seat) and the Keymaster keep the books.
@@ -7,7 +8,7 @@
        once the Keymaster signs off; the sign-off is announced at the Table.
      · nothing is deleted: a wrong line is voided with a reason and stays visible, struck through.
    Needs sc.js with the Treasury tab hook (oct24) and the server functions sc_treasury*, sc_treasurer_set.
-   Load once from index.html, after sc.js is requested:  <script src="treasury.js?v=oct24a" defer></script> */
+   Load once from index.html, after sc.js is requested:  <script src="treasury.js?v=oct28a" defer></script> */
 (function(){
   'use strict';
   if(window.__scTreasury)return; window.__scTreasury=true;
@@ -42,6 +43,8 @@
     '.sc-tre .tag.wait{background:#3a2a0b;color:#ffd27a}.sc-tre .tag.ok{background:#12301c;color:#8fd3a5}'+
     '.sc-tre .act{display:flex;gap:6px;margin-top:6px}.sc-tre .act button{min-height:34px;padding:0 12px;border-radius:9px;border:1px solid rgba(255,255,255,.2);background:none;color:#e6e0ee;font:700 12px Inter,system-ui,sans-serif;cursor:pointer}'+
     '.sc-tre .act button.sign{background:#8fd3a5;color:#0f1712;border-color:#8fd3a5}'+
+    '.sc-tre .ap{padding:12px;border-radius:12px;background:rgba(143,211,165,.06);border:1px solid rgba(143,211,165,.2)}'+
+    '.sc-tre .ap .ln{padding:9px 0}.sc-tre .ap .ln:last-child{border-bottom:0}'+
     '.sc-tre .rule{font:500 12px Inter,system-ui,sans-serif;color:#8a8496;line-height:1.5}';
   document.head.appendChild(st);
 
@@ -65,11 +68,22 @@
     var h='<div class="sc-tre">';
     h+='<div class="tb"><small>COUNCIL FUND</small><b>'+$m(D.balance_cents)+'</b><div class="r"><span>In <em>'+$m(D.in_cents)+'</em></span><span>Spent <em>'+$m(D.out_cents)+'</em></span>'+((+D.pending_cents)?'<span>Awaiting sign-off <em>'+$m(D.pending_cents)+'</em></span>':'')+'</div></div>';
     h+='<div class="who">Treasurer: <b>'+(D.treasurer?E(D.treasurer):'not appointed yet')+'</b>'+(isKm?' \u00B7 <a href="#" data-tre="appoint" style="color:#8fd3a5">'+(D.treasurer?'change':'appoint')+'</a>':'')+'</div>';
+    /* #till(oct28): the Order's share of app revenue, by month — dollars only */
+    var ap=(D.app_share||[]);
+    if(ap.length){
+      var mn=function(m){ var p=String(m).split('-'); return new Date(+p[0],+p[1]-1,1).toLocaleDateString('en-US',{month:'long',year:'numeric'}); };
+      h+='<div class="sc-sec">From the app</div><div class="ap">'+ap.map(function(a){
+        var owed=Math.max(0,(+a.earned_cents||0)-(+a.paid_cents||0));
+        var sub=(a.open?'so far this month \u00B7 ':'')+'paid into the fund '+$m(a.paid_cents)+(owed>0?' \u00B7 <b style="color:#ffd27a;display:inline">'+$m(owed)+' still to come in</b>':' \u00B7 all in');
+        var btn=(isKm&&owed>0)?'<div class="act"><button type="button" class="sign" data-tre="pay" data-m="'+E(a.month)+'" data-c="'+owed+'">Pay '+$m(owed)+' into the fund</button></div>':'';
+        return '<div class="ln"><div class="m"><b>'+E(mn(a.month))+'</b><span>'+sub+'</span>'+btn+'</div><div class="a in">'+$m(a.earned_cents)+'</div></div>';
+      }).join('')+'</div>';
+    }
     if(canW){
       var mo=(D.motions||[]).map(function(m){ return '<option value="'+E(m.id)+'">'+E(m.title)+(m.state?' \u00B7 '+E(m.state):'')+'</option>'; }).join('');
       h+='<div class="fm"><div class="k"><button type="button" data-tre="k-in" class="'+(kind==='in'?'on':'')+'">+ Money in</button><button type="button" data-tre="k-out" class="'+(kind==='out'?'on out':'')+'">\u2212 Money out</button></div>'+
         '<div class="row"><div><label for="treAmt">Amount ($)</label><input id="treAmt" inputmode="decimal" placeholder="250.00"></div><div><label for="treOn">Date</label><input id="treOn" type="date"></div></div>'+
-        '<div><label for="treMemo">'+(kind==='in'?'Where it came from':'What it was for')+'</label><input id="treMemo" maxlength="200" placeholder="'+(kind==='in'?'October app revenue, council half':'Christmas party: hall deposit')+'"></div>'+
+        '<div><label for="treMemo">'+(kind==='in'?'Where it came from':'What it was for')+'</label><input id="treMemo" maxlength="200" placeholder="'+(kind==='in'?'Raffle proceeds, donation\u2026':'Christmas party: hall deposit')+'"></div>'+
         (kind==='out'?'<div><label for="treMo">The council vote that approved it</label><select id="treMo"><option value="">Pick the motion\u2026</option>'+mo+'</select></div>':'')+
         '<button type="button" class="go" data-tre="add">'+(kind==='in'?'RECORD MONEY IN':'RECORD SPENDING \u00B7 SENDS FOR SIGN-OFF')+'</button></div>';
     }
@@ -85,7 +99,7 @@
       return '<div class="ln'+(t.voided?' void':'')+'"><div class="m"><b>'+E(t.memo)+'</b><span>'+sub+'</span>'+tag+(act?'<div class="act">'+act+'</div>':'')+'</div><div class="a '+t.kind+'">'+(t.kind==='in'?'+':'\u2212')+$m(t.cents)+'</div></div>';
     }).join('');
     h+='<div class="sc-sec">The ledger</div>'+(rows||'<p class="sc-p dim">Nothing on the books yet.</p>');
-    h+='<p class="rule">The council fund is the council\u2019s 50% of app profit. It is spent only on events and things that benefit the Order as a whole. Spending needs a council vote and the Keymaster\u2019s sign-off. Only the Treasurer and the Keymaster can enter lines.</p>';
+    h+='<p class="rule">The council fund receives the Order\u2019s share of the money the app brings in. It is spent only on events and things that benefit the Order as a whole. Spending needs a council vote and the Keymaster\u2019s sign-off. Only the Treasurer and the Keymaster can enter lines.</p>';
     return h+'</div>';
   };
 
@@ -116,6 +130,13 @@
     if(a==='void'){
       var why=prompt('Why is this line being voided? (it stays on the ledger, struck through)'); if(why===null)return;
       rpc('sc_treasury_void',{p_id:+b.getAttribute('data-id'),p_reason:why}).then(function(){ say('\u2713 Voided'); load(true); },function(e){ say('\u2717 '+e.message); });
+      return;
+    }
+    if(a==='pay'){
+      var mm=b.getAttribute('data-m'), cc=+b.getAttribute('data-c')||0;
+      if(!confirm('Record '+$m(cc)+' into the council fund as the Order\u2019s share for '+mm+'?'))return;
+      b.disabled=true;
+      rpc('sc_treasury_share_pay',{p_month:mm}).then(function(r){ say('\u2713 '+$m(r&&r.paid_cents)+' paid into the fund'); load(true); },function(e){ b.disabled=false; say('\u2717 '+e.message); });
       return;
     }
     if(a==='appoint'){
