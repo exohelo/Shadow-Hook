@@ -455,6 +455,7 @@ input[type=range]{width:100%;accent-color:#4DE2FF;height:28px}
             <div class="paylock"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7FAE6A" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg> SECURE CHECKOUT BY STRIPE</div>
             <div class="help">Next, you’ll pay on Stripe’s secure page. Cards live at Stripe; the Order never sees the number. You come straight back here when it’s done.</div>
           </div>
+          <label class="agree" id="renewOpt" hidden><input type="checkbox" id="f-renew"><span id="renewOptText"></span></label>
           <label class="agree"><input type="checkbox" id="f-agree"><span id="agreeText"></span></label>
         </div>
         <div class="co-col">
@@ -620,7 +621,7 @@ input[type=range]{width:100%;accent-color:#4DE2FF;height:28px}
   ];
 
   var S = { pkg:'', step:1, term:'m1', start:iso(nextMon), name:'', line:'', action:'call', contact:'', design:'diy', brief:'',
-            who:'', email:'', phone:'', agree:false, showText:true, src:'', fileName:'', fileMB:0, nw:0, nh:0, zoom:1, x:0, y:0, bg:'dark', busy:false };
+            who:'', email:'', phone:'', agree:false, renew:false, showText:true, src:'', fileName:'', fileMB:0, nw:0, nh:0, zoom:1, x:0, y:0, bg:'dark', busy:false };
   var F = 220;
 
   var plan = function(){ return PLANS.filter(function(p){return p.id===S.pkg;})[0] || PLANS[0]; };
@@ -725,7 +726,11 @@ input[type=range]{width:100%;accent-color:#4DE2FF;height:28px}
     $('sumCodeLbl').textContent=c.codeOff?('Council code '+S.codeNorm):''; $('sumCode').textContent=c.codeOff?('−'+money(c.codeOff)):'';
     $('sumSubtotalLbl').textContent='Subtotal'; $('sumSubtotal').textContent=money(c.total);
     $('sumDue').textContent=c.waitlisted?'$0':money(c.grand);
-    $('renewText').textContent=c.waitlisted?'You’re joining the waitlist. We’ll text you when a banner spot opens; you confirm, then '+money(c.grand)+' is charged.':((t.id==='m1'?'Renews monthly at '+money(Math.round(p.mo*(1+TAX_RATE)*100)/100)+' with tax on the same date. Cancel any time; unused time is refunded.':'One payment for the whole run. It doesn’t renew automatically; we’ll remind you before it ends.')+(c.hired?' The design fee is charged once.':'')+(LIVE||PRELAUNCH?'':' Sponsor ads switch on in the app soon; your run starts on your start date once we’re live.'));
+    $('renewText').textContent=c.waitlisted?'You’re joining the waitlist. We’ll text you when a banner spot opens; you confirm, then '+money(c.grand)+' is charged.':((t.id==='m1'?'Renews monthly at '+money(Math.round(p.mo*(1+TAX_RATE)*100)/100)+' with tax on the same date. Cancel any time; unused time is refunded.':((!isTake()&&S.renew&&['m3','m6','m12'].indexOf(t.id)>=0)?('Renews automatically on '+niceY(addDays(c.endD,1))+' for another '+(t.run)+' months at '+money(Math.round(p.mo*t.bill*(1+TAX_RATE)*100)/100)+' with tax. Turn it off anytime from your dashboard.'):'One payment for the whole run. It doesn’t renew automatically; we’ll remind you before it ends.'))+(c.hired?' The design fee is charged once.':'')+(LIVE||PRELAUNCH?'':' Sponsor ads switch on in the app soon; your run starts on your start date once we’re live.'));
+    /* #renew(oct28) — opt-in auto-renew, Exclusive 3/6/12 months only */
+    var canRenew=!isTake()&&['m3','m6','m12'].indexOf(t.id)>=0&&!c.waitlisted;
+    $('renewOpt').hidden=!canRenew; if(!canRenew) S.renew=false; $('f-renew').checked=!!S.renew;
+    if(canRenew) $('renewOptText').textContent='Renew automatically when this run ends: another '+t.run+' months at '+money(Math.round(p.mo*t.bill*100)/100)+' + tax, the same rate, charged '+niceY(addDays(c.endD,1))+'. Turn it off anytime from your dashboard.';
     $('payBtn').textContent=S.busy?(c.waitlisted?'SAVING…':'OPENING STRIPE…'):(c.waitlisted?'JOIN THE WAITLIST':'PAY '+money(c.grand)+' & SUBMIT'); $('payBtn').disabled=S.busy;
     $('payboxLive').hidden=c.waitlisted; $('payboxWait').hidden=!c.waitlisted;
     $('chargedLine').textContent=c.waitlisted?'No charge today. We text you when a spot opens.':'Charged when you submit. We review your ad before it runs, and it goes live on '+nice(c.startD)+'.';
@@ -875,6 +880,15 @@ input[type=range]{width:100%;accent-color:#4DE2FF;height:28px}
     dcall({action:'email_link',email:em}).then(function(j){ $('siErr').hidden=false; $('siErr').textContent=j.emailed?'If that email has an account, a sign-in link is on its way.':'Password reset by email isn’t set up yet. Contact The Shadow Hook and we’ll get you back in.'; });
   });
 
+  $('f-renew').addEventListener('change',function(e){ S.renew=!!e.target.checked; render(); });
+
+  /* ─── #renew(oct28): ?plan=takeover|banner&start=YYYY-MM-DD from a dashboard "book the next run" link ─── */
+  (function(){ try{
+    var q=new URLSearchParams(location.search), pl=q.get('plan'), st=q.get('start');
+    if(pl==='takeover'||pl==='banner'){ S.pkg=pl; if(pl==='takeover') S.term='w2'; }
+    var d=st&&parse(st); if(d&&d>=minDate) S.start=st;
+  }catch(e){} })();
+
   /* ─── #council(oct28): council code box ──────────────────────────── */
   S.codeOk=false; S.codeNorm='';
   (function(){
@@ -900,7 +914,7 @@ input[type=range]{width:100%;accent-color:#4DE2FF;height:28px}
     var c=calc(); S.busy=true; render();
     var body={ action:'checkout', return_url: location.origin+location.pathname,
       order:{ plan:c.p.id, term:c.t.id, start_date:S.start, business_name:S.name.trim(), line:S.line.trim(), action:S.action, contact:S.contact.trim(),
-              design: isTake()?dsel().id:'diy', brief:S.brief.trim(), show_text: isTake()?S.showText:true, contact_name:S.who.trim(), email:S.email.trim(), phone:S.phone.trim(), waitlist:c.waitlisted, password: ACCT?undefined:(S.pass||''), ref_code: S.codeOk?S.codeNorm:'' },
+              design: isTake()?dsel().id:'diy', brief:S.brief.trim(), show_text: isTake()?S.showText:true, contact_name:S.who.trim(), email:S.email.trim(), phone:S.phone.trim(), waitlist:c.waitlisted, password: ACCT?undefined:(S.pass||''), ref_code: S.codeOk?S.codeNorm:'', auto_renew: !!S.renew },
       logo_data_url: S.src||'' };
     if(ACCT && SESS) body.session=SESS;
     fetch(FN,{ method:'POST', headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY}, body:JSON.stringify(body) })
