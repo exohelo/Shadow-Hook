@@ -74,8 +74,9 @@
       var mn=function(m){ var p=String(m).split('-'); return new Date(+p[0],+p[1]-1,1).toLocaleDateString('en-US',{month:'long',year:'numeric'}); };
       h+='<div class="sc-sec">From the app</div><div class="ap">'+ap.map(function(a){
         var owed=Math.max(0,(+a.earned_cents||0)-(+a.paid_cents||0));
-        var sub=(a.open?'so far this month \u00B7 ':'')+'paid into the fund '+$m(a.paid_cents)+(owed>0?' \u00B7 <b style="color:#ffd27a;display:inline">'+$m(owed)+' still to come in</b>':' \u00B7 all in');
-        var btn=(isKm&&owed>0)?'<div class="act"><button type="button" class="sign" data-tre="pay" data-m="'+E(a.month)+'" data-c="'+owed+'">Pay '+$m(owed)+' into the fund</button></div>':'';
+        /* #monthend(oct28): the share is paid in once the month is over */
+        var sub=a.open?('so far this month \u00B7 paid into the fund at month end'):('paid into the fund '+$m(a.paid_cents)+(owed>0?' \u00B7 <b style="color:#ffd27a;display:inline">'+$m(owed)+' still to come in</b>':' \u00B7 all in'));
+        var btn=(isKm&&owed>0&&!a.open)?'<div class="act"><button type="button" class="sign" data-tre="pay" data-m="'+E(a.month)+'" data-c="'+owed+'">Pay '+$m(owed)+' into the fund</button></div>':'';
         return '<div class="ln"><div class="m"><b>'+E(mn(a.month))+'</b><span>'+sub+'</span>'+btn+'</div><div class="a in">'+$m(a.earned_cents)+'</div></div>';
       }).join('')+'</div>';
     }
