@@ -865,9 +865,9 @@ function openTab(k){
    Order's share per month, never the percent or these totals. A split change counts from its start date on. */
 let TILL=null, TILL_AT=0;
 async function loadTill(){
-  const r=await SB.rpc('km_money_report');
+  const [r,k]=await Promise.all([SB.rpc('km_money_report'),SB.rpc('km_commissions')]);
   if(r.error){ toast('⚠ '+r.error.message); return null; }
-  TILL=r.data; TILL_AT=Date.now(); return TILL;
+  TILL=r.data; TILL.comm=k.error?[]:(k.data||[]); TILL_AT=Date.now(); return TILL;
 }
 function renderTill(){
   const host=$('panel');
@@ -904,6 +904,21 @@ function paintTill(){
     +'<div class="vrow"><span class="n"><b>🏬 The store</b><i>'+(T.store_orders||0)+' paid order'+(T.store_orders===1?'':'s')+' · '+c(T.store_sales)+' in sales, after vendor cuts and ambassador commission</i></span><span class="m" style="color:var(--copper-hi)">'+c(T.store_house)+'</span></div>'
     +'<div class="vrow"><span class="n"><b>🚫 Ad-free memberships</b><i>'+(T.adfree_members||0)+' member'+(T.adfree_members===1?'':'s')+' paying $2.99/mo right now</i></span><span class="m" style="color:var(--copper-hi)">'+c(T.adfree)+'</span></div>'
     +'</div></div>'
+
+    +(function(){ /* #council(oct28) — council sales codes and what each seat is owed */
+      const K=D.comm||[]; const sum=st=>K.filter(x=>x.state===st).reduce((a,x)=>a+Number(x.commission_cents||0),0);
+      const tag={owed:'<span style="color:var(--copper-hi)">owed now</span>',clearing:'clearing',paid:'paid',void:'refunded · none owed'};
+      const dd=d=>{ try{ return new Date(d).toLocaleDateString([], {month:'short',day:'numeric'}); }catch(e){ return ''; } };
+      return '<div class="card"><div class="card-h">🤝 COUNCIL COMMISSIONS<span class="tag">codes HOOK + seat letter · $50 Exclusive · $100 Takeover</span></div><div class="card-b">'
+        +'<p class="sub" style="margin:0 0 10px">'+c(sum('owed'))+' owed now · '+c(sum('clearing'))+' clearing (payable 14 days after the sponsor pays) · '+c(sum('paid'))+' paid. Commissions come off the top, like costs.</p>'
+        +(K.length?K.map(x=>'<div class="vrow"><span class="n"><b>Seat of '+esc(x.seat||'?')+' · '+esc(x.code||'')+'</b><i>'+esc(x.business||'')+' · '+(x.plan==='takeover'?'Takeover':'Exclusive')+' · paid '+dd(x.paid_at)+' · '+(tag[x.state]||x.state)+(x.state==='clearing'?' until '+dd(x.payable_on):'')+(x.handle?' · held by '+esc(x.handle):'')+'</i></span>'
+            +'<span class="m" style="display:flex;align-items:center;gap:8px">'+c(x.commission_cents)
+            +(x.state==='owed'?'<button class="btn-line" data-cpay="'+esc(x.order_id)+'" style="padding:4px 10px">MARK PAID</button>':'')
+            +(x.state==='paid'?'<button class="btn-line" data-cundo="'+esc(x.order_id)+'" style="padding:4px 10px">UNDO</button>':'')
+            +'</span></div>').join('')
+          :'<p class="sub">No code sales yet. When a sponsor uses a council code, it shows up here with who to pay.</p>')
+        +'</div></div>';
+    })()
 
     +'<div class="card"><div class="card-h">⚙ OPERATING COSTS<span class="tag">off the top, every month · only you see this</span></div><div class="card-b">'
     +'<p class="sub" style="margin:0 0 10px">Running the app costs <b style="color:#e8967a">'+money(cost)+' a month</b> right now. It comes out of everything brought in before the split. A month that brings in less than that leaves the Order nothing that month; nothing carries over.</p>'
@@ -957,6 +972,14 @@ function paintTill(){
     if(r.error){ $('tillMsg').textContent='> '+r.error.message; return; }
     TILL=r.data; TILL_AT=Date.now(); toast('⚖ Split set'); paintTill();
   });
+  host.querySelectorAll('[data-cpay],[data-cundo]').forEach(b=>b.addEventListener('click', async()=>{
+    const id=b.getAttribute('data-cpay')||b.getAttribute('data-cundo'), undo=!!b.getAttribute('data-cundo');
+    if(!undo&&!confirm('Mark this commission as paid to the council member?'))return;
+    b.disabled=true;
+    const r=await SB.rpc('km_commission_mark_paid',{p_order:id,p_undo:undo});
+    if(r.error){ b.disabled=false; toast('⚠ '+r.error.message); return; }
+    TILL.comm=r.data||[]; toast(undo?'Marked unpaid':'✓ Marked paid'); paintTill();
+  }));
   $('costSet').addEventListener('click', async()=>{
     const lb=String($('costLabel').value||'').trim();
     const v=parseFloat(String($('costAmt').value||'').replace(/[$,\s]/g,''));
