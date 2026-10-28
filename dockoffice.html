@@ -889,10 +889,12 @@ function paintTill(){
   const owedFund=Math.max(0, Number(T.order_share||0)-Number(T.paid_to_fund||0));
   const months=(D.months||[]);
   const thisMonth=String(D.today||'').slice(0,7);
+  const cost=Number(D.cost_now||0)/100;
   host.innerHTML =
-    '<div class="tiles">'
+    '<div class="tiles" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">'
     +'<div class="tile"><div class="v">'+c(T.base)+'</div><div class="k">Brought in · all time</div></div>'
-    +'<div class="tile grn"><div class="v">'+c(Number(T.base||0)-Number(T.order_share||0))+'</div><div class="k">You keep</div></div>'
+    +'<div class="tile dim"><div class="v" style="color:#e8967a">−'+c(T.costs)+'</div><div class="k">Operating costs</div></div>'
+    +'<div class="tile'+(Number(T.house_keeps)>=0?' grn':'')+'"><div class="v"'+(Number(T.house_keeps)<0?' style="color:#e8967a"':'')+'>'+c(T.house_keeps)+'</div><div class="k">You keep · after costs</div></div>'
     +'<div class="tile dim"><div class="v">'+c(T.order_share)+'</div><div class="k">The Order’s share'+(owedFund>0?' · '+c(owedFund)+' not paid in yet':'')+'</div></div>'
     +'</div>'
 
@@ -902,8 +904,24 @@ function paintTill(){
     +'<div class="vrow"><span class="n"><b>🏬 The store</b><i>'+(T.store_orders||0)+' paid order'+(T.store_orders===1?'':'s')+' · '+c(T.store_sales)+' in sales, after vendor cuts and ambassador commission</i></span><span class="m" style="color:var(--copper-hi)">'+c(T.store_house)+'</span></div>'
     +'</div></div>'
 
+    +'<div class="card"><div class="card-h">⚙ OPERATING COSTS<span class="tag">off the top, every month · only you see this</span></div><div class="card-b">'
+    +'<p class="sub" style="margin:0 0 10px">Running the app costs <b style="color:#e8967a">'+money(cost)+' a month</b> right now. It comes out of everything brought in before the split. A month that brings in less than that leaves the Order nothing that month; nothing carries over.</p>'
+    +((D.cost_lines||[]).length?(D.cost_lines||[]).map(l=>'<div class="vrow"><span class="n"><b>'+esc(l.label)+'</b><i>since '+esc(mName(String(l.from).slice(0,7)))+'</i></span><span class="m" style="color:#e8967a">−'+c(l.monthly_cents)+' / mo</span></div>').join('')
+        :'<p class="sub">No costs this month.</p>')
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;align-items:end;margin-top:12px">'
+    +'<div><div class="lbl">COST</div><input class="field" id="costLabel" list="costNames" maxlength="40" placeholder="Claude AI"><datalist id="costNames">'+[...new Set((D.cost_history||[]).map(h=>h.label))].map(n=>'<option value="'+esc(n)+'">').join('')+'</datalist></div>'
+    +'<div><div class="lbl">MONTHLY ($) · 0 ENDS IT</div><input class="field mono" id="costAmt" inputmode="decimal" placeholder="100"></div>'
+    +'<div><div class="lbl">STARTING WITH</div><input class="field mono" id="costFrom" type="month" value="'+esc(String(D.today||'').slice(0,7))+'"></div>'
+    +'</div>'
+    +'<div style="margin-top:8px"><div class="lbl">NOTE (OPTIONAL)</div><input class="field" id="costNote" maxlength="120" placeholder="what changed"></div>'
+    +'<p class="sub" style="margin:8px 0 0;font-size:12px">Type an existing cost’s name to change it, or a new name to add one. Earlier months keep what they cost then.</p>'
+    +'<div class="msgline" id="costMsg"></div>'
+    +'<button class="btn" id="costSet" style="margin-top:10px">SET THIS COST</button>'
+    +'<div style="margin-top:14px">'+(D.cost_history||[]).map(h=>'<div class="vrow"><span class="n"><b>'+esc(h.label)+' · from '+esc(mName(String(h.from).slice(0,7)))+'</b><i>'+(h.note?esc(h.note)+' · ':'')+'set by '+esc(h.by||'—')+'</i></span><span class="m" style="color:'+(Number(h.monthly_cents)>0?'#e8967a':'var(--steel)')+'">'+(Number(h.monthly_cents)>0?'−'+c(h.monthly_cents)+' / mo':'ended')+'</span></div>').join('')+'</div>'
+    +'</div></div>'
+
     +'<div class="card"><div class="card-h">⚖ THE SPLIT<span class="tag">only you see this</span></div><div class="card-b">'
-    +'<p class="sub" style="margin:0 0 12px">Right now <b style="color:var(--bone)">the Order gets '+pp(pct)+'</b> and <b style="color:var(--bone)">you keep '+pp(keep)+'</b>. The Chamber’s treasury only ever sees the Order’s share in dollars, never this percent or the totals above.</p>'
+    +'<p class="sub" style="margin:0 0 12px">Each month the operating cost comes off the top first. Of what’s left, right now <b style="color:var(--bone)">the Order gets '+pp(pct)+'</b> and <b style="color:var(--bone)">you keep '+pp(keep)+'</b>. The Chamber’s treasury only ever sees the Order’s share in dollars, never this percent or the totals above.</p>'
     +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;align-items:end">'
     +'<div><div class="lbl">THE ORDER’S %</div><input class="field mono" id="tillPct" inputmode="decimal" value="'+pct+'"></div>'
     +'<div><div class="lbl">STARTING ON</div><input class="field mono" id="tillFrom" type="date" value="'+esc(D.today||'')+'"></div>'
@@ -919,12 +937,12 @@ function paintTill(){
     +(months.length?months.map(m=>{
         const owed=Math.max(0, Number(m.order_share)-Number(m.paid_to_fund));
         return '<div class="vrow"><span class="n"><b>'+esc(mName(m.month))+(m.month===thisMonth?' · so far':'')+'</b>'
-          +'<i>⬡ '+c(m.bucks)+' · 📣 '+c(m.sponsors)+' · 🏬 '+c(m.store_house)+' &nbsp;→&nbsp; you keep '+c(m.house_keeps)+'</i>'
+          +'<i>⬡ '+c(m.bucks)+' · 📣 '+c(m.sponsors)+' · 🏬 '+c(m.store_house)+' &nbsp;<span style="color:#e8967a">−&nbsp;costs '+c(m.cost)+'</span> &nbsp;=&nbsp; profit '+c(m.profit)+' &nbsp;→&nbsp; you keep '+c(m.house_keeps)+'</i>'
           +'<i>Order’s share '+c(m.order_share)+' · paid into the fund '+c(m.paid_to_fund)+(owed>0?' · <span style="color:var(--copper-hi)">'+c(owed)+' to pay in</span>':'')+'</i></span>'
           +'<span class="m" style="color:var(--copper-hi)">'+c(m.base)+'</span></div>';
       }).join(''):'<p class="sub">Nothing in the till yet.</p>')
     +'</div></div>'
-    +'<p class="sub" style="margin:4px 2px 18px;font-size:12px">Counted: Port Buck packs paid through Stripe (your own test buys left out), sponsor ads at their price before sales tax, and the store’s house margin. Stripe fees aren’t taken out. Sponsor monthly renewals only count once Stripe reports them back.</p>';
+    +'<p class="sub" style="margin:4px 2px 18px;font-size:12px">Counted: Port Buck packs paid through Stripe (your own test buys left out), sponsor ads at their price before sales tax, and the store’s house margin. The monthly operating cost comes off first; Stripe fees aren’t taken out separately. Sponsor monthly renewals only count once Stripe reports them back.</p>';
 
   $('tillSet').addEventListener('click', async()=>{
     const v=parseFloat(String($('tillPct').value||'').replace(/[%\s]/g,''));
@@ -937,6 +955,20 @@ function paintTill(){
     b.disabled=false;
     if(r.error){ $('tillMsg').textContent='> '+r.error.message; return; }
     TILL=r.data; TILL_AT=Date.now(); toast('⚖ Split set'); paintTill();
+  });
+  $('costSet').addEventListener('click', async()=>{
+    const lb=String($('costLabel').value||'').trim();
+    const v=parseFloat(String($('costAmt').value||'').replace(/[$,\s]/g,''));
+    const mo=$('costFrom').value;
+    if(!lb){ $('costMsg').textContent='> name the cost (e.g. Claude AI)'; return; }
+    if(!(v>=0)){ $('costMsg').textContent='> enter the monthly amount in dollars (0 ends it)'; return; }
+    if(!/^\d{4}-\d{2}$/.test(mo)){ $('costMsg').textContent='> pick the month it starts'; return; }
+    if(!confirm(v>0?('From '+mName(mo)+': '+lb+' costs '+money(v)+' a month, off the top. Set it?'):('End '+lb+' from '+mName(mo)+'?')))return;
+    const b=$('costSet'); b.disabled=true;
+    const r=await SB.rpc('km_money_cost_set',{p_label:lb,p_dollars:v,p_from:mo+'-01',p_note:$('costNote').value||null});
+    b.disabled=false;
+    if(r.error){ $('costMsg').textContent='> '+r.error.message; return; }
+    TILL=r.data; TILL_AT=Date.now(); toast('⚙ '+lb+' set'); paintTill();
   });
 }
 
