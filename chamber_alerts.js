@@ -1,4 +1,4 @@
-/* chamber_alerts.js — #chamberalerts (oct 16). Two things the Chamber was missing:
+/* chamber_alerts.js — #chamberalerts (oct 16; oct 29: new push key). Two things the Chamber was missing:
      1. a NUMBER on the crest: how many words have landed on the Table since you last walked in (sc_unread), updated
         live as they land, cleared when you open the Chamber
      2. closed-app pushes for the council: a seat holder's phone is only pushed if it has posted a watch (push_subs),
@@ -8,7 +8,7 @@
 (function(){
   'use strict';
   if(window.__chamberAlerts)return; window.__chamberAlerts=true;
-  var LS='shk_sc_seen', VAPID='BOIf-N1g5af_QuVRTc9AbScS5YWjUMAX8wSFjfbC4Y6KPVJvLGxzvWrgPSBb38yYvCAuKCJqAGWisb8d-vZpbss';
+  var LS='shk_sc_seen', VAPID='BEh9oT6SleWfmnGPKHlareg4tkBx_kslG_BbTJEbXGCPvPNTyjxKyOHOAOPdidrT0MziHAHYji9VKB8VEtqxSPI';
   var n=0, council=false, lastUid=null;
   function css(){ var s=document.createElement('style'); s.textContent='.sc-ribbon .sc-n{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#e0492e;color:#fff;font:800 11px/18px Inter,system-ui,sans-serif;text-align:center;box-shadow:0 0 0 2px var(--void,#0b0d0f);pointer-events:none}.sc-ribbon .sc-n:empty{display:none}'; document.head.appendChild(s); }
   function since(){ try{ return localStorage.getItem(LS)||''; }catch(e){ return ''; } }
@@ -38,7 +38,8 @@
       var reg=window.SW_REG||await navigator.serviceWorker.ready; if(!reg||!reg.pushManager)return;
       if(Notification.permission==='default'){ var k='shk_sc_push_asked'; if(localStorage.getItem(k))return; localStorage.setItem(k,'1'); var p=await Notification.requestPermission(); if(p!=='granted')return; }
       if(Notification.permission!=='granted')return;
-      var sub=await reg.pushManager.getSubscription(); if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64u8(VAPID)});
+      /* #pushkey(oct29): an old-key registration is swapped for a new one (window.shkFreshSub lives in index.html) */
+      var sub=window.shkFreshSub?await window.shkFreshSub(reg):((await reg.pushManager.getSubscription())||await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64u8(VAPID)}));
       var j=sub.toJSON();
       await window.SB.from('push_subs').upsert({endpoint:sub.endpoint,p256dh:j.keys&&j.keys.p256dh||'',auth:j.keys&&j.keys.auth||'',handle:(typeof loadAcct==='function'&&(loadAcct()||{}).handle)||null,km:!!window.__isKM,uid:window.__shkUid||null,updated_at:new Date().toISOString()},{onConflict:'endpoint'});
     }catch(e){ try{ console.warn('chamber_alerts arm',e); }catch(x){} }
