@@ -795,6 +795,10 @@ body.shelf-dragging,body.shelf-dragging *{cursor:grabbing!important;user-select:
   <div class="lbl" id="dfShipLbl">SHIPPING &amp; HANDLING PER PACKAGE</div>
   <input class="field mono" id="dfShip" inputmode="decimal" placeholder="6.50">
   <p class="sub" style="margin-top:6px;font-size:11.5px">The buyer pays it at the till; it comes back to whoever ships. One package per vendor per order — the highest S&amp;H in the box is charged once.</p>
+  <!-- #bucksprice(oct29) — what the piece costs in Port Bucks. Empty = cash only. The Armory shows it as "or ⬡ N Port Bucks". -->
+  <div id="dfBucksWrap" hidden><div class="lbl">PORT BUCKS PRICE — OR PAY IN ⬡ (LEAVE EMPTY FOR CASH ONLY)</div>
+    <input class="field mono" id="dfBucks" inputmode="numeric" placeholder="3000">
+    <p class="sub" id="dfBucksHint" style="margin-top:6px;font-size:11.5px"></p></div>
   <div id="dfStatusWrap" hidden><div class="lbl">STANDING</div>
     <select class="field" id="dfStatus"><option value="soon">SOON — on the floor, not for sale yet</option><option value="live">LIVE — for sale (needs a retail price)</option><option value="retired">RETIRED — off the floor entirely</option></select></div>
   <div id="dfNoteWrap"><div class="lbl">A WORD TO THE ORDER</div><input class="field" id="dfNote" maxlength="300" placeholder="Can run 50 units in 10 days…"></div>
@@ -1389,7 +1393,7 @@ $('pwGo').addEventListener('click', async()=>{
 function buildTabs(){
   const t=$('tabs');
   const tabs = ME.km
-    ? [['orders','⚓ ORDERS'],['vendors','🤝 VENDORS'],['ambs','🎖 AMBASSADORS'],['service','🧰 SERVICE'],['work','🛠 WORKBENCH'],['brand','🎨 BRANDING'],['ledger','💰 LEDGER'],['wire','📻 THE WIRE'],['floor','🏬 THE FLOOR']]
+    ? [['orders','⚓ ORDERS'],['vendors','🤝 VENDORS'],['ambs','🎖 AMBASSADORS'],['service','🧰 SERVICE'],['work','🛠 WORKBENCH'],['brand','🎨 BRANDING'],['ledger','💰 LEDGER'],['till','🏦 THE TILL'],['wire','📻 THE WIRE'],['floor','🏬 THE FLOOR']]
     : ME.amb
     ? [['myvend','🤝 MY VENDORS'],['ledger','💰 MY LEDGER'],['brand','🎨 BRANDING'],['wire','📻 THE WIRE'],['floor','🏬 THE FLOOR']]
     : [['orders','⚓ ORDERS'],['ledger','💰 MY LEDGER'],['wire','📻 THE WIRE'],['gear','🛡 MY GEAR'],['brand','🎨 BRANDING'],['floor','🏬 THE FLOOR']];
@@ -1407,10 +1411,148 @@ function openTab(k){
   else if(k==='service') renderService();   /* #svctab */
   else if(k==='work') renderWork();
   else if(k==='ledger') renderLedger();
+  else if(k==='till') renderTill();   /* #till */
   else if(k==='wire') renderWire();
   else if(k==='gear') renderGear();
   else if(k==='brand') renderBrand();   /* #mark */
   else if(k==='floor') renderFloor();
+}
+
+/* ════════ THE TILL (#till oct28) ════════
+   Every dollar the app brings in — Port Buck packs, sponsor ads, the store's house margin — and the split
+   between the house and the Order. Keymaster only (km_money_report). The Chamber's treasury sees only the
+   Order's share per month, never the percent or these totals. A split change counts from its start date on. */
+let TILL=null, TILL_AT=0;
+async function loadTill(){
+  const [r,k]=await Promise.all([SB.rpc('km_money_report'),SB.rpc('km_commissions')]);
+  if(r.error){ toast('⚠ '+r.error.message); return null; }
+  TILL=r.data; TILL.comm=k.error?[]:(k.data||[]); TILL_AT=Date.now(); return TILL;
+}
+function renderTill(){
+  const host=$('panel');
+  if(!ME.km){ host.innerHTML=''; return; }
+  if(!TILL||Date.now()-TILL_AT>60000){
+    if(!TILL) host.innerHTML='<p class="sub" style="text-align:center;margin-top:30px">Counting the till…</p>';
+    loadTill().then(d=>{ if(d&&TAB==='till') paintTill(); });
+    if(!TILL) return;
+  }
+  paintTill();
+}
+function paintTill(){
+  const host=$('panel'), D=TILL, T=D.totals||{};
+  const c=n=>money(Number(n||0)/100);
+  const pct=Number(D.order_pct_now||0), keep=Math.round((100-pct)*100)/100;
+  const pp=n=>(Math.round(Number(n)*100)/100)+'%';
+  const mName=m=>{ const p=String(m).split('-'); return new Date(+p[0],+p[1]-1,1).toLocaleDateString([], {month:'long',year:'numeric'}); };
+  const day=d=>{ try{ const p=String(d).split('-'); return new Date(+p[0],+p[1]-1,+p[2]).toLocaleDateString([], {month:'short',day:'numeric',year:'numeric'}); }catch(e){ return d; } };
+  const owedFund=Math.max(0, Number(T.order_share||0)-Number(T.paid_to_fund||0));
+  const months=(D.months||[]);
+  const thisMonth=String(D.today||'').slice(0,7);
+  const cost=Number(D.cost_now||0)/100;
+  host.innerHTML =
+    '<div class="tiles" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">'
+    +'<div class="tile"><div class="v">'+c(T.base)+'</div><div class="k">Brought in · all time</div></div>'
+    +'<div class="tile dim"><div class="v" style="color:#e8967a">−'+c(T.costs)+'</div><div class="k">Operating costs</div></div>'
+    +'<div class="tile'+(Number(T.house_keeps)>=0?' grn':'')+'"><div class="v"'+(Number(T.house_keeps)<0?' style="color:#e8967a"':'')+'>'+c(T.house_keeps)+'</div><div class="k">You keep · after costs</div></div>'
+    +'<div class="tile dim"><div class="v">'+c(T.order_share)+'</div><div class="k">The Order’s share'+(owedFund>0?' · '+c(owedFund)+' not paid in yet':'')+'</div></div>'
+    +'</div>'
+
+    +'<div class="card"><div class="card-h">💵 WHERE IT CAME FROM<span class="tag">all time · before the split</span></div><div class="card-b">'
+    +'<div class="vrow"><span class="n"><b>⬡ Port Bucks sold</b><i>'+(T.bucks_packs||0)+' pack'+(T.bucks_packs===1?'':'s')+' through the mint</i></span><span class="m" style="color:var(--copper-hi)">'+c(T.bucks)+'</span></div>'
+    +'<div class="vrow"><span class="n"><b>📣 Sponsor ads</b><i>'+(T.sponsor_orders||0)+' paid order'+(T.sponsor_orders===1?'':'s')+' · before sales tax</i></span><span class="m" style="color:var(--copper-hi)">'+c(T.sponsors)+'</span></div>'
+    +'<div class="vrow"><span class="n"><b>🏬 The store</b><i>'+(T.store_orders||0)+' paid order'+(T.store_orders===1?'':'s')+' · '+c(T.store_sales)+' in sales, after vendor cuts and ambassador commission</i></span><span class="m" style="color:var(--copper-hi)">'+c(T.store_house)+'</span></div>'
+    +'<div class="vrow"><span class="n"><b>🚫 Ad-free memberships</b><i>'+(T.adfree_members||0)+' member'+(T.adfree_members===1?'':'s')+' paying $2.99/mo right now</i></span><span class="m" style="color:var(--copper-hi)">'+c(T.adfree)+'</span></div>'
+    +'</div></div>'
+
+    +(function(){ /* #council(oct28) — council sales codes and what each seat is owed */
+      const K=D.comm||[]; const sum=st=>K.filter(x=>x.state===st).reduce((a,x)=>a+Number(x.commission_cents||0),0);
+      const tag={owed:'<span style="color:var(--copper-hi)">owed now</span>',clearing:'clearing',paid:'paid',void:'refunded · none owed'};
+      const dd=d=>{ try{ return new Date(d).toLocaleDateString([], {month:'short',day:'numeric'}); }catch(e){ return ''; } };
+      return '<div class="card"><div class="card-h">🤝 COUNCIL COMMISSIONS<span class="tag">codes HOOK + seat letter · $50 Exclusive · $100 Takeover</span></div><div class="card-b">'
+        +'<p class="sub" style="margin:0 0 10px">'+c(sum('owed'))+' owed now · '+c(sum('clearing'))+' clearing (payable 14 days after the sponsor pays) · '+c(sum('paid'))+' paid. Commissions come off the top, like costs.</p>'
+        +(K.length?K.map(x=>'<div class="vrow"><span class="n"><b>Seat of '+esc(x.seat||'?')+' · '+esc(x.code||'')+'</b><i>'+esc(x.business||'')+' · '+(x.plan==='takeover'?'Takeover':'Exclusive')+' · paid '+dd(x.paid_at)+' · '+(tag[x.state]||x.state)+(x.state==='clearing'?' until '+dd(x.payable_on):'')+(x.handle?' · held by '+esc(x.handle):'')+'</i></span>'
+            +'<span class="m" style="display:flex;align-items:center;gap:8px">'+c(x.commission_cents)
+            +(x.state==='owed'?'<button class="btn-line" data-cpay="'+esc(x.order_id)+'" style="padding:4px 10px">MARK PAID</button>':'')
+            +(x.state==='paid'?'<button class="btn-line" data-cundo="'+esc(x.order_id)+'" style="padding:4px 10px">UNDO</button>':'')
+            +'</span></div>').join('')
+          :'<p class="sub">No code sales yet. When a sponsor uses a council code, it shows up here with who to pay.</p>')
+        +'</div></div>';
+    })()
+
+    +'<div class="card"><div class="card-h">⚙ OPERATING COSTS<span class="tag">off the top, every month · only you see this</span></div><div class="card-b">'
+    +'<p class="sub" style="margin:0 0 10px">Running the app costs <b style="color:#e8967a">'+money(cost)+' a month</b> right now. It comes out of everything brought in before the split. A month that brings in less than that leaves the Order nothing that month; nothing carries over.</p>'
+    +((D.cost_lines||[]).length?(D.cost_lines||[]).map(l=>'<div class="vrow"><span class="n"><b>'+esc(l.label)+'</b><i>since '+esc(mName(String(l.from).slice(0,7)))+'</i></span><span class="m" style="color:#e8967a">−'+c(l.monthly_cents)+' / mo</span></div>').join('')
+        :'<p class="sub">No costs this month.</p>')
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;align-items:end;margin-top:12px">'
+    +'<div><div class="lbl">COST</div><input class="field" id="costLabel" list="costNames" maxlength="40" placeholder="Claude AI"><datalist id="costNames">'+[...new Set((D.cost_history||[]).map(h=>h.label))].map(n=>'<option value="'+esc(n)+'">').join('')+'</datalist></div>'
+    +'<div><div class="lbl">MONTHLY ($) · 0 ENDS IT</div><input class="field mono" id="costAmt" inputmode="decimal" placeholder="100"></div>'
+    +'<div><div class="lbl">STARTING WITH</div><input class="field mono" id="costFrom" type="month" value="'+esc(String(D.today||'').slice(0,7))+'"></div>'
+    +'</div>'
+    +'<div style="margin-top:8px"><div class="lbl">NOTE (OPTIONAL)</div><input class="field" id="costNote" maxlength="120" placeholder="what changed"></div>'
+    +'<p class="sub" style="margin:8px 0 0;font-size:12px">Type an existing cost’s name to change it, or a new name to add one. Earlier months keep what they cost then.</p>'
+    +'<div class="msgline" id="costMsg"></div>'
+    +'<button class="btn" id="costSet" style="margin-top:10px">SET THIS COST</button>'
+    +'<div style="margin-top:14px">'+(D.cost_history||[]).map(h=>'<div class="vrow"><span class="n"><b>'+esc(h.label)+' · from '+esc(mName(String(h.from).slice(0,7)))+'</b><i>'+(h.note?esc(h.note)+' · ':'')+'set by '+esc(h.by||'—')+'</i></span><span class="m" style="color:'+(Number(h.monthly_cents)>0?'#e8967a':'var(--steel)')+'">'+(Number(h.monthly_cents)>0?'−'+c(h.monthly_cents)+' / mo':'ended')+'</span></div>').join('')+'</div>'
+    +'</div></div>'
+
+    +'<div class="card"><div class="card-h">⚖ THE SPLIT<span class="tag">only you see this</span></div><div class="card-b">'
+    +'<p class="sub" style="margin:0 0 12px">Each month the operating cost comes off the top first. Of what’s left, right now <b style="color:var(--bone)">the Order gets '+pp(pct)+'</b> and <b style="color:var(--bone)">you keep '+pp(keep)+'</b>. The Chamber’s treasury only ever sees the Order’s share in dollars, never this percent or the totals above.</p>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;align-items:end">'
+    +'<div><div class="lbl">THE ORDER’S %</div><input class="field mono" id="tillPct" inputmode="decimal" value="'+pct+'"></div>'
+    +'<div><div class="lbl">STARTING ON</div><input class="field mono" id="tillFrom" type="date" value="'+esc(D.today||'')+'"></div>'
+    +'<div><div class="lbl">NOTE (OPTIONAL)</div><input class="field" id="tillNote" maxlength="120" placeholder="why it changed"></div>'
+    +'</div>'
+    +'<p class="sub" style="margin:8px 0 0;font-size:12px">A change counts from its start date on. Money that came in before then keeps the split that was in force.</p>'
+    +'<div class="msgline" id="tillMsg"></div>'
+    +'<button class="btn" id="tillSet" style="margin-top:10px">SET THE SPLIT</button>'
+    +'<div style="margin-top:14px">'+(D.split_history||[]).map(h=>'<div class="vrow"><span class="n"><b>From '+esc(day(h.from))+'</b><i>'+(h.note?esc(h.note)+' · ':'')+'set by '+esc(h.by||'—')+'</i></span><span class="m">Order '+pp(h.order_pct)+' · you '+pp(100-Number(h.order_pct))+'</span></div>').join('')+'</div>'
+    +'</div></div>'
+
+    +'<div class="card"><div class="card-h">📅 MONTH BY MONTH<span class="tag">Order’s share is paid into the fund from the Chamber’s treasury</span></div><div class="card-b">'
+    +(months.length?months.map(m=>{
+        const owed=Math.max(0, Number(m.order_share)-Number(m.paid_to_fund));
+        return '<div class="vrow"><span class="n"><b>'+esc(mName(m.month))+(m.month===thisMonth?' · so far':'')+'</b>'
+          +'<i>⬡ '+c(m.bucks)+' · 📣 '+c(m.sponsors)+' · 🏬 '+c(m.store_house)+' · 🚫 '+c(m.adfree)+' &nbsp;<span style="color:#e8967a">−&nbsp;costs '+c(m.cost)+'</span> &nbsp;=&nbsp; profit '+c(m.profit)+' &nbsp;→&nbsp; you keep '+c(m.house_keeps)+'</i>'
+          +'<i>Order’s share '+c(m.order_share)+' · paid into the fund '+c(m.paid_to_fund)+(owed>0?' · <span style="color:var(--copper-hi)">'+c(owed)+' to pay in</span>':'')+'</i></span>'
+          +'<span class="m" style="color:var(--copper-hi)">'+c(m.base)+'</span></div>';
+      }).join(''):'<p class="sub">Nothing in the till yet.</p>')
+    +'</div></div>'
+    +'<p class="sub" style="margin:4px 2px 18px;font-size:12px">Counted: Port Buck packs paid through Stripe (your own test buys left out), sponsor ads at their price before sales tax, the store’s house margin, and ad-free memberships. The monthly operating cost comes off first; Stripe fees aren’t taken out separately. Sponsor monthly renewals only count once Stripe reports them back.</p>';
+
+  $('tillSet').addEventListener('click', async()=>{
+    const v=parseFloat(String($('tillPct').value||'').replace(/[%\s]/g,''));
+    const from=$('tillFrom').value;
+    if(!(v>=0&&v<=100)){ $('tillMsg').textContent='> enter a percent from 0 to 100'; return; }
+    if(!from){ $('tillMsg').textContent='> pick the day it starts'; return; }
+    if(!confirm('From '+day(from)+': the Order gets '+v+'% and you keep '+(Math.round((100-v)*100)/100)+'%. Set it?'))return;
+    const b=$('tillSet'); b.disabled=true;
+    const r=await SB.rpc('km_money_split_set',{p_pct:v,p_from:from,p_note:$('tillNote').value||null});
+    b.disabled=false;
+    if(r.error){ $('tillMsg').textContent='> '+r.error.message; return; }
+    TILL=r.data; TILL_AT=Date.now(); toast('⚖ Split set'); paintTill();
+  });
+  host.querySelectorAll('[data-cpay],[data-cundo]').forEach(b=>b.addEventListener('click', async()=>{
+    const id=b.getAttribute('data-cpay')||b.getAttribute('data-cundo'), undo=!!b.getAttribute('data-cundo');
+    if(!undo&&!confirm('Mark this commission as paid to the council member?'))return;
+    b.disabled=true;
+    const r=await SB.rpc('km_commission_mark_paid',{p_order:id,p_undo:undo});
+    if(r.error){ b.disabled=false; toast('⚠ '+r.error.message); return; }
+    TILL.comm=r.data||[]; toast(undo?'Marked unpaid':'✓ Marked paid'); paintTill();
+  }));
+  $('costSet').addEventListener('click', async()=>{
+    const lb=String($('costLabel').value||'').trim();
+    const v=parseFloat(String($('costAmt').value||'').replace(/[$,\s]/g,''));
+    const mo=$('costFrom').value;
+    if(!lb){ $('costMsg').textContent='> name the cost (e.g. Claude AI)'; return; }
+    if(!(v>=0)){ $('costMsg').textContent='> enter the monthly amount in dollars (0 ends it)'; return; }
+    if(!/^\d{4}-\d{2}$/.test(mo)){ $('costMsg').textContent='> pick the month it starts'; return; }
+    if(!confirm(v>0?('From '+mName(mo)+': '+lb+' costs '+money(v)+' a month, off the top. Set it?'):('End '+lb+' from '+mName(mo)+'?')))return;
+    const b=$('costSet'); b.disabled=true;
+    const r=await SB.rpc('km_money_cost_set',{p_label:lb,p_dollars:v,p_from:mo+'-01',p_note:$('costNote').value||null});
+    b.disabled=false;
+    if(r.error){ $('costMsg').textContent='> '+r.error.message; return; }
+    TILL=r.data; TILL_AT=Date.now(); toast('⚙ '+lb+' set'); paintTill();
+  });
 }
 
 /* ════════ DATA ════════ */
@@ -1717,7 +1859,7 @@ async function loadLedger(){
 }
 async function loadProducts(){
   try{
-    const r = await productsSelect('id,name,brand,cat,blurb,usd,cost,status,vendor_id,sort,image,images,colors,sizes,specs,size_label,color_label,ship_usd',
+    const r = await productsSelect('id,name,brand,cat,blurb,usd,cost,status,vendor_id,sort,image,images,colors,sizes,specs,size_label,color_label,ship_usd,bucks',
       q => (!ME.km && ME.vendor) ? q.eq('vendor_id', ME.vendor.id) : q);   /* #gallery — same read, plus the extra photos when the column's there */
     if(!r.error) PRODUCTS=r.data||[];
   }catch(e){}
@@ -3027,6 +3169,7 @@ function dfDress(mode, copyOf){
   $('dfRetailLbl').textContent = km?'RETAIL — WHAT BUYERS PAY':'SUGGESTED RETAIL — THE ORDER SETS THE FINAL';
   $('dfVendorWrap').hidden=!km; $('dfStatusWrap').hidden=!km; $('dfNoteWrap').hidden=km;
   $('dfMemoWrap').hidden=!km;                 /* #memo — the restock memo is the Keymaster's alone */
+  $('dfBucksWrap').hidden=!km;                /* #bucksprice — the Keymaster sets the Port Bucks price */
   $('dfWaitWrap').hidden=true; $('dfWaitCompose').hidden=true;   /* #waitlist — paintWaiting() decides; never flash a stale list while the form re-dresses */
   /* DUPLICATE + DELETE only make sense on a posting that exists. The hidden ATTRIBUTE
      alone never hid this row — .stat-row carries display:flex, and a stylesheet rule
@@ -3071,6 +3214,7 @@ function openDraftSheet(mode, ref, tpl){
   $('dfCost').value   = src&&(shelfRow?src.cost:src.cost_asked)!=null?(shelfRow?src.cost:src.cost_asked):'';
   $('dfRetail').value = src&&(shelfRow?src.usd:src.usd_suggested)!=null?(shelfRow?src.usd:src.usd_suggested):'';
   $('dfShip').value   = src&&src.ship_usd!=null?src.ship_usd:'';
+  $('dfBucks').value  = km&&src&&src.bucks!=null?src.bucks:''; bucksHint();   /* #bucksprice — a duplicate carries it too */
   if(km){ $('dfStatus').value = tpl?'soon':((src&&src.status)||'soon');     /* #dupe — a copy never opens LIVE */
           $('dfVendor').value = (src&&src.vendor_id)||''; }
   $('dfNote').value = src&&src.note?src.note:'';
@@ -3684,6 +3828,17 @@ async function waitTell(){
   }catch(e){ toast('⚠ '+String((e&&e.message)||'the list didn’t take it')); }
   finally{ btn.disabled=false; btn.textContent=was; }
 }
+/* ═══ #bucksprice(oct29) — the Port Bucks price. Packs sell at about 110 ⬡ a dollar (Bosun: $10 → 1,100 ⬡). ═══ */
+function dfBucksVal(){ const v=String($('dfBucks').value||'').replace(/[^0-9]/g,''); return v===''?null:Math.max(0,parseInt(v,10)); }
+function bucksHint(){
+  const h=$('dfBucksHint'); if(!h)return;
+  const b=dfBucksVal(), x=parseFloat($('dfRetail').value), usd=isFinite(x)&&x>0?x:0;
+  h.textContent = b==null
+    ? 'Empty: cash only. Fill it in and the Armory shows “or ⬡ N Port Bucks” so a member can pay the whole price in bucks.'+(usd>0?' At pack prices, '+money(usd)+' buys about ⬡ '+Math.round(usd*110).toLocaleString()+'.':'')
+    : 'The Armory shows “or ⬡ '+b.toLocaleString()+' Port Bucks”.'+(usd>0?' At pack prices that’s worth about '+money(b/110)+' against a '+money(usd)+' retail.':'');
+}
+$('dfBucks').addEventListener('input',bucksHint);
+$('dfRetail').addEventListener('input',bucksHint);
 $('dfWaitTell').addEventListener('click',()=>{
   /* the piece's NAME is not in here on purpose — the card in the Armory prints it in
      bold directly above this line, so repeating it just eats the 400 characters */
@@ -3780,7 +3935,7 @@ $('dfGo').addEventListener('click', async()=>{
       const row=G({ name:f.name, cat:f.cat, blurb:f.blurb, usd:f.retail, cost:f.cost,
         ship_usd:f.ship, colors:f.colors, sizes:f.sizes, specs:f.specs, image:image, images:images,
         size_label:f.size_label, color_label:f.color_label,
-        status:$('dfStatus').value, vendor_id:$('dfVendor').value||null });
+        status:$('dfStatus').value, vendor_id:$('dfVendor').value||null, bucks:dfBucksVal() });
       if(adding){ row.id=pid; row.brand='The Shadow Hook'; row.sort=900; }
       const r=await galleryWrite(x => adding ? SB.from('products').insert(x) : SB.from('products').update(x).eq('id',pid), row);
       if(r.error){ $('dfMsg').textContent='> '+r.error.message; paintPhotos(); btn.disabled=false; return; }
@@ -3891,6 +4046,7 @@ function renderWork(){
       +(p.image?'<img class="wk-thumb" src="'+esc(p.image)+'" alt="">':'<div class="wk-thumb ph">🛡</div>')
       +'<span class="n"><b>'+esc(p.name)+'</b><i>'+esc(vName(p.vendor_id))
       +' · retail '+(p.usd!=null?money(p.usd):'—')+' · cut '+(p.cost!=null?money(p.cost):'—')+(p.ship_usd>0?' · S&amp;H '+money(p.ship_usd):'')
+      +(p.bucks!=null?' · ⬡ '+Number(p.bucks).toLocaleString():'')   /* #bucksprice */
       +(dfArr(p.gallery).length?' · 📷 '+(dfArr(p.gallery).length+(p.image?1:0)):'')                                      /* #gallery — how many shots it carries */
       +(MEMOS[String(p.id)]?' · <span title="'+esc(MEMOS[String(p.id)].slice(0,300))+'">📝 memo</span>':'')   /* #memo — restock notes on file */
       +(function(){ const w=waitFor(p.id); if(!WAIT_OK||!w.length)return '';   /* #waitlist — how many tapped 🔔 on this piece */
