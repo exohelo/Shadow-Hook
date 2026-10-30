@@ -50,7 +50,7 @@
   var PMA={rows:{},now:null,nowKey:'',fit:{}};
   function pmaLoad(){
     if(!window.SB)return;
-    ['AM'].forEach(function(sh){ window.SB.rpc('wire_pma_rows',{p_sh:sh}).then(function(r){ if(r.error||!Array.isArray(r.data))return; PMA.rows[sh]=r.data; PMA.fit[sh]=pmaFit(r.data); if(lastO)paint(lastO); },function(){}); });
+    ['AM','PM'].forEach(function(sh){ window.SB.rpc('wire_pma_rows',{p_sh:sh}).then(function(r){ if(r.error||!Array.isArray(r.data))return; PMA.rows[sh]=r.data; PMA.fit[sh]=pmaFit(r.data); if(lastO)paint(lastO); },function(){}); });
   }
   function pmaNow(key){
     if(!window.SB||!key||PMA.nowKey===key)return; PMA.nowKey=key; PMA.now=null;
@@ -97,9 +97,14 @@
   function model(){ if(!window.SB)return; window.SB.rpc('wire_model').then(function(r){ if(r.error||!r.data)return; MODEL=r.data; modelAt=Date.now(); if(lastO)paint(lastO); },function(){}); }
 
   /* the prediction: letters moved, with a band */
+  /* #sheetfirst (oct 30): no call until BOTH sheets are in — the hall sheet's job count (H) and the PMA sheet's
+     totals for this board. A call guessed from the pattern alone was being posted (and locked) as if it were real.
+     sheetsReady() is what paint() checks before it shows, posts or locks anything. */
+  function sheetsReady(key){ pmaNow(key); return hallNow()>0 && !!(PMA.now && PMA.nowKey===key); }
   function predict(o){
     var sh=shiftNow(), m=MODEL&&MODEL[sh], H=hallNow(); if(!m||!H)return null;
     var key=boardKey(), dn=dropsNow(key), share=dn>0?dropShare(m,sh):0;
+    if(!sheetsReady(key))return null;
     var pH=H/(+m.jpl||130), pA=+m.a10||9, pP=(m.prev!=null?+m.prev:pA), w=m.w||{}, w0=m.w0||{};
     var base0=(+w0.hall||0)*pH+(+w0.avg||0)*pA+(+w0.prev||0)*pP;
     pmaNow(key); var pP2=pmaPredict(sh);   /* the PMA sheet: leads before the drops, still counts after */
@@ -149,10 +154,23 @@
   })();
   function paint(o){
     if(!o||typeof o.base!=='number')return;
+    if(typeof window.wireCallOff==='function'&&window.wireCallOff()){   /* #training (oct 30): the bot is off — index.html paints the label; nothing posted or locked */
+      walked=null; info={source:'off'}; window._lastCall=null; var oldT=document.getElementById('wlStrip'); if(oldT)oldT.remove(); return;
+    }
     var _k=boardKey(), _fx=flexOf(_k), _live=_fx&&Date.now()>=_fx;
     lockGet(_k);
     if(_live||(LOCK.key===_k&&LOCK.v)){ if(LOCK.key===_k&&LOCK.v){ walked={stop:LOCK.v.stop,lo:LOCK.v.lo,hi:LOCK.v.hi,o:o,letters:+LOCK.v.letters||0,hires:0,full:fullAt(o,+LOCK.v.letters||0),sd:2.5}; lockedPaint(o,LOCK.v); return; } }
     var start=AZ[o.base], lg=window._pmaLadder, holds=!!(lg&&lg.stop), P=holds?null:predict(o), L, lo, hi, source;
+    if(!holds&&!sheetsReady(_k)){   /* #sheetfirst — WAITING: nothing shown, posted or locked until the sheets land */
+      var ps0=document.getElementById('predStop'), mv0=document.getElementById('wMoves'), src0=document.getElementById('wSrc');
+      if(ps0)ps0.textContent='\u2014';
+      if(mv0)mv0.innerHTML='<b>WAITING ON THE SHEET</b> \u2014 no call until the PMA / ILWU job counts for this board are in'+(hallNow()>0?' (hall count in, waiting on the PMA sheet)':(PMA.now&&PMA.nowKey===_k?' (PMA sheet in, waiting on the hall count)':''));
+      if(src0){ src0.className='wire-src est'; src0.textContent='\u23F8 WAITING ON THE SHEET'; }
+      try{ track(0,0,0); }catch(e){}
+      var old0=document.getElementById('wlStrip'); if(old0)old0.remove();
+      walked=null; info={source:'wait'}; window._lastCall=null;
+      return;
+    }
     if(P){ var Lf=P.letters; L=thinWalk(o,Lf); lo=thinWalk(o,Math.max(0,Lf-P.band)); hi=thinWalk(o,Lf+P.band); source=(P.dW>0?'model+drops':'model')+(P.pma!=null?'+pma':'')+(P.heard!=null?'+heard':'')+(L!==Lf?'+thin':''); }
     else { L=Math.max(0,o.med); lo=Math.max(0,o.lo); hi=Math.max(L,o.hi); source='app'; if(o.med<=0)holds=true; }
     var nL=Math.round(L), nLo=Math.round(lo), nHi=Math.round(hi);
