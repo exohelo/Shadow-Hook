@@ -15,7 +15,10 @@
   function st(){ var s=document.createElement('style'); s.id='pgCSS'; s.textContent=
     '.pg-paused{animation-play-state:paused!important}'+
     'html.shk-calm .pg-decor{animation:none!important}'+   /* #oct31: goo drips (snDrop/snNeck3) are no longer decor-paused — they keep dripping */
-    'html.shk-calm .sn-decor,html.shk-calm .hwl-embers{display:none!important}';
+    'html.shk-calm .hwl-embers{display:none!important}'+
+    /* #oct31(drips): calm mode hides the goo layer but keeps the drips dripping */
+    'html.shk-calm .sn-decor *{visibility:hidden!important}'+
+    'html.shk-calm .sn-decor .sn-drop,html.shk-calm .sn-decor .sn-drop *,html.shk-calm .sn-decor .sn-cone,html.shk-calm .sn-decor .sn-cone *{visibility:visible!important;animation-play-state:running!important}';
     document.head.appendChild(s); }
   function animated(){ var out=[]; var all=document.querySelectorAll('body *'); for(var i=0;i<all.length;i++){ var e=all[i]; if(e.closest('#demoBar'))continue; var n=e.__pgAnim; if(n===undefined){ try{ n=getComputedStyle(e).animationName||''; }catch(x){ n=''; } e.__pgAnim=DECOR.test(n)?n:''; n=e.__pgAnim; } if(n)out.push(e); } return out; }
   var seen={}, io=null;
