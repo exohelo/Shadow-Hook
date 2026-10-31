@@ -13,12 +13,12 @@
   function themeOn(){ try{ return localStorage.getItem(KEY)!=='off'; }catch(e){ return true; } }   /* #oct31: ON unless the member turned it off */
 
   /* ---------- still: stop every endless animation ---------- */
-  var KEEP=/spin|load|rotat|reel|shimmer|skeleton|typing|caret|blink-cursor/i;   /* spinners & loaders keep moving */
+  var KEEP=/spin|load|rotat|reel|shimmer|skeleton|typing|caret|blink-cursor|^snDrop$|^snNeck3$/i;   /* spinners & loaders keep moving; #oct31: the goo drips drip (a handful of small elements, cheap) */
   var st=document.createElement('style'); st.textContent=
     /* the season's own decoration layers, when the theme is off */
     'html:not(.season-halloween) .sn-decor,html:not(.season-halloween) .hwl-embers{display:none!important}'+
     /* belt and braces for the known loops, in case a browser can't stop them from script */
-    'html.shk-still .pg-decor{animation:none!important}';
+    'html.shk-still .pg-decor:not(.sn-drop):not(.sn-cone){animation:none!important}';
   document.head.appendChild(st);
   document.documentElement.classList.add('shk-still');
   var stopped=0;

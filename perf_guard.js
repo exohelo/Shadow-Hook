@@ -10,11 +10,11 @@
 (function(){
   'use strict';
   if(window.__perfGuard)return; window.__perfGuard=true;
-  var DECOR=/hwlCandle|hwlEmber|hwlCreep|hwlMoon|snNeck3|snDrop|snFlyX|snFlyY|snFlap|snDrift|cgClaw|dpPulse|dpTapR|cgHaunt|hvFall|hvFlutter|arcDrift|gLet|gEmber/;   /* oct18: + the loops the latest alarms named */
+  var DECOR=/hwlCandle|hwlEmber|hwlCreep|hwlMoon|snFlyX|snFlyY|snFlap|snDrift|cgClaw|dpPulse|dpTapR|cgHaunt|hvFall|hvFlutter|arcDrift|gLet|gEmber/;   /* oct18: + the loops the latest alarms named */
   var CAP={hwlCandle:8,hwlEmber:6}, LS='shadowhook_calm_until', calm=false;
   function st(){ var s=document.createElement('style'); s.id='pgCSS'; s.textContent=
     '.pg-paused{animation-play-state:paused!important}'+
-    'html.shk-calm .pg-decor{animation:none!important}'+
+    'html.shk-calm .pg-decor{animation:none!important}'+   /* #oct31: goo drips (snDrop/snNeck3) are no longer decor-paused — they keep dripping */
     'html.shk-calm .sn-decor,html.shk-calm .hwl-embers{display:none!important}';
     document.head.appendChild(s); }
   function animated(){ var out=[]; var all=document.querySelectorAll('body *'); for(var i=0;i<all.length;i++){ var e=all[i]; if(e.closest('#demoBar'))continue; var n=e.__pgAnim; if(n===undefined){ try{ n=getComputedStyle(e).animationName||''; }catch(x){ n=''; } e.__pgAnim=DECOR.test(n)?n:''; n=e.__pgAnim; } if(n)out.push(e); } return out; }
