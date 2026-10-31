@@ -4,7 +4,7 @@
    index.html still paints the IN TRAINING label (km_flags.wire_call_on stays false so the old bot can't post);
    this file paints over it with the v2 call: the stop letter in the big slot, the band · letters · start card · lock
    under it, the inputs, and the last six graded boards. Polls every 60 s; nothing here writes anything.
-   Load once from index.html, after hand_counts.js:  <script src="wire_v2.js?v=oct31a" defer></script> */
+   Load once from index.html, after hand_counts.js:  <script src="wire_v2.js?v=oct31b" defer></script> */
 (function(){
   'use strict';
   if(window.__wireV2)return; window.__wireV2=true;
@@ -45,6 +45,27 @@
       '<br>hall says '+esc(inp.hall_forecast)+' jobs \u00B7 PMA '+esc(inp.pma_total)+' \u00B7 last board moved '+esc(inp.prev1)+'</span>'+g+'</span>';
     if(src){ src.className='wire-src '+(locked?'lock':'est'); src.textContent='\u26A1 WIRE v2 \u00B7 '+(locked?'LOCKED':'LIVE CALL'); }
     share(up,L,stop,locked);
+    ladder(up,L,stop,locked);
+  }
+  /* the letter ladder (#wTrack), the chance bar (#wMeters) and the note (#wRun), drawn the way the old Wire drew them */
+  function ladder(up,L,stop,locked){
+    var AZ='ABCDEFGHIJKLMNOPQRSTUVWXYZ', tr=document.getElementById('wTrack'), mt=document.getElementById('wMeters'), run=document.getElementById('wRun');
+    var startL=(up.start_code||'A').charAt(0).toUpperCase(), base=AZ.indexOf(startL); if(base<0)base=0;
+    var med=Math.round(L), lo=Math.max(0,Math.round(L-1.5)), hi=Math.min(26,Math.round(L+1.5)), cyc=med>=26;
+    var span=Math.min(26,Math.max(hi+2,med+2,8));
+    var myId=null; try{ myId=typeof window.myBoardId==='function'?window.myBoardId():null; }catch(e){}
+    var myDist=myId?((AZ.indexOf(String(myId).charAt(0).toUpperCase())-base)%26+26)%26:-1;
+    if(tr){ var cells='', k, cls, inner;
+      for(k=0;k<=span;k++){ cls='wire-cell'; inner=AZ[(base+k)%26];
+        if(k>=lo&&k<=hi)cls+=' band'; if(k===0)cls+=' start'; if(k===med&&!cyc)cls+=' stop'; if(myDist===k)cls+=' youcell';
+        if(k===0)inner+='<span class="tick">START</span>'; else if(k===med&&!cyc)inner+='<span class="tick">STOP</span>';
+        if(myDist===k&&myDist!==0)inner='<span class="you">\uD83C\uDF83</span>'+inner;
+        cells+='<div class="'+cls+'">'+inner+'</div>'; }
+      tr.innerHTML=cells; tr.classList.toggle('wide',span>16); }
+    if(mt){ var pm=L>=4?97:L>=2?85:L>=1?65:35;
+      mt.style.display=''; mt.innerHTML='<div class="wm-move"><div class="wm-lbl">CHANCE IT MOVES<span class="pct">'+pm+'%</span></div><div class="wm-bar"><div class="wm-fill" style="width:'+pm+'%"></div></div></div>'; }
+    if(run){ run.style.display='block'; run.className='wire-runaway steady';
+      run.innerHTML=cyc?'the numbers say it goes <b>around the book</b>':'typical miss on this engine is about <b>2 letters</b> \u00B7 the band is where it lands most of the time \u00B7 '+(locked?'this call is locked':'locks at flex and never moves after'); }
   }
   /* the Dispatch Post card, the "your number" line and the council line all read callFor(k) = window._lastCall for
      window._publishedKey. The old bot nulls those while it's off; hand them the v2 call instead, and repaint the Hall. */
