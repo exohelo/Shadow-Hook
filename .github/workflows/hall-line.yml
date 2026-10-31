@@ -43,6 +43,19 @@ on:
     - cron: '4 4 * * *'     # 21:04 PDT · 20:04 PST
     - cron: '33 4 * * *'    # 21:33 PDT · 20:33 PST
     - cron: '2 5 * * *'     # 22:02 PDT · 21:02 PST — final net
+    # ── #oct30(forecast) — pre-flex FORECAST reads: the hall's "we have N jobs" line keeps
+    #    changing through the day; the Wire's call needs the LAST number before dispatch starts.
+    #    Worker runs in --forecast mode: dials inside 05:00–06:28 / 15:00–16:28 LA only, logs the
+    #    count, never touches board_wire. Capped at FORECAST_MAX_CALLS (2) paid reads per window.
+    #    Off-window firings exit in under a second. ~4 extra calls a day ≈ twenty cents.
+    - cron: '48 12 * * *'   # 05:48 PDT — day board, first forecast read
+    - cron: '18 13 * * *'   # 06:18 PDT · 05:18 PST — day board, last read before 6:30 / PST first read
+    - cron: '48 13 * * *'   # 06:48 PDT (gate closed, exits) · 05:48 PST
+    - cron: '19 14 * * *'   # 06:19 PST — day board, last read before 6:30
+    - cron: '47 22 * * *'   # 15:47 PDT — night board, first forecast read
+    - cron: '19 23 * * *'   # 16:19 PDT · 15:19 PST — night board, last read before 4:30 / PST first read
+    - cron: '47 23 * * *'   # 16:47 PDT (gate closed, exits) · 15:47 PST
+    - cron: '19 0 * * *'    # 16:19 PST — night board, last read before 4:30
   workflow_dispatch:
     inputs:
       early:
@@ -51,6 +64,10 @@ on:
         default: false
       force:
         description: 'Override EVERYTHING incl. the cost skips — always dials'
+        type: boolean
+        default: false
+      forecast:
+        description: 'Pre-flex forecast read — log "we have N jobs" for the board about to start'
         type: boolean
         default: false
       dry_run:
@@ -89,8 +106,15 @@ jobs:
           SLOT_KEYWORDS:        ${{ vars.SLOT_KEYWORDS }}
           MIN_CONF:             ${{ vars.MIN_CONF || '0.75' }}
           MAX_CALLS_PER_WINDOW: ${{ vars.MAX_CALLS_PER_WINDOW || '4' }}
+          FORECAST_MAX_CALLS:   ${{ vars.FORECAST_MAX_CALLS || '2' }}
         run: |
           ARGS=""
+          # #oct30(forecast) — the pre-flex schedule entries and the manual switch run the forecast read.
+          # Any scheduled firing inside the pre-flex windows is a forecast read; the worker's own gate
+          # decides, so the end-card sweeps are unaffected (they never fire in those windows).
+          LA_MIN=$(TZ=America/Los_Angeles date +%-H)
+          LA_MIN=$(( LA_MIN * 60 + $(TZ=America/Los_Angeles date +%-M) ))
+          if [ "${{ inputs.forecast }}" = "true" ] || { [ "${{ github.event_name }}" = "schedule" ] && { { [ $LA_MIN -ge 300 ] && [ $LA_MIN -le 388 ]; } || { [ $LA_MIN -ge 900 ] && [ $LA_MIN -le 988 ]; }; }; }; then ARGS="$ARGS --forecast"; fi
           [ "${{ inputs.early }}" = "true" ] && ARGS="$ARGS --early"
           [ "${{ inputs.force }}" = "true" ] && ARGS="$ARGS --force"
           [ "${{ inputs.dry_run }}" = "true" ] && ARGS="$ARGS --dry-run"
