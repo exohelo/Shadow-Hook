@@ -83,6 +83,12 @@ const CFG = {
      every cost protection stays armed (wire skip, human skip, budget) — so the
      Keymaster's early run never burns a call the wire already answered. */
   early:       flag('--early'),
+  /* #oct30(forecast) — PRE-FLEX FORECAST READ. The hall rewrites its "we have N jobs" line through the
+     day (Fri 10/30 PM: 575 at 9:38 AM, 849 by flex). The Wire's call is built from that number, so it needs
+     the LAST version before dispatch starts, not the first. --forecast dials in the half hour before flex,
+     logs the count to hall_line_log (kind 'forecast'), and never touches board_wire. Capped per window. */
+  forecast:    flag('--forecast'),
+  forecastMaxCalls: Math.max(1, parseInt(env('FORECAST_MAX_CALLS') || '2', 10)),
   dryRun:      flag('--dry-run'),
   transcript:  argAfter('--transcript'),
   audioFile:   argAfter('--audio'),
@@ -163,6 +169,16 @@ function prevBoardKey(t) {
    didn't (B0704→B705), so one low-numbered card could de-pad the whole chain. */
 function nextCard(id) { const m = /^([A-Z])(\d+)$/.exec(id || ''); return m ? m[1] + String(parseInt(m[2], 10) + 1).padStart(m[2].length, '0') : id; }
 function letterDist(a, b) { return ((AZ.indexOf(b[0]) - AZ.indexOf(a[0])) % 26 + 26) % 26; }
+/* #oct19 — letters a board MOVED, start card to end card. Same letter with a lower card number means the board went
+   all the way around (a cycle): that's 26, not 0. letterDist() alone wrote 0 for K5050 → K5049 and the predictions
+   learned that the biggest boards never moved. */
+function boardMoved(start, end) {
+  const d = letterDist(start, end);
+  if (d !== 0) return { act: d, cyc: false };
+  const n = s => parseInt(String(s).slice(1).replace(/\D/g, ''), 10);
+  const a = n(start), b = n(end);
+  return (isFinite(a) && isFinite(b) && b < a) ? { act: 26, cyc: true } : { act: 0, cyc: false };
+}
 /* which board a heard COUNT belongs to:
    Early + Night final talk about TONIGHT's board; Day final about the next
    morning's board (announced the night before). The PDF is the record — these
@@ -325,7 +341,57 @@ function resolveAboutKey(ft, t, mode){
   return (best && best.key) || fallback;
 }
 /* ---------- main ---------- */
+
+/* ---------- #oct30(forecast) — the pre-flex forecast read ---------- */
+/* which board the forecast is for: the one about to start. 05:00–06:28 → today AM, 15:00–16:28 → today PM. */
+function forecastTarget() {
+  const now = laParts();
+  if (now.mins >= 5 * 60 && now.mins <= 6 * 60 + 28)  return { key: now.iso + '_' + now.dow + '_AM', slot: 'AM', iso: now.iso, dow: now.dow, winStart: 5 * 60 };
+  if (now.mins >= 15 * 60 && now.mins <= 16 * 60 + 28) return { key: now.iso + '_' + now.dow + '_PM', slot: 'PM', iso: now.iso, dow: now.dow, winStart: 15 * 60 };
+  return null;
+}
+async function forecastRun() { try {
+  const t = forecastTarget();
+  if (!t && !CFG.force) { summary('⏸ FORECAST SKIPPED — outside the pre-flex window (05:00–06:28 / 15:00–16:28 LA).'); return; }
+  const target = t || targetBoard(true);
+  const liveMode = !CFG.transcript && !CFG.audioFile;
+  log('forecast read for', target.key);
+  /* budget: at most FORECAST_MAX_CALLS paid reads per pre-flex window */
+  let spent = 0, prior = [];
+  if (CFG.sbUrl && CFG.sbKey) {
+    try {
+      const sinceISO = new Date(Date.now() - Math.max(0, laParts().mins - (t ? t.winStart : 0)) * 60000).toISOString();
+      prior = await sbSelect('hall_line_log', 'k=eq.' + encodeURIComponent(target.key) + '&extras->>kind=eq.forecast&ran_at=gte.' + sinceISO + '&select=id,call_sid,extras');
+      spent = prior.filter(r => r.call_sid).length;
+    } catch (e) { log('warn: could not read hall_line_log (forecast budget unavailable):', e.message); if (liveMode && !CFG.force) { summary('❌ ABORTED — cannot check the forecast budget; not dialing blind.'); process.exitCode = 1; return; } }
+  }
+  if (liveMode && !CFG.force && spent >= CFG.forecastMaxCalls) { summary('🧯 FORECAST SKIPPED — ' + spent + '/' + CFG.forecastMaxCalls + ' reads already this window.'); return; }
+  if (liveMode) for (const k of ['twilioSid', 'twilioToken', 'twilioFrom', 'dispatchNum', 'openaiKey']) if (!CFG[k]) { console.error('missing config: ' + k); process.exit(1); }
+  let tx = '', sid = null;
+  if (CFG.transcript) tx = CFG.transcript;
+  else if (CFG.audioFile) tx = await transcribe(fs.readFileSync(CFG.audioFile), null);
+  else { const rec = await recordHotline(); sid = rec.callSid; tx = await transcribe(rec.buf, null); }
+  log('transcript:', JSON.stringify((tx || '').slice(0, 400)));
+  const counts = parseCounts(tx || '');
+  /* the count for THIS board: prefer a count whose kind maps to the target, else the last "N jobs" said */
+  let pick = counts.find(c => countTargetKey(c.kind) === target.key) || counts[counts.length - 1] || null;
+  if (!pick) { const m = /(\d{3,4})\s*jobs/i.exec(tx || ''); if (m) pick = { n: parseInt(m[1], 10), kind: 'unknown', heard: m[0] }; }
+  const r = parseLeftOff(tx || '', { keywords: ['casual', 'casuals', 'start', 'starting'] });
+  const startCard = r && r.card ? r.card : null;
+  const row = {
+    k: target.key, card: startCard, conf: pick ? 0.9 : 0,
+    heard: pick ? (pick.n + ' jobs · ' + String(pick.heard || '').slice(0, 80)) : (tx || '').slice(0, 100),
+    transcript: (tx || '').slice(0, 4000), call_sid: sid, posted: false,
+    extras: { kind: 'forecast', about: target.key, n: pick ? pick.n : null, count_kind: pick ? pick.kind : null, counts, announced_start: startCard, read: spent + 1 }
+  };
+  if (CFG.dryRun) { summary('DRY RUN — would log forecast: ' + JSON.stringify(row.extras)); return; }
+  if (CFG.sbUrl && CFG.sbKey) { const ok = await sbInsert('hall_line_log', row); if (!ok) { delete row.extras; await sbInsert('hall_line_log', row); } }
+  summary(pick ? '📣 FORECAST ' + target.key + ': ' + pick.n + ' jobs' + (startCard ? ', starts ' + startCard : '') + ' (read ' + (spent + 1) + ')'
+               : '🔇 FORECAST — no count heard for ' + target.key + ' (read ' + (spent + 1) + ').');
+} finally { summary(costLine()); } }
+
 async function main() { try {
+  if (CFG.forecast) return forecastRun();
   const t = targetBoard(CFG.early);
   const liveMode = !CFG.transcript && !CFG.audioFile;
   log('target board:', t.key, '· LA time gate', insideRunWindow() ? 'OPEN' : 'closed' + (CFG.early ? ' (early run)' : ''));
@@ -400,7 +466,7 @@ async function main() { try {
         const human = !!(ex && ex.patch && ex.by && ex.by !== CFG.botId);
         const dupe = !!(ex && ex.patch && ((tr.patch.end && ex.patch.end === tr.patch.end) || (tr.patch.start && ex.patch.start === tr.patch.start && !tr.patch.end)));
         if (!human && !dupe) {
-          if (tr.patch.end) { const pe = endOf(WIRE[prevKeyOf(tr.postKey)]); if (pe) { tr.patch.start = nextCard(pe); tr.patch.act = letterDist(tr.patch.start, tr.patch.end); } }
+          if (tr.patch.end) { const pe = endOf(WIRE[prevKeyOf(tr.postKey)]); if (pe) { tr.patch.start = nextCard(pe); const mv = boardMoved(tr.patch.start, tr.patch.end); tr.patch.act = mv.act; if (mv.cyc) tr.patch.cyc = true; } }
           const row = { k: tr.postKey, patch: tr.patch, by: CFG.botId, by_handle: CFG.botHandle,
             yes: 2, no: 0, confirmers: 0, chal: null, chal_by: null, chal_handle: null, chal_yes: 0, chal_no: 0,
             status: 'live', heist_from: null, heist_handle: null };
@@ -558,7 +624,7 @@ async function main() { try {
      otherwise the app fills them from its own chain (#206). */
   if (patch.end && priorEnd) {
     patch.start = nextCard(priorEnd);
-    patch.act = letterDist(patch.start, patch.end);
+    { const mv = boardMoved(patch.start, patch.end); patch.act = mv.act; if (mv.cyc) patch.cyc = true; }
   }
   const row = {
     k: postKey, patch,
@@ -606,7 +672,7 @@ if (require.main === module) {
   main().catch(e => { console.error('[leftoff] FAILED:', e.message); summary('❌ FAILED: ' + e.message); summary(costLine()); process.exit(1); });
 }
 module.exports = { _internals: {
-  windowAgeMins, targetBoard, insideRunWindow, buildPatchFromLogRow, corroborateFromLog,
+  windowAgeMins, targetBoard, insideRunWindow, forecastTarget, buildPatchFromLogRow, corroborateFromLog,
   prevKeyOf, nextKeyOf, keyFor, isoShift, prevCardId, nextCard, letterDist, endOf, resolveAboutKey
 } };
 
