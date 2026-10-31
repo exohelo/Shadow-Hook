@@ -4,7 +4,7 @@
    index.html still paints the IN TRAINING label (km_flags.wire_call_on stays false so the old bot can't post);
    this file paints over it with the v2 call: the stop letter in the big slot, the band · letters · start card · lock
    under it, the inputs, and the last six graded boards. Polls every 60 s; nothing here writes anything.
-   Load once from index.html, after hand_counts.js:  <script src="wire_v2.js?v=oct30a" defer></script> */
+   Load once from index.html, after hand_counts.js:  <script src="wire_v2.js?v=oct31a" defer></script> */
 (function(){
   'use strict';
   if(window.__wireV2)return; window.__wireV2=true;
@@ -44,7 +44,19 @@
       '<span class="v2i">'+(locked?'<span class="v2lock">\u{1F512} LOCKED '+when(up.locked_at)+'</span> \u00B7 the call doesn\u2019t move once dispatch starts':'locks '+when(flexOf(up.k))+' \u00B7 updated '+when(up.computed_at)+' \u00B7 moves only if the sheets change before then')+
       '<br>hall says '+esc(inp.hall_forecast)+' jobs \u00B7 PMA '+esc(inp.pma_total)+' \u00B7 last board moved '+esc(inp.prev1)+'</span>'+g+'</span>';
     if(src){ src.className='wire-src '+(locked?'lock':'est'); src.textContent='\u26A1 WIRE v2 \u00B7 '+(locked?'LOCKED':'LIVE CALL'); }
+    share(up,L,stop,locked);
   }
+  /* the Dispatch Post card, the "your number" line and the council line all read callFor(k) = window._lastCall for
+     window._publishedKey. The old bot nulls those while it's off; hand them the v2 call instead, and repaint the Hall. */
+  var shared='';
+  function share(up,L,stop,locked){
+    var sig=up.k+'|'+stop+'|'+up.lo+'|'+up.hi+'|'+(locked?'L':'');
+    window._lastCall={stop:stop,lo:up.lo,hi:up.hi,pmove:Math.round(L),src:'v2',k:up.k,locked:locked};
+    window._publishedKey=up.k; window._predSource='v2';
+    if(sig===shared)return; shared=sig;
+    try{ typeof window.dpRefresh==='function'&&window.dpRefresh(); }catch(e){}
+  }
+  setInterval(function(){ if(rows&&window._predSource!=='v2')paint(); },5000);
   function load(){ if(!window.SB)return;
     window.SB.from('wire_call_v2_log').select('k,start_code,letters,stop,lo,hi,inputs,computed_at,locked_at,locked_letters,locked_stop,actual_moved').order('d',{ascending:false}).order('shift',{ascending:false}).limit(8)
       .then(function(r){ if(r.error||!Array.isArray(r.data))return; rows=r.data; paint(); },function(){}); }
