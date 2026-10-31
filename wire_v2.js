@@ -4,11 +4,13 @@
    index.html still paints the IN TRAINING label (km_flags.wire_call_on stays false so the old bot can't post);
    this file paints over it with the v2 call: the stop letter in the big slot, the band · letters · start card · lock
    under it, the inputs, and the last six graded boards. Polls every 60 s; nothing here writes anything.
-   Load once from index.html, after hand_counts.js:  <script src="wire_v2.js?v=oct31c" defer></script> */
+   Load once from index.html, after hand_counts.js:  <script src="wire_v2.js?v=oct31d" defer></script> */
 (function(){
   'use strict';
   if(window.__wireV2)return; window.__wireV2=true;
-  var rows=null, t=null, mark='data-v2';
+  var rows=null, t=null, mark='data-v2', LS='shadowhook_wire_v2';
+  /* #oct31(flash): paint the last call this phone saw the instant the Wire exists, so the old label never gets the screen first */
+  try{ var cached=JSON.parse(localStorage.getItem(LS)||'null'); if(cached&&cached.rows&&Date.now()-cached.at<36*3600e3)rows=cached.rows; }catch(e){}
   function css(){ if(document.getElementById('v2CSS'))return; var s=document.createElement('style'); s.id='v2CSS'; s.textContent=
     '#wMoves .v2b{font:700 15px "Barlow Condensed",sans-serif;letter-spacing:.06em;color:#dcd6c9}#wMoves .v2i{display:block;margin-top:3px;font:600 11px Inter,system-ui,sans-serif;color:#8f979e;line-height:1.5}'+
     '#wMoves .v2g{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:6px;padding-top:5px;border-top:1px solid rgba(220,214,201,.08);font:600 11px Inter,system-ui,sans-serif;color:#8f979e}#wMoves .v2g b{color:#dcd6c9}#wMoves .v2g .ok{color:#7fcf8a}#wMoves .v2g .bad{color:#e8967a}'+
@@ -80,7 +82,8 @@
   setInterval(function(){ if(rows&&window._predSource!=='v2')paint(); },5000);
   function load(){ if(!window.SB)return;
     window.SB.from('wire_call_v2_log').select('k,start_code,letters,stop,lo,hi,inputs,computed_at,locked_at,locked_letters,locked_stop,actual_moved').order('d',{ascending:false}).order('shift',{ascending:false}).limit(8)
-      .then(function(r){ if(r.error||!Array.isArray(r.data))return; rows=r.data; paint(); },function(){}); }
+      .then(function(r){ if(r.error||!Array.isArray(r.data))return; rows=r.data; try{ localStorage.setItem(LS,JSON.stringify({at:Date.now(),rows:rows})); }catch(e){} paint(); },function(){}); }
+  if(rows){ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',paint); else paint(); }
   /* repaint whenever index.html paints the training label over us */
   new MutationObserver(function(){ clearTimeout(t); t=setTimeout(function(){ var ps=document.getElementById('predStop'); if(ps&&rows&&!ps.querySelector('['+mark+']'))paint(); },150); }).observe(document.body,{childList:true,subtree:true,characterData:true});
   setInterval(load,60000);

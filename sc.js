@@ -623,7 +623,9 @@ function scZoomLb(src) {
         var st = document.createElement("style");
         st.id = "scGateCSS";
         st.textContent = [
-            ".sc-sheet.gate{overflow:hidden;padding:0!important;background:radial-gradient(70% 55% at 50% 42%,#5c1a30 0%,var(--sc-velvet3) 38%,#14040a 78%,#090205 100%)}",
+            /* #oct31(gateday): the gate is also an app .sheet, and html.daylight .sheet paints every sheet translucent with a blur — that rule outranked this one, so the day side opened on a washed-out splash. Pinned to the Chamber's own velvet in both themes. */
+            "html .sc-sheet.gate,html.daylight .sc-sheet.gate{overflow:hidden;padding:0!important;background:radial-gradient(70% 55% at 50% 42%,#5c1a30 0%,#4a1527 38%,#14040a 78%,#090205 100%)!important;background-image:radial-gradient(70% 55% at 50% 42%,#5c1a30 0%,#4a1527 38%,#14040a 78%,#090205 100%)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;color:#efe3c8}",
+            "html.daylight .sc-sheet.gate .gw,html.daylight .sc-sheet.gate .gseat span{color:#efe3c8}",
             ".sc-sheet.gate:after{content:\"\";position:absolute;inset:0;pointer-events:none;background:radial-gradient(120% 100% at 50% 45%,transparent 55%,rgba(0,0,0,.55));z-index:1}",
             ".gdoor{position:absolute;top:0;bottom:0;width:50.5%;z-index:6;background:repeating-linear-gradient(90deg,rgba(0,0,0,.18) 0 2px,transparent 2px 22px),linear-gradient(180deg,#3b0f1e,#1c060d);box-shadow:inset 0 0 60px rgba(0,0,0,.7);animation:gDoor 1.25s cubic-bezier(.7,0,.25,1) .25s both}",
             ".gdoor.l{left:0;border-right:1px solid var(--sc-gold);--gx:-102%}.gdoor.r{right:0;border-left:1px solid var(--sc-gold);--gx:102%}",
