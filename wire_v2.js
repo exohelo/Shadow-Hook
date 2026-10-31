@@ -4,7 +4,7 @@
    index.html still paints the IN TRAINING label (km_flags.wire_call_on stays false so the old bot can't post);
    this file paints over it with the v2 call: the stop letter in the big slot, the band · letters · start card · lock
    under it, the inputs, and the last six graded boards. Polls every 60 s; nothing here writes anything.
-   Load once from index.html, after hand_counts.js:  <script src="wire_v2.js?v=oct31b" defer></script> */
+   Load once from index.html, after hand_counts.js:  <script src="wire_v2.js?v=oct31c" defer></script> */
 (function(){
   'use strict';
   if(window.__wireV2)return; window.__wireV2=true;
@@ -29,7 +29,7 @@
     var key=upcomingKey(), up=null, i;
     for(i=0;i<rows.length;i++)if(rows[i].k===key){ up=rows[i]; break; }
     /* the board that's running or just ran: its locked call stays up until the next board has one */
-    if(!up)for(i=0;i<rows.length;i++)if(rows[i].locked_at&&rows[i].actual_moved==null){ up=rows[i]; break; }
+    if(!up)for(i=0;i<rows.length;i++)if(rows[i].actual_moved==null&&rows[i].k<key){ up=rows[i]; break; }
     var done=rows.filter(function(r){ return r.actual_moved!=null&&r.locked_letters!=null; }).slice(0,6);
     var g=done.length?'<div class="v2g">'+done.map(function(r){ var m=Math.abs(+r.locked_letters-r.actual_moved); return '<span>'+lbl(r.k).replace(/^\w+ /,'')+' <b>'+(+r.locked_letters).toFixed(0)+'\u2192'+r.actual_moved+'</b> <i class="'+(m<=1?'ok':m<=2?'':'bad')+'">'+(m<=1?'\u2713':'\u00B1'+m.toFixed(0))+'</i></span>'; }).join('')+'</div>':'';
     if(!up){
