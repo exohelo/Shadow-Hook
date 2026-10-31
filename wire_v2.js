@@ -4,7 +4,7 @@
    index.html still paints the IN TRAINING label (km_flags.wire_call_on stays false so the old bot can't post);
    this file paints over it with the v2 call: the stop letter in the big slot, the band · letters · start card · lock
    under it, the inputs, and the last six graded boards. Polls every 60 s; nothing here writes anything.
-   Load once from index.html, after hand_counts.js:  <script src="wire_v2.js?v=oct31d" defer></script> */
+   Load once from index.html, after hand_counts.js:  <script src="wire_v2.js?v=oct31e" defer></script> */
 (function(){
   'use strict';
   if(window.__wireV2)return; window.__wireV2=true;
@@ -84,6 +84,7 @@
     window.SB.from('wire_call_v2_log').select('k,start_code,letters,stop,lo,hi,inputs,computed_at,locked_at,locked_letters,locked_stop,actual_moved').order('d',{ascending:false}).order('shift',{ascending:false}).limit(8)
       .then(function(r){ if(r.error||!Array.isArray(r.data))return; rows=r.data; try{ localStorage.setItem(LS,JSON.stringify({at:Date.now(),rows:rows})); }catch(e){} paint(); },function(){}); }
   if(rows){ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',paint); else paint(); }
+  window.wireV2Paint=function(){ if(!rows)return false; paint(); return true; };
   /* repaint whenever index.html paints the training label over us */
   new MutationObserver(function(){ clearTimeout(t); t=setTimeout(function(){ var ps=document.getElementById('predStop'); if(ps&&rows&&!ps.querySelector('['+mark+']'))paint(); },150); }).observe(document.body,{childList:true,subtree:true,characterData:true});
   setInterval(load,60000);
