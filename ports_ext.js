@@ -26,6 +26,10 @@
     hall_line_log: null, mark_draws: "slot", hall_counts: "k", board_history: "k", scan_tape: null, scan_lessons: null
   };
   var LS_HOME = "shk_home_port";
+  /* the Shadow Council tables became <name>_all with a port column on Nov 1; <name> is now a view of the caller's hall.
+     Queries and RPCs need nothing. Realtime does: changes come from the base table, so channels are re-pointed here. */
+  var SC_ALL = ["sc_seats", "sc_house", "sc_hall_line", "sc_table", "sc_motions", "sc_votes", "sc_vote_extensions", "sc_claims", "sc_claim_votes",
+    "sc_succ_votes", "sc_jobs", "sc_line", "sc_bans", "sc_treasury", "sc_applicant_checks", "council_line", "council_strikes", "seat_apply"];
   var S = { home: "lalb", homeSure: false, view: "lalb", packs: {}, applied: null };
 
   function log() { try { if (window.DEVLOG && DEVLOG.data) DEVLOG.data("ports_ext", Array.prototype.slice.call(arguments)); } catch (e) {} }
@@ -113,6 +117,12 @@
     };
     return q;
   }
+  /* rooms: a room with a port belongs to that hall; a room with no port is the Order's. Members only see their own hall's. */
+  function wrapRooms(q) {
+    var oSel = q.select;
+    q.select = function () { var b = oSel.apply(q, arguments); try { b = b.or("port.is.null,port.eq." + S.home); } catch (e) {} return b; };
+    return q;
+  }
   function patchSB() {
     var sb = window.SB;
     if (!sb || sb.__shkPortScoped) return !!sb;
@@ -121,6 +131,7 @@
       sb.from = function (table) {
         var q = oFrom(table);
         if (table === "stories") return wrapStories(q);
+        if (table === "rooms") return wrapRooms(q);
         return Object.prototype.hasOwnProperty.call(HALL, table) ? wrapBuilder(q, table) : q;
       };
       var oChan = sb.channel.bind(sb);
@@ -130,6 +141,8 @@
           try {
             if (type === "postgres_changes" && cfg && cfg.table && Object.prototype.hasOwnProperty.call(HALL, cfg.table) && !cfg.filter)
               cfg = Object.assign({}, cfg, { filter: "port=eq." + S.home });
+            if (type === "postgres_changes" && cfg && cfg.table && SC_ALL.indexOf(cfg.table) >= 0)
+              cfg = Object.assign({}, cfg, { table: cfg.table + "_all", filter: cfg.filter ? cfg.filter + "&port=eq." + S.home : "port=eq." + S.home });
           } catch (e) {}
           return oOn.call(ch, type, cfg, cb);
         };
@@ -281,8 +294,18 @@
   async function loadScanOpen() {
     try {
       if (!window.SB) return;
-      var r = await window.SB.from("ports").select("code,scan_open");
-      if (r && !r.error && Array.isArray(r.data)) r.data.forEach(function (x) { S.scanOpen[x.code] = !!x.scan_open; });
+      var r = await window.SB.from("ports").select("code,scan_open,flex_am,flex_pm,tz");
+      if (r && !r.error && Array.isArray(r.data)) r.data.forEach(function (x) {
+        S.scanOpen[x.code] = !!x.scan_open;
+        if (x.code === S.home) setFlex(x);
+      });
+    } catch (e) {}
+  }
+  /* the live window (flex → +3h day, flex → +2.5h night) follows the home port: index.html’s liveWindow() reads window.SHK_FLEX */
+  function setFlex(row) {
+    try {
+      var hm = function (t, dflt) { var m = /^(\d{1,2}):(\d{2})/.exec(String(t || "")); return m ? [+m[1], +m[2]] : dflt; };
+      window.SHK_FLEX = { am: hm(row.flex_am, [6, 30]), pm: hm(row.flex_pm, [16, 30]), tz: row.tz || "America/Los_Angeles" };
     } catch (e) {}
   }
   function gateClosed() { return S.home !== "lalb" && !S.scanOpen[S.home]; }
