@@ -1,4 +1,4 @@
-/* The Shadow Hook · parse_sf.js (nov1a) — reads the ILWU Local 10 pre-tape (the San Francisco / Oakland hall).
+/* The Shadow Hook · parse_sf.js (nov1b) — reads the ILWU Local 10 pre-tape (the San Francisco / Oakland hall).
    Local 10 does not run a letter board. The pre-tape gives, for each coming shift:
      "Tonight, we have a possible 129 jobs, 69 skill, and 60 non-skill."
      "Ships possibly working, berth 55 with 3 cranes to continue, berth 25 with 2 cranes to start, ..."
@@ -46,9 +46,9 @@ function parseStarts(seg) {
   /* one board per sentence; registration numbers carry a decimal point, so split only where a capital follows */
   const starts = {};
   seg.split(/\.\s+(?=[A-Z])/).forEach(function (sen) {
-    const m = /^(?:and\s+)?(?:(?:night|day)side\s+starts,?\s*)?([A-Za-z][A-Za-z ]{0,22}?)(?:\s+board)?,?\s+(?:you(?:'re| are)\s+at\s+)?line\s+(\d{1,3}),?\s+([\d.,]{3,9})/i.exec(sen.trim());
+    const m = /^(?:and\s+)?(?:(?:night|day)side\s+starts,?\s*)?([A-Za-z][A-Za-z ]{0,22}?)(?:\s+boards?)?,?\s+(?:you(?:'re| are)\s+at\s+)?line\s+(\d{1,3}),?\s+([\d.,]{3,9})/i.exec(sen.trim());
     if (!m) return;
-    const name = m[1].trim().toLowerCase().replace(/\s+/g, ' ');
+    const name = m[1].trim().toLowerCase().replace(/\s+/g, ' ').replace(/\s+boards?$/, '').replace(/^press$/, 'prep');
     if (/^(?:possible|berth|ships?)/.test(name)) return;
     starts[name] = { line: toInt(m[2]), reg: m[3].replace(/[.,]$/, '') };
   });
@@ -62,21 +62,34 @@ function parseIds(seg) {
 function parseLocal10(tx, ranAt) {
   tx = String(tx || '');
   const dates = headerDates(tx, ranAt);
-  /* the tape speaks in two blocks: "Tonight, ..." and "In the morning, ..." (or "Today, ..." on a morning tape) */
+  /* job blocks open a sentence: "Tonight, we have a possible ...", "In the morning, we have ...", "Tomorrow morning, we have ..."
+     (the tape repeats them as a recap: "Again, tonight, we have ..."). A passing "tonight at 7 p.m." is not a block. */
   const marks = [];
-  const re = /\b(tonight|this evening|in the morning|tomorrow morning|this morning|today)\b[,\s]/gi;
+  const re = /(?:^|[.!?]\s+)(?:all right,?\s+)?(?:again,?\s+)?(tonight|this evening|in the morning|tomorrow morning|this morning|today),?\s+we\s+have\b/gi;
   let m; while ((m = re.exec(tx))) marks.push({ at: m.index, word: m[1].toLowerCase() });
-  const shifts = [];
-  marks.forEach((mk, i) => {
-    const seg = tx.slice(mk.at, i + 1 < marks.length ? marks[i + 1].at : tx.length);
-    const ap = /morning|today/.test(mk.word) ? 'AM' : 'PM';
-    if (!/possible\s+[\d,]+\s+jobs?|berth\s+\d|line\s+\d|I\.?\s?D/i.test(seg)) return;     /* a passing "today" in a message */
-    const d = dates[ap];
-    const s = Object.assign({ said: mk.word, shift: ap, key: d ? keyOf(d, ap) : null }, parseJobs(seg),
-      { ships: parseShips(seg), starts: parseStarts(seg), ids: parseIds(seg) });
-    s.cut = i + 1 === marks.length && s.ids == null;   /* the call ended before this shift's starts were read */
-    shifts.push(s);
+  /* board starts are their own blocks: "Nightside starts, ..." belongs to the night, "Dayside starts, ..." to the day */
+  const startBlocks = [];
+  const rs = /(night|day)side\s+starts\b/gi;
+  while ((m = rs.exec(tx))) startBlocks.push({ at: m.index, ap: m[1].toLowerCase() === 'night' ? 'PM' : 'AM' });
+  const ends = marks.map(x => x.at).concat(startBlocks.map(x => x.at)).sort((a, b) => a - b);
+  const until = at => { const n = ends.find(e => e > at); return n == null ? tx.length : n; };
+  const byKey = {};
+  function shift(ap) {
+    const d = dates[ap], key = d ? keyOf(d, ap) : null, k = key || ap;
+    return byKey[k] || (byKey[k] = { shift: ap, key, jobs: null, skill: null, nonskill: null, ships: [], starts: {}, ids: null });
+  }
+  marks.forEach(mk => {
+    const seg = tx.slice(mk.at, until(mk.at)), ap = /morning|today/.test(mk.word) ? 'AM' : 'PM', s = shift(ap), J = parseJobs(seg), sh = parseShips(seg);
+    if (s.jobs == null && J.jobs != null) Object.assign(s, J);          /* the first telling wins; the recap only fills gaps */
+    if (!s.ships.length && sh.length) s.ships = sh;
+    if (s.ids == null) s.ids = parseIds(seg);
   });
+  startBlocks.forEach(b => {
+    const seg = tx.slice(b.at, until(b.at)), s = shift(b.ap), st = parseStarts(seg);
+    Object.keys(st).forEach(k => { if (!s.starts[k]) s.starts[k] = st[k]; });
+    if (s.ids == null) s.ids = parseIds(seg);
+  });
+  const shifts = Object.keys(byKey).map(k => byKey[k]).sort((a, b) => String(a.key).localeCompare(String(b.key)));
   return { dates: { night: dates.PM ? iso(dates.PM) : null, morning: dates.AM ? iso(dates.AM) : null }, shifts };
 }
 
