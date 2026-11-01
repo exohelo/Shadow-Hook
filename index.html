@@ -10781,17 +10781,22 @@ html.season-november #cgFrame{overflow:visible}
  function on(){return H.classList.contains('season-november');}
  function leaf(i){var c=CL[i%CL.length],id='nlg'+(LID++);return '<svg viewBox="0 0 40 48"><defs><linearGradient id="'+id+'" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="'+c[0]+'"/><stop offset="1" stop-color="'+c[1]+'"/></linearGradient></defs><path d="'+SH[i%SH.length]+'" fill="url(#'+id+')" stroke="'+c[2]+'" stroke-width=".6"/><path d="M20 10V44" stroke="'+c[2]+'" stroke-width=".9" stroke-opacity=".55" fill="none"/></svg>';}
  function layer(){var L=document.getElementById('novLeaves');if(!L){L=document.createElement('div');L.id='novLeaves';L.setAttribute('aria-hidden','true');document.body.appendChild(L);}else if(!document.body.contains(L))document.body.appendChild(L);return L;}
+ /* Driven by the Web Animations API, not CSS animation: the raffle reveal's bursts make the app's performance guard
+    switch decorative CSS animation off (animation:none), which left the leaves frozen and invisible. element.animate()
+    is not touched by those rules, and the watchdog below restarts anything a script pauses. */
+ var RM=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)');
  function drop(){
-  if(!on()||document.hidden)return;
+  if(!on()||document.hidden||(RM&&RM.matches))return;
   var L=layer();if(L.children.length>=MAX)return;
   var w=document.createElement('div');w.className='nl';w.innerHTML=leaf(Math.floor(Math.random()*21));
-  var sz=18+Math.random()*12,dur=12+Math.random()*8;
-  w.style.width=sz+'px';w.style.height=(sz*1.2)+'px';w.style.left=(5+Math.random()*85)+'%';
-  w.style.setProperty('--dx',(Math.random()*180-90)+'px');w.style.setProperty('--r',(Math.random()*540-270)+'deg');
-  w.style.animationDuration=dur+'s';w.style.animationIterationCount='1';w.firstChild.style.animationDuration=(1.6+Math.random()*1.4)+'s';
-  w.addEventListener('animationend',function(e){if(e.target===w)w.remove();});
-  setTimeout(function(){w.remove();},(dur+1)*1000);
+  var sz=18+Math.random()*12,dur=12000+Math.random()*8000,dx=Math.random()*180-90,rot=Math.random()*540-270;
+  w.style.cssText='width:'+sz+'px;height:'+(sz*1.2)+'px;left:'+(5+Math.random()*85)+'%;animation:none!important;opacity:1';
   L.appendChild(w);
+  var vh=(window.innerHeight||800)*1.08+40;
+  var fall=w.animate([{transform:'translate(0,-40px) rotate(0deg)',opacity:0},{opacity:.9,offset:.08},{transform:'translate('+dx+'px,'+vh+'px) rotate('+rot+'deg)',opacity:.75}],{duration:dur,easing:'linear',fill:'forwards'});
+  var svg=w.firstChild;if(svg){svg.style.animation='none';svg.animate([{transform:'rotate(-26deg) scaleX(1)'},{transform:'rotate(6deg) scaleX(.55)',offset:.5},{transform:'rotate(30deg) scaleX(1)'}],{duration:1600+Math.random()*1400,iterations:Infinity,direction:'alternate',easing:'ease-in-out'});}
+  fall.onfinish=function(){w.remove();};
+  setTimeout(function(){w.remove();},dur+3000);
  }
  function schedule(){clearTimeout(timer);timer=setTimeout(function(){drop();if(Math.random()<.25)setTimeout(drop,1500+Math.random()*2500);schedule();},7000+Math.random()*11000);}
  function keepFalling(){try{var L=document.getElementById('novLeaves');if(!L||document.hidden||!on())return;if(L.getAnimations)L.getAnimations({subtree:true}).forEach(function(a){if(a.playState==='paused')a.play();});}catch(e){}}
