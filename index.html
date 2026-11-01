@@ -10736,38 +10736,66 @@ function storyDockChip(note){try{var t=String(note||"");if(t.charAt(0)!=="{")ret
 <style id="shk-november-leaves">
 #novLeaves{position:fixed;inset:0;z-index:3;pointer-events:none;overflow:hidden;contain:strict}
 html:not(.season-november) #novLeaves{display:none}
-#novLeaves .nl{position:absolute;top:-40px;opacity:0;animation:nlFall linear infinite;will-change:transform}
+#novLeaves .nl{position:absolute;top:-40px;opacity:0;animation:nlFall linear 1 forwards;will-change:transform}
 #novLeaves .nl svg{position:absolute;inset:0;width:100%;height:100%;animation:nlFlutter ease-in-out infinite alternate;filter:drop-shadow(0 2px 2px rgba(0,0,0,.45))}
 @keyframes nlFall{0%{transform:translate(0,-40px) rotate(0);opacity:0}8%{opacity:.9}100%{transform:translate(var(--dx),108vh) rotate(var(--r));opacity:.75}}
 @keyframes nlFlutter{0%{transform:rotate(-26deg) scaleX(1)}50%{transform:rotate(6deg) scaleX(.55)}100%{transform:rotate(30deg) scaleX(1)}}
 html.daylight #novLeaves{opacity:.6}
-.sn-pause #novLeaves .nl,.sn-pause #novLeaves svg{animation-play-state:paused}
+html body #novLeaves .nl,html body #novLeaves .nl svg{animation-play-state:running!important}
+html body.sn-pause #novLeaves .nl,html body.sn-pause #novLeaves .nl svg{animation-play-state:paused!important}
 @media (prefers-reduced-motion:reduce){#novLeaves{display:none}}
 html.season-november .sn-decor .sn-leaf{display:none}
+html.season-november #cgFrame{overflow:visible}
+.cg-wreath{position:absolute;inset:0;pointer-events:none;z-index:2}
+.cg-wreath i{position:absolute;display:block;filter:drop-shadow(0 2px 3px rgba(0,0,0,.55))}
+.cg-wreath svg{width:100%;height:100%;display:block}
 </style>
 <script id="shk-november-leaves-js">
-/* November: a dozen leaves drift down the screen while html.season-november is on. Own layer (#novLeaves). */
+/* November: now and then a leaf drifts down the screen (one or two at a time, never a shower), and the docket camera
+   gets a wreath of autumn leaves around its frame. Own layer (#novLeaves); nothing else in the app can pause or clear it. */
 (function(){
- var CL=[['#d9321b','#f0a21c','#7a1a0a'],['#e2611a','#f6c42a','#8a3a0a'],['#e9c21b','#b8860b','#8a6a08'],['#9db52c','#e3c93a','#5a6a12'],['#c23f10','#e88c22','#6e1d05'],['#f0b824','#d85b16','#8a3a0a']];
+ var CL=[['#d9321b','#f0a21c','#7a1a0a'],['#e2611a','#f6c42a','#8a3a0a'],['#e9c21b','#b8860b','#8a6a08'],['#9db52c','#e3c93a','#5a6a12'],['#c23f10','#e88c22','#6e1d05'],['#f0b824','#d85b16','#8a3a0a'],['#b8202a','#e2541f','#5e0d10']];
  var SH=['M20 3l3.5 8 7-5-1.5 9.5 9 1-6.5 6 5 7.5-9-2.5L24 44h-8l-3.5-16.5-9 2.5 5-7.5-6.5-6 9-1L9.5 6l7 5z',
          'M20 2C30 10 36 20 32 32 29 40 24 44 20 46 16 44 11 40 8 32 4 20 10 10 20 2z',
          'M20 3l5 9 9-2-4 9 7 6-9 2 1 10-9-6-9 6 1-10-9-2 7-6-4-9 9 2z'];
- var H=document.documentElement,LID=0;
+ var H=document.documentElement,LID=0,MAX=2,timer=0;
+ function on(){return H.classList.contains('season-november');}
  function leaf(i){var c=CL[i%CL.length],id='nlg'+(LID++);return '<svg viewBox="0 0 40 48"><defs><linearGradient id="'+id+'" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="'+c[0]+'"/><stop offset="1" stop-color="'+c[1]+'"/></linearGradient></defs><path d="'+SH[i%SH.length]+'" fill="url(#'+id+')" stroke="'+c[2]+'" stroke-width=".6"/><path d="M20 10V44" stroke="'+c[2]+'" stroke-width=".9" stroke-opacity=".55" fill="none"/></svg>';}
- function build(){
-  if(!H.classList.contains('season-november'))return;
-  if(document.getElementById('novLeaves'))return;
-  var L=document.createElement('div');L.id='novLeaves';L.setAttribute('aria-hidden','true');
-  var n=(window.innerWidth||400)<420?10:14;
-  for(var i=0;i<n;i++){var w=document.createElement('div');w.className='nl';w.innerHTML=leaf(i);
-   var sz=16+Math.random()*14;w.style.width=sz+'px';w.style.height=(sz*1.2)+'px';
-   w.style.left=(2+i*(96/n)+Math.random()*4)+'%';
-   w.style.setProperty('--dx',(Math.random()*160-80)+'px');w.style.setProperty('--r',(Math.random()*540-270)+'deg');
-   w.style.animationDuration=(11+Math.random()*9)+'s';w.style.animationDelay=(-Math.random()*20)+'s';
-   w.firstChild.style.animationDuration=(1.6+Math.random()*1.4)+'s';L.appendChild(w);}
-  document.body.appendChild(L);
+ function layer(){var L=document.getElementById('novLeaves');if(!L){L=document.createElement('div');L.id='novLeaves';L.setAttribute('aria-hidden','true');document.body.appendChild(L);}else if(!document.body.contains(L))document.body.appendChild(L);return L;}
+ function drop(){
+  if(!on()||document.hidden)return;
+  var L=layer();if(L.children.length>=MAX)return;
+  var w=document.createElement('div');w.className='nl';w.innerHTML=leaf(Math.floor(Math.random()*21));
+  var sz=18+Math.random()*12,dur=12+Math.random()*8;
+  w.style.width=sz+'px';w.style.height=(sz*1.2)+'px';w.style.left=(5+Math.random()*85)+'%';
+  w.style.setProperty('--dx',(Math.random()*180-90)+'px');w.style.setProperty('--r',(Math.random()*540-270)+'deg');
+  w.style.animationDuration=dur+'s';w.style.animationIterationCount='1';w.firstChild.style.animationDuration=(1.6+Math.random()*1.4)+'s';
+  w.addEventListener('animationend',function(e){if(e.target===w)w.remove();});
+  setTimeout(function(){w.remove();},(dur+1)*1000);
+  L.appendChild(w);
  }
- function boot(){build();new MutationObserver(build).observe(H,{attributes:true,attributeFilter:['class']});}
+ function schedule(){clearTimeout(timer);timer=setTimeout(function(){drop();if(Math.random()<.25)setTimeout(drop,1500+Math.random()*2500);schedule();},7000+Math.random()*11000);}
+ function keepFalling(){try{var L=document.getElementById('novLeaves');if(!L||document.hidden||!on())return;if(L.getAnimations)L.getAnimations({subtree:true}).forEach(function(a){if(a.playState==='paused')a.play();});}catch(e){}}
+
+ /* the docket camera: a wreath of leaves around the frame, outside the box so it never hides the docket */
+ function wreath(){
+  if(!on())return;var F=document.getElementById('cgFrame');if(!F||F.querySelector('.cg-wreath'))return;
+  var W=document.createElement('div');W.className='cg-wreath';W.setAttribute('aria-hidden','true');
+  var spots=[],i,t;
+  for(i=0;i<9;i++){t=i/8;spots.push([t*100,0]);spots.push([t*100,100]);}
+  for(i=1;i<7;i++){t=i/7;spots.push([0,t*100]);spots.push([100,t*100]);}
+  spots.forEach(function(p,k){var e=document.createElement('i');var sz=30+Math.random()*16;
+   var ox=p[0]===0?-.62:p[0]===100?-.38:-.5, oy=p[1]===0?-.66:p[1]===100?-.34:-.5;
+   e.style.cssText='left:calc('+p[0]+'% + '+(ox*sz).toFixed(1)+'px);top:calc('+p[1]+'% + '+(oy*sz*1.2).toFixed(1)+'px);width:'+sz.toFixed(0)+'px;height:'+(sz*1.2).toFixed(0)+'px;transform:rotate('+(Math.random()*360-180).toFixed(0)+'deg)';
+   e.innerHTML=leaf(k*5+Math.floor(Math.random()*7));W.appendChild(e);});
+  F.appendChild(W);
+ }
+ function boot(){
+  if(on())schedule();
+  new MutationObserver(function(){if(on())schedule();else{clearTimeout(timer);var L=document.getElementById('novLeaves');L&&(L.innerHTML='');}}).observe(H,{attributes:true,attributeFilter:['class']});
+  new MutationObserver(function(){if(document.getElementById('cgFrame'))wreath();}).observe(document.body,{childList:true});
+  setInterval(keepFalling,1500);document.addEventListener('visibilitychange',keepFalling);
+ }
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
 })();
 </script>
