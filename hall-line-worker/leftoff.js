@@ -89,10 +89,20 @@ const CFG = {
      logs the count to hall_line_log (kind 'forecast'), and never touches board_wire. Capped per window. */
   forecast:    flag('--forecast'),
   forecastMaxCalls: Math.max(1, parseInt(env('FORECAST_MAX_CALLS') || '2', 10)),
+  /* #nov1(ports) — WHICH HALL. One worker, many halls: PORT picks the hall (lalb · sf · sd); every Supabase row it writes
+     carries it and every read is filtered by it, so two halls on the same shift key never touch each other's rows.
+     (board_wire / hall_line_log are keyed (port, k) since the Nov 1 migration.) */
+  port:        (env('PORT') || 'lalb').toLowerCase(),
   dryRun:      flag('--dry-run'),
   transcript:  argAfter('--transcript'),
   audioFile:   argAfter('--audio'),
 };
+const HALLS = {
+  lalb: { local: 'ILWU Local 13', where: 'San Pedro / Long Beach' },
+  sf:   { local: 'ILWU Local 10', where: 'San Francisco / Oakland' },
+  sd:   { local: 'ILWU Local 29', where: 'San Diego / National City' },
+};
+const HALL = HALLS[CFG.port] || HALLS.lalb;
 const AZ = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const log = (...a) => console.log('[leftoff]', ...a);
@@ -287,7 +297,7 @@ async function transcribe(buf, prevEnd) {
   fd.append('language', 'en');
   fd.append('temperature', '0');
   fd.append('prompt',
-    'ILWU Local 13 longshore dispatch recording, San Pedro / Long Beach. ' +
+    HALL.local + ' longshore dispatch recording, ' + HALL.where + '. ' +
     'It announces the casual job forecast: where boards left off, or which letter and card ' +
     'number the next board will start with — like "we are going to start with the letter B, ' +
     'B as in Baker, 4704" or "left off at W4912".' +
@@ -361,7 +371,7 @@ async function forecastRun() { try {
   if (CFG.sbUrl && CFG.sbKey) {
     try {
       const sinceISO = new Date(Date.now() - Math.max(0, laParts().mins - (t ? t.winStart : 0)) * 60000).toISOString();
-      prior = await sbSelect('hall_line_log', 'k=eq.' + encodeURIComponent(target.key) + '&extras->>kind=eq.forecast&ran_at=gte.' + sinceISO + '&select=id,call_sid,extras');
+      prior = await sbSelect('hall_line_log', 'port=eq.' + CFG.port + '&k=eq.' + encodeURIComponent(target.key) + '&extras->>kind=eq.forecast&ran_at=gte.' + sinceISO + '&select=id,call_sid,extras');
       spent = prior.filter(r => r.call_sid).length;
     } catch (e) { log('warn: could not read hall_line_log (forecast budget unavailable):', e.message); if (liveMode && !CFG.force) { summary('❌ ABORTED — cannot check the forecast budget; not dialing blind.'); process.exitCode = 1; return; } }
   }
@@ -379,7 +389,7 @@ async function forecastRun() { try {
   const r = parseLeftOff(tx || '', { keywords: ['casual', 'casuals', 'start', 'starting'] });
   const startCard = r && r.card ? r.card : null;
   const row = {
-    k: target.key, card: startCard, conf: pick ? 0.9 : 0,
+    port: CFG.port, k: target.key, card: startCard, conf: pick ? 0.9 : 0,
     heard: pick ? (pick.n + ' jobs · ' + String(pick.heard || '').slice(0, 80)) : (tx || '').slice(0, 100),
     transcript: (tx || '').slice(0, 4000), call_sid: sid, posted: false,
     extras: { kind: 'forecast', about: target.key, n: pick ? pick.n : null, count_kind: pick ? pick.kind : null, counts, announced_start: startCard, read: spent + 1 }
@@ -406,7 +416,7 @@ async function main() { try {
   let wireReadOk = false;
   if (CFG.sbUrl && CFG.sbKey) {
     try {
-      const rows = await sbSelect('board_wire', 'k=in.(' + NEAR.map(k => '%22' + k + '%22').join(',') + ')&select=*');
+      const rows = await sbSelect('board_wire', 'port=eq.' + CFG.port + '&k=in.(' + NEAR.map(k => '%22' + k + '%22').join(',') + ')&select=*');
       rows.forEach(r => { WIRE[r.k] = r; });
       wireReadOk = true;
     } catch (e) { log('warn: could not read board_wire:', e.message); }
@@ -450,7 +460,7 @@ async function main() { try {
   if (liveMode && wireReadOk) {
     try {
       const lr = await sbSelect('hall_line_log',
-        'ran_at=gte.' + encodeURIComponent(windowStartISO()) + '&select=k,card,conf,call_sid,posted,extras&order=ran_at.desc&limit=30');
+        'port=eq.' + CFG.port + '&ran_at=gte.' + encodeURIComponent(windowStartISO()) + '&select=k,card,conf,call_sid,posted,extras&order=ran_at.desc&limit=30');
       priorReads = Array.isArray(lr) ? lr : [];
     } catch (e) { log('warn: could not read hall_line_log (budget/corroboration unavailable):', e.message); }
     const callsSpent = priorReads.filter(r => r.call_sid).length;
@@ -467,12 +477,12 @@ async function main() { try {
         const dupe = !!(ex && ex.patch && ((tr.patch.end && ex.patch.end === tr.patch.end) || (tr.patch.start && ex.patch.start === tr.patch.start && !tr.patch.end)));
         if (!human && !dupe) {
           if (tr.patch.end) { const pe = endOf(WIRE[prevKeyOf(tr.postKey)]); if (pe) { tr.patch.start = nextCard(pe); const mv = boardMoved(tr.patch.start, tr.patch.end); tr.patch.act = mv.act; if (mv.cyc) tr.patch.cyc = true; } }
-          const row = { k: tr.postKey, patch: tr.patch, by: CFG.botId, by_handle: CFG.botHandle,
+          const row = { port: CFG.port, k: tr.postKey, patch: tr.patch, by: CFG.botId, by_handle: CFG.botHandle,
             yes: 2, no: 0, confirmers: 0, chal: null, chal_by: null, chal_handle: null, chal_yes: 0, chal_no: 0,
             status: 'live', heist_from: null, heist_handle: null };
           if (CFG.dryRun) { summary('DRY RUN — would post FROM THE LOG (no call): ' + tr.postKey + ' ' + JSON.stringify(tr.patch)); return; }
-          await sbUpsert('board_wire', row, 'k');
-          await sbInsert('hall_line_log', { k: fromLog.row.k, card: fromLog.card, conf: fromLog.conf,
+          await sbUpsert('board_wire', row, 'port,k');
+          await sbInsert('hall_line_log', { port: CFG.port, k: fromLog.row.k, card: fromLog.card, conf: fromLog.conf,
             heard: 'corroborated from ' + fromLog.n + ' earlier reads this window', transcript: '', call_sid: null, posted: true,
             extras: { kind: 'corroborated', about: (fromLog.row.extras && fromLog.row.extras.about) || fromLog.row.k, posted_to: tr.postKey } });
           summary('⚓ POSTED FROM THE LOG — ' + fromLog.n + ' earlier reads this window agree on ' + fromLog.card +
@@ -569,7 +579,7 @@ async function main() { try {
     try {
       const keys = [...new Set(counts.map(c => countTargetKey(c.kind)).filter(Boolean))];
       if (keys.length && CFG.sbUrl && CFG.sbKey) {
-        const rows = await sbSelect('dispatch_boards', 'key=in.(' + keys.map(k => '%22' + k + '%22').join(',') + ')&select=key,data');
+        const rows = await sbSelect('dispatch_boards', 'port=eq.' + CFG.port + '&key=in.(' + keys.map(k => '%22' + k + '%22').join(',') + ')&select=key,data');
         rows.forEach(r => { pdfRows[r.key] = r.data; });
       }
     } catch (e) { log('warn: could not read dispatch_boards for count check:', e.message); }
@@ -592,7 +602,7 @@ async function main() { try {
   /* audit trail — every run, posted or not. k = the board the info is ABOUT. */
   if (CFG.sbUrl && CFG.sbKey && !CFG.dryRun) {
     const baseRow = {
-      k: aboutKey || t.key, card: res.card, conf: Math.round(conf * 100) / 100,
+      port: CFG.port, k: aboutKey || t.key, card: res.card, conf: Math.round(conf * 100) / 100,
       heard: res.heard, transcript: transcript.slice(0, 4000),
       call_sid: callSid, posted: posting
     };
@@ -627,7 +637,7 @@ async function main() { try {
     { const mv = boardMoved(patch.start, patch.end); patch.act = mv.act; if (mv.cyc) patch.cyc = true; }
   }
   const row = {
-    k: postKey, patch,
+    port: CFG.port, k: postKey, patch,
     by: CFG.botId, by_handle: CFG.botHandle,
     yes: 2, no: 0, confirmers: 0,
     chal: null, chal_by: null, chal_handle: null, chal_yes: 0, chal_no: 0,
@@ -635,7 +645,7 @@ async function main() { try {
   };
   if (CFG.dryRun) { summary('DRY RUN — would upsert board_wire: ' + JSON.stringify(row)); return; }
   if (!CFG.sbUrl || !CFG.sbKey) { console.error('missing SUPABASE_URL / SUPABASE_SERVICE_KEY'); process.exit(1); }
-  await sbUpsert('board_wire', row, 'k');
+  await sbUpsert('board_wire', row, 'port,k');
   summary('⚓ POSTED to the wire: ' + postKey + ' ' + JSON.stringify(patch) +
       (mode === 'start' ? '  (the hall said ' + aboutKey + ' starts on ' + res.card + ')' : ''));
 } finally { summary(costLine()); } }
