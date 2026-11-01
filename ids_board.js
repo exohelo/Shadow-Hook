@@ -1,4 +1,4 @@
-/* The Shadow Hook · ids_board.js (nov1a) — the board for a hall that calls casuals by number, not by letter (Local 10).
+/* The Shadow Hook · ids_board.js (nov1b) — the board for a hall that calls casuals by number, not by letter (Local 10).
    Reads public.ids_board (from the hall_tape rows the bot writes off the pre-tape): where IDs start each shift, how far
    the last ones went, tonight's and tomorrow's jobs (skill / non-skill), the ships by berth, every skilled board's line.
    Shows on the Wire tab for members whose hall is a numbered board, and on the Ports tab when anyone explores that hall.
@@ -27,7 +27,8 @@
     ".idb .idb-ships{display:flex;flex-wrap:wrap;gap:6px}.idb .idb-ships span{padding:4px 9px;border-radius:999px;border:1px solid var(--line);font-size:12px}.idb .idb-ships span i{font-style:normal;color:var(--steel)}" +
     ".idb table{width:100%;border-collapse:collapse;font-size:12.5px}.idb td{padding:5px 0;border-bottom:1px solid var(--line)}.idb td:last-child{text-align:right;color:var(--copper-hi);font-variant-numeric:tabular-nums}" +
     ".idb .idb-hist div{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--line);font-size:12.5px}.idb .idb-hist b{color:var(--copper-hi)}" +
-    "html.shk-ids-hall #scr-board > :not(.idb):not(.screen-title){display:none!important}";
+    "html.shk-ids-hall #scr-board > :not(.idb):not(.screen-title){display:none!important}" +
+    "html.shk-ids-hall #dpPost{display:none!important}";
   function css() { if (document.getElementById("idbCss")) return; var st = document.createElement("style"); st.id = "idbCss"; st.textContent = CSS; document.head.appendChild(st); }
 
   async function load(port) {
