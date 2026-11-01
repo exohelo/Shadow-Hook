@@ -1,4 +1,4 @@
-/* The Shadow Hook · notifs.js (nov1a) — who liked your post, commented on it, replied to you, or tagged you (@handle).
+/* The Shadow Hook · notifs.js (nov1c) — who liked your post, commented on it, replied to you, or tagged you (@handle).
    Rows are written on the server by triggers (public.notifs); this file shows them: a 🔔 in the header with the unseen
    count, a sheet with the list, live updates, and a tap takes you to the post. */
 (function () {
@@ -9,8 +9,8 @@
   function me() { return window.__shkUid || null; }
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   function ago(ts) { var s = (Date.now() - new Date(ts).getTime()) / 1e3; return s < 60 ? "just now" : s < 3600 ? Math.round(s / 60) + "m" : s < 86400 ? Math.round(s / 3600) + "h" : Math.round(s / 86400) + "d"; }
-  var WORD = { like: "liked your post", comment: "commented on your post", reply: "replied to you", mention: "tagged you" };
-  var ICON = { like: "❤️", comment: "💬", reply: "↩️", mention: "@" };
+  var WORD = { like: "liked your post", clike: "liked your comment", comment: "commented on your post", reply: "replied to you", mention: "tagged you" };
+  var ICON = { like: "❤️", clike: "❤️", comment: "💬", reply: "↩️", mention: "@" };
 
   var CSS = "#hcnt{position:relative}#hcnt.quiet{opacity:.55}" +
     "#ntSheet{position:fixed;inset:0;z-index:95;display:none;background:rgba(0,0,0,.55)}#ntSheet.on{display:block}" +
@@ -39,8 +39,8 @@
   }
   function paintBell() {
     var b = bell(); if (!b) return;
-    var recent = S.rows.some(function (r) { return Date.now() - new Date(r.created_at).getTime() < 7 * 864e5; });
-    b.style.display = me() && (S.unseen > 0 || recent) ? "" : "none";
+    /* the bell shows only while something is new; once opened it goes away until the next one */
+    b.style.display = me() && S.unseen > 0 ? "" : "none";
     b.classList.toggle("quiet", !S.unseen);
     var n = document.getElementById("hcNtN"); if (n) n.textContent = S.unseen ? (S.unseen > 99 ? "99+" : String(S.unseen)) : "";
     b.title = S.unseen ? S.unseen + " new" : "Notifications";
