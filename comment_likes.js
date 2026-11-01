@@ -1,4 +1,4 @@
-/* The Shadow Hook · comment_likes.js (nov1b) — a ♥ with a count on every comment in The Talk. Tap to like, tap again to
+/* The Shadow Hook · comment_likes.js (nov1c) — a ♥ with a count on every comment in The Talk. Tap to like, tap again to
    take it back. Counts come from public.comment_likes; the comment's author gets a "liked your comment" notification. */
 (function () {
   "use strict";
@@ -49,7 +49,7 @@
     if (!uid || !window.SB) { try { typeof toast === "function" && toast("Sign in to like comments"); } catch (e) {} return; }
     var on = !MINE.has(id);
     on ? MINE.add(id) : MINE.delete(id); N[id] = Math.max(0, (N[id] || 0) + (on ? 1 : -1));
-    paintBtn(b, id); if (on) { b.classList.remove("pop"); void b.offsetWidth; b.classList.add("pop"); }
+    paintBtn(b, id); if (on) { b.classList.remove("pop"); void b.offsetWidth; b.classList.add("pop"); clearTimeout(b._popT); b._popT = setTimeout(function () { b.classList.remove("pop"); }, 450); }   /* one pop per like, never a loop */
     try {
       var r = on ? await window.SB.from("comment_likes").insert({ comment_id: id, user_id: uid })
                  : await window.SB.from("comment_likes").delete().eq("comment_id", id).eq("user_id", uid);
