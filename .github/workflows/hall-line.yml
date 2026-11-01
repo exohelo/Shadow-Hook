@@ -102,15 +102,15 @@ jobs:
       max-parallel: 1
       matrix:
         include: ${{ fromJSON(vars.HALL_PORTS_JSON || '[{"port":"lalb","key":"LALB"}]') }}
-    # a manual run with a port picks that hall only; scheduled runs do every hall in the list
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.port == '' || inputs.port == matrix.port }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
 
+      # a manual run with a port picks that hall only; scheduled runs do every hall in the list
       - name: Call the hall line and post where it left off
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.port == '' || inputs.port == matrix.port }}
         env:
           TWILIO_SID:           ${{ secrets.TWILIO_SID }}
           TWILIO_TOKEN:         ${{ secrets.TWILIO_TOKEN }}
@@ -149,7 +149,7 @@ jobs:
       # Needs VAPID_PUBLIC (repo variable) + VAPID_PRIVATE (secret) — generate
       # once with `npx web-push generate-vapid-keys`. Missing keys = stands down.
       - name: The Lookout — push the board to subscribed phones
-        if: ${{ always() }}
+        if: ${{ always() && (github.event_name != 'workflow_dispatch' || inputs.port == '' || inputs.port == matrix.port) }}
         env:
           PORT:                 ${{ matrix.port }}
           SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
