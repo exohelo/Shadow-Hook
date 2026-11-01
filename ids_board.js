@@ -1,4 +1,4 @@
-/* The Shadow Hook · ids_board.js (nov1b) — the board for a hall that calls casuals by number, not by letter (Local 10).
+/* The Shadow Hook · ids_board.js (nov1c) — the board for a hall that calls casuals by number, not by letter (Local 10).
    Reads public.ids_board (from the hall_tape rows the bot writes off the pre-tape): where IDs start each shift, how far
    the last ones went, tonight's and tomorrow's jobs (skill / non-skill), the ships by berth, every skilled board's line.
    Shows on the Wire tab for members whose hall is a numbered board, and on the Ports tab when anyone explores that hall.
@@ -63,6 +63,7 @@
     css();
     var hm = home(), vw = view();
     document.documentElement.classList.toggle("shk-ids-hall", kindOf(hm) === "ids");
+    try { var so = document.querySelector("#socialFeed .idb-social"); so && kindOf(hm) === "ids" && (so.outerHTML = card(hm, await load(hm)).replace('class="card idb"', 'class="card idb idb-social"')); } catch (e) {}
     /* Wire tab: the member's own hall, if it is a numbered board */
     var wire = document.getElementById("scr-board");
     if (wire) {
@@ -78,12 +79,33 @@
       else if (p) p.remove();
     }
   }
+  /* Social tab: in a numbered hall the letter Dispatch Post is hidden, so the IDs board takes its spot at the top of the
+     feed — the same local dispatch card, above the Board everyone shares. The feed redraws itself, so re-seat it. */
+  var socBusy = false;
+  async function paintSocial() {
+    var hm = home(), post = document.getElementById("dpPost");
+    var mine = document.querySelector("#socialFeed .idb-social");
+    if (kindOf(hm) !== "ids") { mine && mine.remove(); return; }
+    if (!post || socBusy) return;
+    if (mine && mine.nextElementSibling === post) return;
+    socBusy = true;
+    try {
+      var html = card(hm, await load(hm)).replace('class="card idb"', 'class="card idb idb-social"');
+      mine && mine.remove();
+      post.insertAdjacentHTML("beforebegin", html);
+    } finally { socBusy = false; }
+  }
+  function watchSocial() {
+    var f = document.getElementById("socialFeed"); if (!f || f._idbWatch) return; f._idbWatch = true;
+    var t = 0; new MutationObserver(function () { clearTimeout(t); t = setTimeout(paintSocial, 200); }).observe(f, { childList: true });
+    paintSocial();
+  }
   function live() {
     try { window.SB.channel("hall_tape:ids").on("postgres_changes", { event: "*", schema: "public", table: "hall_tape" }, function () { S.at = {}; paint(); }).subscribe(); } catch (e) {}
   }
   function boot() {
     var n = 0, t = setInterval(function () {
-      if (window.SB && document.getElementById("scr-board")) { clearInterval(t); paint(); live(); document.addEventListener("shk:port-view", paint); document.addEventListener("shk:home-port", paint); setInterval(paint, 60000); }
+      if (window.SB && document.getElementById("scr-board")) { clearInterval(t); paint(); live(); watchSocial(); setInterval(watchSocial, 5000); document.addEventListener("shk:port-view", paint); document.addEventListener("shk:home-port", paint); setInterval(paint, 60000); }
       else if (++n > 120) clearInterval(t);
     }, 1000);
   }
