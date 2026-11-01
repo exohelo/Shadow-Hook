@@ -447,6 +447,24 @@
     return true;
   }
   (function waitPma() { var n = 0, t = setInterval(function () { if (hookPmaApi() || ++n > 120) clearInterval(t); }, 1000); })();
+  /* #nov1(oakpma) — the Keymaster's PMA SHEETS panel only pointed at PMA's LA/LB page. PMA files the Bay's sheets under
+     "Oakland Dispatch"; put that link right under the LA/LB one, with the three steps. The PDFs then go in through the
+     same CHOOSE PMA PDF(s) button: PMA_API.add reads each header and files Oakland sheets under SF/OAK. */
+  var OAK_LIST = "https://www.pmanet.org/members/bulletins-and-notices/oakland-dispatch/";
+  function oakNote() {
+    var la = [].slice.call(document.querySelectorAll('a[href*="la-lb-dispatch"]')).filter(function (a) { return !a.closest(".oak-pma"); });
+    la.forEach(function (a) {
+      var host = a.closest("p,div"); if (!host || host.parentNode.querySelector(".oak-pma")) return;
+      var box = document.createElement("div"); box.className = "oak-pma";
+      box.style.cssText = "margin:10px 0 4px;padding:10px 12px;border:1px dashed var(--copper-hi,#e8a33d);border-radius:10px;font:13px/1.5 Inter,system-ui,sans-serif;color:var(--bone,#eee)";
+      box.innerHTML = '<b style="color:var(--copper-hi,#e8a33d);letter-spacing:.08em">⚓ SF / OAK SHEETS</b><br>PMA files the Bay’s sheets under <b>Oakland Dispatch</b>. Open <a href="' + OAK_LIST + '" target="_blank" rel="noopener" style="color:var(--copper-hi,#e8a33d)">PMA’s Oakland Dispatch page</a>, tap the shift (1st = day, 2nd = night), tap <b>view the PDF</b>, save it, then add it with <b>CHOOSE PMA PDF(s)</b> below. The app reads “Oakland” on the sheet and files it under SF/OAK. PMA posts the PDF a little after the page, so if it says “No Results Found,” try again later. (The one-click bookmark is LA/LB only for now.)';
+      host.insertAdjacentElement("afterend", box);
+    });
+  }
+  (function watchOak() {
+    var t = 0; new MutationObserver(function () { clearTimeout(t); t = setTimeout(oakNote, 250); }).observe(document.documentElement, { childList: true, subtree: true });
+    setTimeout(oakNote, 300);
+  })();
   function sheetButtonHtml() {
     return '<label class="hm-sheet">📄 Add this hall’s PMA sheet<input type="file" accept="application/pdf,.pdf" multiple hidden></label>';
   }
