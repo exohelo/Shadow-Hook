@@ -484,7 +484,7 @@ async function main() { try {
           await sbUpsert('board_wire', row, 'port,k');
           await sbInsert('hall_line_log', { port: CFG.port, k: fromLog.row.k, card: fromLog.card, conf: fromLog.conf,
             heard: 'corroborated from ' + fromLog.n + ' earlier reads this window', transcript: '', call_sid: null, posted: true,
-            extras: { kind: 'corroborated', about: (fromLog.row.extras && fromLog.row.extras.about) || fromLog.row.k, posted_to: tr.postKey } });
+            extras: { kind: (fromLog.row.extras && /^(start|end)$/.test(fromLog.row.extras.kind) && fromLog.row.extras.kind) || 'end', corroborated: true, about: (fromLog.row.extras && fromLog.row.extras.about) || fromLog.row.k, posted_to: tr.postKey } });
           summary('⚓ POSTED FROM THE LOG — ' + fromLog.n + ' earlier reads this window agree on ' + fromLog.card +
             ' (conf ' + fromLog.conf.toFixed(2) + '); wrote ' + tr.postKey + ' ' + JSON.stringify(tr.patch) + ' with ZERO new calls.');
           return;
