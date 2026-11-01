@@ -425,6 +425,32 @@
   /* ------------------------------------------------------------------ the Board: hall under the name ---------------------------------------------- */
   var PORT_LABEL = { lalb: "Los Angeles · Long Beach", sf: "San Francisco · Oakland", sd: "San Diego" };
   function portLabel(code) { var p = portOf(code); return PORT_LABEL[code] || (p && p.name) || String(code || "").toUpperCase(); }
+  /* the city a dock sits in, by the port's berth groups */
+  var CITY = { lalb: { LA: "Los Angeles", TI: "Terminal Island", LB: "Long Beach" }, sf: { OH: "Oakland", IH: "Oakland", RL: "Oakland", SF: "San Francisco", BY: "Bay Area" }, sd: { SD: "San Diego", NC: "National City" } };
+  function groupOfIn(code, t) {
+    var pk = packOf(code);
+    try { if (pk && typeof pk.groupOf === "function") { var g = pk.groupOf(t); if (g) return g; } } catch (e) {}
+    var b = String(t.berths || "").toUpperCase();
+    if (code === "lalb") return /^LB/.test(b) ? "LB" : /^TI/.test(b) ? "TI" : /^(LA|OH|SP)/.test(b) ? "LA" : "YD";
+    return "YD";
+  }
+  /* "PA · China Shipping" (the #dockping tag: operator · aka) → the terminal, then its city */
+  function dockCity(code, tag) {
+    var pk = packOf(code); if (!pk || !tag) return null;
+    var parts = String(tag).split("·").map(function (x) { return x.trim().toLowerCase(); }), op = parts[0] || "", rest = parts.slice(1).join(" ");
+    var hit = null;
+    (pk.terminals || []).some(function (t) {
+      var o = String(t.operator || "").toLowerCase();
+      if (o !== op) return false;
+      var hay = (String(t.aka || "") + " " + String(t.berths || "")).toLowerCase();
+      if (!rest || hay.indexOf(rest.split(" / ")[0]) >= 0 || hay.indexOf(rest) >= 0) { hit = t; return true; }
+      return false;
+    });
+    if (!hit) (pk.terminals || []).some(function (t) { if (String(t.operator || "").toLowerCase() === op) { hit = t; return true; } return false; });
+    if (!hit) return null;
+    var g = groupOfIn(code, hit);
+    return (CITY[code] || {})[g] || null;
+  }
   function paintStoryPorts() {
     var cards = document.querySelectorAll(".bpost[data-sid]");
     if (!cards.length) return;
@@ -434,14 +460,20 @@
       var sid = c.getAttribute("data-sid"), code = STORY_PORT[sid];
       if (code === undefined) code = /^srv|^loc|^tmp/.test(sid) || c.classList.contains("mine") ? S.home : null;
       if (!code) continue;
+      /* the on-shift dock tag (#dockping) folds into the pill: ⚓ LONG BEACH · PCT · Pier J · on shift */
+      var dockEl = c.querySelector(".bp-dock span"), tag = "";
+      if (dockEl) { tag = dockEl.textContent.replace(/^\s*📍\s*/, "").replace(/\s*·\s*on shift\s*$/i, "").trim(); }
+      var city = tag ? dockCity(code, tag) : null;
+      var text = "⚓ " + (city || portLabel(code)) + (tag ? " · " + tag + " · on shift" : "");
       var el = who.querySelector(".bp-port");
       if (!el) { el = document.createElement("i"); el.className = "bp-port"; who.appendChild(el); }
-      if (el.getAttribute("data-port") !== code) {
+      if (el.getAttribute("data-port") !== code || el.textContent !== text) {
         el.setAttribute("data-port", code);
-        el.className = "bp-port p-" + code + (code === S.home ? " home" : "");
-        el.textContent = "⚓ " + portLabel(code);
-        el.title = (portOf(code).local || "") + " · " + (portOf(code).name || code);
+        el.className = "bp-port p-" + code + (code === S.home ? " home" : "") + (tag ? " shift" : "");
+        el.textContent = text;
+        el.title = (portOf(code).local || "") + " · " + (portOf(code).name || code) + (tag ? " · tagged at " + tag : "");
       }
+      if (dockEl && dockEl.parentNode && !dockEl.parentNode.hidden) dockEl.parentNode.hidden = true;
     }
   }
   try {
@@ -461,6 +493,7 @@
     ".bp-port{display:inline-flex;align-items:center;gap:4px;align-self:flex-start;margin-top:2px;padding:2px 7px;border-radius:999px;font:700 9.5px/1.2 Barlow Condensed,sans-serif;letter-spacing:.12em;text-transform:uppercase;font-style:normal;background:var(--hm-la,rgba(77,226,255,.17));border:1px solid var(--hm-la-line,rgba(77,226,255,.5));color:var(--hm-la-hi,#4de2ff)}" +
     ".bp-port.p-sf{background:var(--hm-lb,rgba(255,77,210,.15));border-color:var(--hm-lb-line,rgba(255,77,210,.5));color:var(--hm-lb-hi,#ff4dd2)}" +
     ".bp-port.p-sd{background:rgba(255,196,61,.15);border-color:rgba(255,196,61,.55);color:#ffc43d}" +
+    ".bp-port.shift{letter-spacing:.08em;white-space:normal;line-height:1.35}" +
     ".hm-away{margin:0 12px 8px;padding:6px 10px;border:1px dashed var(--hm-lb-line,rgba(255,77,210,.72));border-radius:8px;font:600 11px/1.3 Inter,system-ui,sans-serif;color:var(--steel)}.hm-away b{color:var(--hm-lb-hi,#ff4dd2)}";
   function injectCss() { if (document.getElementById("shkPortsExtCss")) return; var s = document.createElement("style"); s.id = "shkPortsExtCss"; s.textContent = CSS; document.head.appendChild(s); }
 
