@@ -208,6 +208,7 @@
     captureLalb();
     var pack = packOf(code);
     if (!pack) { log("no pack for", code); return false; }
+    if (S.view !== code) S.viewKey = null;
     S.applied = code; S.view = code;
     try { replaceInPlace(typeof TERMINALS !== "undefined" ? TERMINALS : null, pack.terminals); } catch (e) {}
     try { replaceInPlace(typeof PORT_GROUPS !== "undefined" ? PORT_GROUPS : null, pack.groups); } catch (e) {}
@@ -219,19 +220,20 @@
     } catch (e) {}
     try {
       var svg = document.getElementById("hmSvg");
-      if (svg) { svg.innerHTML = pack.svg; svg.setAttribute("aria-label", pack.aria || ""); }
+      var view = (pack.views || []).find(function (v) { return v.key === S.viewKey; }) || (pack.views || [])[0] || null;
+      if (svg) { svg.innerHTML = view ? view.svg : pack.svg; svg.setAttribute("aria-label", (view && view.aria) || pack.aria || ""); }
+      paintViews(pack, view);
       /* the map keeps its own zoom state (translate+scale on the svg); go back to "the whole bay" for the new port */
       try { var fit = document.querySelector("#hmWrap .hm-zc button[data-z=fit]"); if (fit && !fit.disabled) fit.click(); } catch (e) {}
       var foot = document.querySelector("#harborSky .hm-foot");
       if (foot) { var zh = foot.querySelector(".hm-zh"); foot.innerHTML = pack.legendHtml || ""; zh && foot.appendChild(zh); }
       var src = document.getElementById("harborSrc"); src && (src.textContent = pack.src || "");
-      var bay = document.querySelector("#harborBoard .hb-top .wire-slot:nth-of-type(2)"); bay && (bay.textContent = pack.title || "");
+      var bay = document.querySelector("#harborBoard .hb-top .wire-slot:nth-of-type(2)"); bay && (bay.textContent = (view && view.title) || pack.title || "");
       var sec = document.getElementById("hbSec"); sec && (sec.textContent = String(pack.terminals.filter(function (t) { return t.security; }).length));
       var tm = document.getElementById("hbTerms"); tm && (tm.textContent = String(pack.terminals.length));
     } catch (e) {}
     repaint();
     paintChip();
-    try { bench.parsed = null; bench.sampleId = null; refreshBench(); } catch (e) {}
     try { document.dispatchEvent(new CustomEvent("shk:port-view", { detail: { code: code, home: S.home } })); } catch (e) {}
     return true;
   }
@@ -274,7 +276,7 @@
   /* ------------------------------------------------------------------ the reader gate + samples + the Keymaster's bench ------------------------- */
   /* A hall whose reader is not open yet (ports.scan_open=false) never seals a scanned docket on its own: every scan goes
      through the confirm form, and each one lands in scan_samples with what the reader read and what the member said.
-     The Keymaster's bench (Ports tab) replays those, or a pasted slip, and teaches the reader for that hall. */
+     (The bench card that replayed those on the Ports tab was removed Nov 1; the samples still land in scan_samples.) */
   S.scanOpen = { lalb: true }; S.teachPort = null; S.forcedHandoff = false;
   async function loadScanOpen() {
     try {
@@ -332,94 +334,6 @@
         ed.__shk = true; window.scanLearnFromEdit = ed;
       }
     } catch (e) {}
-  }
-
-  /* ---- the bench (Keymaster only) ---- */
-  var BENCH_CSS = ".sb-card{margin:12px 0}.sb-card .sb-h{display:flex;align-items:center;gap:8px;padding:10px 12px 6px;font:700 15px/1 Barlow Condensed,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:var(--bone)}" +
-    ".sb-card .sb-h small{margin-left:auto;font:600 11px/1 Inter,system-ui,sans-serif;letter-spacing:0;text-transform:none;color:var(--steel)}" +
-    ".sb-body{padding:0 12px 12px;font:13px/1.4 Inter,system-ui,sans-serif;color:var(--bone)}.sb-stat{display:flex;flex-wrap:wrap;gap:6px 14px;color:var(--steel);font-size:12px;margin-bottom:8px}.sb-stat b{color:var(--copper-hi)}" +
-    ".sb-row{display:flex;gap:8px;margin:6px 0}.sb-row>*{flex:1 1 0;min-width:0}.sb-body textarea,.sb-body input{width:100%;box-sizing:border-box;background:var(--plate-2);border:1px solid var(--line);border-radius:8px;color:var(--bone);padding:8px;font:13px/1.3 Inter,system-ui,sans-serif}.sb-body textarea{min-height:90px}" +
-    ".sb-btn{background:var(--plate-2);border:1px solid var(--line);color:var(--copper-hi);border-radius:8px;padding:8px 12px;font:700 12px/1 Barlow Condensed,sans-serif;letter-spacing:.1em;cursor:pointer;text-transform:uppercase}.sb-btn.go{border-color:var(--copper-hi)}.sb-btn.danger{color:#ff6a6a}" +
-    ".sb-parse{display:grid;grid-template-columns:auto 1fr 1fr;gap:4px 10px;font-size:12px;margin:8px 0}.sb-parse i{color:var(--steel);font-style:normal}.sb-parse .bad{color:#ff6a6a}.sb-parse .ok{color:#58d68d}" +
-    ".sb-list{margin-top:8px;border-top:1px solid var(--line)}.sb-it{padding:7px 0;border-bottom:1px solid var(--line);font-size:12px;display:flex;gap:8px;align-items:flex-start;cursor:pointer}.sb-it .k{color:var(--steel);flex:0 0 58px}.sb-it .ok{color:#58d68d}.sb-it .bad{color:#ff6a6a}.sb-it .no{color:var(--steel)}" +
-    ".sb-note{color:var(--steel);font-size:11px;margin-top:6px}";
-  var FIELDS = ["terminal", "berth", "ship", "category", "date", "shift"];
-  var bench = { text: "", parsed: null, samples: [], status: null, sampleId: null };
-  function isKM() { try { return !!window.__isKM || (typeof prvKm === "function" && prvKm()); } catch (e) { return false; } }
-  function mountBench() {
-    if (!isKM()) return;
-    var after = document.getElementById("harborSky"); if (!after || document.getElementById("scanBench")) return;
-    var st = document.getElementById("shkBenchCss"); if (!st) { st = document.createElement("style"); st.id = "shkBenchCss"; st.textContent = BENCH_CSS; document.head.appendChild(st); }
-    var card = document.createElement("div"); card.className = "card sb-card"; card.id = "scanBench";
-    after.insertAdjacentElement("afterend", card);
-    card.addEventListener("click", onBenchClick);
-    card.addEventListener("change", function (e) { if (e.target && e.target.id === "sbPhoto" && e.target.files && e.target.files[0]) benchOCR(e.target.files[0]); });
-    card.addEventListener("input", function (e) { if (e.target && e.target.id === "sbText") bench.text = e.target.value; });
-    refreshBench();
-  }
-  async function refreshBench() {
-    var card = document.getElementById("scanBench"); if (!card) return;
-    var code = S.view, p = portOf(code);
-    try { var r = await window.SB.rpc("scan_port_status", { p_port: code }); bench.status = r && !r.error ? r.data : null; } catch (e) { bench.status = null; }
-    try { var q = await window.SB.from("scan_samples").select("id,docket_id,by_handle,parsed,truth,confirmed,created_at,ocr_text").eq("port", code).order("id", { ascending: false }).limit(12); bench.samples = q && !q.error ? q.data || [] : []; } catch (e) { bench.samples = []; }
-    var st = bench.status || {}, open = !!st.scan_open;
-    var html = '<div class="sb-h">🔬 Scan bench <span style="color:var(--copper-hi)">' + esc(p.short || code) + "</span><small>Keymaster · " + (open ? "reader OPEN" : "reader LEARNING") + "</small></div><div class=\"sb-body\">";
-    html += '<div class="sb-stat"><span>samples <b>' + (st.samples || 0) + "</b></span><span>confirmed <b>" + (st.confirmed || 0) + "</b></span><span>reader agreed <b>" + (st.agree || 0) + "</b></span><span>lessons <b>" + (st.lessons || 0) + "</b></span></div>";
-    if (code !== "lalb") html += '<div class="sb-row"><button type="button" class="sb-btn ' + (open ? "danger" : "go") + '" data-sb="gate">' + (open ? "Close the reader · back to learning" : "Open the reader for " + esc(p.short || code)) + "</button></div>";
-    html += '<div class="sb-note">Paste a slip’s text, or shoot a photo of one, and see what the reader makes of it. Fix the right column and teach it — the lesson is filed under ' + esc(p.short || code) + " only.</div>";
-    html += '<textarea id="sbText" placeholder="the slip’s text — one line per line on the slip">' + esc(bench.text) + "</textarea>";
-    html += '<div class="sb-row"><button type="button" class="sb-btn go" data-sb="read">Read it</button><label class="sb-btn" style="text-align:center">📷 Photo<input id="sbPhoto" type="file" accept="image/*" capture="environment" style="display:none"></label></div>';
-    if (bench.parsed) {
-      html += '<div class="sb-parse"><i></i><i>the reader read</i><i>the truth</i>';
-      FIELDS.forEach(function (f) { var v = bench.parsed[f === "category" ? "cat" : f]; html += "<i>" + f + '</i><span class="' + (v ? "" : "bad") + '">' + esc(v || "—") + '</span><input data-f="' + f + '" value="' + esc(bench.truth && bench.truth[f] || v || "") + '">'; });
-      html += '</div><div class="sb-row"><button type="button" class="sb-btn go" data-sb="teach">Teach the reader</button></div>';
-    }
-    if (bench.samples.length) {
-      html += '<div class="sb-list">';
-      bench.samples.forEach(function (x) {
-        var pt = x.parsed || {}, tr = x.truth || {}, agree = tr.terminal && String(pt.terminal || "").toUpperCase() === String(tr.terminal).toUpperCase() && String(pt.berth || "") === String(tr.berth || "");
-        html += '<div class="sb-it" data-sid="' + x.id + '"><span class="k">' + esc(x.by_handle || "—") + "</span><span>read <b>" + esc(pt.terminal || "?") + " " + esc(pt.berth || "") + "</b>" +
-          (x.confirmed ? ' → said <b>' + esc(tr.terminal || "?") + " " + esc(tr.berth || "") + '</b> <span class="' + (agree ? "ok" : "bad") + '">' + (agree ? "✓ agreed" : "✗ differs") + "</span>" : ' <span class="no">· unconfirmed</span>') + "</span></div>";
-      });
-      html += "</div>";
-    }
-    html += "</div>";
-    card.innerHTML = html;
-  }
-  function benchRead() {
-    var t = (document.getElementById("sbText") || {}).value || bench.text; bench.text = t;
-    try { bench.parsed = typeof parseDocket === "function" ? parseDocket(t, null) : null; } catch (e) { bench.parsed = null; }
-    bench.truth = null; refreshBench();
-  }
-  async function benchOCR(file) {
-    try {
-      var card = document.getElementById("scanBench"); var ta = document.getElementById("sbText"); if (ta) ta.value = "reading the photo…";
-      if (typeof getOCR !== "function") { if (ta) ta.value = "the reader is not loaded on this phone"; return; }
-      var worker = await getOCR(); var img = new Image(); var url = URL.createObjectURL(file);
-      await new Promise(function (res, rej) { img.onload = res; img.onerror = rej; img.src = url; });
-      var r = await worker.recognize(img); bench.text = (r && r.data && r.data.text) || "";
-      benchRead();
-    } catch (e) { var ta2 = document.getElementById("sbText"); if (ta2) ta2.value = "couldn’t read the photo: " + e; }
-  }
-  async function benchTeach() {
-    var card = document.getElementById("scanBench"); if (!card) return;
-    var truth = {}; card.querySelectorAll(".sb-parse input[data-f]").forEach(function (i) { truth[i.getAttribute("data-f")] = i.value.trim() || null; });
-    bench.truth = truth;
-    S.teachPort = S.view;
-    try { if (typeof scanLearn === "function") scanLearn(bench.text, bench.parsed, Object.assign({}, truth)); } catch (e) {}
-    try { if (bench.sampleId) await window.SB.from("scan_samples").update({ truth: truth, confirmed: true }).eq("id", bench.sampleId); else await sampleInsert({ docket_id: null, ocr_text: bench.text.slice(0, 4000), parsed: bench.parsed, truth: truth, confirmed: true, note: "bench" }); } catch (e) {}
-    S.teachPort = null;
-    try { typeof toast === "function" && toast("✎ Taught the " + (portOf(S.view).short || S.view) + " reader"); } catch (e) {}
-    bench.sampleId = null; refreshBench();
-  }
-  async function benchGate() {
-    var code = S.view, open = !!(bench.status && bench.status.scan_open);
-    try { var r = await window.SB.from("ports").update({ scan_open: !open }).eq("code", code); if (r && r.error) throw r.error; S.scanOpen[code] = !open; } catch (e) { try { typeof toast === "function" && toast("the wire refused it: " + (e && e.message || e)); } catch (x) {} }
-    refreshBench();
-  }
-  function onBenchClick(e) {
-    var b = e.target.closest("[data-sb]"); if (b) { var k = b.getAttribute("data-sb"); if (k === "read") benchRead(); else if (k === "teach") benchTeach(); else if (k === "gate") benchGate(); return; }
-    var it = e.target.closest(".sb-it[data-sid]"); if (it) { var x = bench.samples.find(function (y) { return String(y.id) === it.getAttribute("data-sid"); }); if (x) { bench.text = x.ocr_text || ""; bench.parsed = x.parsed || null; bench.truth = x.truth || null; bench.sampleId = x.id; refreshBench(); } }
   }
 
   /* ------------------------------------------------------------------ the Board: hall under the name ---------------------------------------------- */
@@ -482,6 +396,30 @@
       .observe(document.body || document.documentElement, { childList: true, subtree: true });
   } catch (e) {}
 
+  /* ------------------------------------------------------------------ a port with several frames (Oakland · San Francisco · the Bay) ----------- */
+  S.viewKey = null;
+  function paintViews(pack, view) {
+    var row = document.getElementById("hmViews"), wrap = document.getElementById("hmWrap");
+    if (!pack.views || pack.views.length < 2) { row && row.remove(); return; }
+    injectCss();
+    if (!row && wrap) { row = document.createElement("div"); row.id = "hmViews"; row.className = "hm-views"; wrap.insertAdjacentElement("beforebegin", row); row.addEventListener("click", function (e) { var b = e.target.closest("button[data-view]"); b && setView(b.getAttribute("data-view")); }); }
+    if (!row) return;
+    row.innerHTML = pack.views.map(function (v) { return '<button type="button" data-view="' + esc(v.key) + '" class="' + (view && view.key === v.key ? "on" : "") + '">' + esc(v.label) + "</button>"; }).join("");
+  }
+  function setView(key) {
+    var pack = packOf(S.view); if (!pack || !pack.views) return;
+    var v = pack.views.find(function (x) { return x.key === key; }); if (!v) return;
+    S.viewKey = key;
+    try {
+      var svg = document.getElementById("hmSvg");
+      if (svg) { svg.innerHTML = v.svg; svg.setAttribute("aria-label", v.aria || ""); }
+      var bay = document.querySelector("#harborBoard .hb-top .wire-slot:nth-of-type(2)"); bay && (bay.textContent = v.title || pack.title || "");
+      var fit = document.querySelector("#hmWrap .hm-zc button[data-z=fit]"); if (fit && !fit.disabled) fit.click();
+    } catch (e) {}
+    paintViews(pack, v);
+    try { typeof window.harborHighlight === "function" && window.harborHighlight(); } catch (e) {}
+  }
+
   /* ------------------------------------------------------------------ the chip ------------------------------------------------------------------- */
   var CSS = ".hm-pick{margin-left:4px;background:var(--plate-2);border:1px solid var(--line);color:var(--copper-hi);border-radius:8px;padding:5px 9px;font:700 11px/1 Barlow Condensed,sans-serif;letter-spacing:.12em;cursor:pointer;white-space:nowrap;flex:none;text-transform:uppercase}" +
     ".hm-pick.away{border-color:var(--hm-lb-hi,#ff4dd2);color:var(--hm-lb-hi,#ff4dd2)}" +
@@ -494,6 +432,7 @@
     ".bp-port.p-sf{background:var(--hm-lb,rgba(255,77,210,.15));border-color:var(--hm-lb-line,rgba(255,77,210,.5));color:var(--hm-lb-hi,#ff4dd2)}" +
     ".bp-port.p-sd{background:rgba(255,196,61,.15);border-color:rgba(255,196,61,.55);color:#ffc43d}" +
     ".bp-port.shift{letter-spacing:.08em;white-space:normal;line-height:1.35}" +
+    ".hm-views{display:flex;gap:6px;margin:0 12px 8px}.hm-views button{flex:1;background:var(--plate-2);border:1px solid var(--line);color:var(--steel);border-radius:8px;padding:6px 8px;font:700 11px/1 Barlow Condensed,sans-serif;letter-spacing:.12em;text-transform:uppercase;cursor:pointer}.hm-views button.on{color:var(--copper-hi);border-color:var(--copper-hi)}" +
     ".hm-away{margin:0 12px 8px;padding:6px 10px;border:1px dashed var(--hm-lb-line,rgba(255,77,210,.72));border-radius:8px;font:600 11px/1.3 Inter,system-ui,sans-serif;color:var(--steel)}.hm-away b{color:var(--hm-lb-hi,#ff4dd2)}";
   function injectCss() { if (document.getElementById("shkPortsExtCss")) return; var s = document.createElement("style"); s.id = "shkPortsExtCss"; s.textContent = CSS; document.head.appendChild(s); }
 
@@ -558,7 +497,6 @@
     paintStoryPorts();
     patchScanFlow();
     loadScanOpen();
-    var bn = 0, bt = setInterval(function () { mountBench(); if (document.getElementById("scanBench") || ++bn > 40) clearInterval(bt); }, 1500);
     guardLalbOnly();
     patchScanner(S.home);
     if (S.home !== "lalb") applyPack(S.home);
