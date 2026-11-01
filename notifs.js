@@ -1,4 +1,4 @@
-/* The Shadow Hook · notifs.js (nov1f) — who liked your post, commented on it, replied to you, or tagged you (@handle).
+/* The Shadow Hook · notifs.js (nov1g) — who liked your post, commented on it, replied to you, or tagged you (@handle).
    Rows are written on the server by triggers (public.notifs); this file shows them: a 🔔 in the header with the unseen
    count, a sheet with the list, live updates, and a tap takes you to the post. */
 (function () {
@@ -14,9 +14,9 @@
   var WORD = { join: "asked to join", like: "liked your post", clike: "liked your comment", comment: "commented on your post", reply: "replied to you", mention: "tagged you" };
   var ICON = { join: "🚪", like: "❤️", clike: "❤️", comment: "💬", reply: "↩️", mention: "@" };
 
-  /* #nov1(rfltag): the floating RAFFLE tag under the header repeats the raffle banner already on Social; while that
-     banner is on the page the tag stays hidden */
-  try { var rt = document.createElement("style"); rt.id = "rflTagOff"; rt.textContent = "html:has(.rfl-bn) #rflTag{display:none!important}"; (document.head || document.documentElement).appendChild(rt); } catch (e) {}
+  /* #nov1(rfltag): the floating RAFFLE tag under the header repeats the raffle strip that already runs across the top
+     of every tab; the tag is retired */
+  try { var rt = document.createElement("style"); rt.id = "rflTagOff"; rt.textContent = "#rflTag,#rflTag.on{display:none!important}"; (document.head || document.documentElement).appendChild(rt); } catch (e) {}
   var CSS = "#hcnt{position:relative}#hcnt.quiet{opacity:.55}" +
     "#ntSheet{position:fixed;inset:0;z-index:95;display:none;background:rgba(0,0,0,.55)}#ntSheet.on{display:block}" +
     "#ntSheet .nt-p{position:absolute;left:0;right:0;bottom:0;max-height:78vh;overflow:auto;background:var(--plate-2,#15171b);border-top:1px solid var(--line,#333);border-radius:18px 18px 0 0;padding:14px 14px calc(18px + env(safe-area-inset-bottom,0px))}" +
