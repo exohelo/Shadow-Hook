@@ -423,6 +423,30 @@
     try { typeof toast === "function" && toast("📄 PMA sheets: " + (lines.join(" · ") || "nothing new")); } catch (e) {}
     return lines;
   }
+  /* The Keymaster adds every hall's PMA sheet in the same place: the command center's PMA add (window.PMA_API.add).
+     Each PDF is read first; a sheet whose header names another hall is filed under that hall here, the rest go to the
+     app's own reader exactly as before. */
+  function hookPmaApi() {
+    var A = window.PMA_API;
+    if (!A || typeof A.add !== "function" || A.add.__shkPorts) return !!(A && A.add && A.add.__shkPorts);
+    var orig = A.add.bind(A);
+    var wrapped = async function (files) {
+      var mine = [], other = {};
+      for (var f of Array.prototype.slice.call(files || [])) {
+        var port = null;
+        try { port = sheetPort(await readSheet(f)); } catch (e) {}
+        if (port && port !== S.home) (other[port] = other[port] || []).push(f); else mine.push(f);
+      }
+      var out;
+      if (mine.length) out = await orig(mine);
+      for (var code in other) await addSheetsFor(other[code], code);
+      return out;
+    };
+    wrapped.__shkPorts = true; A.add = wrapped;
+    log("PMA_API.add routes other halls' sheets");
+    return true;
+  }
+  (function waitPma() { var n = 0, t = setInterval(function () { if (hookPmaApi() || ++n > 120) clearInterval(t); }, 1000); })();
   function sheetButtonHtml() {
     return '<label class="hm-sheet">📄 Add this hall’s PMA sheet<input type="file" accept="application/pdf,.pdf" multiple hidden></label>';
   }
@@ -550,10 +574,7 @@
       if (note) {
         var pk = packOf(S.view) || {};
         note.innerHTML = "Exploring <b>" + esc(p.name || p.short) + "</b> · " + esc(p.local || "") + (pk.hint ? " · " + esc(pk.hint) : "") +
-          "<br>Your Wire, drops and MAYDAY stay on <b>" + esc(portOf(S.home).short || S.home) + "</b>. Leaving this tab brings your hall back." +
-          (isKM() ? "<br>" + sheetButtonHtml() : "");
-        var inp = note.querySelector(".hm-sheet input");
-        if (inp) inp.addEventListener("change", function (ev) { var fs = Array.prototype.slice.call(ev.target.files || []); ev.target.value = ""; fs.length && addSheetsFor(fs, S.view); });
+          "<br>Your Wire, drops and MAYDAY stay on <b>" + esc(portOf(S.home).short || S.home) + "</b>. Leaving this tab brings your hall back.";
       }
     } else if (note) note.remove();
   }
