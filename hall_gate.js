@@ -1,4 +1,4 @@
-/* The Shadow Hook · hall_gate.js (nov1a) — getting a casual from another hall through the gate.
+/* The Shadow Hook · hall_gate.js (nov1b) — getting a casual from another hall through the gate.
    The gate checks new members against the LA/LB casual list built into the app, so a Local 10 casual was always
    "Access Denied". This adds a hall switch to the gate. In SF mode:
      · the number field takes their casual ID number (Local 10 calls casuals by number: "IDs, you are at 3905")
@@ -16,10 +16,14 @@
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   function normName(s) { return String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[.,]/g, " ").replace(/\s+/g, " ").trim(); }
   function pretty(s) { try { return typeof window.prettyName === "function" ? window.prettyName(s) : s; } catch (e) { return s; } }
+  /* A Local 10 card number may print like LA's (a letter and digits, B3905) or as plain digits (3905). The account id
+     keeps the letter and puts a 9 in front of a four-digit number (B93905, S93905 when there's no letter): LA cards are
+     always a letter and four digits, so the two halls can never share an account id. */
   function cardFor(port, raw) {
-    var m = /^\s*([A-Za-z])?\s*-?\s*(\d{2,5})\s*$/.exec(String(raw || ""));
+    var m = /^\s*N?([A-Za-z])?\s*-?\s*(\d{2,5})\s*$/.exec(String(raw || ""));
     if (!m) return null;
-    return { card: "S" + m[2].padStart(5, "0"), num: m[2], raw: String(raw).trim().toUpperCase() };
+    var L = (m[1] || "S").toUpperCase(), d = m[2], card = d.length <= 4 ? L + "9" + d.padStart(4, "0") : L + d;
+    return { card: card, num: (m[1] ? m[1].toUpperCase() : "") + d, digits: d, raw: String(raw).trim().toUpperCase() };
   }
   var CSS = ".hg-switch{display:flex;gap:8px;margin:0 0 14px}.hg-switch button{flex:1;padding:9px 6px;border-radius:10px;border:1px solid var(--line,#333);background:transparent;color:var(--steel,#aaa);font:700 12px/1.2 Barlow Condensed,sans-serif;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}" +
     ".hg-switch button small{display:block;font:500 10px Inter,system-ui,sans-serif;letter-spacing:0;text-transform:none;opacity:.8}.hg-switch button.on{border-color:var(--copper-hi,#e8a33d);color:var(--copper-hi,#e8a33d)}" +
@@ -37,8 +41,8 @@
     if (LA_LABEL == null && lbl) { LA_LABEL = lbl.textContent; LA_PH = inp.getAttribute("placeholder"); }
     if (sw) sw.querySelectorAll("button").forEach(function (b) { b.classList.toggle("on", b.getAttribute("data-hall") === mode); });
     if (mode === "sf") {
-      if (lbl) lbl.textContent = "Casual ID # — the number on your Local 10 card";
-      inp.setAttribute("placeholder", "e.g. 3905"); inp.setAttribute("maxlength", "7"); inp.setAttribute("inputmode", "numeric");
+      if (lbl) lbl.textContent = "Dispatch # — as it reads on your casual card";
+      inp.setAttribute("placeholder", "e.g. B3905"); inp.setAttribute("maxlength", "7"); inp.removeAttribute("inputmode");
       if (so) so.style.display = "none";
     } else {
       if (lbl && LA_LABEL != null) lbl.textContent = LA_LABEL;
@@ -73,7 +77,7 @@
     nm.textContent = ""; im.textContent = "";
     var name = String(nameEl.value || "").trim(), key = normName(name), c = cardFor("sf", idEl.value), ok = true;
     if (key.split(" ").length < 2) { nm.textContent = "> first and last name, as printed on the card"; ok = false; }
-    if (!c) { im.textContent = "> your casual ID number — digits only, like 3905"; ok = false; }
+    if (!c) { im.textContent = "> your dispatch number as it reads on the card, like B3905"; ok = false; }
     if (!ok) return;
     if (!window.SB) { im.textContent = "> can't reach the Order right now — try again in a minute"; return; }
     var btn = $("joinBtn"), label = btn.textContent; btn.disabled = true; btn.textContent = "CHECKING…";
@@ -81,16 +85,68 @@
     try { var r = await window.SB.rpc("gate_check", { p_port: "sf", p_card: c.card, p_name_key: key }); let_in = !!(r && !r.error && r.data === true); } catch (e) {}
     btn.disabled = false; btn.textContent = label;
     if (let_in) { openGate(c, name); return; }
-    var box = showBox("<b>Local 10 casuals are let in by hand for now.</b> The Order doesn’t have the Local 10 list yet, so the Keymaster checks each one. Ask to be let in, and you’ll get through the gate with this same name and number once you’re on the list (usually the same day).<button type=\"button\" class=\"btn\" id=\"hgAsk\">Ask to be let in</button>");
-    $("hgAsk").addEventListener("click", async function () {
-      this.disabled = true; this.textContent = "SENDING…";
+    var box = showBox("<b>Your card is your proof.</b> The Order doesn’t have the Local 10 list yet, so show it your casual card: take a photo of it and you’re in.<button type=\"button\" class=\"btn\" id=\"hgScan\">📷 Scan your casual card</button><input type=\"file\" id=\"hgFile\" accept=\"image/*\" capture=\"environment\" hidden><div id=\"hgScanMsg\" style=\"margin-top:8px;color:var(--steel)\"></div><div style=\"margin-top:12px;font-size:12px;color:var(--steel)\">No card on you? <a href=\"#\" id=\"hgAsk\">Ask the Keymaster to let you in</a> instead.</div>");
+    $("hgScan").addEventListener("click", function () { $("hgFile").click(); });
+    $("hgFile").addEventListener("change", async function (ev) {
+      var f = ev.target.files && ev.target.files[0]; ev.target.value = ""; if (!f) return;
+      var sm = $("hgScanMsg"), btn2 = $("hgScan"); btn2.disabled = true;
+      try {
+        var verdict = await readCard(f, c, name, sm);
+        if (!verdict.ok) { sm.textContent = verdict.why; btn2.disabled = false; btn2.textContent = "📷 Try the scan again"; return; }
+        sm.textContent = "> card checks out — opening the gate…";
+        var q = await window.SB.rpc("join_scanned", { p_port: "sf", p_card: c.card, p_raw: c.raw, p_name: pretty(name) });
+        if (q && q.error) throw q.error;
+        if (q && q.data && q.data.ok === false) { sm.textContent = "> " + (q.data.why || "couldn’t open the gate"); btn2.disabled = false; return; }
+        openGate(c, name);
+      } catch (e) { sm.textContent = "> couldn’t read that — check your signal and try again"; btn2.disabled = false; }
+    });
+    $("hgAsk").addEventListener("click", async function (ev) {
+      ev.preventDefault(); if (this._sent) return; this._sent = true; this.textContent = "sending…";
       try {
         var q = await window.SB.rpc("join_request", { p_port: "sf", p_card: c.card, p_raw: c.raw, p_name: pretty(name), p_how: "request", p_note: null });
         if (q && q.error) throw q.error;
         box.innerHTML = "✅ <b>Asked.</b> The Keymaster has your name and #" + esc(c.num) + ". Come back and tap <b>Join the Brotherhood</b> with the same name and number once you’re let in.";
-      } catch (e) { this.disabled = false; this.textContent = "Ask to be let in"; box.insertAdjacentHTML("beforeend", "<div style=\"margin-top:6px;color:#ff6a6a\">Couldn’t send that — try again.</div>"); }
+      } catch (e) { this._sent = false; this.textContent = "Ask the Keymaster to let you in"; box.insertAdjacentHTML("beforeend", "<div style=\"margin-top:6px;color:#ff6a6a\">Couldn’t send that — try again.</div>"); }
     });
   }
+  /* ---------------- reading the card ---------------- */
+  var _ocr = null;
+  async function ocr() {
+    if (_ocr) return _ocr;
+    if (!window.Tesseract) await new Promise(function (res, rej) { var s = document.createElement("script"); s.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"; s.onload = res; s.onerror = function () { rej(new Error("no signal")); }; document.head.appendChild(s); });
+    _ocr = await window.Tesseract.createWorker("eng"); return _ocr;
+  }
+  function turned(img, deg) {
+    var w = img.naturalWidth || img.width, h = img.naturalHeight || img.height, k = Math.min(1, 1800 / Math.max(w, h)), sw = Math.round(w * k), sh = Math.round(h * k), cv = document.createElement("canvas");
+    if (deg === 90 || deg === 270) { cv.width = sh; cv.height = sw; } else { cv.width = sw; cv.height = sh; }
+    var x = cv.getContext("2d"); x.translate(cv.width / 2, cv.height / 2); x.rotate(deg * Math.PI / 180); x.drawImage(img, -sw / 2, -sh / 2, sw, sh); return cv;
+  }
+  var MARKS = ["ILWU", "PMA", "CASUAL", "IDENTIFIED", "DISPATCH", "PAYROLL", "LOCAL", "PORT", "SAN FRANCISCO", "OAKLAND", "MARITIME"];
+  function judge(text, c, name) {
+    var up = String(text || "").toUpperCase(), marks = MARKS.filter(function (k) { return up.indexOf(k) >= 0; }).length;
+    var flat = up.replace(/[^A-Z0-9]/g, ""), hasNum = flat.indexOf(c.digits) >= 0;
+    var toks = normName(name).toUpperCase().split(" ").filter(function (t) { return t.length > 1; });
+    var last = toks[toks.length - 1] || "", hasName = last && flat.indexOf(last.replace(/[^A-Z]/g, "")) >= 0;
+    return { marks: marks, hasNum: hasNum, hasName: hasName, score: marks + (hasNum ? 3 : 0) + (hasName ? 3 : 0) };
+  }
+  async function readCard(file, c, name, sm) {
+    sm.textContent = "> loading the reader…";
+    var w = await ocr(), img = new Image(), url = URL.createObjectURL(file), best = null;
+    await new Promise(function (res, rej) { img.onload = res; img.onerror = rej; img.src = url; });
+    try {
+      for (var deg of [0, 90, 270, 180]) {
+        sm.textContent = "> reading your card…" + (deg ? " (turning it " + deg + "°)" : "");
+        var r = await w.recognize(turned(img, deg)), j = judge(r && r.data && r.data.text, c, name);
+        if (!best || j.score > best.score) best = j;
+        if (j.marks >= 2 && j.hasNum && j.hasName) break;
+      }
+    } finally { URL.revokeObjectURL(url); }
+    if (!best || best.marks < 2) return { ok: false, why: "> that doesn’t read like a casual card — fill the frame, kill the glare, hold it flat" };
+    if (!best.hasNum) return { ok: false, why: "> couldn’t find #" + c.num + " on the card — check the number you typed, or shoot again" };
+    if (!best.hasName) return { ok: false, why: "> couldn’t find your last name on the card — type it exactly as printed, or shoot again" };
+    return { ok: true };
+  }
+
   document.addEventListener("click", function (e) {
     if (mode !== "sf") return;
     var b = e.target.closest && e.target.closest("#joinBtn"); if (!b) return;
