@@ -53,6 +53,7 @@
    ========================================================================== */
 const fs = require('fs');
 const { parseLeftOff, parseCounts, parseSpecial, parseForecastTarget } = require('./parse.js');
+const { parseLocal10 } = require('./parse_sf.js');
 /* ---------- config ---------- */
 const env = k => (process.env[k] || '').trim();
 const args = process.argv.slice(2);
@@ -98,9 +99,10 @@ const CFG = {
   audioFile:   argAfter('--audio'),
 };
 const HALLS = {
-  lalb: { local: 'ILWU Local 13', where: 'San Pedro / Long Beach' },
-  sf:   { local: 'ILWU Local 10', where: 'San Francisco / Oakland' },
-  sd:   { local: 'ILWU Local 29', where: 'San Diego / National City' },
+  lalb: { local: 'ILWU Local 13', where: 'San Pedro / Long Beach', kind: 'letters' },
+  /* Local 10 calls casuals by number ("IDs, you are at 3905") off a pre-tape, not a letter board: its own path, idsRun() */
+  sf:   { local: 'ILWU Local 10', where: 'San Francisco / Oakland', kind: 'ids', secs: 240, gapMin: 150 },
+  sd:   { local: 'ILWU Local 29', where: 'San Diego / National City', kind: 'letters' },
 };
 const HALL = HALLS[CFG.port] || HALLS.lalb;
 const AZ = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -253,7 +255,7 @@ async function twilio(path, form) {
 }
 const sleep = ms => new Promise(res => setTimeout(res, ms));
 async function recordHotline() {
-  const secs = Math.min(Math.max(CFG.callSeconds, 30), 240);
+  const secs = Math.min(Math.max(HALL.secs || CFG.callSeconds, 30), 240);
   const form = {
     To: CFG.dispatchNum,
     From: CFG.twilioFrom,
@@ -400,7 +402,50 @@ async function forecastRun() { try {
                : '🔇 FORECAST — no count heard for ' + target.key + ' (read ' + (spent + 1) + ').');
 } finally { summary(costLine()); } }
 
+/* #nov1(ids) — a numbered-board hall (Local 10). One read of the pre-tape gives the coming night and the next morning:
+   the IDs start number, job counts, ships by berth, every skilled board's line. Each shift becomes a hall_tape row; the
+   app's IDs board reads those. Cost guard: one paid read per HALL.gapMin minutes unless forced. Never touches board_wire. */
+async function idsRun() { try {
+  const liveMode = !CFG.transcript && !CFG.audioFile;
+  if (liveMode && !CFG.force && CFG.sbUrl && CFG.sbKey) {
+    try {
+      const since = new Date(Date.now() - (HALL.gapMin || 150) * 60000).toISOString();
+      const prior = await sbSelect('hall_line_log', 'port=eq.' + CFG.port + '&call_sid=not.is.null&ran_at=gte.' + since + '&select=id');
+      if (prior.length) { summary('🧯 SKIPPED — ' + HALL.local + ' tape already read in the last ' + (HALL.gapMin || 150) + ' min.'); return; }
+    } catch (e) { summary('❌ ABORTED — cannot check the read budget; not dialing blind.'); return; }
+  }
+  if (liveMode) for (const k of ['twilioSid', 'twilioToken', 'twilioFrom', 'dispatchNum', 'openaiKey']) if (!CFG[k]) { console.error('missing config: ' + k); process.exit(1); }
+  let tx = '', sid = null;
+  if (CFG.transcript) tx = CFG.transcript;
+  else if (CFG.audioFile) tx = await transcribe(fs.readFileSync(CFG.audioFile), null);
+  else { const rec = await recordHotline(); sid = rec.callSid; tx = await transcribe(rec.buf, null); }
+  log('transcript:', JSON.stringify((tx || '').slice(0, 400)));
+  const P = parseLocal10(tx || '', new Date().toISOString());
+  const heardShifts = P.shifts.filter(x => x.key);
+  const logRow = { port: CFG.port, k: heardShifts.length ? heardShifts[0].key : null, card: null, conf: heardShifts.length ? 0.9 : 0,
+    heard: heardShifts.map(x => x.key + (x.ids != null ? ' IDs ' + x.ids : '') + (x.jobs != null ? ' · ' + x.jobs + ' jobs' : '')).join(' | ').slice(0, 200) || (tx || '').slice(0, 100),
+    transcript: (tx || '').slice(0, 4000), call_sid: sid, posted: false, extras: { kind: 'pretape', shifts: P.shifts } };
+  if (CFG.dryRun) { summary('DRY RUN — would log: ' + JSON.stringify(P)); return; }
+  let logId = null;
+  if (CFG.sbUrl && CFG.sbKey) {
+    try {
+      const r = await fetch(CFG.sbUrl + '/rest/v1/hall_line_log', { method: 'POST', headers: sbHeaders({ Prefer: 'return=representation' }), body: JSON.stringify([logRow]) });
+      if (r.ok) { const j = await r.json(); logId = j && j[0] && j[0].id; }
+    } catch (e) { log('warn: hall_line_log insert:', e.message); }
+    for (const x of heardShifts) {
+      const row = { port: CFG.port, k: x.key, jobs: x.jobs, skill: x.skill, nonskill: x.nonskill, ships: x.ships, starts: x.starts, said_at: new Date().toISOString(), log_id: logId, updated_at: new Date().toISOString() };
+      if (x.ids != null) row.ids = x.ids;             /* a call cut off before the IDs line never blanks a number already heard */
+      if (!Object.keys(x.starts || {}).length) delete row.starts;
+      if (!(x.ships || []).length) delete row.ships;
+      try { await sbUpsert('hall_tape', row, 'port,k'); } catch (e) { log('warn: hall_tape upsert ' + x.key + ':', e.message); }
+    }
+  }
+  summary(heardShifts.length ? '📼 ' + HALL.local + ' pre-tape: ' + heardShifts.map(x => x.key + (x.ids != null ? ' · IDs at ' + x.ids : ' · IDs not heard') + (x.jobs != null ? ' · ' + x.jobs + ' jobs' : '')).join(' · ')
+                             : '🔇 ' + HALL.local + ' — no shift heard on the tape.');
+} finally { summary(costLine()); } }
+
 async function main() { try {
+  if (HALL.kind === 'ids') return idsRun();
   if (CFG.forecast) return forecastRun();
   const t = targetBoard(CFG.early);
   const liveMode = !CFG.transcript && !CFG.audioFile;
