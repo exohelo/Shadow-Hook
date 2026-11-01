@@ -1,4 +1,4 @@
-/* The Shadow Hook · comment_likes.js (nov1a) — a ♥ with a count on every comment in The Talk. Tap to like, tap again to
+/* The Shadow Hook · comment_likes.js (nov1b) — a ♥ with a count on every comment in The Talk. Tap to like, tap again to
    take it back. Counts come from public.comment_likes; the comment's author gets a "liked your comment" notification. */
 (function () {
   "use strict";
@@ -9,9 +9,13 @@
     "@keyframes clkPop{0%{transform:scale(1)}50%{transform:scale(1.45)}100%{transform:scale(1)}}";
   function css() { if (document.getElementById("clkCss")) return; var st = document.createElement("style"); st.id = "clkCss"; st.textContent = CSS; document.head.appendChild(st); }
   function uuid(id) { return /^[0-9a-f-]{36}$/i.test(String(id || "")); }
+  /* writes only when something changed: rewriting the button on every pass fed the page-wide observer below, which
+     repainted again, forever — the sheet kept redrawing (and jumping) while you tapped */
   function paintBtn(b, id) {
-    var on = MINE.has(id), n = N[id] || 0;
-    b.classList.toggle("on", on);
+    var on = MINE.has(id), n = N[id] || 0, sig = (on ? 1 : 0) + ":" + n;
+    if (b.getAttribute("data-sig") === sig) return;
+    b.setAttribute("data-sig", sig);
+    if (b.classList.contains("on") !== on) b.classList.toggle("on", on);
     b.innerHTML = '<span class="h">' + (on ? "♥" : "♡") + "</span>" + (n ? "<span>" + n + "</span>" : "");
     b.setAttribute("aria-label", (on ? "Unlike" : "Like") + " this comment" + (n ? " (" + n + ")" : ""));
   }
@@ -57,10 +61,27 @@
   }
   document.addEventListener("click", function (e) {
     var b = e.target.closest && e.target.closest(".svc-lk[data-clk]"); if (!b) return;
-    e.stopPropagation(); e.preventDefault(); toggle(b);
+    e.stopPropagation(); e.preventDefault();
+    if (b._busy) return; b._busy = true; setTimeout(function () { b._busy = false; }, 400);   /* one tap = one like */
+    toggle(b);
   }, true);
   var T = 0;
-  new MutationObserver(function () { if (T) return; T = setTimeout(function () { T = 0; decorate(); }, 120); }).observe(document.documentElement, { childList: true, subtree: true });
+  /* only new comment rows matter; our own button changes are ignored */
+  new MutationObserver(function (ms) {
+    if (T) return;
+    var rel = false;
+    for (var i = 0; i < ms.length && !rel; i++) {
+      var t = ms[i].target;
+      if (t && t.closest && t.closest(".svc-lk")) continue;
+      var add = ms[i].addedNodes;
+      for (var j = 0; j < add.length; j++) { var nd = add[j]; if (nd.nodeType === 1 && (nd.matches(".svc-row,.svc-foot") || (nd.querySelector && nd.querySelector(".svc-row")))) { rel = true; break; } }
+    }
+    if (rel) T = setTimeout(function () { T = 0; decorate(); }, 120);
+  }).observe(document.documentElement, { childList: true, subtree: true });
+  /* keep the heart's tap to itself: nothing under it (the sheet's swipe and tap handling) sees it */
+  ["pointerdown", "mousedown", "touchstart", "pointerup", "mouseup", "touchend"].forEach(function (ev) {
+    document.addEventListener(ev, function (e) { if (e.target.closest && e.target.closest(".svc-lk[data-clk]")) e.stopPropagation(); }, true);
+  });
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", decorate); else decorate();
   window.SHK_CLIKES = { decorate: decorate };
 })();
