@@ -1,16 +1,18 @@
-/* The Shadow Hook · notifs.js (nov1d) — who liked your post, commented on it, replied to you, or tagged you (@handle).
+/* The Shadow Hook · notifs.js (nov1e) — who liked your post, commented on it, replied to you, or tagged you (@handle).
    Rows are written on the server by triggers (public.notifs); this file shows them: a 🔔 in the header with the unseen
    count, a sheet with the list, live updates, and a tap takes you to the post. */
 (function () {
   "use strict";
   if (window.SHK_NOTIFS) return;
+  /* #nov1(gate) — the hall gate (hall_gate.js) rides in with this file until index.html carries its own tag */
+  try { if (!window.SHK_HALL_GATE && !document.querySelector('script[src*="hall_gate.js"]')) { var hg = document.createElement("script"); hg.src = "hall_gate.js?v=nov1a"; hg.defer = true; (document.head || document.documentElement).appendChild(hg); } } catch (e) {}
   var S = { rows: [], unseen: 0, chan: null, at: 0 };
   function sb() { return window.SB; }
   function me() { return window.__shkUid || null; }
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   function ago(ts) { var s = (Date.now() - new Date(ts).getTime()) / 1e3; return s < 60 ? "just now" : s < 3600 ? Math.round(s / 60) + "m" : s < 86400 ? Math.round(s / 3600) + "h" : Math.round(s / 86400) + "d"; }
-  var WORD = { like: "liked your post", clike: "liked your comment", comment: "commented on your post", reply: "replied to you", mention: "tagged you" };
-  var ICON = { like: "❤️", clike: "❤️", comment: "💬", reply: "↩️", mention: "@" };
+  var WORD = { join: "asked to join", like: "liked your post", clike: "liked your comment", comment: "commented on your post", reply: "replied to you", mention: "tagged you" };
+  var ICON = { join: "🚪", like: "❤️", clike: "❤️", comment: "💬", reply: "↩️", mention: "@" };
 
   var CSS = "#hcnt{position:relative}#hcnt.quiet{opacity:.55}" +
     "#ntSheet{position:fixed;inset:0;z-index:95;display:none;background:rgba(0,0,0,.55)}#ntSheet.on{display:block}" +
@@ -98,6 +100,11 @@
   /* tap → the Social tab, the post itself; for a comment, reply or tag in comments, its comments open too */
   function go(x) {
     if (!x) return;
+    if (x.kind === "join") {   /* a hall join request: the Ports tab, looking at that hall, where the Let in / Decline card is */
+      try { var pb = document.querySelector('.nav button[data-scr="ports"]'); pb && pb.click(); } catch (e) {}
+      setTimeout(function () { try { window.SHK_PORTS && SHK_PORTS.explore(/SD ·/.test(x.snippet || "") ? "sd" : "sf"); window.SHK_HALL_GATE && SHK_HALL_GATE.requests(); } catch (e) {} }, 400);
+      return;
+    }
     try { var nb = document.querySelector('.nav button[data-scr="order"]'); nb && nb.click(); } catch (e) {}
     var tries = 0;
     (function find() {
