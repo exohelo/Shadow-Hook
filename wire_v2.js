@@ -36,17 +36,19 @@
     var g=done.length?'<div class="v2g">'+done.map(function(r){ var m=Math.abs(+r.locked_letters-r.actual_moved); return '<span>'+lbl(r.k).replace(/^\w+ /,'')+' <b>'+(+r.locked_letters).toFixed(0)+'\u2192'+r.actual_moved+'</b> <i class="'+(m<=1?'ok':m<=2?'':'bad')+'">'+(m<=1?'\u2713':'\u00B1'+m.toFixed(0))+'</i></span>'; }).join('')+'</div>':'';
     if(!up){
       ps.innerHTML='<span '+mark+'="1">\u2014</span>';
-      mv.innerHTML='<span '+mark+'="1"><span class="v2b">WAITING ON THE SHEETS</span><span class="v2i">The call comes the moment the PMA sheet and the hall\u2019s forecast for '+esc(lbl(key))+' are both in. Locks at '+(key.slice(-2)==='AM'?'6:30 AM':'4:30 PM')+' and doesn\u2019t move after.</span>'+g+'</span>';
+      mv.innerHTML='<span '+mark+'="1"><span class="v2b">WAITING ON THE SHEETS</span><span class="v2i">An early call comes the moment the PMA sheet for '+esc(lbl(key))+' is in, and sharpens when the hall gives its count. Locks at '+(key.slice(-2)==='AM'?'6:30 AM':'4:30 PM')+' and doesn\u2019t move after.</span>'+g+'</span>';
       if(src){ src.className='wire-src est'; src.textContent='\u26A1 WIRE \u00B7 WAITING ON THE SHEETS'; }
       return;
     }
     var inp=up.inputs||{}, locked=!!up.locked_at, L=locked?+up.locked_letters:+up.letters, stop=locked?(up.locked_stop||up.stop):up.stop;
+    /* #nov1(earlycall): before the hall gives its job count the server estimates it from PMA's total; say so */
+    var early=inp.early===true;
     ps.innerHTML='<span '+mark+'="1">'+esc(stop)+'</span>';
     mv.innerHTML='<span '+mark+'="1"><span class="v2b">'+esc(up.lo)+'\u2013'+esc(up.hi)+' \u00B7 '+L.toFixed(0)+' letters from '+esc(up.start_code||'?')+' \u00B7 '+esc(lbl(up.k))+'</span>'+
       '<span class="v2i">'+(locked?'<span class="v2lock">\u{1F512} LOCKED '+when(up.locked_at)+'</span> \u00B7 the call doesn\u2019t move once dispatch starts':'locks '+when(flexOf(up.k))+' \u00B7 updated '+when(up.computed_at)+' \u00B7 moves only if the sheets change before then')+
-      '<br>hall says '+esc(inp.hall_forecast)+' jobs \u00B7 PMA '+esc(inp.pma_total)+' \u00B7 last board moved '+esc(inp.prev1)+'</span>'+g+'</span>';
-    if(src){ src.className='wire-src '+(locked?'lock':'est'); src.textContent='\u26A1 WIRE v2 \u00B7 '+(locked?'LOCKED':'LIVE CALL'); }
-    share(up,L,stop,locked);
+      '<br>'+(early?'<b>EARLY CALL</b> \u00B7 hall number estimated at ~'+esc(inp.hall_forecast)+' from PMA\u2019s '+esc(inp.pma_total)+' \u00B7 sharpens when the hall gives its count before the flex':'hall says '+esc(inp.hall_forecast)+' jobs \u00B7 PMA '+esc(inp.pma_total))+' \u00B7 last board moved '+esc(inp.prev1)+'</span>'+g+'</span>';
+    if(src){ src.className='wire-src '+(locked?'lock':'est'); src.textContent='\u26A1 WIRE v2 \u00B7 '+(locked?'LOCKED':early?'EARLY CALL':'LIVE CALL'); }
+    share(up,L,stop,locked,early);
     ladder(up,L,stop,locked);
   }
   /* the letter ladder (#wTrack), the chance bar (#wMeters) and the note (#wRun), drawn the way the old Wire drew them */
@@ -72,9 +74,10 @@
   /* the Dispatch Post card, the "your number" line and the council line all read callFor(k) = window._lastCall for
      window._publishedKey. The old bot nulls those while it's off; hand them the v2 call instead, and repaint the Hall. */
   var shared='';
-  function share(up,L,stop,locked){
-    var sig=up.k+'|'+stop+'|'+up.lo+'|'+up.hi+'|'+(locked?'L':'');
-    window._lastCall={stop:stop,lo:up.lo,hi:up.hi,pmove:Math.round(L),src:'v2',k:up.k,locked:locked};
+  function share(up,L,stop,locked,early){
+    var sig=up.k+'|'+stop+'|'+up.lo+'|'+up.hi+'|'+(locked?'L':'')+(early?'E':'');
+    /* the Dispatch Post's Prediction tile prints "stops lo–hi"; an early call reads "stops W–C · early" */
+    window._lastCall={stop:stop,lo:up.lo,hi:early&&!locked?up.hi+' \u00B7 early':up.hi,pmove:Math.round(L),src:'v2',k:up.k,locked:locked,early:!!early};
     window._publishedKey=up.k; window._predSource='v2';
     if(sig===shared)return; shared=sig;
     try{ typeof window.dpRefresh==='function'&&window.dpRefresh(); }catch(e){}
