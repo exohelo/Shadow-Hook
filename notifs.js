@@ -1,4 +1,4 @@
-/* The Shadow Hook · notifs.js (nov1c) — who liked your post, commented on it, replied to you, or tagged you (@handle).
+/* The Shadow Hook · notifs.js (nov1d) — who liked your post, commented on it, replied to you, or tagged you (@handle).
    Rows are written on the server by triggers (public.notifs); this file shows them: a 🔔 in the header with the unseen
    count, a sheet with the list, live updates, and a tap takes you to the post. */
 (function () {
@@ -109,9 +109,27 @@
     })();
   }
 
+  /* a tapped phone alert (push-notif sends go:"notifs:<id>"): an open app is told by the service worker; a cold start
+     carries it in the hash. Either way, land on the post it was about, and clear it as seen. */
+  async function fromAlert(tag) {
+    var m = /^notifs(?::(\d+))?$/.exec(String(tag || "")); if (!m) return false;
+    await load();
+    var x = m[1] ? S.rows.find(function (r) { return String(r.id) === m[1]; }) : null;
+    if (x) {
+      try { await sb().from("notifs").update({ seen_at: new Date().toISOString() }).eq("id", x.id); x.seen_at = x.seen_at || new Date().toISOString(); S.unseen = S.rows.filter(function (r) { return !r.seen_at; }).length; paintBell(); } catch (e) {}
+      go(x);
+    } else open();
+    return true;
+  }
+  try {
+    navigator.serviceWorker && navigator.serviceWorker.addEventListener("message", function (e) {
+      var d = e && e.data; if (d && d.type === "ALERT_TAP" && /^notifs/.test(String(d.go || ""))) fromAlert(d.go);
+    });
+  } catch (e) {}
   function boot() {
     var n = 0, t = setInterval(function () {
-      if (sb() && me() && document.querySelector(".hdr-console .hc-right")) { clearInterval(t); bell(); load(); live(); setInterval(load, 120000); document.addEventListener("visibilitychange", function () { if (!document.hidden) load(); }); }
+      if (sb() && me() && document.querySelector(".hdr-console .hc-right")) { clearInterval(t); bell(); load(); live();
+        try { var hm = /#go=(notifs[^&]*)/.exec(location.hash || ""); if (hm) { fromAlert(decodeURIComponent(hm[1])); history.replaceState(null, "", location.pathname + location.search); } } catch (e) {} setInterval(load, 120000); document.addEventListener("visibilitychange", function () { if (!document.hidden) load(); }); }
       else if (++n > 120) clearInterval(t);
     }, 1000);
   }
