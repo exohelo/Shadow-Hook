@@ -36,7 +36,7 @@
     var g=done.length?'<div class="v2g">'+done.map(function(r){ var m=Math.abs(+r.locked_letters-r.actual_moved); return '<span>'+lbl(r.k).replace(/^\w+ /,'')+' <b>'+(+r.locked_letters).toFixed(0)+'\u2192'+r.actual_moved+'</b> <i class="'+(m<=1?'ok':m<=2?'':'bad')+'">'+(m<=1?'\u2713':'\u00B1'+m.toFixed(0))+'</i></span>'; }).join('')+'</div>':'';
     if(!up){
       ps.innerHTML='<span '+mark+'="1">\u2014</span>';
-      mv.innerHTML='<span '+mark+'="1"><span class="v2b">WAITING ON THE SHEETS</span><span class="v2i">An early call comes the moment the PMA sheet for '+esc(lbl(key))+' is in, and sharpens when the hall gives its count. Locks at '+(key.slice(-2)==='AM'?'6:30 AM':'4:30 PM')+' and doesn\u2019t move after.</span>'+g+'</span>';
+      mv.innerHTML='<span '+mark+'="1"><span class="v2b">WAITING ON THE SHEETS</span><span class="v2i">An early call comes the moment the hall\u2019s early count or the PMA sheet for '+esc(lbl(key))+' is in, and sharpens with the hall\u2019s final. Locks at '+(key.slice(-2)==='AM'?'6:30 AM':'4:30 PM')+' and doesn\u2019t move after.</span>'+g+'</span>';
       if(src){ src.className='wire-src est'; src.textContent='\u26A1 WIRE \u00B7 WAITING ON THE SHEETS'; }
       return;
     }
@@ -46,7 +46,7 @@
     ps.innerHTML='<span '+mark+'="1">'+esc(stop)+'</span>';
     mv.innerHTML='<span '+mark+'="1"><span class="v2b">'+esc(up.lo)+'\u2013'+esc(up.hi)+' \u00B7 '+L.toFixed(0)+' letters from '+esc(up.start_code||'?')+' \u00B7 '+esc(lbl(up.k))+'</span>'+
       '<span class="v2i">'+(locked?'<span class="v2lock">\u{1F512} LOCKED '+when(up.locked_at)+'</span> \u00B7 the call doesn\u2019t move once dispatch starts':'locks '+when(flexOf(up.k))+' \u00B7 updated '+when(up.computed_at)+' \u00B7 moves only if the sheets change before then')+
-      '<br>'+(early?'<b>EARLY CALL</b> \u00B7 hall number estimated at ~'+esc(inp.hall_forecast)+' from PMA\u2019s '+esc(inp.pma_total)+' \u00B7 sharpens when the hall gives its count before the flex':'hall says '+esc(inp.hall_forecast)+' jobs \u00B7 PMA '+esc(inp.pma_total))+' \u00B7 last board moved '+esc(inp.prev1)+'</span>'+g+'</span>';
+      '<br>'+(early?'<b>EARLY CALL</b> \u00B7 '+(inp.hall_src==='early-count'?'hall\u2019s early count '+esc(inp.hall_forecast)+' jobs':'hall count estimated at ~'+esc(inp.hall_forecast)+' from PMA')+' \u00B7 PMA '+(inp.pma_src==='estimated'?'~'+esc(inp.pma_total)+' (sheet not in yet)':esc(inp.pma_total))+' \u00B7 sharpens with the hall\u2019s final after 2:30':'hall says '+esc(inp.hall_forecast)+' jobs \u00B7 PMA '+esc(inp.pma_total))+' \u00B7 last board moved '+esc(inp.prev1)+'</span>'+g+'</span>';
     if(src){ src.className='wire-src '+(locked?'lock':'est'); src.textContent='\u26A1 WIRE v2 \u00B7 '+(locked?'LOCKED':early?'EARLY CALL':'LIVE CALL'); }
     share(up,L,stop,locked,early);
     ladder(up,L,stop,locked);
