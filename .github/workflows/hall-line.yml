@@ -77,15 +77,33 @@ on:
       transcript:
         description: 'Skip the call — parse this text instead (testing)'
         required: false
+      port:
+        description: 'Only this hall (lalb · sf · sd); blank = every hall in HALL_PORTS_JSON'
+        required: false
+        default: ''
 
+# #nov1(ports) — ONE WORKER, MANY HALLS. The job runs once per hall in HALL_PORTS_JSON (a repo variable):
+#   [{"port":"lalb","key":"LALB"}]                                   ← today
+#   [{"port":"lalb","key":"LALB"},{"port":"sf","key":"SF"}]          ← when Local 10 goes on
+# Each hall dials its own number: secrets DISPATCH_NUMBER_<KEY> / DISPATCH_DTMF_<KEY> (DISPATCH_NUMBER_SF = the
+# Local 10 tape, 4157758803). LALB falls back to the old DISPATCH_NUMBER / DISPATCH_DTMF secrets, so nothing changes
+# for LA/LB until you set the new ones. The worker writes every row with its port and upserts on (port,k).
+# To test a hall without a schedule entry: workflow_dispatch → port=sf, forecast=true (a read-only tape listen).
 concurrency:
-  group: hall-line
+  group: hall-line-${{ github.event_name == 'workflow_dispatch' && inputs.port || 'all' }}
   cancel-in-progress: false
 
 jobs:
   leftoff:
     runs-on: ubuntu-latest
     timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include: ${{ fromJSON(vars.HALL_PORTS_JSON || '[{"port":"lalb","key":"LALB"}]') }}
+    # a manual run with a port picks that hall only; scheduled runs do every hall in the list
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.port == '' || inputs.port == matrix.port }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -97,8 +115,10 @@ jobs:
           TWILIO_SID:           ${{ secrets.TWILIO_SID }}
           TWILIO_TOKEN:         ${{ secrets.TWILIO_TOKEN }}
           TWILIO_FROM:          ${{ secrets.TWILIO_FROM }}
-          DISPATCH_NUMBER:      ${{ secrets.DISPATCH_NUMBER }}
-          DISPATCH_DTMF:        ${{ secrets.DISPATCH_DTMF }}
+          PORT:                 ${{ matrix.port }}
+          DISPATCH_NUMBER:      ${{ secrets[format('DISPATCH_NUMBER_{0}', matrix.key)] || secrets.DISPATCH_NUMBER }}
+          DISPATCH_DTMF:        ${{ secrets[format('DISPATCH_DTMF_{0}', matrix.key)] || secrets.DISPATCH_DTMF }}
+          BOT_HANDLE:           ${{ matrix.port == 'lalb' && '☎ Hall Line' || format('☎ Hall Line · {0}', matrix.key) }}
           CALL_SECONDS:         ${{ vars.CALL_SECONDS || '120' }}
           OPENAI_API_KEY:       ${{ secrets.OPENAI_API_KEY }}
           SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
@@ -131,6 +151,7 @@ jobs:
       - name: The Lookout — push the board to subscribed phones
         if: ${{ always() }}
         env:
+          PORT:                 ${{ matrix.port }}
           SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           VAPID_PUBLIC:         ${{ vars.VAPID_PUBLIC || 'BOIf-N1g5af_QuVRTc9AbScS5YWjUMAX8wSFjfbC4Y6KPVJvLGxzvWrgPSBb38yYvCAuKCJqAGWisb8d-vZpbss' }}
