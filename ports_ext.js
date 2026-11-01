@@ -74,7 +74,7 @@
 
   /* ------------------------------------------------------------------ Supabase scoping ------------------------------------------------------------ */
   function addPort(rows, table) {
-    var p = (table === "scan_lessons" || table === "scan_samples") && S.teachPort || S.home;
+    var p = (table === "scan_lessons" || table === "scan_samples" || table === "pma_sheets") && S.teachPort || S.home;
     if (Array.isArray(rows)) return rows.map(function (r) { return (r && typeof r === "object" && r.port == null) ? Object.assign({}, r, { port: p }) : r; });
     if (rows && typeof rows === "object" && rows.port == null) return Object.assign({}, rows, { port: p });
     return rows;
@@ -336,6 +336,74 @@
     } catch (e) {}
   }
 
+  /* ---- the PMA 720 Dispatch Summary reader, copied verbatim from index.html’s PMA module (oct31q) with the LA/LB-only
+     check removed; the port comes from the sheet’s own header line. If the module changes, copy it again. ---- */
+  var pmaLos2=function(clean){const out={},hC=clean.find(i=>i.s==="Category/Board");if(!hC)return null;const pg=clean.filter(i=>i.p===hC.p),hT=pg.find(i=>i.s==="Type"&&Math.abs(i.y-hC.y)<=3);if(!hT)return null;const isNum=s=>/^-?\d[\d,]*$/.test(s),toN=s=>parseInt(String(s).replace(/,/g,""),10),TYPES={Vessel:1,Dock:1,Rail:1,Total:1},cats=pg.filter(i=>Math.abs(i.x-hC.x)<=8&&i.y<hC.y-3&&!TYPES[i.s]&&!isNum(i.s));return pg.filter(i=>TYPES[i.s]&&Math.abs(i.x-hT.x)<=14&&i.y<hC.y-3).sort((a,b)=>b.y-a.y).forEach(R=>{const ns=pg.filter(i=>Math.abs(i.y-R.y)<=3&&i.x>R.x+10&&isNum(i.s)).sort((a,b)=>a.x-b.x);if(ns.length!==5)return;let cat=null,d=1e9;if(cats.forEach(c=>{const dy=c.y-R.y;dy>=-3&&dy<d&&(d=dy,cat=c.s)}),!cat)return;const v=ns.map(i=>toN(i.s));(out[cat]=out[cat]||{})[R.s]={N:v[0],B:v[1],S:v[2],C:v[3],T:v[4]}}),Object.keys(out).length?out:null};
+  var pmaShips2=function(clean){const ships=[],pages=[...new Set(clean.map(i=>i.p))].sort((a,b)=>a-b),isNum=s=>/^-?\d[\d,]*$/.test(s),toN=s=>parseInt(String(s).replace(/,/g,""),10);let comp="";for(const P of pages){const pg=clean.filter(i=>i.p===P),hC=pg.find(i=>i.s==="Company");if(!hC)continue;const same=i=>Math.abs(i.y-hC.y)<=3,hV=pg.find(i=>i.s==="Vessel"&&same(i));if(!hV)continue;const hT=pg.find(i=>i.s==="Type"&&same(i)),hS=pg.find(i=>/^Status/.test(i.s)&&same(i)),hE=pg.find(i=>/^ETA/.test(i.s)&&same(i));pg.some(i=>/VESSEL ACTIVITY$/i.test(i.s))&&(comp="");const colX=[];["New","Back","Cut","Total"].forEach(w=>{const h=pg.find(i=>i.s===w&&same(i));h&&colX.push(h.x+10)});const hW=pg.find(i=>/^Wrkd$/i.test(i.s)&&i.y>hC.y-2&&i.y<hC.y+16),hF=pg.find(i=>/^To$/i.test(i.s)&&i.y>hC.y-2&&i.y<hC.y+16);hW&&colX.push(hW.x+10),hF&&colX.push(hF.x+4);const minX=hE?hE.x+60:hV.x+300,anchors=pg.filter(i=>Math.abs(i.x-hV.x)<=4&&i.y<hC.y-6).sort((a,b)=>b.y-a.y);for(const A of anchors){const row=pg.filter(i=>Math.abs(i.y-A.y)<=3),ty=hT?row.find(i=>Math.abs(i.x-hT.x)<=10):null,st=hS?row.find(i=>Math.abs(i.x-hS.x)<=10):null;if(!ty||!st)continue;const co=row.find(i=>i.x<A.x-10&&!isNum(i.s));co&&(comp=co.s);const et=row.find(i=>/^\d{2}\/\d{2}\/\d{4}(\s+\d{1,2}:\d{2})?$/.test(i.s));let a=null;if(et){const m=/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?$/.exec(et.s);a=m[3]+"-"+m[1]+"-"+m[2]+(m[4]!=null?"T"+String(m[4]).padStart(2,"0")+":"+m[5]:"")}const ns=row.filter(i=>isNum(i.s)&&i.x>minX).sort((p,q)=>p.x-q.x),v=[null,null,null,null,null,null];ns.length===6||colX.length!==6?ns.slice(-6).forEach((i,k)=>{v[k+Math.max(0,6-Math.min(6,ns.length))]=toN(i.s)}):ns.forEach(i=>{let k=0,d=1e9;colX.forEach((cx,j)=>{const dd=Math.abs(i.x+4-cx);dd<d&&(d=dd,k=j)}),v[k]==null&&(v[k]=toN(i.s))}),ships.push({c:comp,v:A.s,t:ty.s,s:st.s,a,n:v[0],b:v[1],x:v[2],g:v[3],w:v[4],f:v[5]})}}return ships};
+  var pmaParse2=function(items){const out={ok:!1},clean=(items||[]).filter(i=>i&&i.s!=null).map(i=>({p:i.p,s:String(i.s).trim(),x:+i.x,y:+i.y})).filter(i=>i.s);if(!clean.some(i=>/^720 Dispatch Summary$/i.test(i.s)))return out.err="not a 720 Dispatch Summary",out;let hd=null;for(const i of clean){const m=/^(\d{2})\/(\d{2})\/(\d{4})\s+Shift\s+(\d)$/i.exec(i.s);if(m){hd=m;break}}if(!hd)return out.err="no date / shift line",out;out.date=hd[3]+"-"+hd[1]+"-"+hd[2],out.shift=+hd[4];const LAB={"All Jobs Filled":"allFilled","Jobs Ordered":"ordered","Jobs Dispatched":"dispatched","Class A Checked In":"classA","Class B Checked In":"classB","Dispatch Completed":"done","Skilled Jobs Not Filled":"skilledUnfilled","Jobs Sent to Casual Hall":"toCH","No. of L/S Jobs Filled":"lsFilled","L/S Dispatch Completed":"lsDone","Casual Dispatch Start No.":"start","Casual Dispatch End No.":"end","Casual Hall Cycled":"cyc","Total L/S Jobs Unfilled":"unfilled"},valOf=L=>{let best=null;for(const v of clean)v.p!==L.p||Math.abs(v.y-L.y)>3||v.x<=L.x+200||v.x>L.x+330||LAB[v.s]||/^No\. of /i.test(v.s)||(!best||v.x<best.x)&&(best=v);return best?best.s:null};for(const L of clean){const f=LAB[L.s];if(!f||out[f]!=null)continue;const v=valOf(L);v!=null&&(out[f]=v)}const num=v=>{const k=parseInt(String(v).replace(/,/g,""),10);return isFinite(k)?k:null};["ordered","dispatched","classA","classB","skilledUnfilled","toCH","lsFilled","unfilled"].forEach(k=>{out[k]!=null&&(out[k]=num(out[k]))});const card=v=>{const m=/^([A-Z]{1,2})(\d{3,5})$/.exec(String(v||"").toUpperCase().replace(/\s+/g,""));if(!m)return null;let L=m[1];if(L.length===2){if(L[0]!=="N")return null;L=L[1]}return L+m[2]};out.start!=null&&(out.start=card(out.start)),out.end!=null&&(out.end=card(out.end)),["allFilled","cyc"].forEach(k=>{if(out[k]!=null){const s=String(out[k]).toUpperCase();out[k]=s==="Y"?!0:s==="N"?!1:null}}),["done","lsDone"].forEach(k=>{out[k]!=null&&!/^\d{1,2}:\d{2}$/.test(out[k])&&(out[k]=null)});let clerk=null;for(const L of clean)if(/^No\. of (Split )?(Basic|Key|Flex) Clerk Jobs Filled$/i.test(L.s)){const v=num(valOf(L));v!=null&&(clerk=(clerk||0)+v)}clerk!=null&&(out.clerk=clerk);try{const sh=pmaShips2(clean);sh.length&&(out.ships=sh)}catch{}try{const lo=pmaLos2(clean);lo&&(out.los=lo)}catch{}return out.v=3,out.final=!!out.end,out.ok=!0,out};
+
+  function isKM() { try { return !!window.__isKM || (typeof prvKm === "function" && prvKm()); } catch (e) { return false; } }
+
+  /* ------------------------------------------------------------------ PMA sheets for the other halls --------------------------------------------- */
+  /* The Keymaster drops LA/LB sheets the usual way. For another hall: explore it on the Ports tab and use the 📄 button in
+     the note. Each PDF is read on the phone, the hall is taken from the sheet’s own header (Los Angeles / Long Beach ·
+     San Francisco · San Diego), and the row goes to pma_sheets under that port — straight on the record, no hold step. */
+  var PDFJS_URL = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/", _pdfP = null;
+  function pdfLib() {
+    if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+    return _pdfP || (_pdfP = new Promise(function (res, rej) {
+      var sc = document.createElement("script"); sc.src = PDFJS_URL + "pdf.min.js"; sc.async = true;
+      sc.onload = function () { try { window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_URL + "pdf.worker.min.js"; res(window.pdfjsLib); } catch (e) { rej(e); } };
+      sc.onerror = function () { _pdfP = null; rej(new Error("could not load the PDF reader")); };
+      document.head.appendChild(sc);
+    }));
+  }
+  async function readSheet(file) {
+    var lib = await pdfLib(), buf = await file.arrayBuffer(), doc = await lib.getDocument({ data: new Uint8Array(buf) }).promise, items = [];
+    for (var i = 1; i <= doc.numPages; i++) (await (await doc.getPage(i)).getTextContent()).items.forEach(function (it) { var t = (it.str || "").trim(); t && items.push({ p: i, s: t, x: it.transform[4], y: it.transform[5] }); });
+    return items;
+  }
+  function sheetPort(items) {
+    var head = items.filter(function (i) { return i.p === 1 && i.y > 0; }).map(function (i) { return i.s; }).join(" · ");
+    if (/Los Angeles\s*\/\s*Long Beach/i.test(head)) return "lalb";
+    if (/San Francisco|Oakland|Bay Area|Northern California/i.test(head)) return "sf";
+    if (/San Diego/i.test(head)) return "sd";
+    return null;
+  }
+  var DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  function sheetKey(date, shift) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date || ""); if (!m) return null;
+    var d = new Date(+m[1], +m[2] - 1, +m[3]);
+    if (shift !== 1 && shift !== 2) return null;
+    return date + "_" + DOW[d.getDay()] + "_" + (shift === 1 ? "AM" : "PM");
+  }
+  async function addSheetsFor(files, wantPort) {
+    var lines = [];
+    for (var f of files) {
+      try {
+        var items = await readSheet(f), parsed = pmaParse2(items);
+        if (!parsed.ok) { lines.push("✗ " + f.name + ": " + parsed.err); continue; }
+        var port = sheetPort(items);
+        if (!port) { lines.push("✗ " + f.name + ": can’t tell which hall this sheet is for"); continue; }
+        if (port === S.home) { lines.push("· " + f.name + " is a " + (portOf(port).short || port) + " sheet — drop it the usual way"); continue; }
+        var key = sheetKey(parsed.date, parsed.shift);
+        if (!key) { lines.push("· " + f.name + ": " + parsed.date + " shift " + parsed.shift + " — skipped (only day and night sheets go on the record)"); continue; }
+        var data = Object.assign({}, parsed, { src: "upload", file: f.name, at: new Date().toISOString(), port: port });
+        S.teachPort = port;
+        var r = await window.SB.from("pma_sheets").upsert({ key: key, port: port, shift: data.shift, data: data, src: "upload", updated_at: new Date().toISOString() }, { onConflict: "port,key" });
+        S.teachPort = null;
+        if (r && r.error) { lines.push("✗ " + f.name + ": the wire refused it (" + r.error.message + ")"); continue; }
+        lines.push((parsed.final ? "✓ " : "◐ ") + (portOf(port).short || port) + " " + key.replace(/_/g, " ") + " · " + (parsed.start || "—") + " → " + (parsed.end || "not finished") + (parsed.ships ? " · " + parsed.ships.length + " ships" : "") + (port !== wantPort ? " (the sheet says " + (portOf(port).short || port) + ", filed there)" : ""));
+        log("PMA sheet " + port + " " + key, f.name);
+      } catch (e) { lines.push("✗ " + f.name + " — " + (e && e.message || e)); }
+    }
+    try { typeof toast === "function" && toast("📄 PMA sheets: " + (lines.join(" · ") || "nothing new")); } catch (e) {}
+    return lines;
+  }
+  function sheetButtonHtml() {
+    return '<label class="hm-sheet">📄 Add this hall’s PMA sheet<input type="file" accept="application/pdf,.pdf" multiple hidden></label>';
+  }
+
   /* ------------------------------------------------------------------ the Board: hall under the name ---------------------------------------------- */
   var PORT_LABEL = { lalb: "Los Angeles · Long Beach", sf: "San Francisco · Oakland", sd: "San Diego" };
   function portLabel(code) { var p = portOf(code); return PORT_LABEL[code] || (p && p.name) || String(code || "").toUpperCase(); }
@@ -433,6 +501,7 @@
     ".bp-port.p-sd{background:rgba(255,196,61,.15);border-color:rgba(255,196,61,.55);color:#ffc43d}" +
     ".bp-port.shift{letter-spacing:.08em;white-space:normal;line-height:1.35}" +
     ".hm-views{display:flex;gap:6px;margin:0 12px 8px}.hm-views button{flex:1;background:var(--plate-2);border:1px solid var(--line);color:var(--steel);border-radius:8px;padding:6px 8px;font:700 11px/1 Barlow Condensed,sans-serif;letter-spacing:.12em;text-transform:uppercase;cursor:pointer}.hm-views button.on{color:var(--copper-hi);border-color:var(--copper-hi)}" +
+    ".hm-sheet{display:inline-flex;align-items:center;gap:6px;margin-top:6px;padding:6px 10px;border:1px solid var(--copper-hi);border-radius:8px;color:var(--copper-hi);font:700 11px/1 Barlow Condensed,sans-serif;letter-spacing:.1em;text-transform:uppercase;cursor:pointer}" +
     ".hm-away{margin:0 12px 8px;padding:6px 10px;border:1px dashed var(--hm-lb-line,rgba(255,77,210,.72));border-radius:8px;font:600 11px/1.3 Inter,system-ui,sans-serif;color:var(--steel)}.hm-away b{color:var(--hm-lb-hi,#ff4dd2)}";
   function injectCss() { if (document.getElementById("shkPortsExtCss")) return; var s = document.createElement("style"); s.id = "shkPortsExtCss"; s.textContent = CSS; document.head.appendChild(s); }
 
@@ -458,7 +527,10 @@
       if (note) {
         var pk = packOf(S.view) || {};
         note.innerHTML = "Exploring <b>" + esc(p.name || p.short) + "</b> · " + esc(p.local || "") + (pk.hint ? " · " + esc(pk.hint) : "") +
-          "<br>Your Wire, drops and MAYDAY stay on <b>" + esc(portOf(S.home).short || S.home) + "</b>. Leaving this tab brings your hall back.";
+          "<br>Your Wire, drops and MAYDAY stay on <b>" + esc(portOf(S.home).short || S.home) + "</b>. Leaving this tab brings your hall back." +
+          (isKM() ? "<br>" + sheetButtonHtml() : "");
+        var inp = note.querySelector(".hm-sheet input");
+        if (inp) inp.addEventListener("change", function (ev) { var fs = Array.prototype.slice.call(ev.target.files || []); ev.target.value = ""; fs.length && addSheetsFor(fs, S.view); });
       }
     } else if (note) note.remove();
   }
@@ -508,6 +580,7 @@
 
   window.SHK_PORTS = {
     get home() { return S.home; }, get view() { return S.view; }, get packs() { return S.packs; },
-    explore: applyPack, goHome: function () { return applyPack(S.home); }, setHome: setHome, codes: allCodes
+    explore: applyPack, goHome: function () { return applyPack(S.home); }, setHome: setHome, codes: allCodes,
+    sheets: { read: readSheet, parse: pmaParse2, port: sheetPort, key: sheetKey, add: addSheetsFor }
   };
 })();
