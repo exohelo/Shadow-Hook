@@ -142,7 +142,7 @@
             if (type === "postgres_changes" && cfg && cfg.table && Object.prototype.hasOwnProperty.call(HALL, cfg.table) && !cfg.filter)
               cfg = Object.assign({}, cfg, { filter: "port=eq." + S.home });
             if (type === "postgres_changes" && cfg && cfg.table && SC_ALL.indexOf(cfg.table) >= 0)
-              cfg = Object.assign({}, cfg, { table: cfg.table + "_all", filter: cfg.filter ? cfg.filter + "&port=eq." + S.home : "port=eq." + S.home });
+              cfg = Object.assign({}, cfg, { table: cfg.table + "_all", filter: cfg.filter ? cfg.filter + "&port=eq." + (S.chamber || S.home) : "port=eq." + (S.chamber || S.home) });
           } catch (e) {}
           return oOn.call(ch, type, cfg, cb);
         };
@@ -464,6 +464,46 @@
   (function watchOak() {
     var t = 0; new MutationObserver(function () { clearTimeout(t); t = setTimeout(oakNote, 250); }).observe(document.documentElement, { childList: true, subtree: true });
     setTimeout(oakNote, 300);
+  })();
+  /* #nov2(chamberswitch) — an overseer (or the Keymaster over all halls) picks whose Chamber they're looking at: a row
+     of hall chips at the top of the Chamber. The server (chamber_view_set) remembers it; every Chamber read then shows
+     that hall. Read-only for an overseer: voting and running a Chamber stay with its own members. */
+  var CHV = null;
+  async function chamberView(force) {
+    if (CHV && !force) return CHV;
+    try { var r = await window.SB.rpc("chamber_view"); CHV = r && !r.error ? r.data : null; } catch (e) { CHV = null; }
+    if (CHV && CHV.port) S.chamber = CHV.port;
+    return CHV;
+  }
+  async function chamberSwitch() {
+    var ch = document.getElementById("scChamber"); if (!ch || !ch.classList.contains("on") || !window.SB) return;
+    var v = await chamberView(); if (!v || !v.can) return;
+    var row = document.getElementById("chHallSw");
+    var html = '<span style="font:700 11px Inter,system-ui,sans-serif;letter-spacing:.14em;color:var(--steel,#999);text-transform:uppercase;margin-right:4px">Chamber of</span>' +
+      (v.halls || []).map(function (h) {
+        var on = h.code === v.port;
+        return '<button type="button" data-chport="' + esc(h.code) + '" style="border-radius:999px;padding:5px 11px;cursor:pointer;font:700 11px/1 Barlow Condensed,sans-serif;letter-spacing:.1em;text-transform:uppercase;background:' + (on ? "var(--copper-hi,#e8a33d)" : "transparent") + ';color:' + (on ? "#1a1208" : "var(--bone,#eee)") + ';border:1px solid ' + (on ? "var(--copper-hi,#e8a33d)" : "var(--line,#444)") + '">' + esc(h.short) + "</button>";
+      }).join("");
+    if (!row) {
+      row = document.createElement("div"); row.id = "chHallSw";
+      row.style.cssText = "display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:8px 12px;margin:0 0 6px;border-bottom:1px solid var(--line,#333)";
+      ch.insertBefore(row, ch.firstElementChild ? ch.firstElementChild.nextSibling : null);
+      row.addEventListener("click", async function (e) {
+        var b = e.target.closest("button[data-chport]"); if (!b) return;
+        var code = b.getAttribute("data-chport"); if (CHV && code === CHV.port) return;
+        b.textContent = "…";
+        try { var r = await window.SB.rpc("chamber_view_set", { p_port: code }); if (r && r.data && r.data.ok) { try { sessionStorage.setItem("shk_reopen_chamber", "1"); } catch (x) {} location.reload(); return; } } catch (x) {}
+        chamberSwitch();
+      });
+    }
+    if (row.innerHTML !== html) row.innerHTML = html;
+  }
+  (function watchChamber() {
+    var t = 0; new MutationObserver(function () { clearTimeout(t); t = setTimeout(chamberSwitch, 200); }).observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ["class"] });
+    /* after a switch the app reloads; open the Chamber again so you land where you were */
+    try { if (sessionStorage.getItem("shk_reopen_chamber")) { sessionStorage.removeItem("shk_reopen_chamber");
+      var n = 0, w = setInterval(function () { var o = document.querySelector('[onclick*="scChamber"],#scOpen,#scChamberBtn,[data-open="chamber"]'); if (o) { clearInterval(w); o.click(); } else if (++n > 40) clearInterval(w); }, 500); } } catch (e) {}
+    var n2 = 0, w2 = setInterval(function () { if (window.SB && window.__shkUid) { clearInterval(w2); chamberView(true); } else if (++n2 > 120) clearInterval(w2); }, 1000);
   })();
   function sheetButtonHtml() {
     return '<label class="hm-sheet">📄 Add this hall’s PMA sheet<input type="file" accept="application/pdf,.pdf" multiple hidden></label>';
