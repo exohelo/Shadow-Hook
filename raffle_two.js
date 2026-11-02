@@ -69,7 +69,13 @@
       return '<button class="rfl-rail" type="button" data-rfl2="open" data-id="'+E(r.id)+'"'+sty+'><b'+bsty+'>'+icon(r)+' RAFFLE</b><span>'+t+'</span>\u25B8</button>';
     }).join('');
   }
-  function paint(){ cloneCss(); paintChips(); paintBanners(); }
+  /* #nov2(rflswitch): the Keymaster's raffle switch (The Switches → Raffle OFF) takes down every raffle, these too.
+     Before this, a drawn second raffle kept its WINNER strip up for 5 days with the switch off. */
+  function rflOn(){ try{ return typeof window.rflIsOn!=='function' || window.rflIsOn(); }catch(e){ return true; } }
+  function paint(){
+    if(!rflOn()){ var h2=document.getElementById('rflHost2'); if(h2)h2.innerHTML=''; document.querySelectorAll('[data-rfl2chip]').forEach(function(e){ e.remove(); }); return; }
+    cloneCss(); paintChips(); paintBanners(); }
+  var _wasOn=null; setInterval(function(){ var on=rflOn(); if(on!==_wasOn){ _wasOn=on; paint(); } },2000);
 
   document.addEventListener('click',function(e){
     var a=e.target.closest('[data-rfl2]'); if(!a)return;
