@@ -20,8 +20,10 @@
   function lbl(k){ var d=new Date(k.slice(0,10)+'T12:00:00'); return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()]+' '+(d.getMonth()+1)+'/'+d.getDate()+' '+(k.slice(-2)==='AM'?'day':'night'); }
   function flexOf(k){ return new Date(k.slice(0,10)+'T'+(k.slice(-2)==='AM'?'06:30':'16:30')+':00'); }
   function when(x){ var d=new Date(x); var h=d.getHours(),m=d.getMinutes(); return (h%12||12)+':'+(m<10?'0':'')+m+(h<12?'a':'p'); }
+  /* the board that's running stays on the Wire until its dispatch is over (day ~9:40, night ~7:00): the morning board
+     until 10:00, the night board until 7:30 PM, then the next one. Switching at the flex hid the live board's call. */
   function upcomingKey(){ var n=new Date(), m=n.getHours()*60+n.getMinutes(), d=new Date(n), sh='AM';
-    if(m<6*60+30){ sh='AM'; } else if(m<16*60+30){ sh='PM'; } else { d.setDate(d.getDate()+1); sh='AM'; }
+    if(m<10*60){ sh='AM'; } else if(m<19*60+30){ sh='PM'; } else { d.setDate(d.getDate()+1); sh='AM'; }
     var iso=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
     return iso+'_'+['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()]+'_'+sh; }
   function paint(){
