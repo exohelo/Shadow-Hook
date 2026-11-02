@@ -26,11 +26,17 @@
     if(m<10*60){ sh='AM'; } else if(m<19*60+30){ sh='PM'; } else { d.setDate(d.getDate()+1); sh='AM'; }
     var iso=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
     return iso+'_'+['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()]+'_'+sh; }
+  function nextKey(k){ var m=/^(\d{4})-(\d{2})-(\d{2})_\w{3}_(AM|PM)$/.exec(k); if(!m)return k;
+    var d=new Date(+m[1],+m[2]-1,+m[3]), sh='PM'; if(m[4]==='PM'){ d.setDate(d.getDate()+1); sh='AM'; }
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')+'_'+['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()]+'_'+sh; }
   function paint(){
     var ps=document.getElementById('predStop'), mv=document.getElementById('wMoves'), src=document.getElementById('wSrc');
     if(!ps||!mv||!rows)return;
     css();
     var key=upcomingKey(), up=null, i;
+    /* a board whose end is already on the record is done: move to the next one right away (the night board can end
+       at 7:24, before the 7:30 switch, while the Dispatch Post has already moved on) */
+    for(i=0;i<rows.length;i++)if(rows[i].k===key&&rows[i].actual_moved!=null){ key=nextKey(key); break; }
     for(i=0;i<rows.length;i++)if(rows[i].k===key){ up=rows[i]; break; }
     /* the board that's running or just ran: its locked call stays up until the next board has one */
     if(!up)for(i=0;i<rows.length;i++)if(rows[i].actual_moved==null&&rows[i].k<key){ up=rows[i]; break; }
