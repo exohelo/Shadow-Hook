@@ -1,4 +1,4 @@
-/* The Shadow Hook — xmas_raffle.js (nov3d)
+/* The Shadow Hook — xmas_raffle.js (nov3e)
    The "Christmas Day on Ice" raffle look (raffles.design = 'xmas-ice'), in place of the app's standard raffle pieces:
    · THE BANNER (Social tab, where the raffle banner sits): the trailer plays first (muted, 0:00–0:21, once a day, Skip
      any time), then the card: the show art, "Christmas Day on Ice", WIN A FAMILY 4-PACK, the draw, ENTER.
@@ -126,7 +126,7 @@
   /* ---------------- the trailer (YouTube's own player, muted so it can start on its own) ---------------- */
   function vidHTML() {
     return '<div class="xm-vid" style="height:100%">' +
-      '<iframe src="https://www.youtube-nocookie.com/embed/' + YT + '?autoplay=1&mute=0&enablejsapi=1&playsinline=1&controls=0&rel=0&modestbranding=1&start=0&end=' + CLIP +
+      '<iframe src="https://www.youtube-nocookie.com/embed/' + YT + '?autoplay=1&mute=0&enablejsapi=1&playsinline=1&controls=0&rel=0&modestbranding=1&start=0' +
       '&origin=' + encodeURIComponent(location.origin) + '" title="Disney On Ice presents Jump In! trailer" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>' +
       '<button type="button" class="xm-snd" data-xm="sound" aria-label="Turn the sound on">🔊 Sound</button>' +
       '<button type="button" class="xm-skip" data-xm="skip">Skip ›</button>' +
@@ -222,7 +222,7 @@
     var f = flyer(), top = $("xfTop");
     f.classList.remove("lifted");
     top.innerHTML = vidHTML() + '<span class="xm-cred" style="z-index:3">© Disney</span>';
-    runClip(top, function () { f.classList.add("lifted"); setTimeout(function () { if (f.classList.contains("lifted")) top.innerHTML = '<img src="' + ART + '" alt="">'; }, 950); });
+    runClip(top, function () { f.classList.add("lifted"); });   /* the panel slides away at 0:21; the trailer keeps playing, so the sound carries on */
   }
   function openFlyer() {
     if (!R) return;
