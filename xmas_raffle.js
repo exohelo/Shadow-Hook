@@ -1,4 +1,4 @@
-/* The Shadow Hook — xmas_raffle.js (nov3t)
+/* The Shadow Hook — xmas_raffle.js (nov3u)
    The "Christmas Day on Ice" raffle look (raffles.design = 'xmas-ice'), in place of the app's standard raffle pieces:
    · THE BANNER (Social tab, where the raffle banner sits): the trailer plays first (muted, 0:00–0:21, once a day, Skip
      any time), then the card: the show art, "Christmas Day on Ice", WIN A FAMILY 4-PACK, the draw, ENTER.
@@ -73,7 +73,7 @@
       /* YouTube shows its title, logo and pause button only on hover or tap (and briefly at the start): a clear shield
          takes every touch so they stay hidden, and a slight zoom pushes the player's edges out of frame */
       ".xm-vid{overflow:hidden}",
-      ".xm-vid iframe{position:absolute;inset:0;width:100%;height:100%;border:0;transform:scale(1.16);transform-origin:50% 50%;pointer-events:none}",
+      ".xm-vid iframe{position:absolute;inset:0;width:100%;height:100%;border:0;transform:scale(1.3);transform-origin:50% 50%;pointer-events:none}",
       ".xm-shield{position:absolute;inset:0;z-index:1;background:transparent}",
       ".xm-poster{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}",
       ".xm-vtag{position:absolute;left:10px;top:10px;z-index:2;padding:4px 8px;border-radius:6px;background:rgba(0,0,0,.6);font:700 10px Inter,sans-serif;letter-spacing:.16em;color:#fff;pointer-events:none}",
@@ -171,10 +171,19 @@
       try { f.contentWindow.postMessage(JSON.stringify({ event: "command", func: c[0], args: c[1] }), "*"); } catch (e) {}
     });
   }
+  /* the player reports its time: show the video once it has really played 3.5 s, when YouTube's opening title is gone
+     (a slow start keeps the art up longer instead of uncovering the title) */
+  window.addEventListener("message", function (e) {
+    if (!/youtube(-nocookie)?\.com$/.test(String(e.origin).replace(/^https?:\/\/(www\.)?/, ""))) return;
+    var d; try { d = typeof e.data === "string" ? JSON.parse(e.data) : e.data; } catch (x) { return; }
+    var t = d && d.info && typeof d.info.currentTime === "number" ? d.info.currentTime : null;
+    if (t == null || t < 3.5) return;
+    document.querySelectorAll(".xm-vid:not(.ready) iframe").forEach(function (f) { if (f.contentWindow === e.source) f.closest(".xm-vid").classList.add("ready"); });
+  });
   function runClip(host, done) {
     var fr = host.querySelector("iframe");
-    if (fr) setTimeout(function () { var v = fr.closest(".xm-vid"); v && v.classList.add("ready"); }, 3400);
-    if (fr) fr.addEventListener("load", function () { [300, 1400, 2500].forEach(function (ms) { setTimeout(function () { soundOn(host); noCaptions(host); }, ms); });   /* all inside the first 3 s, under the art */ });
+    if (fr) setTimeout(function () { var v = fr.closest(".xm-vid"); v && v.classList.add("ready"); }, 9000);   /* fallback; normally shown once it has really played 3.5 s */
+    if (fr) fr.addEventListener("load", function () { try { fr.contentWindow.postMessage(JSON.stringify({ event: "listening", id: 1, channel: "widget" }), "*"); } catch (e) {} [300, 1400, 2500].forEach(function (ms) { setTimeout(function () { soundOn(host); noCaptions(host); }, ms); });   /* all inside the first 3 s, under the art */ });
     var bar = host.querySelector(".xm-bar i"), t = 0;
     clearInterval(host._clip);
     host._clip = setInterval(function () {
