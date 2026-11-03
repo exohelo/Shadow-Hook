@@ -38,14 +38,14 @@
        at 7:24, before the 7:30 switch, while the Dispatch Post has already moved on) */
     for(i=0;i<rows.length;i++)if(rows[i].k===key&&rows[i].actual_moved!=null){ key=nextKey(key); break; }
     for(i=0;i<rows.length;i++)if(rows[i].k===key){ up=rows[i]; break; }
-    /* the board that's running or just ran: its locked call stays up until the next board has one */
-    if(!up)for(i=0;i<rows.length;i++)if(rows[i].actual_moved==null&&rows[i].k<key){ up=rows[i]; break; }
+    /* once a board's dispatch is over its call comes down: the Wire stands by until the next board has a call
+       (it used to keep the finished board's locked call up, which read like a call for the next one) */
     var done=rows.filter(function(r){ return r.actual_moved!=null&&r.locked_letters!=null; }).slice(0,6);
-    var g=done.length?'<div class="v2g">'+done.map(function(r){ var m=Math.abs(+r.locked_letters-r.actual_moved); return '<span>'+lbl(r.k).replace(/^\w+ /,'')+' <b>'+(+r.locked_letters).toFixed(0)+'\u2192'+r.actual_moved+'</b> <i class="'+(m<=1?'ok':m<=2?'':'bad')+'">'+(m<=1?'\u2713':'\u00B1'+m.toFixed(0))+'</i></span>'; }).join('')+'</div>':'';
+    var g=done.length?'<div class="v2g">'+done.map(function(r){ var m=Math.abs(Math.round(+r.locked_letters)-r.actual_moved);   /* graded on the letters people saw: called A, landed B = 1 off = ✓ */ return '<span>'+lbl(r.k).replace(/^\w+ /,'')+' <b>'+(+r.locked_letters).toFixed(0)+'\u2192'+r.actual_moved+'</b> <i class="'+(m<=1?'ok':m<=2?'':'bad')+'">'+(m<=1?'\u2713':'\u00B1'+m.toFixed(0))+'</i></span>'; }).join('')+'</div>':'';
     if(!up){
       ps.innerHTML='<span '+mark+'="1">\u2014</span>';
       mv.innerHTML='<span '+mark+'="1"><span class="v2b">WAITING ON THE SHEETS</span><span class="v2i">An early call comes the moment the hall\u2019s early count or the PMA sheet for '+esc(lbl(key))+' is in, and sharpens with the hall\u2019s final. Locks at '+(key.slice(-2)==='AM'?'6:30 AM':'4:30 PM')+' and doesn\u2019t move after.</span>'+g+'</span>';
-      if(src){ src.className='wire-src est'; src.textContent='\u26A1 WIRE \u00B7 WAITING ON THE SHEETS'; }
+      if(src){ src.className='wire-src est'; src.textContent='\u26A1 WIRE \u00B7 STANDING BY'; }
       return;
     }
     var inp=up.inputs||{}, locked=!!up.locked_at, L=locked?+up.locked_letters:+up.letters, stop=locked?(up.locked_stop||up.stop):up.stop;
@@ -99,6 +99,35 @@
   /* repaint whenever index.html paints the training label over us */
   new MutationObserver(function(){ clearTimeout(t); t=setTimeout(function(){ var ps=document.getElementById('predStop'); if(ps&&rows&&!ps.querySelector('['+mark+']'))paint(); },150); }).observe(document.body,{childList:true,subtree:true,characterData:true});
   setInterval(load,60000);
+  /* #nov3(runbtn) — the Keymaster's "Run the prediction" button, at the top of the command center: recalculates every
+     upcoming board right now (wire_run_now) and shows what each one says, or what it's still waiting on. */
+  var DOWF={Sun:'Sunday',Mon:'Monday',Tue:'Tuesday',Wed:'Wednesday',Thu:'Thursday',Fri:'Friday',Sat:'Saturday'};
+  function kName(k){ var m=/^\d{4}-(\d{2})-(\d{2})_(\w{3})_(AM|PM)$/.exec(k||''); return m?(DOWF[m[3]]||m[3])+' '+(m[4]==='AM'?'day':'night')+' '+(+m[1])+'/'+(+m[2]):k; }
+  function runCard(){
+    var jump=document.getElementById('kmJump'); if(!jump||document.getElementById('kmWireRun'))return;
+    var c=document.createElement('div'); c.id='kmWireRun';
+    c.style.cssText='margin:0 0 12px;padding:10px 12px;border:1px solid rgba(238,180,107,.45);border-radius:12px';
+    c.innerHTML='<div style="display:flex;align-items:center;gap:10px"><b style="font:700 14px Barlow Condensed,sans-serif;letter-spacing:.12em;color:var(--copper-hi,#e8a33d)">\u26A1 THE WIRE</b>'+
+      '<button type="button" id="kmWireRunBtn" class="btn" style="margin-left:auto;padding:8px 14px">Run the prediction</button></div>'+
+      '<div id="kmWireRunOut" class="sub" style="margin-top:8px;line-height:1.55">Recalculates every board that isn\u2019t locked yet, right now. (It also runs on its own every 5 minutes.)</div>';
+    jump.insertAdjacentElement('afterend',c);
+    document.getElementById('kmWireRunBtn').addEventListener('click',async function(){
+      var b=this,out=document.getElementById('kmWireRunOut'); b.disabled=true; b.textContent='Running\u2026';
+      try{
+        var r=await window.SB.rpc('wire_run_now',{p_port:'lalb'}); if(r.error)throw r.error;
+        var bs=(r.data&&r.data.boards)||[];
+        out.innerHTML=bs.length?bs.map(function(x){
+          var name='<b style="color:var(--bone)">'+esc(kName(x.k))+'</b>';
+          if(x.locked)return name+' \u00B7 '+esc(x.stop)+' ('+esc(x.lo)+'\u2013'+esc(x.hi)+') \uD83D\uDD12 locked';
+          if(!x.ok)return name+' \u00B7 <span style="color:var(--steel)">'+esc(x.why||'not ready')+'</span>';
+          return name+' \u00B7 <b style="color:var(--copper-hi,#e8a33d)">'+esc(x.stop)+'</b> ('+esc(x.lo)+'\u2013'+esc(x.hi)+')'+(x.early?' \u00B7 early':'')+' \u00B7 hall '+esc(x.hall)+' \u00B7 PMA '+esc(x.pma);
+        }).join('<br>'):'No upcoming boards to call.';
+        load();
+      }catch(e){ out.textContent='Couldn\u2019t run it: '+((e&&e.message)||e); }
+      b.disabled=false; b.textContent='Run the prediction';
+    });
+  }
+  setInterval(runCard,2000);
   document.addEventListener('visibilitychange',function(){ if(!document.hidden)load(); });
   var tries=0, w=setInterval(function(){ if(window.SB){ clearInterval(w); load(); } else if(++tries>120)clearInterval(w); },500);
 })();
