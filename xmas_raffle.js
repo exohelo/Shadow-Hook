@@ -1,4 +1,4 @@
-/* The Shadow Hook — xmas_raffle.js (nov3i)
+/* The Shadow Hook — xmas_raffle.js (nov3j)
    The "Christmas Day on Ice" raffle look (raffles.design = 'xmas-ice'), in place of the app's standard raffle pieces:
    · THE BANNER (Social tab, where the raffle banner sits): the trailer plays first (muted, 0:00–0:21, once a day, Skip
      any time), then the card: the show art, "Christmas Day on Ice", WIN A FAMILY 4-PACK, the draw, ENTER.
@@ -75,7 +75,9 @@
       ".xm-vid iframe{opacity:0;transition:opacity .6s ease}.xm-vid.ready iframe{opacity:1}",
       ".xm-snd{position:absolute;left:8px;top:8px;z-index:2;height:36px;padding:0 12px;border-radius:18px;border:1px solid rgba(255,255,255,.35);background:rgba(0,0,0,.55);color:#fff;font:600 12px Inter,sans-serif;cursor:pointer}",
       ".xm-skip{position:absolute;right:8px;top:8px;z-index:2;min-width:64px;height:36px;border-radius:18px;border:1px solid rgba(255,255,255,.35);background:rgba(0,0,0,.55);color:#fff;font:600 12px Inter,sans-serif;cursor:pointer}",
-      ".xm-bar{position:absolute;left:10px;right:10px;bottom:10px;z-index:2;height:4px;border-radius:2px;background:rgba(255,255,255,.3);overflow:hidden;pointer-events:none}",
+      /* no progress bar; the video's bottom edge fades into the page (and hides any line the player draws there) */
+      ".xm-bar{display:none}",
+      ".xm-vid::after{content:'';position:absolute;left:0;right:0;bottom:0;height:22%;z-index:1;pointer-events:none;background:linear-gradient(180deg,rgba(8,4,20,0) 0%,rgba(8,4,20,.85) 70%,#080414 100%)}",
       ".xm-bar i{display:block;height:4px;width:0;background:#F2C14E;transition:width 1s linear}",
       /* the flyer */
       "#xmasFlyer{position:fixed;inset:0;z-index:2147483000;display:none;background:#080414;color:#F4F1EA;font-family:Inter,system-ui,sans-serif;overflow:hidden}",
