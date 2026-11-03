@@ -1,4 +1,4 @@
-/* The Shadow Hook — xmas_raffle.js (nov3c)
+/* The Shadow Hook — xmas_raffle.js (nov3d)
    The "Christmas Day on Ice" raffle look (raffles.design = 'xmas-ice'), in place of the app's standard raffle pieces:
    · THE BANNER (Social tab, where the raffle banner sits): the trailer plays first (muted, 0:00–0:21, once a day, Skip
      any time), then the card: the show art, "Christmas Day on Ice", WIN A FAMILY 4-PACK, the draw, ENTER.
@@ -78,12 +78,12 @@
       "#xmasFlyer .xf-bg{position:absolute;left:0;top:96px;width:100%;height:100%;object-fit:cover;object-position:50% 20%;transition:top .9s cubic-bezier(.2,.8,.2,1)}",
       "#xmasFlyer .xf-fade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(8,4,20,.95) 0%,rgba(8,4,20,.55) 26%,rgba(8,4,20,.08) 38%,rgba(8,4,20,.05) 50%,rgba(8,4,20,.55) 60%,rgba(8,4,20,.9) 72%,rgba(8,4,20,.96) 100%);transition:opacity .9s ease}",
       "#xmasFlyer .xf-fade2{position:absolute;inset:0;opacity:0;background:linear-gradient(180deg,rgba(8,4,20,.85) 0%,rgba(8,4,20,.35) 14%,rgba(8,4,20,.04) 24%,rgba(8,4,20,.04) 50%,rgba(8,4,20,.55) 60%,rgba(8,4,20,.9) 72%,rgba(8,4,20,.96) 100%);transition:opacity .9s ease}",
-      "#xmasFlyer .xf-top{position:absolute;left:0;right:0;top:0;aspect-ratio:16/9;max-height:220px;overflow:hidden;transition:transform .9s cubic-bezier(.2,.8,.2,1),opacity .6s ease}",
+      "#xmasFlyer .xf-top{position:absolute;left:0;right:0;top:0;width:100%;aspect-ratio:16/9;overflow:hidden;transition:transform .9s cubic-bezier(.2,.8,.2,1),opacity .6s ease}",
       "#xmasFlyer .xf-top .xm-vid{height:100%}",
       "#xmasFlyer .xf-top img{width:100%;height:100%;object-fit:cover;display:block}",
       "#xmasFlyer .xf-x{position:absolute;z-index:5;top:calc(10px + env(safe-area-inset-top,0px));right:10px;width:44px;height:44px;border-radius:22px;background:rgba(5,12,34,.7);border:1px solid rgba(255,255,255,.25);color:#fff;font:700 18px Inter,sans-serif;cursor:pointer}",
       "#xmasFlyer .xf-again{position:absolute;z-index:5;top:calc(14px + env(safe-area-inset-top,0px));left:12px;min-height:36px;padding:0 12px;border-radius:18px;border:1px solid rgba(255,255,255,.3);background:rgba(8,4,20,.6);color:#fff;font:600 12px Inter,sans-serif;cursor:pointer;display:none}",
-      "#xmasFlyer .xf-col{position:absolute;left:0;right:0;top:min(56.25vw,220px);bottom:0;padding:4px 16px calc(12px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:8px;overflow-y:auto;transition:top .9s cubic-bezier(.2,.8,.2,1)}",
+      "#xmasFlyer .xf-col{position:absolute;left:0;right:0;top:min(56.25vw,270px);bottom:0;padding:4px 16px calc(12px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:8px;overflow-y:auto;transition:top .9s cubic-bezier(.2,.8,.2,1)}",
       "#xmasFlyer.lifted .xf-top{transform:translateY(-110%);opacity:0}",
       "#xmasFlyer.lifted .xf-col{top:calc(60px + env(safe-area-inset-top,0px))}",
       "#xmasFlyer.lifted .xf-bg{top:20px}",
