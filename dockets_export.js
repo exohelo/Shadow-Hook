@@ -1,5 +1,6 @@
-/* The Shadow Hook — dockets_export.js (nov4a)
-   "Download all my dockets" on the Dockets tab: one zip with every docket photo this phone holds (named by date,
+/* The Shadow Hook — dockets_export.js (nov4b)
+   "Download all my dockets", offered only when a member is closing their account (the burn sheet in "account"
+   mode, just above the confirm word): one zip with every docket photo this phone holds (named by date,
    shift, terminal, ship and job) plus dockets.csv with every docket's details. Docket photos live only on the phone
    that scanned them (the slip store), so the zip is built right here; dockets whose photo is on another phone are
    still in the spreadsheet, and the count says how many photos weren't here. Nothing is sent anywhere. */
@@ -84,15 +85,23 @@
     btn.disabled = false; lbl.textContent = was;
   }
 
-  function mount() {
-    var g = $("galleryBtn"); if (!g || $("dkExportBtn")) return;
-    var b = document.createElement("button"); b.type = "button"; b.id = "dkExportBtn"; b.className = "scan-console half";
-    b.innerHTML = '<span class="scan-ic">⬇</span><span class="scan-tx"><span class="sl1">DOWNLOAD MY DOCKETS</span></span><span class="scan-arrow">›</span>';
-    var note = document.createElement("div"); note.id = "dkExportNote"; note.className = "screen-sub";
-    note.style.cssText = "margin:-4px 2px 12px;line-height:1.45";
-    note.textContent = "Every docket photo on this phone plus a spreadsheet of all your dockets, in one zip. Yours to keep.";
-    g.insertAdjacentElement("afterend", b); b.insertAdjacentElement("afterend", note);
-    b.addEventListener("click", function () { run(b, note); });
+  /* in the close-my-account sheet only, above "Type … to confirm" */
+  function mountBurn() {
+    var sh = $("burnSheet"), card = sh && sh.querySelector(".sheet-card"); if (!card || $("dkExportBox")) return;
+    var word = card.querySelector("#burnWord"), lbl = word && word.previousElementSibling; if (!lbl) return;
+    var box = document.createElement("div"); box.id = "dkExportBox";
+    box.style.cssText = "margin:0 0 14px;padding:12px;border:1px solid rgba(242,193,78,.55);border-radius:12px;background:rgba(242,193,78,.08)";
+    box.innerHTML = '<div style="font:700 13px/1.4 Inter,system-ui,sans-serif;color:var(--bone,#f4f1ea);margin-bottom:4px">Before you go: take your dockets with you.</div>' +
+      '<div class="sub" style="margin-bottom:10px;line-height:1.45">Every docket photo on this phone plus a spreadsheet of all your dockets, in one zip. Once the account is closed they can’t be brought back.</div>' +
+      '<button type="button" id="dkExportBtn" class="btn-line" style="width:100%"><span class="sl1">⬇ DOWNLOAD ALL MY DOCKETS</span></button>' +
+      '<div id="dkExportNote" class="sub" style="margin-top:8px;line-height:1.45"></div>';
+    lbl.insertAdjacentElement("beforebegin", box);
+    $("dkExportBtn").addEventListener("click", function () { run($("dkExportBtn"), $("dkExportNote")); });
   }
-  var n = 0, t = setInterval(function () { mount(); if ($("dkExportBtn") || ++n > 120) clearInterval(t); }, 500);
+  function hookBurn() {
+    var orig = window.burnSheet; if (typeof orig !== "function" || orig._dk) return typeof orig === "function";
+    var w = function (mode) { var r = orig.apply(this, arguments); if (mode === "account") { try { mountBurn(); } catch (e) {} } return r; };
+    w._dk = true; window.burnSheet = w; return true;
+  }
+  var n = 0, t = setInterval(function () { if (hookBurn() || ++n > 120) clearInterval(t); }, 500);
 })();
