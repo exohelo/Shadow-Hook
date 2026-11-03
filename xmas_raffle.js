@@ -1,4 +1,4 @@
-/* The Shadow Hook — xmas_raffle.js (nov3y)
+/* The Shadow Hook — xmas_raffle.js (nov3z)
    The "Christmas Day on Ice" raffle look (raffles.design = 'xmas-ice'), in place of the app's standard raffle pieces:
    · THE BANNER (Social tab, where the raffle banner sits): the trailer plays first (muted, 0:00–0:21, once a day, Skip
      any time), then the card: the show art, "Christmas Day on Ice", WIN A FAMILY 4-PACK, the draw, ENTER.
@@ -9,7 +9,7 @@
 (function () {
   "use strict";
   if (window.__xmasRaffle) return; window.__xmasRaffle = true;
-  var DESIGN = "xmas-ice", ART = "./xmas-ice-art.jpg", BG = "./xmas-ice-mickey.jpg", YT = "39ZoU-WflbA", CLIP = 23.5;
+  var DESIGN = "xmas-ice", ART = "./xmas-ice-art.jpg", BG = "./xmas-ice-mickey.jpg", YT = "39ZoU-WflbA", CLIP = 23;
   var EVENT = { when: "FRI · DEC 25 · 11:00 AM", where: "TOYOTA ARENA · ONTARIO, CA", sec: "116", row: "I", seats: "16–19" };
   var R = null, ST = null, BANK = null, COMPS = [], qty = 1, busy = false, armed = false, armT = 0;
   var $ = function (id) { return document.getElementById(id); };
