@@ -1,4 +1,4 @@
-/* The Shadow Hook — xmas_raffle.js (nov3a)
+/* The Shadow Hook — xmas_raffle.js (nov3c)
    The "Christmas Day on Ice" raffle look (raffles.design = 'xmas-ice'), in place of the app's standard raffle pieces:
    · THE BANNER (Social tab, where the raffle banner sits): the trailer plays first (muted, 0:00–0:21, once a day, Skip
      any time), then the card: the show art, "Christmas Day on Ice", WIN A FAMILY 4-PACK, the draw, ENTER.
@@ -67,6 +67,7 @@
       ".xm-vid{position:relative;width:100%;background:#000}",
       ".xm-vid iframe{position:absolute;inset:0;width:100%;height:100%;border:0}",
       ".xm-vtag{position:absolute;left:10px;top:10px;z-index:2;padding:4px 8px;border-radius:6px;background:rgba(0,0,0,.6);font:700 10px Inter,sans-serif;letter-spacing:.16em;color:#fff;pointer-events:none}",
+      ".xm-snd{position:absolute;left:8px;top:8px;z-index:2;height:36px;padding:0 12px;border-radius:18px;border:1px solid rgba(255,255,255,.35);background:rgba(0,0,0,.55);color:#fff;font:600 12px Inter,sans-serif;cursor:pointer}",
       ".xm-skip{position:absolute;right:8px;top:8px;z-index:2;min-width:64px;height:36px;border-radius:18px;border:1px solid rgba(255,255,255,.35);background:rgba(0,0,0,.55);color:#fff;font:600 12px Inter,sans-serif;cursor:pointer}",
       ".xm-bar{position:absolute;left:10px;right:10px;bottom:10px;z-index:2;height:4px;border-radius:2px;background:rgba(255,255,255,.3);overflow:hidden;pointer-events:none}",
       ".xm-bar i{display:block;height:4px;width:0;background:#F2C14E;transition:width 1s linear}",
@@ -125,13 +126,20 @@
   /* ---------------- the trailer (YouTube's own player, muted so it can start on its own) ---------------- */
   function vidHTML() {
     return '<div class="xm-vid" style="height:100%">' +
-      '<iframe src="https://www.youtube-nocookie.com/embed/' + YT + '?autoplay=1&mute=1&playsinline=1&controls=0&rel=0&modestbranding=1&start=0&end=' + CLIP +
-      '" title="Disney On Ice presents Jump In! trailer" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>' +
-      '<div class="xm-vtag">● NOW PLAYING · THE TRAILER</div>' +
+      '<iframe src="https://www.youtube-nocookie.com/embed/' + YT + '?autoplay=1&mute=0&enablejsapi=1&playsinline=1&controls=0&rel=0&modestbranding=1&start=0&end=' + CLIP +
+      '&origin=' + encodeURIComponent(location.origin) + '" title="Disney On Ice presents Jump In! trailer" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>' +
+      '<button type="button" class="xm-snd" data-xm="sound" aria-label="Turn the sound on">🔊 Sound</button>' +
       '<button type="button" class="xm-skip" data-xm="skip">Skip ›</button>' +
       '<div class="xm-bar"><i></i></div></div>';
   }
+  function ytCmd(host, func) {
+    var f = host && host.querySelector("iframe"); if (!f || !f.contentWindow) return;
+    try { f.contentWindow.postMessage(JSON.stringify({ event: "command", func: func, args: [] }), "*"); } catch (e) {}
+  }
+  function soundOn(host) { ytCmd(host, "unMute"); ytCmd(host, "setVolume"); ytCmd(host, "playVideo"); }
   function runClip(host, done) {
+    var fr = host.querySelector("iframe");
+    if (fr) fr.addEventListener("load", function () { [300, 900, 1800].forEach(function (ms) { setTimeout(function () { soundOn(host); }, ms); }); });
     var bar = host.querySelector(".xm-bar i"), t = 0;
     clearInterval(host._clip);
     host._clip = setInterval(function () {
@@ -143,7 +151,7 @@
 
   /* ---------------- the banner ---------------- */
   var today = function () { var d = new Date(); return d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate(); };
-  function introDue() { try { return localStorage.getItem("xmas_intro_day") !== today(); } catch (e) { return false; } }
+  function introDue() { return false; }   /* the Keymaster: no trailer on the banner, only on the flyer */
   function introSeen() { try { localStorage.setItem("xmas_intro_day", today()); } catch (e) {} }
   function bannerHost() {
     var h = $("rflHost"); if (h && h.parentNode) return { parent: h.parentNode, after: h };
@@ -184,7 +192,7 @@
       return;
     }
     if (b._intro) return;
-    var html = '<div class="xb-box">' + cardHTML() + '</div><button type="button" class="xb-again" data-xm="again">▶ Watch the trailer again</button>';
+    var html = '<div class="xb-box">' + cardHTML() + '</div>';
     if (b._html !== html) { b.innerHTML = html; b._html = html; }
   }
   function onBannerClick(e) {
@@ -270,6 +278,7 @@
     if (k === "close") { try { if (history.state && history.state.xmas) history.back(); else closeFlyer(); } catch (x) { closeFlyer(); } return; }
     if (k === "again") { startTop(); return; }
     if (k === "skip") { var top = $("xfTop"); top && top._clipDone && top._clipDone(); return; }
+    if (k === "sound") { soundOn($("xfTop")); a.textContent = "🔊 On"; setTimeout(function () { a.remove(); }, 1200); return; }
     if (k === "minus") { qty = Math.max(1, qty - 1); paintFlyer(); return; }
     if (k === "plus") { qty = Math.min(Math.max(1, maxQty()), qty + 1); paintFlyer(); return; }
     if (k === "q") { qty = Math.min(Math.max(1, maxQty()), +a.getAttribute("data-q")); paintFlyer(); return; }
