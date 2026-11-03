@@ -1,4 +1,4 @@
-/* The Shadow Hook — xmas_raffle.js (nov3k)
+/* The Shadow Hook — xmas_raffle.js (nov3l)
    The "Christmas Day on Ice" raffle look (raffles.design = 'xmas-ice'), in place of the app's standard raffle pieces:
    · THE BANNER (Social tab, where the raffle banner sits): the trailer plays first (muted, 0:00–0:21, once a day, Skip
      any time), then the card: the show art, "Christmas Day on Ice", WIN A FAMILY 4-PACK, the draw, ENTER.
@@ -134,7 +134,7 @@
       "#xmasFlyer .xf-msg.ok{color:#7EE2A8}#xmasFlyer .xf-msg.bad{color:#FF8A8A}",
       "#xmasFlyer .xf-rules{padding:10px 12px;border-radius:14px;background:rgba(5,12,34,.82);border:1px solid rgba(255,255,255,.12);display:flex;flex-direction:column;gap:5px;font:500 12px/1.4 Inter,sans-serif;color:#E6EEFA;flex:0 0 auto}",
       "#xmasFlyer .xf-rules b{color:#fff}#xmasFlyer .xf-rules .g{color:#F2C14E}",
-      "#xmasFlyer .xf-foot{text-align:center;font:600 9.5px Inter,sans-serif;letter-spacing:.24em;color:#D9CCF2;flex:0 0 auto}"
+      "#xmasFlyer .xf-foot{line-height:1.6;text-align:center;font:600 9.5px Inter,sans-serif;letter-spacing:.24em;color:#D9CCF2;flex:0 0 auto}"
     ].join("\n");
     document.head.appendChild(s);
   }
@@ -331,7 +331,7 @@
       '<div class="xf-rules"><div>Bought with <span class="g">Port Bucks</span>. Cap of <b>' + cap() + ' tickets a member</b>, so everyone keeps a real shot.</div>' +
       '<div>One ticket is drawn at random. The winner gets all four seats <b>transferred through Ticketmaster</b> (a free account is all you need).</div>' +
       '<div><span class="g"><b style="color:#F2C14E">Children under 2 are free</b></span>, so bring the little ones along.</div></div>' +
-      '<div class="xf-foot">THE ORDER OF THE SHADOW HOOK · SAN PEDRO BAY</div>';
+      '<div class="xf-foot">THE ORDER OF THE SHADOW HOOK<br>SAN PEDRO BAY</div>';
   }
   function statsHTML() {
     var total = ST && typeof ST.total === "number" ? ST.total : null, who = ST && typeof ST.entrants === "number" ? ST.entrants : null, m = mine();
