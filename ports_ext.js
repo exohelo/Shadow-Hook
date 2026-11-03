@@ -609,6 +609,30 @@
       }
     }).observe(document.documentElement, { childList: true, subtree: true });
   })();
+  /* #nov3(dbltap) — double tap (or double click) a post in the story viewer to like it, with the heart burst. The app
+     had this, but it only counted two taps within 0.3 s and missed most real double taps, and desktop double clicks.
+     Never unlikes: a double tap on a liked post just bursts again. */
+  (function dblTapLike() {
+    var lastT = 0, lastPage = null, lastXY = null;
+    function like(page) {
+      var btn = page.querySelector(".sv-rail .sv-like");
+      if (btn && !btn.classList.contains("liked")) btn.click();
+      var burst = page.querySelector(".sv-burst");
+      if (burst) { burst.classList.remove("go"); void burst.offsetWidth; burst.classList.add("go"); }
+    }
+    function skip(t) { return !!(t.closest && t.closest(".sv-rail,.sv-top,.sv-cpanel,button,a,input,textarea,[data-share],[data-demoplay]")); }
+    document.addEventListener("dblclick", function (e) {
+      var page = e.target.closest && e.target.closest("#storyViewer .sv-page"); if (!page || skip(e.target)) return;
+      e.preventDefault(); like(page);
+    }, true);
+    document.addEventListener("touchend", function (e) {
+      var page = e.target.closest && e.target.closest("#storyViewer .sv-page"); if (!page || skip(e.target) || e.touches.length) return;
+      var t = Date.now(), p = e.changedTouches && e.changedTouches[0], xy = p ? [p.clientX, p.clientY] : null;
+      var near = !lastXY || !xy || Math.abs(xy[0] - lastXY[0]) + Math.abs(xy[1] - lastXY[1]) < 60;
+      if (t - lastT < 450 && page === lastPage && near) { lastT = 0; like(page); }
+      else { lastT = t; lastPage = page; lastXY = xy; }
+    }, { passive: true, capture: true });
+  })();
   function sheetButtonHtml() {
     return '<label class="hm-sheet">📄 Add this hall’s PMA sheet<input type="file" accept="application/pdf,.pdf" multiple hidden></label>';
   }
