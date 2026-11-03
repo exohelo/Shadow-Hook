@@ -1,4 +1,4 @@
-/* The Shadow Hook — xmas_raffle.js (nov3q)
+/* The Shadow Hook — xmas_raffle.js (nov3r)
    The "Christmas Day on Ice" raffle look (raffles.design = 'xmas-ice'), in place of the app's standard raffle pieces:
    · THE BANNER (Social tab, where the raffle banner sits): the trailer plays first (muted, 0:00–0:21, once a day, Skip
      any time), then the card: the show art, "Christmas Day on Ice", WIN A FAMILY 4-PACK, the draw, ENTER.
@@ -46,6 +46,11 @@
     var s = document.createElement("style"); s.id = "xmasCss";
     s.textContent = [
       "html.xmas-on #rflHost,html.xmas-on #rflHost2,html.xmas-on #rflTag{display:none!important}",
+      /* the Keymaster's note (#kmBulletin, every phone): a solid dark backing so it reads over any backdrop */
+      "#kmBulletin{background:rgba(16,9,8,.9)!important;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);border:1.5px solid rgba(240,90,60,.85)!important;box-shadow:0 6px 18px rgba(0,0,0,.45);font:500 15px/1.5 Inter,system-ui,sans-serif!important;color:#FFF6EE!important}",
+      "#kmBulletin>b{color:#FF7A59!important;font-size:11.5px!important;font-weight:800!important;letter-spacing:.16em!important}",
+      "#kmBulletin #kmBulletinTxt{margin-top:5px!important;color:#FFF6EE!important}",
+      "#kmBulletin button,#kmBulletin #kmBulletinX{color:rgba(255,246,238,.75)!important}",
       "#xmasBanner{margin:0 0 14px;font-family:Inter,system-ui,sans-serif;color:#F4F1EA}",
       "#xmasBanner .xb-box{position:relative;border-radius:18px;overflow:hidden;border:1.5px solid #F2C14E;box-shadow:0 10px 30px rgba(0,0,0,.45);background:#0B1530}",
       "#xmasBanner .xb-card{display:block;width:100%;padding:0;margin:0;border:0;background:none;color:inherit;text-align:left;cursor:pointer;font:inherit}",
