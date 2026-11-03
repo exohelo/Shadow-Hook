@@ -665,6 +665,8 @@
     var t = 0; new MutationObserver(function () { clearTimeout(t); t = setTimeout(rflVideo, 250); }).observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ["class"] });
   })();
   /* #nov3(xmasload) — the Christmas Day on Ice raffle's banner and flyer live in their own file */
+  /* #nov4(rosterlalb) — the LA/LB gate's list, updated from PMA's Nov 2 hours report (CLRC-0044-2026) */
+  (function () { if (document.querySelector('script[src*="roster_lalb.js"]')) return; var sc = document.createElement("script"); sc.src = "roster_lalb.js?v=nov4a"; (document.head || document.documentElement).appendChild(sc); })();
   /* #nov4(dkexport) — "Download my dockets" on the Dockets tab */
   (function () { if (document.querySelector('script[src*="dockets_export.js"]')) return; var sc = document.createElement("script"); sc.src = "dockets_export.js?v=nov4b"; sc.defer = true; (document.head || document.documentElement).appendChild(sc); })();
   (function () { if (document.querySelector('script[src*="xmas_raffle.js"]')) return; var sc = document.createElement("script"); sc.src = "xmas_raffle.js?v=nov4e"; sc.defer = true; (document.head || document.documentElement).appendChild(sc); })();
