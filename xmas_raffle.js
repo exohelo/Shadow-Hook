@@ -1,4 +1,4 @@
-/* The Shadow Hook — xmas_raffle.js (nov3j)
+/* The Shadow Hook — xmas_raffle.js (nov3k)
    The "Christmas Day on Ice" raffle look (raffles.design = 'xmas-ice'), in place of the app's standard raffle pieces:
    · THE BANNER (Social tab, where the raffle banner sits): the trailer plays first (muted, 0:00–0:21, once a day, Skip
      any time), then the card: the show art, "Christmas Day on Ice", WIN A FAMILY 4-PACK, the draw, ENTER.
@@ -77,7 +77,7 @@
       ".xm-skip{position:absolute;right:8px;top:8px;z-index:2;min-width:64px;height:36px;border-radius:18px;border:1px solid rgba(255,255,255,.35);background:rgba(0,0,0,.55);color:#fff;font:600 12px Inter,sans-serif;cursor:pointer}",
       /* no progress bar; the video's bottom edge fades into the page (and hides any line the player draws there) */
       ".xm-bar{display:none}",
-      ".xm-vid::after{content:'';position:absolute;left:0;right:0;bottom:0;height:22%;z-index:1;pointer-events:none;background:linear-gradient(180deg,rgba(8,4,20,0) 0%,rgba(8,4,20,.85) 70%,#080414 100%)}",
+      ".xm-vid::after{content:'';position:absolute;left:0;right:0;bottom:0;height:7%;z-index:1;pointer-events:none;background:linear-gradient(180deg,rgba(8,4,20,0) 0%,#080414 100%)}",
       ".xm-bar i{display:block;height:4px;width:0;background:#F2C14E;transition:width 1s linear}",
       /* the flyer */
       "#xmasFlyer{position:fixed;inset:0;z-index:2147483000;display:none;background:#080414;color:#F4F1EA;font-family:Inter,system-ui,sans-serif;overflow:hidden}",
@@ -89,7 +89,8 @@
       "#xmasFlyer .xf-top{position:absolute;left:0;right:0;top:0;width:100%;aspect-ratio:16/9;overflow:hidden;transition:transform .9s cubic-bezier(.2,.8,.2,1),opacity .6s ease}",
       "#xmasFlyer .xf-top .xm-vid{height:100%}",
       "#xmasFlyer .xf-top img{width:100%;height:100%;object-fit:cover;display:block}",
-      "#xmasFlyer .xf-grab{position:absolute;z-index:5;top:calc(8px + env(safe-area-inset-top,0px));left:50%;width:44px;height:5px;margin-left:-22px;border-radius:3px;background:rgba(255,255,255,.55);box-shadow:0 1px 4px rgba(0,0,0,.5);pointer-events:none}",
+      "#xmasFlyer .xf-grab{position:absolute;z-index:5;top:calc(8px + env(safe-area-inset-top,0px));left:50%;width:44px;height:5px;margin-left:-22px;border-radius:3px;background:rgba(255,255,255,.55);box-shadow:0 1px 4px rgba(0,0,0,.5);pointer-events:none;animation:xfGrabOut .8s ease 3s forwards}",
+      "@keyframes xfGrabOut{to{opacity:0}}",
       "#xmasFlyer .xf-stage{will-change:transform}",
       "#xmasFlyer .xf-x{position:absolute;z-index:5;top:calc(10px + env(safe-area-inset-top,0px));right:10px;width:44px;height:44px;border-radius:22px;background:rgba(5,12,34,.7);border:1px solid rgba(255,255,255,.25);color:#fff;font:700 18px Inter,sans-serif;cursor:pointer}",
       "#xmasFlyer .xf-again{position:absolute;z-index:5;top:calc(14px + env(safe-area-inset-top,0px));left:12px;min-height:36px;padding:0 12px;border-radius:18px;border:1px solid rgba(255,255,255,.3);background:rgba(8,4,20,.6);color:#fff;font:600 12px Inter,sans-serif;cursor:pointer;display:none}",
@@ -99,6 +100,8 @@
       "#xmasFlyer.lifted .xf-bg{top:20px}",
       "#xmasFlyer.lifted .xf-fade{opacity:0}#xmasFlyer.lifted .xf-fade2{opacity:1}",
       "#xmasFlyer.lifted .xf-again{display:block}",
+      "#xmasFlyer .xf-cred{flex:0 0 auto;margin:-2px 0 -6px;text-align:right;font:500 9px Inter,sans-serif;color:rgba(255,255,255,.55)}",
+      "#xmasFlyer.lifted .xf-cred{display:none}",
       "#xmasFlyer .xf-title{text-align:center;text-shadow:0 2px 10px rgba(0,0,0,.7)}",
       "#xmasFlyer .xf-pre{font:600 9.5px Inter,sans-serif;letter-spacing:.28em;color:#CFE6FF}",
       "#xmasFlyer .xf-title .xm-script{font-size:37px;line-height:1.05}",
@@ -241,12 +244,13 @@
   function startTop() {
     var f = flyer(), top = $("xfTop");
     f.classList.remove("lifted");
-    top.innerHTML = vidHTML() + '<span class="xm-cred" style="z-index:3">© Disney</span>';
+    top.innerHTML = vidHTML();
     runClip(top, function () { f.classList.add("lifted"); });   /* the panel slides away at 0:21; the trailer keeps playing, so the sound carries on */
   }
   function openFlyer() {
     if (!R) return;
     var f = flyer(); qty = 1;
+    var gb = f.querySelector(".xf-grab"); if (gb) { gb.style.animation = "none"; void gb.offsetWidth; gb.style.animation = ""; }
     f.classList.add("on"); document.documentElement.style.overflow = "hidden";
     startTop(); paintFlyer(); refresh();
     try { history.pushState({ xmas: 1 }, ""); } catch (e) {}
@@ -311,6 +315,7 @@
       (cap() >= bq * 2 ? '<button type="button" data-xf="q" data-q="' + bq * 2 + '">Two ' + bq + '-packs · ' + fmt(bp * 2) + ' ⬡</button>' : "") + "</div>" : "";
     var note = saved > 0 ? "You save " + fmt(saved) + " ⬡" : (bq > 1 && bp ? "Buy " + bq + " and save " + fmt(bq * R.ticket_price - bp) + " ⬡" : "");
     col.innerHTML =
+      '<div class="xf-cred">© Disney</div>' +
       '<div class="xf-title"><div class="xf-pre">THE ORDER OF THE SHADOW HOOK PRESENTS</div>' +
       '<div class="xm-script">Christmas Day on Ice</div><div class="xm-bebas xf-h">RAFFLE · WIN A FAMILY 4-PACK</div></div>' +
       '<div class="xf-stub"><div class="a"><div class="when">' + EVENT.when + '</div><div class="xm-bebas where">' + EVENT.where + '</div>' +
