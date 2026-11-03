@@ -1,4 +1,4 @@
-/* The Shadow Hook — xmas_raffle.js (nov3p)
+/* The Shadow Hook — xmas_raffle.js (nov3q)
    The "Christmas Day on Ice" raffle look (raffles.design = 'xmas-ice'), in place of the app's standard raffle pieces:
    · THE BANNER (Social tab, where the raffle banner sits): the trailer plays first (muted, 0:00–0:21, once a day, Skip
      any time), then the card: the show art, "Christmas Day on Ice", WIN A FAMILY 4-PACK, the draw, ENTER.
@@ -49,7 +49,7 @@
       "#xmasBanner{margin:0 0 14px;font-family:Inter,system-ui,sans-serif;color:#F4F1EA}",
       "#xmasBanner .xb-box{position:relative;border-radius:18px;overflow:hidden;border:1.5px solid #F2C14E;box-shadow:0 10px 30px rgba(0,0,0,.45);background:#0B1530}",
       "#xmasBanner .xb-card{display:block;width:100%;padding:0;margin:0;border:0;background:none;color:inherit;text-align:left;cursor:pointer;font:inherit}",
-      "#xmasBanner .xb-art{position:relative;height:140px;overflow:hidden}",
+      "#xmasBanner .xb-art{position:relative;height:120px;overflow:hidden}",
       "#xmasBanner .xb-art img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 8%}",
       ".xm-cred{position:absolute;right:6px;bottom:4px;font:500 9px Inter,sans-serif;color:rgba(255,255,255,.85);text-shadow:0 1px 2px rgba(0,0,0,.8)}",
       "#xmasBanner .xb-body{padding:12px 14px 14px;display:flex;flex-direction:column;gap:8px}",
