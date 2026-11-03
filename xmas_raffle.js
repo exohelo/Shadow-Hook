@@ -1,4 +1,4 @@
-/* The Shadow Hook — xmas_raffle.js (nov3s)
+/* The Shadow Hook — xmas_raffle.js (nov3t)
    The "Christmas Day on Ice" raffle look (raffles.design = 'xmas-ice'), in place of the app's standard raffle pieces:
    · THE BANNER (Social tab, where the raffle banner sits): the trailer plays first (muted, 0:00–0:21, once a day, Skip
      any time), then the card: the show art, "Christmas Day on Ice", WIN A FAMILY 4-PACK, the draw, ENTER.
@@ -164,7 +164,7 @@
     var f = host && host.querySelector("iframe"); if (!f || !f.contentWindow) return;
     try { f.contentWindow.postMessage(JSON.stringify({ event: "command", func: func, args: [] }), "*"); } catch (e) {}
   }
-  function soundOn(host) { ytCmd(host, "unMute"); ytCmd(host, "setVolume"); ytCmd(host, "playVideo"); noCaptions(host); }
+  function soundOn(host) { ytCmd(host, "unMute"); ytCmd(host, "setVolume"); }
   function noCaptions(host) {
     var f = host && host.querySelector("iframe"); if (!f || !f.contentWindow) return;
     [["unloadModule", ["captions"]], ["unloadModule", ["cc"]], ["setOption", ["captions", "track", {}]]].forEach(function (c) {
@@ -173,8 +173,8 @@
   }
   function runClip(host, done) {
     var fr = host.querySelector("iframe");
-    if (fr) setTimeout(function () { var v = fr.closest(".xm-vid"); v && v.classList.add("ready"); }, 3200);
-    if (fr) fr.addEventListener("load", function () { [300, 900, 1800, 3000].forEach(function (ms) { setTimeout(function () { soundOn(host); }, ms); }); [5000, 8000].forEach(function (ms) { setTimeout(function () { noCaptions(host); }, ms); }); });
+    if (fr) setTimeout(function () { var v = fr.closest(".xm-vid"); v && v.classList.add("ready"); }, 3400);
+    if (fr) fr.addEventListener("load", function () { [300, 1400, 2500].forEach(function (ms) { setTimeout(function () { soundOn(host); noCaptions(host); }, ms); });   /* all inside the first 3 s, under the art */ });
     var bar = host.querySelector(".xm-bar i"), t = 0;
     clearInterval(host._clip);
     host._clip = setInterval(function () {
