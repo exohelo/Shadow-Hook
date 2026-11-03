@@ -1,4 +1,4 @@
-/* The Shadow Hook — xmas_raffle.js (nov3n)
+/* The Shadow Hook — xmas_raffle.js (nov3p)
    The "Christmas Day on Ice" raffle look (raffles.design = 'xmas-ice'), in place of the app's standard raffle pieces:
    · THE BANNER (Social tab, where the raffle banner sits): the trailer plays first (muted, 0:00–0:21, once a day, Skip
      any time), then the card: the show art, "Christmas Day on Ice", WIN A FAMILY 4-PACK, the draw, ENTER.
@@ -127,6 +127,10 @@
       "#xmasFlyer .xf-packs{display:flex;gap:8px}",
       "#xmasFlyer .xf-packs button{flex:1 1 0;min-height:44px;border-radius:12px;border:1px dashed rgba(255,255,255,.3);background:transparent;color:#fff;font:600 13px Inter,sans-serif;cursor:pointer}",
       "#xmasFlyer .xf-packs button.gold{border-color:#F2C14E}",
+      "#xmasFlyer .xf-packs button.on{background:#F2C14E;border:1px solid #F2C14E;color:#1A1206;font-weight:800}",
+      "#xmasFlyer button{transition:transform .08s ease,background .15s ease,color .15s ease;-webkit-tap-highlight-color:transparent}",
+      "#xmasFlyer button:active{transform:scale(.96)}",
+      "#xmasFlyer .xf-step button:active,#xmasFlyer .xf-packs button:active{background:rgba(242,193,78,.25)}",
       "#xmasFlyer .xf-buy{min-height:50px;border-radius:14px;border:0;background:#F2C14E;color:#1A1206;font:400 24px 'Bebas Neue',sans-serif;letter-spacing:.06em;cursor:pointer;flex:0 0 auto}",
       "#xmasFlyer .xf-buy.xf-short{background:#fff;color:#1A1206;font-size:19px;box-shadow:0 0 0 2px #F2C14E inset}",
       "#xmasFlyer .xf-buy.xf-confirm{background:#2FBF71;color:#06210f;animation:xfPulse 1s ease-in-out infinite}",
@@ -309,7 +313,9 @@
     var cost = costOf(qty), saved = qty * R.ticket_price - cost, bq = R.bundle_qty, bp = R.bundle_price;
     var short = ph === "open" && room > 0 && BANK != null && BANK < cost;
     var canBuy = ph === "open" && room > 0 && !busy && !short;
-    var buyLbl = ph === "soon" ? "TICKETS GO ON SALE " + laDraw(R.opens_at).toUpperCase()
+    var guest = !uid();
+    if (guest) { short = false; canBuy = false; }
+    var buyLbl = guest ? "SIGN IN TO ENTER" : ph === "soon" ? "TICKETS GO ON SALE " + laDraw(R.opens_at).toUpperCase()
       : ph === "closed" ? "TICKET SALES HAVE CLOSED"
       : ph === "preview" ? "PREVIEW · NOT LIVE YET"
       : room <= 0 ? "YOU HOLD THE MAX · " + cap() + " TICKETS"
@@ -317,8 +323,8 @@
       : short ? "GET MORE PORT BUCKS · YOU NEED " + fmt(cost - BANK) + " MORE ⬡"
       : "BUY " + qty + " TICKET" + (qty === 1 ? "" : "S") + " · " + fmt(cost) + " ⬡";
     var comp = COMPS.length && ph === "open" ? '<button type="button" class="xf-comp" data-xf="comp">🎁 You have ' + COMPS.length + ' free ticket' + (COMPS.length === 1 ? "" : "s") + ' from the Keymaster · TAP TO CLAIM</button>' : "";
-    var packs = bq > 1 && bp ? '<div class="xf-packs"><button type="button" class="gold" data-xf="q" data-q="' + bq + '">' + bq + '-pack · ' + fmt(bp) + ' ⬡</button>' +
-      (cap() >= bq * 2 ? '<button type="button" data-xf="q" data-q="' + bq * 2 + '">Two ' + bq + '-packs · ' + fmt(bp * 2) + ' ⬡</button>' : "") + "</div>" : "";
+    var packs = bq > 1 && bp ? '<div class="xf-packs"><button type="button" class="gold' + (qty === bq ? " on" : "") + '" data-xf="q" data-q="' + bq + '" aria-pressed="' + (qty === bq) + '">' + bq + '-pack · ' + fmt(bp) + ' ⬡</button>' +
+      (cap() >= bq * 2 ? '<button type="button" class="' + (qty === bq * 2 ? "on" : "") + '" data-xf="q" data-q="' + bq * 2 + '" aria-pressed="' + (qty === bq * 2) + '">Two ' + bq + '-packs · ' + fmt(bp * 2) + ' ⬡</button>' : "") + "</div>" : "";
     var note = saved > 0 ? "You save " + fmt(saved) + " ⬡" : (bq > 1 && bp ? "Buy " + bq + " and save " + fmt(bq * R.ticket_price - bp) + " ⬡" : "");
     col.innerHTML =
       '<div class="xf-cred">© Disney</div>' +
@@ -332,7 +338,8 @@
       '<div class="xf-sm">' + fmt(R.ticket_price) + ' ⬡ each' + (bq > 1 && bp ? " · " + bq + " for " + fmt(bp) + " ⬡" : "") + ' · max ' + cap() + '</div></div>' +
       '<div class="xf-step"><button type="button" data-xf="minus" aria-label="One fewer ticket">−</button><b>' + qty + '</b><button type="button" data-xf="plus" aria-label="One more ticket">+</button></div></div>' +
       packs + '<div class="xf-line xf-sm"><span>' + note + '</span><span>Your bank: ' + (BANK == null ? "…" : fmt(BANK)) + ' ⬡</span></div></div>' +
-      (short && !busy ? '<button type="button" class="xf-buy xf-short" data-xf="bank">' + esc(buyLbl) + '</button>'
+      (guest ? '<button type="button" class="xf-buy" data-xf="signin">SIGN IN TO ENTER</button>'
+        : short && !busy ? '<button type="button" class="xf-buy xf-short" data-xf="bank">' + esc(buyLbl) + '</button>'
         : armed && canBuy ? '<button type="button" class="xf-buy xf-confirm" data-xf="confirm">CONFIRM · ' + qty + ' TICKET' + (qty === 1 ? "" : "S") + ' FOR ' + fmt(cost) + ' ⬡</button>' +
             '<button type="button" class="xf-cancel" data-xf="cancel">cancel</button>'
         : '<button type="button" class="xf-buy" data-xf="buy"' + (canBuy ? "" : " disabled") + '>' + esc(buyLbl) + '</button>') +
@@ -365,6 +372,7 @@
     if (k === "confirm") { armed = false; clearTimeout(armT); return buy(); }
     if (k === "cancel") { armed = false; clearTimeout(armT); paintFlyer(); return; }
     if (k === "bank") return toBank();
+    if (k === "signin") { dismiss(); return; }   /* the gate is right behind the flyer */
     if (k === "comp") return claim();
   }
   /* short on Port Bucks: close the flyer and open the app's Bank (or, if the Bank is closed, how to earn them) */
@@ -424,6 +432,11 @@
       R = rows.find(function (x) { return x.status === "live"; }) || (isKM() && rows.find(function (x) { return x.status === "draft" && x.id === pv; })) || null;
     } catch (e) { R = null; }
     paintBanner();
+    if (R && !load._deep && (/(^|[#&])raffle\b/.test(location.hash.slice(1)) || /[?&]raffle\b/.test(location.search) || /\/raffle\/?$/.test(location.pathname))) {
+      load._deep = true;
+      try { history.replaceState(null, "", location.pathname.replace(/\/raffle\/?$/, "/") + location.search.replace(/[?&]raffle(=[^&]*)?/, "").replace(/^&/, "?")); } catch (e) {}
+      setTimeout(openFlyer, 400);
+    }
   }
 
   /* the app's own "open the raffle" doors lead here while this raffle is up */
