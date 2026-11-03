@@ -1,4 +1,4 @@
-/* The Shadow Hook — xmas_raffle.js (nov3l)
+/* The Shadow Hook — xmas_raffle.js (nov3m)
    The "Christmas Day on Ice" raffle look (raffles.design = 'xmas-ice'), in place of the app's standard raffle pieces:
    · THE BANNER (Social tab, where the raffle banner sits): the trailer plays first (muted, 0:00–0:21, once a day, Skip
      any time), then the card: the show art, "Christmas Day on Ice", WIN A FAMILY 4-PACK, the draw, ENTER.
@@ -128,6 +128,7 @@
       "#xmasFlyer .xf-packs button{flex:1 1 0;min-height:44px;border-radius:12px;border:1px dashed rgba(255,255,255,.3);background:transparent;color:#fff;font:600 13px Inter,sans-serif;cursor:pointer}",
       "#xmasFlyer .xf-packs button.gold{border-color:#F2C14E}",
       "#xmasFlyer .xf-buy{min-height:50px;border-radius:14px;border:0;background:#F2C14E;color:#1A1206;font:400 24px 'Bebas Neue',sans-serif;letter-spacing:.06em;cursor:pointer;flex:0 0 auto}",
+      "#xmasFlyer .xf-buy.xf-short{background:#fff;color:#1A1206;font-size:19px;box-shadow:0 0 0 2px #F2C14E inset}",
       "#xmasFlyer .xf-buy[disabled]{opacity:.55;cursor:default}",
       "#xmasFlyer .xf-comp{min-height:46px;border-radius:14px;border:1.5px solid #F2C14E;background:rgba(242,193,78,.12);color:#FFE9B0;font:700 14px Inter,sans-serif;cursor:pointer;flex:0 0 auto}",
       "#xmasFlyer .xf-msg{min-height:16px;text-align:center;font:600 12.5px Inter,sans-serif;color:#C9D6EA}",
@@ -303,12 +304,14 @@
     var ph = phase(), room = maxQty();
     if (qty > room) qty = Math.max(1, room); if (qty < 1) qty = 1;
     var cost = costOf(qty), saved = qty * R.ticket_price - cost, bq = R.bundle_qty, bp = R.bundle_price;
-    var canBuy = ph === "open" && room > 0 && !busy && (BANK == null || BANK >= cost);
+    var short = ph === "open" && room > 0 && BANK != null && BANK < cost;
+    var canBuy = ph === "open" && room > 0 && !busy && !short;
     var buyLbl = ph === "soon" ? "TICKETS GO ON SALE " + laDraw(R.opens_at).toUpperCase()
       : ph === "closed" ? "TICKET SALES HAVE CLOSED"
       : ph === "preview" ? "PREVIEW · NOT LIVE YET"
       : room <= 0 ? "YOU HOLD THE MAX · " + cap() + " TICKETS"
       : busy ? "WRITING YOUR TICKET…"
+      : short ? "GET MORE PORT BUCKS · YOU NEED " + fmt(cost - BANK) + " MORE ⬡"
       : "BUY " + qty + " TICKET" + (qty === 1 ? "" : "S") + " · " + fmt(cost) + " ⬡";
     var comp = COMPS.length && ph === "open" ? '<button type="button" class="xf-comp" data-xf="comp">🎁 You have ' + COMPS.length + ' free ticket' + (COMPS.length === 1 ? "" : "s") + ' from the Keymaster · TAP TO CLAIM</button>' : "";
     var packs = bq > 1 && bp ? '<div class="xf-packs"><button type="button" class="gold" data-xf="q" data-q="' + bq + '">' + bq + '-pack · ' + fmt(bp) + ' ⬡</button>' +
@@ -326,7 +329,8 @@
       '<div class="xf-sm">' + fmt(R.ticket_price) + ' ⬡ each' + (bq > 1 && bp ? " · " + bq + " for " + fmt(bp) + " ⬡" : "") + ' · max ' + cap() + '</div></div>' +
       '<div class="xf-step"><button type="button" data-xf="minus" aria-label="One fewer ticket">−</button><b>' + qty + '</b><button type="button" data-xf="plus" aria-label="One more ticket">+</button></div></div>' +
       packs + '<div class="xf-line xf-sm"><span>' + note + '</span><span>Your bank: ' + (BANK == null ? "…" : fmt(BANK)) + ' ⬡</span></div></div>' +
-      '<button type="button" class="xf-buy" data-xf="buy"' + (canBuy ? "" : " disabled") + '>' + esc(buyLbl) + '</button>' +
+      (short && !busy ? '<button type="button" class="xf-buy xf-short" data-xf="bank">' + esc(buyLbl) + '</button>'
+        : '<button type="button" class="xf-buy" data-xf="buy"' + (canBuy ? "" : " disabled") + '>' + esc(buyLbl) + '</button>') +
       '<div class="xf-msg' + (cls ? " " + cls : "") + '">' + esc(msg || "") + '</div>' +
       '<div class="xf-rules"><div>Bought with <span class="g">Port Bucks</span>. Cap of <b>' + cap() + ' tickets a member</b>, so everyone keeps a real shot.</div>' +
       '<div>One ticket is drawn at random. The winner gets all four seats <b>transferred through Ticketmaster</b> (a free account is all you need).</div>' +
@@ -353,7 +357,20 @@
     if (k === "plus") { qty = Math.min(Math.max(1, maxQty()), qty + 1); paintFlyer(); return; }
     if (k === "q") { qty = Math.min(Math.max(1, maxQty()), +a.getAttribute("data-q")); paintFlyer(); return; }
     if (k === "buy") return buy();
+    if (k === "bank") return toBank();
     if (k === "comp") return claim();
+  }
+  /* short on Port Bucks: close the flyer and open the app's Bank (or, if the Bank is closed, how to earn them) */
+  function toBank() {
+    dismiss();
+    setTimeout(function () {
+      try {
+        if (typeof window.mintOpen === "function" && window.mintOpen() && typeof window.bankOpen === "function") { window.bankOpen(); return; }
+        var rs = document.getElementById("rulesSheet");
+        if (rs) { try { typeof window.paintRateCard === "function" && window.paintRateCard(); } catch (e) {} rs.classList.add("on"); return; }
+        if (typeof window.bankOpen === "function") window.bankOpen();
+      } catch (e) {}
+    }, 320);
   }
   function errText(err) { return String((err && (err.message || err.details)) || err || "something went wrong").replace(/^(raffle|claim):\s*/i, ""); }
   async function buy() {
@@ -364,7 +381,11 @@
       if (typeof d.balance === "number") { BANK = d.balance; try { window.CREDITS = d.balance; typeof window.renderCredits === "function" && window.renderCredits(); } catch (x) {} }
       ST = { total: d.total, entrants: d.entrants, mine: d.mine }; busy = false; qty = 1;
       paintFlyer("✓ " + n + " ticket" + (n === 1 ? "" : "s") + " in the drum. Good luck!", "ok"); paintBanner();
-    } catch (err) { busy = false; paintFlyer(errText(err), "bad"); }
+    } catch (err) {
+      busy = false;
+      if (/that takes [\d,]+ ⬡/.test(errText(err))) { await refresh(true); }
+      paintFlyer(errText(err), "bad");
+    }
   }
   async function claim() {
     if (busy || !COMPS.length) return; busy = true; paintFlyer("claiming your free ticket…");
