@@ -528,7 +528,77 @@
       paths[0].setAttribute("d", L.d);
       paths[0].setAttribute("stroke-linejoin", "round");
       if (paths[1]) { paths[1].setAttribute("d", L.v); paths[1].setAttribute("stroke-linecap", "round"); }
+      var mode = Math.random() < 0.2 ? "tumble" : "glide";
+      tumble(el, svg, mode);
+      fly(el, mode);
     } catch (e) {}
+  }
+  /* tumbling on all three axes: the leaf flips end over end (X), turns side to side (Y) and spins flat (Z), each at
+     its own pace and direction, so no two leaves move alike. Replaces the app's simpler flip on the drawing. */
+  function tumble(el, svg, mode) {
+    if (!svg.animate) return;
+    try { svg.getAnimations && svg.getAnimations().forEach(function (a) { a.cancel(); }); } catch (e) {}
+    el.style.perspective = "160px"; svg.style.transformStyle = "preserve-3d"; svg.style.transformOrigin = "50% 45%";
+    var r = function (a, b) { return a + Math.random() * (b - a); }, sg = function () { return Math.random() < .5 ? -1 : 1; };
+    var glide = mode !== "tumble";
+    var x = sg() * (glide ? r(40, 110) : r(320, 560)), y = sg() * (glide ? r(60, 160) : r(160, 300)), z = sg() * (glide ? r(20, 70) : r(120, 300)), K = [], n = 8;
+    for (var i = 0; i <= n; i++) {
+      var t = i / n, wob = Math.sin(t * Math.PI * 2) * r(8, 18);
+      K.push({ transform: "rotateX(" + (x * t + wob).toFixed(1) + "deg) rotateY(" + (y * t).toFixed(1) + "deg) rotateZ(" + (z * t - wob).toFixed(1) + "deg)", offset: t });
+    }
+    svg.animate(K, { duration: glide ? r(3400, 6000) : r(1400, 2400), iterations: Infinity, easing: "linear" });
+  }
+  /* #nov3(leafphysics) — each leaf falls by a small live simulation instead of a fixed curve:
+     · glide: a pendulum glide — fastest mid-swing, slowing at the ends where it catches the air and lifts a hair before
+       swooping back the other way; it banks into the direction it's gliding, like a wing
+     · tumble (about 1 in 5): flips end over end and drops straighter and faster
+     · wind: one shared breeze that slowly turns, plus an occasional gust, pushing every leaf together (light leaves more)
+     Runs on requestAnimationFrame, so it sleeps when the app isn't on screen. */
+  var FLY = [], flyT0 = 0, gust = { v: 0, until: 0, next: 0 };
+  function rr(a, b) { return a + Math.random() * (b - a); }
+  function fly(el, mode) {
+    try { el.getAnimations && el.getAnimations().forEach(function (a) { a.cancel(); }); } catch (e) {}
+    var size = el.offsetWidth || 24, light = 24 / Math.max(16, size);
+    FLY.push({ el: el, mode: mode, x: 0, y: -40, t: 0,
+      ph: rr(0, 6.283), om: rr(1.5, 2.4) * (mode === "glide" ? 1 : 0.6), A: rr(22, 46) * light,
+      v0: (mode === "glide" ? rr(95, 135) : rr(70, 95)) / Math.sqrt(light), wind: rr(0.7, 1.25) * light,
+      ang: rr(-20, 20), spin: (Math.random() < .5 ? -1 : 1) * (mode === "glide" ? rr(4, 14) : rr(160, 320)) });
+    el.style.opacity = "0"; el.style.animation = "none";
+    if (FLY.length === 1) { flyT0 = 0; requestAnimationFrame(step); }
+  }
+  function windAt(t) {
+    if (t > gust.next) { gust.v = (Math.random() < .5 ? -1 : 1) * rr(30, 70); gust.until = t + rr(1.2, 2.5); gust.next = t + rr(8, 16); }
+    var g = t < gust.until ? gust.v * Math.sin(Math.PI * (1 - (gust.until - t) / 2.5)) : 0;
+    return 16 * Math.sin(t * 0.11) + 9 * Math.sin(t * 0.31 + 1.7) + g;
+  }
+  function step(ts) {
+    if (!FLY.length) return;
+    var now = ts / 1000; if (!flyT0) flyT0 = now; var dt = Math.min(0.05, now - (step._last || now)); step._last = now;
+    var H = (window.innerHeight || 800) + 60, W = windAt(now - flyT0);
+    for (var i = FLY.length - 1; i >= 0; i--) {
+      var L = FLY[i], el = L.el, vx, vy;
+      if (!el.isConnected) { FLY.splice(i, 1); continue; }
+      L.t += dt;
+      if (L.mode === "glide") {
+        L.ph += L.om * dt;
+        var c = Math.cos(L.ph), sn = Math.sin(L.ph);
+        vx = L.A * L.om * c + W * L.wind;
+        vy = L.v0 * (1.15 * c * c - 0.06);                       // fast mid-swing, a hair of lift at the ends
+        var bank = Math.atan2(L.A * L.om * c, Math.max(25, vy)) * 57.3 * 0.75;
+        L.ang += (bank - L.ang) * Math.min(1, dt * 6) + L.spin * dt * 0.2;
+      } else {
+        L.ph += L.om * dt;
+        vx = W * L.wind * 0.8 + L.A * 0.35 * Math.cos(L.ph);
+        vy = L.v0 * (0.9 + 0.15 * Math.sin(L.ph * 2));
+        L.ang += L.spin * dt;
+      }
+      L.x += vx * dt; L.y += vy * dt;
+      var op = Math.min(1, L.t / 0.8) * Math.max(0, Math.min(1, (H - L.y) / 90)) * 0.92;
+      el.style.opacity = op.toFixed(2);
+      el.style.transform = "translate(" + L.x.toFixed(1) + "px," + L.y.toFixed(1) + "px) rotate(" + L.ang.toFixed(1) + "deg)";
+      if (L.y > H) { el.remove(); FLY.splice(i, 1); }
+    }
+    if (FLY.length) requestAnimationFrame(step); else step._last = 0;
   }
   (function watchLeaves() {
     new MutationObserver(function (ms) {
