@@ -633,6 +633,39 @@
       else { lastT = t; lastPage = page; lastXY = xy; }
     }, { passive: true, capture: true });
   })();
+  /* #nov3(rflvideo) — a raffle can carry a video (raffles.video_url, a YouTube link): it plays at the top of the raffle
+     sheet and the flyer through YouTube's own player (youtube-nocookie), starting where the link says (&t=29s). */
+  var RV = { at: 0, rows: [] };
+  function ytId(u) { var m = /(?:v=|youtu\.be\/|embed\/|shorts\/)([\w-]{6,})/.exec(String(u || "")); return m ? m[1] : null; }
+  function ytStart(u) { var m = /[?&#]t=(?:(\d+)m)?(\d+)s?/.exec(String(u || "")); return m ? (+(m[1] || 0)) * 60 + (+m[2]) : 0; }
+  async function rflVideos() {
+    if (Date.now() - RV.at < 60000 || !window.SB) return RV.rows;
+    try { var r = await window.SB.from("raffles").select("id,title,video_url,status").not("video_url", "is", null).order("created_at", { ascending: false }).limit(5); RV.rows = r && !r.error ? r.data || [] : []; } catch (e) {}
+    RV.at = Date.now(); return RV.rows;
+  }
+  async function rflVideo() {
+    var hosts = ["rflSheet", "rflFlyer"].map(function (id) { return document.getElementById(id); }).filter(function (h) { return h && h.classList.contains("on"); });
+    if (!hosts.length) return;
+    var rows = await rflVideos(); if (!rows.length) return;
+    hosts.forEach(function (h) {
+      var card = h.querySelector(".sheet-card") || h, txt = (card.textContent || "").toUpperCase();
+      var row = rows.find(function (x) { return x.title && txt.indexOf(String(x.title).toUpperCase().slice(0, 14)) >= 0; }) || (rows.length === 1 ? rows[0] : null);
+      var id = row && ytId(row.video_url), have = card.querySelector(".rfl-vid");
+      if (!id) { have && have.remove(); return; }
+      if (have && have.getAttribute("data-v") === id) return;
+      have && have.remove();
+      var v = document.createElement("div"); v.className = "rfl-vid"; v.setAttribute("data-v", id);
+      v.style.cssText = "position:relative;width:100%;aspect-ratio:16/9;border-radius:12px;overflow:hidden;margin:6px 0 12px;background:#000;box-shadow:0 6px 24px rgba(0,0,0,.45)";
+      v.innerHTML = '<iframe src="https://www.youtube-nocookie.com/embed/' + id + '?rel=0&playsinline=1&modestbranding=1' + (ytStart(row.video_url) ? "&start=" + ytStart(row.video_url) : "") + '" title="' + esc(row.title || "Raffle video") + '" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;border:0"></iframe>';
+      var first = card.querySelector(".rfl-h,.rfl-hero,h2,.big") || card.firstElementChild;
+      first && first.nextSibling ? card.insertBefore(v, first.nextSibling) : card.insertBefore(v, card.firstChild);
+    });
+  }
+  (function watchRflVideo() {
+    var t = 0; new MutationObserver(function () { clearTimeout(t); t = setTimeout(rflVideo, 250); }).observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ["class"] });
+  })();
+  /* #nov3(xmasload) — the Christmas Day on Ice raffle's banner and flyer live in their own file */
+  (function () { if (document.querySelector('script[src*="xmas_raffle.js"]')) return; var sc = document.createElement("script"); sc.src = "xmas_raffle.js?v=nov3a"; sc.defer = true; (document.head || document.documentElement).appendChild(sc); })();
   function sheetButtonHtml() {
     return '<label class="hm-sheet">📄 Add this hall’s PMA sheet<input type="file" accept="application/pdf,.pdf" multiple hidden></label>';
   }
