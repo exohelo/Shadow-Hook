@@ -1,4 +1,4 @@
-/* The Shadow Hook — xmas_raffle.js (nov4c)
+/* The Shadow Hook — xmas_raffle.js (nov4d)
    The "Christmas Day on Ice" raffle look (raffles.design = 'xmas-ice'), in place of the app's standard raffle pieces:
    · THE BANNER (Social tab, where the raffle banner sits): the trailer plays first (muted, 0:00–0:21, once a day, Skip
      any time), then the card: the show art, "Christmas Day on Ice", WIN A FAMILY 4-PACK, the draw, ENTER.
@@ -9,7 +9,7 @@
 (function () {
   "use strict";
   if (window.__xmasRaffle) return; window.__xmasRaffle = true;
-  var DESIGN = "xmas-ice", ART = "./xmas-ice-art.jpg", BG = "./xmas-ice-mickey.jpg", YT = "39ZoU-WflbA", CLIP = 23;
+  var DESIGN = "xmas-ice", ART = "./xmas-ice-art.jpg", BG = "./xmas-ice-mickey.jpg", YT = "39ZoU-WflbA", CLIP = 23.2;
   var EVENT = { when: "FRI · DEC 25 · 11:00 AM", where: "TOYOTA ARENA · ONTARIO, CA", sec: "116", row: "I", seats: "16–19" };
   var R = null, ST = null, BANK = null, COMPS = [], qty = 1, busy = false, armed = false, armT = 0;
   var $ = function (id) { return document.getElementById(id); };
@@ -186,10 +186,10 @@
     if (fr) fr.addEventListener("load", function () { try { fr.contentWindow.postMessage(JSON.stringify({ event: "listening", id: 1, channel: "widget" }), "*"); } catch (e) {} [300, 1400, 2500].forEach(function (ms) { setTimeout(function () { soundOn(host); noCaptions(host); }, ms); });   /* all inside the first 3 s, under the art */ });
     var bar = host.querySelector(".xm-bar i"), t = 0;
     clearInterval(host._clip);
-    host._clip = setInterval(function () {   /* half-second steps, so the lift can land on 23.5 s */
-      t += 0.5; if (bar) bar.style.width = Math.min(100, Math.round(t / CLIP * 100)) + "%";
+    host._clip = setInterval(function () {   /* tenth-of-a-second steps, so the lift can land on 23.2 s */
+      t = Math.round((t + 0.1) * 10) / 10; if (bar) bar.style.width = Math.min(100, Math.round(t / CLIP * 100)) + "%";
       if (t >= CLIP) { clearInterval(host._clip); done(); }
-    }, 500);
+    }, 100);
     host._clipDone = function () { clearInterval(host._clip); done(); };
   }
 
