@@ -509,6 +509,36 @@
       var n = 0, w = setInterval(function () { var o = document.querySelector('[onclick*="scChamber"],#scOpen,#scChamberBtn,[data-open="chamber"]'); if (o) { clearInterval(w); o.click(); } else if (++n > 40) clearInterval(w); }, 500); } } catch (e) {}
     var n2 = 0, w2 = setInterval(function () { if (window.SB && window.__shkUid) { clearInterval(w2); chamberView(true); } else if (++n2 > 120) clearInterval(w2); }, 1000);
   })();
+  /* #nov3(leafshapes) — the November falling leaves: one of the three drawings read as a spiky star. Each leaf that
+     appears in #novLeaves is redrawn as a real leaf (maple, oak or oval) with a stem and veins, keeping its colors. */
+  var LEAF = [
+    { d: "M20 2L22.6 9.2 27.4 5.6 26.4 13 33.6 10.8 30.8 17.4 37.6 19 31.2 23.6 33.8 26.4 24.2 27.2 21.2 30 20.7 46 19.3 46 18.8 30 15.8 27.2 6.2 26.4 8.8 23.6 2.4 19 9.2 17.4 6.4 10.8 13.6 13 12.6 5.6 17.4 9.2Z",
+      v: "M20 8V40M20 24L29 14M20 24L11 14M20 28L31 22M20 28L9 22" },
+    { d: "M20 3C23 4 23.4 7.6 21.6 9.2 25.4 8.2 27.4 11.4 24.6 14 28.4 13.2 30.4 16.4 27.4 19.2 31.4 19.4 32.2 23.4 28.4 25.4 31.2 27.6 29.2 31.4 25.4 30.4 26.2 34.2 23.2 36.4 21 34.6L21 46 19 46 19 34.6C16.8 36.4 13.8 34.2 14.6 30.4 10.8 31.4 8.8 27.6 11.6 25.4 7.8 23.4 8.6 19.4 12.6 19.2 9.6 16.4 11.6 13.2 15.4 14 12.6 11.4 14.6 8.2 18.4 9.2 16.6 7.6 17 4 20 3Z",
+      v: "M20 6V40M20 16L25 13M20 16L15 13M20 23L27 20M20 23L13 20M20 29L25 28M20 29L15 28" },
+    { d: "M20 3C28.6 9.6 32.4 19.4 30 29 28.2 35.6 24.4 39.6 21 40.6L21 46 19 46 19 40.6C15.6 39.6 11.8 35.6 10 29 7.6 19.4 11.4 9.6 20 3Z",
+      v: "M20 7V40M20 16L26 12M20 16L14 12M20 23L28 19M20 23L12 19M20 30L26 27M20 30L14 27" }
+  ];
+  function reLeaf(el) {
+    try {
+      if (el._leafed) return; el._leafed = true;
+      var svg = el.querySelector("svg"); if (!svg) return;
+      var paths = svg.querySelectorAll("path"); if (!paths.length) return;
+      var L = LEAF[Math.floor(Math.random() * LEAF.length)];
+      paths[0].setAttribute("d", L.d);
+      paths[0].setAttribute("stroke-linejoin", "round");
+      if (paths[1]) { paths[1].setAttribute("d", L.v); paths[1].setAttribute("stroke-linecap", "round"); }
+    } catch (e) {}
+  }
+  (function watchLeaves() {
+    new MutationObserver(function (ms) {
+      for (var i = 0; i < ms.length; i++) for (var j = 0; j < ms[i].addedNodes.length; j++) {
+        var n = ms[i].addedNodes[j]; if (n.nodeType !== 1) continue;
+        if (n.classList && n.classList.contains("nl")) reLeaf(n);
+        else if (n.id === "novLeaves") n.querySelectorAll(".nl").forEach(reLeaf);
+      }
+    }).observe(document.documentElement, { childList: true, subtree: true });
+  })();
   function sheetButtonHtml() {
     return '<label class="hm-sheet">📄 Add this hall’s PMA sheet<input type="file" accept="application/pdf,.pdf" multiple hidden></label>';
   }
