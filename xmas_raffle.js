@@ -1,4 +1,4 @@
-/* The Shadow Hook — xmas_raffle.js (nov4a)
+/* The Shadow Hook — xmas_raffle.js (nov4b)
    The "Christmas Day on Ice" raffle look (raffles.design = 'xmas-ice'), in place of the app's standard raffle pieces:
    · THE BANNER (Social tab, where the raffle banner sits): the trailer plays first (muted, 0:00–0:21, once a day, Skip
      any time), then the card: the show art, "Christmas Day on Ice", WIN A FAMILY 4-PACK, the draw, ENTER.
@@ -171,18 +171,18 @@
       try { f.contentWindow.postMessage(JSON.stringify({ event: "command", func: c[0], args: c[1] }), "*"); } catch (e) {}
     });
   }
-  /* the player reports its time: show the video once it has really played 2.5 s (YouTube's opening title is fading by then; the zoom hides the rest)
+  /* the player reports its time: show the video once it has really played 2 s (YouTube's opening title is fading by then; the zoom hides the rest)
      (a slow start keeps the art up longer instead of uncovering the title) */
   window.addEventListener("message", function (e) {
     if (!/youtube(-nocookie)?\.com$/.test(String(e.origin).replace(/^https?:\/\/(www\.)?/, ""))) return;
     var d; try { d = typeof e.data === "string" ? JSON.parse(e.data) : e.data; } catch (x) { return; }
     var t = d && d.info && typeof d.info.currentTime === "number" ? d.info.currentTime : null;
-    if (t == null || t < 2.5) return;
+    if (t == null || t < 2) return;
     document.querySelectorAll(".xm-vid:not(.ready) iframe").forEach(function (f) { if (f.contentWindow === e.source) f.closest(".xm-vid").classList.add("ready"); });
   });
   function runClip(host, done) {
     var fr = host.querySelector("iframe");
-    if (fr) setTimeout(function () { var v = fr.closest(".xm-vid"); v && v.classList.add("ready"); }, 9000);   /* fallback; normally shown once it has really played 2.5 s */
+    if (fr) setTimeout(function () { var v = fr.closest(".xm-vid"); v && v.classList.add("ready"); }, 9000);   /* fallback; normally shown once it has really played 2 s */
     if (fr) fr.addEventListener("load", function () { try { fr.contentWindow.postMessage(JSON.stringify({ event: "listening", id: 1, channel: "widget" }), "*"); } catch (e) {} [300, 1400, 2500].forEach(function (ms) { setTimeout(function () { soundOn(host); noCaptions(host); }, ms); });   /* all inside the first 3 s, under the art */ });
     var bar = host.querySelector(".xm-bar i"), t = 0;
     clearInterval(host._clip);
