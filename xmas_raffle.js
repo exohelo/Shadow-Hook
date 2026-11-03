@@ -1,4 +1,4 @@
-/* The Shadow Hook — xmas_raffle.js (nov3g)
+/* The Shadow Hook — xmas_raffle.js (nov3h)
    The "Christmas Day on Ice" raffle look (raffles.design = 'xmas-ice'), in place of the app's standard raffle pieces:
    · THE BANNER (Social tab, where the raffle banner sits): the trailer plays first (muted, 0:00–0:21, once a day, Skip
      any time), then the card: the show art, "Christmas Day on Ice", WIN A FAMILY 4-PACK, the draw, ENTER.
@@ -110,6 +110,9 @@
       "#xmasFlyer .xf-stub .seats b{font:700 16px Inter,sans-serif}",
       "#xmasFlyer .xf-stub .b{flex:0 0 104px;border-left:2px dashed #B9CBE6;background:#0A1A3D;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;text-align:center}",
       "#xmasFlyer .xf-stub .b b{font-family:'Bebas Neue',sans-serif;font-weight:400;font-size:19px;line-height:1}",
+      "#xmasFlyer .xf-stats{flex:0 0 auto;max-height:0;opacity:0;overflow:hidden;transition:max-height .7s ease .3s,opacity .7s ease .3s,padding .7s ease .3s;padding:0 12px;border-radius:14px;background:rgba(242,193,78,.12);border:1px solid rgba(242,193,78,.45);display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;text-align:center;font:600 13px/1.3 Inter,sans-serif;color:#FFE9B0}",
+      "#xmasFlyer.lifted .xf-stats{max-height:80px;opacity:1;padding:9px 12px}",
+      "#xmasFlyer .xf-stats b{color:#fff;font-weight:800}#xmasFlyer .xf-stats i{font-style:normal;opacity:.5}",
       "#xmasFlyer .xf-box{padding:10px 12px;border-radius:14px;background:rgba(5,12,34,.86);border:1px solid rgba(255,255,255,.14);display:flex;flex-direction:column;gap:9px;flex:0 0 auto}",
       "#xmasFlyer .xf-line{display:flex;align-items:center;justify-content:space-between;gap:8px}",
       "#xmasFlyer .xf-sm{font:500 12px Inter,sans-serif;color:#C9D6EA}",
@@ -134,7 +137,7 @@
   /* ---------------- the trailer (YouTube's own player, muted so it can start on its own) ---------------- */
   function vidHTML() {
     return '<div class="xm-vid" style="height:100%"><img class="xm-poster" src="' + ART + '" alt="">' +
-      '<iframe src="https://www.youtube-nocookie.com/embed/' + YT + '?autoplay=1&mute=0&enablejsapi=1&playsinline=1&controls=0&rel=0&modestbranding=1&start=0' +
+      '<iframe src="https://www.youtube-nocookie.com/embed/' + YT + '?autoplay=1&mute=0&enablejsapi=1&playsinline=1&controls=0&rel=0&modestbranding=1&cc_load_policy=0&iv_load_policy=3&start=0' +
       '&origin=' + encodeURIComponent(location.origin) + '" title="Disney On Ice presents Jump In! trailer" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>' +
       '<div class="xm-shield" data-xm="sound" aria-hidden="true"></div>' +
       '<div class="xm-bar"><i></i></div></div>';
@@ -143,11 +146,17 @@
     var f = host && host.querySelector("iframe"); if (!f || !f.contentWindow) return;
     try { f.contentWindow.postMessage(JSON.stringify({ event: "command", func: func, args: [] }), "*"); } catch (e) {}
   }
-  function soundOn(host) { ytCmd(host, "unMute"); ytCmd(host, "setVolume"); ytCmd(host, "playVideo"); }
+  function soundOn(host) { ytCmd(host, "unMute"); ytCmd(host, "setVolume"); ytCmd(host, "playVideo"); noCaptions(host); }
+  function noCaptions(host) {
+    var f = host && host.querySelector("iframe"); if (!f || !f.contentWindow) return;
+    [["unloadModule", ["captions"]], ["unloadModule", ["cc"]], ["setOption", ["captions", "track", {}]]].forEach(function (c) {
+      try { f.contentWindow.postMessage(JSON.stringify({ event: "command", func: c[0], args: c[1] }), "*"); } catch (e) {}
+    });
+  }
   function runClip(host, done) {
     var fr = host.querySelector("iframe");
     if (fr) setTimeout(function () { var v = fr.closest(".xm-vid"); v && v.classList.add("ready"); }, 3200);
-    if (fr) fr.addEventListener("load", function () { [300, 900, 1800].forEach(function (ms) { setTimeout(function () { soundOn(host); }, ms); }); });
+    if (fr) fr.addEventListener("load", function () { [300, 900, 1800, 3000].forEach(function (ms) { setTimeout(function () { soundOn(host); }, ms); }); [5000, 8000].forEach(function (ms) { setTimeout(function () { noCaptions(host); }, ms); }); });
     var bar = host.querySelector(".xm-bar i"), t = 0;
     clearInterval(host._clip);
     host._clip = setInterval(function () {
@@ -305,7 +314,7 @@
       '<div class="xf-stub"><div class="a"><div class="when">' + EVENT.when + '</div><div class="xm-bebas where">' + EVENT.where + '</div>' +
       '<div class="seats"><div><i>SECTION</i><b>' + EVENT.sec + '</b></div><div><i>ROW</i><b>' + EVENT.row + '</b></div><div><i>SEATS</i><b>' + EVENT.seats + '</b></div></div></div>' +
       '<div class="b"><span class="xm-k">THE DRAW</span><b>' + esc(laDraw(R.closes_at)).replace(" · ", "<br>") + '</b></div></div>' +
-      comp +
+      statsHTML() + comp +
       '<div class="xf-box"><div class="xf-line"><div><div class="xm-k" style="font-size:10px">YOUR TICKETS' + (mine() ? " · YOU HOLD " + mine() : "") + '</div>' +
       '<div class="xf-sm">' + fmt(R.ticket_price) + ' ⬡ each' + (bq > 1 && bp ? " · " + bq + " for " + fmt(bp) + " ⬡" : "") + ' · max ' + cap() + '</div></div>' +
       '<div class="xf-step"><button type="button" data-xf="minus" aria-label="One fewer ticket">−</button><b>' + qty + '</b><button type="button" data-xf="plus" aria-label="One more ticket">+</button></div></div>' +
@@ -316,6 +325,15 @@
       '<div>One ticket is drawn at random. The winner gets all four seats <b>transferred through Ticketmaster</b> (a free account is all you need).</div>' +
       '<div><span class="g"><b style="color:#F2C14E">Children under 2 are free</b></span>, so bring the little ones along.</div></div>' +
       '<div class="xf-foot">THE ORDER OF THE SHADOW HOOK · SAN PEDRO BAY</div>';
+  }
+  function statsHTML() {
+    var total = ST && typeof ST.total === "number" ? ST.total : null, who = ST && typeof ST.entrants === "number" ? ST.entrants : null, m = mine();
+    var body;
+    if (total == null) body = "🎟 Counting the tickets…";
+    else if (total < 10) body = "🎟 <b>Be one of the first in</b> · the drum is just filling up";
+    else body = "🎟 <b>" + fmt(total) + "</b> tickets in" + (who != null ? " <i>·</i> <b>" + fmt(who) + "</b> member" + (who === 1 ? "" : "s") : "");
+    if (m > 0 && total) { var odds = Math.max(1, Math.round(total / m)); body += " <i>·</i> your odds <b>1 in " + fmt(odds) + "</b>"; }
+    return '<div class="xf-stats" aria-live="polite">' + body + "</div>";
   }
   async function onFlyerClick(e) {
     var a = e.target.closest("[data-xf],[data-xm]"); if (!a) return;
