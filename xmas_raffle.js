@@ -1,4 +1,4 @@
-/* The Shadow Hook — xmas_raffle.js (nov3e)
+/* The Shadow Hook — xmas_raffle.js (nov3f)
    The "Christmas Day on Ice" raffle look (raffles.design = 'xmas-ice'), in place of the app's standard raffle pieces:
    · THE BANNER (Social tab, where the raffle banner sits): the trailer plays first (muted, 0:00–0:21, once a day, Skip
      any time), then the card: the show art, "Christmas Day on Ice", WIN A FAMILY 4-PACK, the draw, ENTER.
@@ -65,8 +65,14 @@
       "#xmasBanner .xb-enter{padding:11px 16px;border-radius:12px;background:#F2C14E;color:#1A1206;font-size:20px;letter-spacing:.06em}",
       "#xmasBanner .xb-again{display:block;margin:8px 0 0 auto;min-height:34px;padding:0 12px;border-radius:17px;border:1px solid rgba(255,255,255,.2);background:transparent;color:#CFE6FF;font:600 12px Inter,sans-serif;cursor:pointer}",
       ".xm-vid{position:relative;width:100%;background:#000}",
-      ".xm-vid iframe{position:absolute;inset:0;width:100%;height:100%;border:0}",
+      /* YouTube shows its title, logo and pause button only on hover or tap (and briefly at the start): a clear shield
+         takes every touch so they stay hidden, and a slight zoom pushes the player's edges out of frame */
+      ".xm-vid{overflow:hidden}",
+      ".xm-vid iframe{position:absolute;inset:0;width:100%;height:100%;border:0;transform:scale(1.16);transform-origin:50% 50%;pointer-events:none}",
+      ".xm-shield{position:absolute;inset:0;z-index:1;background:transparent}",
+      ".xm-poster{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}",
       ".xm-vtag{position:absolute;left:10px;top:10px;z-index:2;padding:4px 8px;border-radius:6px;background:rgba(0,0,0,.6);font:700 10px Inter,sans-serif;letter-spacing:.16em;color:#fff;pointer-events:none}",
+      ".xm-vid iframe{opacity:0;transition:opacity .6s ease}.xm-vid.ready iframe{opacity:1}",
       ".xm-snd{position:absolute;left:8px;top:8px;z-index:2;height:36px;padding:0 12px;border-radius:18px;border:1px solid rgba(255,255,255,.35);background:rgba(0,0,0,.55);color:#fff;font:600 12px Inter,sans-serif;cursor:pointer}",
       ".xm-skip{position:absolute;right:8px;top:8px;z-index:2;min-width:64px;height:36px;border-radius:18px;border:1px solid rgba(255,255,255,.35);background:rgba(0,0,0,.55);color:#fff;font:600 12px Inter,sans-serif;cursor:pointer}",
       ".xm-bar{position:absolute;left:10px;right:10px;bottom:10px;z-index:2;height:4px;border-radius:2px;background:rgba(255,255,255,.3);overflow:hidden;pointer-events:none}",
@@ -125,9 +131,10 @@
 
   /* ---------------- the trailer (YouTube's own player, muted so it can start on its own) ---------------- */
   function vidHTML() {
-    return '<div class="xm-vid" style="height:100%">' +
+    return '<div class="xm-vid" style="height:100%"><img class="xm-poster" src="' + ART + '" alt="">' +
       '<iframe src="https://www.youtube-nocookie.com/embed/' + YT + '?autoplay=1&mute=0&enablejsapi=1&playsinline=1&controls=0&rel=0&modestbranding=1&start=0' +
       '&origin=' + encodeURIComponent(location.origin) + '" title="Disney On Ice presents Jump In! trailer" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>' +
+      '<div class="xm-shield" aria-hidden="true"></div>' +
       '<button type="button" class="xm-snd" data-xm="sound" aria-label="Turn the sound on">🔊 Sound</button>' +
       '<button type="button" class="xm-skip" data-xm="skip">Skip ›</button>' +
       '<div class="xm-bar"><i></i></div></div>';
@@ -139,6 +146,7 @@
   function soundOn(host) { ytCmd(host, "unMute"); ytCmd(host, "setVolume"); ytCmd(host, "playVideo"); }
   function runClip(host, done) {
     var fr = host.querySelector("iframe");
+    if (fr) setTimeout(function () { var v = fr.closest(".xm-vid"); v && v.classList.add("ready"); }, 3200);
     if (fr) fr.addEventListener("load", function () { [300, 900, 1800].forEach(function (ms) { setTimeout(function () { soundOn(host); }, ms); }); });
     var bar = host.querySelector(".xm-bar i"), t = 0;
     clearInterval(host._clip);
