@@ -1,4 +1,4 @@
-/* The Shadow Hook — xmas_raffle.js (nov3m)
+/* The Shadow Hook — xmas_raffle.js (nov3n)
    The "Christmas Day on Ice" raffle look (raffles.design = 'xmas-ice'), in place of the app's standard raffle pieces:
    · THE BANNER (Social tab, where the raffle banner sits): the trailer plays first (muted, 0:00–0:21, once a day, Skip
      any time), then the card: the show art, "Christmas Day on Ice", WIN A FAMILY 4-PACK, the draw, ENTER.
@@ -11,7 +11,7 @@
   if (window.__xmasRaffle) return; window.__xmasRaffle = true;
   var DESIGN = "xmas-ice", ART = "./xmas-ice-art.jpg", BG = "./xmas-ice-mickey.jpg", YT = "39ZoU-WflbA", CLIP = 22;
   var EVENT = { when: "FRI · DEC 25 · 11:00 AM", where: "TOYOTA ARENA · ONTARIO, CA", sec: "116", row: "I", seats: "16–19" };
-  var R = null, ST = null, BANK = null, COMPS = [], qty = 1, busy = false;
+  var R = null, ST = null, BANK = null, COMPS = [], qty = 1, busy = false, armed = false, armT = 0;
   var $ = function (id) { return document.getElementById(id); };
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   var fmt = function (n) { return Number(n || 0).toLocaleString("en-US"); };
@@ -129,6 +129,9 @@
       "#xmasFlyer .xf-packs button.gold{border-color:#F2C14E}",
       "#xmasFlyer .xf-buy{min-height:50px;border-radius:14px;border:0;background:#F2C14E;color:#1A1206;font:400 24px 'Bebas Neue',sans-serif;letter-spacing:.06em;cursor:pointer;flex:0 0 auto}",
       "#xmasFlyer .xf-buy.xf-short{background:#fff;color:#1A1206;font-size:19px;box-shadow:0 0 0 2px #F2C14E inset}",
+      "#xmasFlyer .xf-buy.xf-confirm{background:#2FBF71;color:#06210f;animation:xfPulse 1s ease-in-out infinite}",
+      "@keyframes xfPulse{50%{box-shadow:0 0 0 4px rgba(47,191,113,.35)}}",
+      "#xmasFlyer .xf-cancel{flex:0 0 auto;align-self:center;margin-top:-4px;min-height:36px;padding:0 16px;border:0;background:none;color:#C9D6EA;font:600 13px Inter,sans-serif;text-decoration:underline;cursor:pointer}",
       "#xmasFlyer .xf-buy[disabled]{opacity:.55;cursor:default}",
       "#xmasFlyer .xf-comp{min-height:46px;border-radius:14px;border:1.5px solid #F2C14E;background:rgba(242,193,78,.12);color:#FFE9B0;font:700 14px Inter,sans-serif;cursor:pointer;flex:0 0 auto}",
       "#xmasFlyer .xf-msg{min-height:16px;text-align:center;font:600 12.5px Inter,sans-serif;color:#C9D6EA}",
@@ -259,7 +262,7 @@
   function closeFlyer() {
     var f = $("xmasFlyer"); if (!f || !f.classList.contains("on")) return;
     var top = $("xfTop"); clearInterval(top && top._clip); if (top) top.innerHTML = "";
-    f.classList.remove("on", "lifted"); document.documentElement.style.overflow = "";
+    f.classList.remove("on", "lifted"); document.documentElement.style.overflow = ""; armed = false; clearTimeout(armT);
   }
   window.addEventListener("popstate", function () { closeFlyer(); });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape" && $("xmasFlyer") && $("xmasFlyer").classList.contains("on")) dismiss(); });
@@ -330,6 +333,8 @@
       '<div class="xf-step"><button type="button" data-xf="minus" aria-label="One fewer ticket">−</button><b>' + qty + '</b><button type="button" data-xf="plus" aria-label="One more ticket">+</button></div></div>' +
       packs + '<div class="xf-line xf-sm"><span>' + note + '</span><span>Your bank: ' + (BANK == null ? "…" : fmt(BANK)) + ' ⬡</span></div></div>' +
       (short && !busy ? '<button type="button" class="xf-buy xf-short" data-xf="bank">' + esc(buyLbl) + '</button>'
+        : armed && canBuy ? '<button type="button" class="xf-buy xf-confirm" data-xf="confirm">CONFIRM · ' + qty + ' TICKET' + (qty === 1 ? "" : "S") + ' FOR ' + fmt(cost) + ' ⬡</button>' +
+            '<button type="button" class="xf-cancel" data-xf="cancel">cancel</button>'
         : '<button type="button" class="xf-buy" data-xf="buy"' + (canBuy ? "" : " disabled") + '>' + esc(buyLbl) + '</button>') +
       '<div class="xf-msg' + (cls ? " " + cls : "") + '">' + esc(msg || "") + '</div>' +
       '<div class="xf-rules"><div>Bought with <span class="g">Port Bucks</span>. Cap of <b>' + cap() + ' tickets a member</b>, so everyone keeps a real shot.</div>' +
@@ -353,10 +358,12 @@
     if (k === "again") { startTop(); return; }
     if (k === "skip") { var top = $("xfTop"); top && top._clipDone && top._clipDone(); return; }
     if (k === "sound") { soundOn($("xfTop")); return; }
-    if (k === "minus") { qty = Math.max(1, qty - 1); paintFlyer(); return; }
-    if (k === "plus") { qty = Math.min(Math.max(1, maxQty()), qty + 1); paintFlyer(); return; }
-    if (k === "q") { qty = Math.min(Math.max(1, maxQty()), +a.getAttribute("data-q")); paintFlyer(); return; }
-    if (k === "buy") return buy();
+    if (k === "minus") { qty = Math.max(1, qty - 1); armed = false; clearTimeout(armT); paintFlyer(); return; }
+    if (k === "plus") { qty = Math.min(Math.max(1, maxQty()), qty + 1); armed = false; clearTimeout(armT); paintFlyer(); return; }
+    if (k === "q") { qty = Math.min(Math.max(1, maxQty()), +a.getAttribute("data-q")); armed = false; clearTimeout(armT); paintFlyer(); return; }
+    if (k === "buy") { armed = true; clearTimeout(armT); armT = setTimeout(function () { armed = false; paintFlyer(); }, 6000); paintFlyer(); return; }
+    if (k === "confirm") { armed = false; clearTimeout(armT); return buy(); }
+    if (k === "cancel") { armed = false; clearTimeout(armT); paintFlyer(); return; }
     if (k === "bank") return toBank();
     if (k === "comp") return claim();
   }
