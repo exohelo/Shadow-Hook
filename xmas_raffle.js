@@ -1,4 +1,4 @@
-/* The Shadow Hook — xmas_raffle.js (nov3f)
+/* The Shadow Hook — xmas_raffle.js (nov3g)
    The "Christmas Day on Ice" raffle look (raffles.design = 'xmas-ice'), in place of the app's standard raffle pieces:
    · THE BANNER (Social tab, where the raffle banner sits): the trailer plays first (muted, 0:00–0:21, once a day, Skip
      any time), then the card: the show art, "Christmas Day on Ice", WIN A FAMILY 4-PACK, the draw, ENTER.
@@ -87,6 +87,8 @@
       "#xmasFlyer .xf-top{position:absolute;left:0;right:0;top:0;width:100%;aspect-ratio:16/9;overflow:hidden;transition:transform .9s cubic-bezier(.2,.8,.2,1),opacity .6s ease}",
       "#xmasFlyer .xf-top .xm-vid{height:100%}",
       "#xmasFlyer .xf-top img{width:100%;height:100%;object-fit:cover;display:block}",
+      "#xmasFlyer .xf-grab{position:absolute;z-index:5;top:calc(8px + env(safe-area-inset-top,0px));left:50%;width:44px;height:5px;margin-left:-22px;border-radius:3px;background:rgba(255,255,255,.55);box-shadow:0 1px 4px rgba(0,0,0,.5);pointer-events:none}",
+      "#xmasFlyer .xf-stage{will-change:transform}",
       "#xmasFlyer .xf-x{position:absolute;z-index:5;top:calc(10px + env(safe-area-inset-top,0px));right:10px;width:44px;height:44px;border-radius:22px;background:rgba(5,12,34,.7);border:1px solid rgba(255,255,255,.25);color:#fff;font:700 18px Inter,sans-serif;cursor:pointer}",
       "#xmasFlyer .xf-again{position:absolute;z-index:5;top:calc(14px + env(safe-area-inset-top,0px));left:12px;min-height:36px;padding:0 12px;border-radius:18px;border:1px solid rgba(255,255,255,.3);background:rgba(8,4,20,.6);color:#fff;font:600 12px Inter,sans-serif;cursor:pointer;display:none}",
       "#xmasFlyer .xf-col{position:absolute;left:0;right:0;top:min(56.25vw,270px);bottom:0;padding:4px 16px calc(12px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:8px;overflow-y:auto;transition:top .9s cubic-bezier(.2,.8,.2,1)}",
@@ -134,9 +136,7 @@
     return '<div class="xm-vid" style="height:100%"><img class="xm-poster" src="' + ART + '" alt="">' +
       '<iframe src="https://www.youtube-nocookie.com/embed/' + YT + '?autoplay=1&mute=0&enablejsapi=1&playsinline=1&controls=0&rel=0&modestbranding=1&start=0' +
       '&origin=' + encodeURIComponent(location.origin) + '" title="Disney On Ice presents Jump In! trailer" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>' +
-      '<div class="xm-shield" aria-hidden="true"></div>' +
-      '<button type="button" class="xm-snd" data-xm="sound" aria-label="Turn the sound on">🔊 Sound</button>' +
-      '<button type="button" class="xm-skip" data-xm="skip">Skip ›</button>' +
+      '<div class="xm-shield" data-xm="sound" aria-hidden="true"></div>' +
       '<div class="xm-bar"><i></i></div></div>';
   }
   function ytCmd(host, func) {
@@ -219,11 +219,12 @@
       '<img class="xf-bg" src="' + BG + '" alt="">' +
       '<div class="xf-fade"></div><div class="xf-fade2"></div>' +
       '<div class="xf-top" id="xfTop"></div>' +
-      '<button type="button" class="xf-x" data-xf="close" aria-label="Close">✕</button>' +
+      '<div class="xf-grab" aria-hidden="true"></div>' +
       '<button type="button" class="xf-again" data-xf="again">▶ Trailer</button>' +
       '<div class="xf-col" id="xfCol"></div></div>';
     document.body.appendChild(f);
     f.addEventListener("click", onFlyerClick);
+    swipeArm(f);
     return f;
   }
   function startTop() {
@@ -245,6 +246,42 @@
     f.classList.remove("on", "lifted"); document.documentElement.style.overflow = "";
   }
   window.addEventListener("popstate", function () { closeFlyer(); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && $("xmasFlyer") && $("xmasFlyer").classList.contains("on")) dismiss(); });
+  function dismiss() { try { if (history.state && history.state.xmas) history.back(); else closeFlyer(); } catch (x) { closeFlyer(); } }
+  /* pull down (from the top of the scroll) or swipe sideways to close: the flyer follows the finger, closes past
+     ~110px or on a quick flick, and springs back otherwise */
+  function swipeArm(f) {
+    if (f._swipe) return; f._swipe = true;
+    var stage = f.querySelector(".xf-stage"), col = null, sx = 0, sy = 0, st = 0, mode = null, dx = 0, dy = 0;
+    function start(x, y) { col = $("xfCol"); sx = x; sy = y; st = Date.now(); mode = null; dx = dy = 0; stage.style.transition = "none"; }
+    function move(x, y, ev) {
+      dx = x - sx; dy = y - sy;
+      if (!mode) {
+        if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.2) mode = "x";
+        else if (dy > 12 && dy > Math.abs(dx) * 1.2 && (!col || col.scrollTop <= 0)) mode = "y";
+        else if (Math.abs(dy) > 12) mode = "scroll";
+      }
+      if (mode === "x") { stage.style.transform = "translateX(" + dx + "px) rotate(" + (dx / 40) + "deg)"; stage.style.opacity = String(Math.max(.4, 1 - Math.abs(dx) / 600)); ev && ev.cancelable && ev.preventDefault(); }
+      else if (mode === "y") { stage.style.transform = "translateY(" + Math.max(0, dy) + "px)"; stage.style.opacity = String(Math.max(.4, 1 - dy / 900)); ev && ev.cancelable && ev.preventDefault(); }
+    }
+    function end() {
+      var fast = Date.now() - st < 260, far = mode === "x" ? Math.abs(dx) : mode === "y" ? dy : 0;
+      stage.style.transition = "transform .28s ease, opacity .28s ease";
+      if ((mode === "x" || mode === "y") && (far > 110 || (fast && far > 40))) {
+        stage.style.transform = mode === "x" ? "translateX(" + (dx > 0 ? 120 : -120) + "%)" : "translateY(100%)";
+        stage.style.opacity = "0";
+        setTimeout(function () { dismiss(); stage.style.transition = "none"; stage.style.transform = ""; stage.style.opacity = ""; }, 260);
+      } else { stage.style.transform = ""; stage.style.opacity = ""; }
+      mode = null;
+    }
+    f.addEventListener("touchstart", function (e) { if (e.touches.length === 1) start(e.touches[0].clientX, e.touches[0].clientY); }, { passive: true });
+    f.addEventListener("touchmove", function (e) { if (e.touches.length === 1) move(e.touches[0].clientX, e.touches[0].clientY, e); }, { passive: false });
+    f.addEventListener("touchend", end, { passive: true });
+    var down = false;   /* a mouse drag does the same on a computer */
+    f.addEventListener("mousedown", function (e) { if (e.button === 0 && !e.target.closest("button,input")) { down = true; start(e.clientX, e.clientY); } });
+    window.addEventListener("mousemove", function (e) { if (down) move(e.clientX, e.clientY, e); });
+    window.addEventListener("mouseup", function () { if (down) { down = false; end(); } });
+  }
   function maxQty() { return Math.max(0, cap() - mine()); }
   function paintFlyer(msg, cls) {
     var col = $("xfCol"); if (!col || !R) return;
@@ -283,10 +320,10 @@
   async function onFlyerClick(e) {
     var a = e.target.closest("[data-xf],[data-xm]"); if (!a) return;
     var k = a.getAttribute("data-xf") || a.getAttribute("data-xm");
-    if (k === "close") { try { if (history.state && history.state.xmas) history.back(); else closeFlyer(); } catch (x) { closeFlyer(); } return; }
+    if (k === "close") { dismiss(); return; }
     if (k === "again") { startTop(); return; }
     if (k === "skip") { var top = $("xfTop"); top && top._clipDone && top._clipDone(); return; }
-    if (k === "sound") { soundOn($("xfTop")); a.textContent = "🔊 On"; setTimeout(function () { a.remove(); }, 1200); return; }
+    if (k === "sound") { soundOn($("xfTop")); return; }
     if (k === "minus") { qty = Math.max(1, qty - 1); paintFlyer(); return; }
     if (k === "plus") { qty = Math.min(Math.max(1, maxQty()), qty + 1); paintFlyer(); return; }
     if (k === "q") { qty = Math.min(Math.max(1, maxQty()), +a.getAttribute("data-q")); paintFlyer(); return; }
