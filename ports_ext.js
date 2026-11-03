@@ -484,10 +484,14 @@
         var on = h.code === v.port;
         return '<button type="button" data-chport="' + esc(h.code) + '" style="border-radius:999px;padding:5px 11px;cursor:pointer;font:700 11px/1 Barlow Condensed,sans-serif;letter-spacing:.1em;text-transform:uppercase;background:' + (on ? "var(--copper-hi,#e8a33d)" : "transparent") + ';color:' + (on ? "#1a1208" : "var(--bone,#eee)") + ';border:1px solid ' + (on ? "var(--copper-hi,#e8a33d)" : "var(--line,#444)") + '">' + esc(h.short) + "</button>";
       }).join("");
+    /* inside the Chamber's own panel, right under its button row (The Floor · Charter · Alerts) — never beside the
+       panel, which squeezed the Chamber to half the screen */
+    var card = ch.querySelector(".sheet-card") || ch, anchor = card.querySelector(".sc-tools") || card.querySelector(".sc-h2");
+    if (row && !card.contains(row)) { row.remove(); row = null; }
     if (!row) {
       row = document.createElement("div"); row.id = "chHallSw";
-      row.style.cssText = "display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:8px 12px;margin:0 0 6px;border-bottom:1px solid var(--line,#333)";
-      ch.insertBefore(row, ch.firstElementChild ? ch.firstElementChild.nextSibling : null);
+      row.style.cssText = "display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:8px 0 6px;margin:6px 0 2px;border-bottom:1px solid rgba(212,179,106,.25);width:100%;box-sizing:border-box";
+      if (anchor) anchor.insertAdjacentElement("afterend", row); else card.insertBefore(row, card.firstChild);
       row.addEventListener("click", async function (e) {
         var b = e.target.closest("button[data-chport]"); if (!b) return;
         var code = b.getAttribute("data-chport"); if (CHV && code === CHV.port) return;
