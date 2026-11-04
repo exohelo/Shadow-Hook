@@ -87,7 +87,11 @@
     var key = HALL[table];
     var oSel = q.select, oIns = q.insert, oUp = q.upsert, oUpd = q.update, oDel = q.delete;
     q.select = function () { var b = oSel.apply(q, arguments); try { b = b.eq("port", S.home); } catch (e) {} return b; };
-    q.insert = function (rows, opts) { return oIns.call(q, addPort(rows, table), opts); };
+    q.insert = function (rows, opts) {
+      var b = oIns.call(q, addPort(rows, table), opts);
+      if (table === "live_wire") banWatch(b, rows);
+      return b;
+    };
     q.upsert = function (rows, opts) {
       var o = Object.assign({}, opts || {});
       if (key && (o.onConflict === key || !o.onConflict)) o.onConflict = "port," + key;
@@ -96,6 +100,32 @@
     q.update = function (vals, opts) { var b = oUpd.call(q, vals, opts); try { b = b.eq("port", S.home); } catch (e) {} return b; };
     q.delete = function (opts) { var b = oDel.call(q, opts); try { b = b.eq("port", S.home); } catch (e) {} return b; };
     return q;
+  }
+  /* #nov4(wireban) — a member banned from marking: when the board refuses their mark, say so and take the mark back
+     off their screen (the app shows it before the server answers). Only for a ban; other refusals behave as before. */
+  function banWatch(b, rows) {
+    try {
+      var oThen = b.then.bind(b);
+      b.then = function (ok, err) {
+        return oThen(function (r) {
+          try {
+            if (r && r.error && /row-level security|42501/i.test(String(r.error.message || r.error.code || "")) && window.SB) {
+              window.SB.rpc("my_wire_ban").then(function (x) {
+                if (!x || x.error || !x.data) return;
+                try { typeof toast === "function" && toast("🚫 You lost access to marking for a week."); } catch (e) {}
+                try {
+                  var L = window.LW_ROWS || {}, mine = [].concat(rows || []);
+                  Object.keys(L).forEach(function (k) { L[k] = (L[k] || []).filter(function (x) { return !(x && x.local && mine.some(function (m) { return m && m.pos === x.pos; })); }); });
+                  typeof window.sbLoadLiveCalls === "function" && window.sbLoadLiveCalls();
+                  typeof window.renderLive === "function" && window.renderLive();
+                } catch (e) {}
+              });
+            }
+          } catch (e) {}
+          return ok ? ok(r) : r;
+        }, err);
+      };
+    } catch (e) {}
   }
   /* The Board: stories are shared by every hall; we add "port" to the app's column list and remember id → port */
   var STORY_PORT = {};
