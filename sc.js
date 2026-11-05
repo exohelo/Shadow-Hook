@@ -1,3 +1,30 @@
+/* #sceditbox(nov5) — the Chamber edits in an in-app box that shows the whole message (grows with it), not the browser's one-line prompt */
+window.scEditBox = window.scEditBox || function(text, done) {
+    if (!document.getElementById("scEbCss")) {
+        var st = document.createElement("style"); st.id = "scEbCss";
+        st.textContent = ".sc-editbox{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(10,4,8,.62);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}" +
+            ".sc-eb-card{width:min(560px,100%);background:linear-gradient(180deg,#2a0f1a,#1a0911);border:1px solid rgba(214,177,96,.55);border-radius:16px;padding:16px;box-shadow:0 18px 50px rgba(0,0,0,.6)}" +
+            ".sc-eb-t{font-family:'Cinzel',Georgia,serif;letter-spacing:.12em;text-transform:uppercase;font-size:13px;color:#e7c879;margin-bottom:10px}" +
+            ".sc-eb-ta{width:100%;box-sizing:border-box;min-height:84px;resize:none;overflow-y:auto;padding:12px 13px;border-radius:12px;border:1px solid rgba(214,177,96,.45);background:#12060b;color:#f4e6c8;font:16px/1.45 inherit;outline:none}" +
+            ".sc-eb-ta:focus{border-color:#e7c879}" +
+            ".sc-eb-row{display:flex;justify-content:flex-end;gap:10px;margin-top:12px}" +
+            ".sc-eb-row button{font-family:'Cinzel',Georgia,serif;letter-spacing:.1em;text-transform:uppercase;font-size:12px;padding:9px 18px;border-radius:99px;cursor:pointer;border:1px solid rgba(214,177,96,.5);background:transparent;color:#e7c879}" +
+            ".sc-eb-row .sc-eb-ok{background:linear-gradient(180deg,#e7c879,#b88a3a);color:#2a1606;border-color:#e7c879}";
+        document.head.appendChild(st);
+    }
+    var w = document.createElement("div"); w.className = "sc-editbox";
+    w.innerHTML = '<div class="sc-eb-card" role="dialog" aria-label="Edit what you said"><div class="sc-eb-t">Edit what you said</div><textarea class="sc-eb-ta"></textarea><div class="sc-eb-row"><button type="button" class="sc-eb-no">Cancel</button><button type="button" class="sc-eb-ok">Save</button></div></div>';
+    var ta = w.querySelector("textarea"); ta.value = text || "";
+    document.body.appendChild(w);
+    var grow = function() { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight + 2, Math.round(window.innerHeight * .6)) + "px" };
+    ta.addEventListener("input", grow); grow();
+    try { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length) } catch (e) {}
+    var closed = false, close = function(v) { if (closed) return; closed = true; w.remove(); try { done(v) } catch (e) {} };
+    w.querySelector(".sc-eb-no").addEventListener("click", function() { close(null) });
+    w.querySelector(".sc-eb-ok").addEventListener("click", function() { close(ta.value) });
+    w.addEventListener("click", function(e) { if (e.target === w) close(null) });
+    ta.addEventListener("keydown", function(e) { if (e.key === "Escape") close(null); if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); close(ta.value) } });
+};
 /* #lbzoom(oct26) — the Chamber's picture viewer zooms: pinch, double-tap, wheel or the + / − buttons; drag to look around. */
 function scZoomLb(src) {
   var old = document.querySelector(".sc-lb"); old && old.remove();
@@ -1905,12 +1932,13 @@ function headerHTML(w,N,realHead,pvL){
                     })[0];
                 if (!tm) return;
                 if (tb.getAttribute("data-scmsg") === "edit") {
-                    var nt = prompt("Edit what you said:", tm.raw);
-                    if (nt === null || !nt.trim() || nt.trim() === tm.raw) return;
-                    rpc("sc_table_edit", {
+                    window.scEditBox(tm.raw, function(nt) {
+                        if (nt === null || !nt.trim() || nt.trim() === tm.raw) return;
+                        rpc("sc_table_edit", {
                         p_id: tid,
                         p_body: nt.trim()
                     }).then(after("\u270E Edited.", [12])).catch(nope);
+                    });
                     return
                 }
                 try {
