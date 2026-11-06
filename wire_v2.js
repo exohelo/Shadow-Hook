@@ -74,13 +74,15 @@
     var myId=null; try{ myId=typeof window.myBoardId==='function'?window.myBoardId():null; }catch(e){}
     var dOf=function(c){ var i=AZ.indexOf(String(c||'').charAt(0).toUpperCase()); return i<0?-1:((i-base)%26+26)%26; }, bLo=dOf(up.lo), bHi=dOf(up.hi); if(bLo<0||bHi<0||bHi<bLo){ bLo=lo; bHi=hi; }
     var myDist=myId?((AZ.indexOf(String(myId).charAt(0).toUpperCase())-base)%26+26)%26:-1;
+    /* #bellwin(nov5) — every call shows only the band ±2 letters, with the bell curve over them */
+    var w0=0, w1=span; if(!cyc){ w0=Math.max(0,Math.min(bLo,med)-2); w1=Math.min(span,Math.max(bHi,med)+2); }
     if(tr){ var cells='', k, cls, inner;
-      for(k=0;k<=span;k++){ cls='wire-cell'; inner=AZ[(base+k)%26];
+      for(k=w0;k<=w1;k++){ cls='wire-cell'; inner=AZ[(base+k)%26];
         if(k>=bLo&&k<=bHi)cls+=' band'; if(k===0)cls+=' start'; if(k===med&&!cyc)cls+=' stop'; if(myDist===k)cls+=' youcell';
         if(k===0)inner+='<span class="tick">START</span>'; else if(k===med&&!cyc)inner+='<span class="tick">STOP</span>';
         if(myDist===k&&myDist!==0)inner='<span class="you">\uD83C\uDF83</span>'+inner;
         cells+='<div class="'+cls+'">'+inner+'</div>'; }
-      tr.innerHTML=cells; tr.classList.toggle('wide',span>16); }
+      tr.innerHTML=cells; tr.classList.toggle('wide',(w1-w0)>16); }
     /* #bell(nov5) — no more "chance it moves": a bell curve over the letters shows how likely each stop is. Its width
        comes from this engine's own recent misses (graded boards), so it tightens as the engine gets sharper. */
     var graded=rows.filter(function(r){ return r.actual_moved!=null&&r.locked_letters!=null; }).slice(0,8);
@@ -92,8 +94,8 @@
       var pk=(b===Infinity?1:Phi((b-L)/sd))-(a===-Infinity?0:Phi((a-L)/sd)); P.push(pk); if(pk>pmax)pmax=pk; if(k>=bLo&&k<=bHi)inBand+=pk; }
     var cv=document.getElementById('v2Curve');
     if(tr&&!cv){ cv=document.createElement('div'); cv.id='v2Curve'; tr.parentNode.insertBefore(cv,tr); }
-    if(cv){ if(cyc||span>16){ cv.style.display='none'; } else { cv.style.display=''; var bars='';
-        for(k=0;k<=span;k++){ var pct=Math.round(P[k]*100), h=pmax>0?Math.max(3,P[k]/pmax*100):3, c2=k===med?'top':(k>=bLo&&k<=bHi?'band':'');
+    if(cv){ if(cyc||(w1-w0)>16){ cv.style.display='none'; } else { cv.style.display=''; var bars='';
+        for(k=w0;k<=w1;k++){ var pct=Math.round(P[k]*100), h=pmax>0?Math.max(3,P[k]/pmax*100):3, c2=k===med?'top':(k>=bLo&&k<=bHi?'band':'');
           bars+='<div class="wire-cell v2cb '+c2+'">'+(pct>=8?'<span class="v2pct">'+pct+'%</span>':'')+'<i style="height:'+h.toFixed(0)+'%"></i></div>'; }
         cv.innerHTML=bars; } }
     if(mt){ mt.style.display='';
