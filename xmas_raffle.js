@@ -1,4 +1,4 @@
-/* The Shadow Hook — xmas_raffle.js (nov4e)
+/* The Shadow Hook — xmas_raffle.js (nov6a: full banner on open, half-size after the first tab change)
    The "Christmas Day on Ice" raffle look (raffles.design = 'xmas-ice'), in place of the app's standard raffle pieces:
    · THE BANNER (Social tab, where the raffle banner sits): the trailer plays first (muted, 0:00–0:21, once a day, Skip
      any time), then the card: the show art, "Christmas Day on Ice", WIN A FAMILY 4-PACK, the draw, ENTER.
@@ -68,6 +68,16 @@
       ".xm-k{font:600 9px Inter,sans-serif;letter-spacing:.18em;color:#9FC4F0}",
       "#xmasBanner .xb-draw b{display:block;font:700 13px Inter,sans-serif;color:#fff}",
       "#xmasBanner .xb-enter{padding:11px 16px;border-radius:12px;background:#F2C14E;color:#1A1206;font-size:20px;letter-spacing:.06em}",
+      "#xmasBanner .xb-mini{display:flex;align-items:center;gap:10px;padding:8px 10px 8px 8px}",
+      "#xmasBanner .xb-mart{position:relative;flex:0 0 78px;height:78px;border-radius:12px;overflow:hidden}",
+      "#xmasBanner .xb-mart img{position:absolute;left:-71px;top:0;width:222px;height:auto;max-width:none;object-fit:fill}", /* zoomed onto the Disney On Ice \u00B7 Jump In! logo, centered */
+      "#xmasBanner .xb-mbody{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:3px}",
+      "#xmasBanner .xb-mini .xm-script{font-size:19px;line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
+      "#xmasBanner .xb-mhead{font-size:19px;line-height:1;letter-spacing:.02em;color:#fff;white-space:nowrap}",
+      "#xmasBanner .xb-mdraw{font:600 13px/1.1 Inter,sans-serif;color:#9FC4F0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
+      "#xmasBanner .xb-mini .xb-enter{flex:0 0 auto;align-self:center;max-width:96px;padding:8px 12px;font-size:17px;line-height:1;text-align:center;white-space:normal}",
+      "#xmasBanner .xb-menter b{display:block;font-weight:400;font-size:21px;letter-spacing:.06em}#xmasBanner .xb-menter small{display:block;margin-top:2px;font-size:15px;letter-spacing:.04em}",
+      "#xmasBanner .xb-in{animation:xbIn .35s ease both}@keyframes xbIn{from{opacity:0;transform:scale(.98)}to{opacity:1;transform:none}}",
       "#xmasBanner .xb-again{display:block;margin:8px 0 0 auto;min-height:34px;padding:0 12px;border-radius:17px;border:1px solid rgba(255,255,255,.2);background:transparent;color:#CFE6FF;font:600 12px Inter,sans-serif;cursor:pointer}",
       ".xm-vid{position:relative;width:100%;background:#000}",
       /* YouTube shows its title, logo and pause button only on hover or tap (and briefly at the start): a clear shield
@@ -209,7 +219,31 @@
     if (ph === "preview") return "PREVIEW";
     return "ENTER · " + fmt(R.ticket_price) + " ⬡";
   }
+  /* nov6a: the full banner greets the member when the app opens; the first tab change folds it to the half-size card for the rest of the visit */
+  var COMPACT = false, BOOT_AT = Date.now();
+  (function () {
+    var de = document.documentElement, base = de.getAttribute("data-tab");
+    try {
+      new MutationObserver(function () {
+        var t = de.getAttribute("data-tab");
+        if (base == null || Date.now() - BOOT_AT < 6000) { base = t; return; } /* the app picking its first tab while it starts up doesn't count */
+        if (COMPACT || t === base) return;
+        COMPACT = true;
+        var b = $("xmasBanner"); if (b && !b._intro) { b._html = null; b._fold = true; paintBanner(false); }
+      }).observe(de, { attributes: true, attributeFilter: ["data-tab"] });
+    } catch (e) {}
+  })();
+  function miniHTML() {
+    return '<button type="button" class="xb-card xb-mini" data-xm="open" aria-label="Open the Christmas Day on Ice raffle">' +
+      '<div class="xb-mart"><img src="' + ART + '" alt="Disney On Ice presents Jump In!"></div>' +
+      '<div class="xb-mbody"><span class="xm-script">Christmas Day on Ice</span>' +
+      '<span class="xm-bebas xb-mhead">WIN A FAMILY 4-PACK</span>' +
+      '<span class="xb-mdraw">' + esc(laDraw(R.closes_at)) + '</span></div>' +
+      (phase() === "open" ? '<span class="xm-bebas xb-enter xb-menter"><b>ENTER</b><small>' + fmt(R.ticket_price) + ' \u2B21</small></span>'
+        : '<span class="xm-bebas xb-enter">' + esc(enterLabel()) + '</span>') + '</button>';
+  }
   function cardHTML() {
+    if (COMPACT) return miniHTML();
     return '<button type="button" class="xb-card" data-xm="open" aria-label="Open the Christmas Day on Ice raffle">' +
       '<div class="xb-art"><img src="' + ART + '" alt="Disney On Ice presents Jump In!"><span class="xm-cred">© Disney</span></div>' +
       '<div class="xb-body"><div class="xb-row"><span class="xm-script">Christmas Day on Ice</span><span class="xb-tag">RAFFLE</span></div>' +
@@ -237,7 +271,7 @@
     }
     if (b._intro) return;
     var html = '<div class="xb-box">' + cardHTML() + '</div>';
-    if (b._html !== html) { b.innerHTML = html; b._html = html; }
+    if (b._html !== html) { b.innerHTML = html; b._html = html; if (b._fold) { b._fold = false; var bx = b.firstChild; bx && bx.classList.add("xb-in"); } }
   }
   function onBannerClick(e) {
     var a = e.target.closest("[data-xm]"); if (!a) return;
