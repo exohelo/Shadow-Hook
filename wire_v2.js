@@ -4,7 +4,7 @@
    index.html still paints the IN TRAINING label (km_flags.wire_call_on stays false so the old bot can't post);
    this file paints over it with the v2 call: the stop letter in the big slot, the band · letters · start card · lock
    under it, the inputs, and the last six graded boards. Polls every 60 s; nothing here writes anything.
-   Load once from index.html, after hand_counts.js:  <script src="wire_v2.js?v=oct31e" defer></script> */
+   Load once from index.html, after hand_counts.js:  <script src="wire_v2.js?v=nov5b" defer></script> */
 (function(){
   'use strict';
   if(window.__wireV2)return; window.__wireV2=true;
@@ -14,6 +14,12 @@
   function css(){ if(document.getElementById('v2CSS'))return; var s=document.createElement('style'); s.id='v2CSS'; s.textContent=
     '#wMoves .v2b{font:700 15px "Barlow Condensed",sans-serif;letter-spacing:.06em;color:#dcd6c9}#wMoves .v2i{display:block;margin-top:3px;font:600 11px Inter,system-ui,sans-serif;color:#8f979e;line-height:1.5}'+
     '#wMoves .v2g{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:6px;padding-top:5px;border-top:1px solid rgba(220,214,201,.08);font:600 11px Inter,system-ui,sans-serif;color:#8f979e}#wMoves .v2g b{color:#dcd6c9}#wMoves .v2g .ok{color:#7fcf8a}#wMoves .v2g .bad{color:#e8967a}'+
+    '#v2Curve{display:flex;gap:3px;margin:32px 2px -10px;height:62px;align-items:flex-end}'+
+    '#v2Curve .wire-cell{aspect-ratio:auto!important;height:100%!important;background:none!important;border:none!important;box-shadow:none!important;transform:none!important;opacity:1!important;align-items:flex-end!important;justify-content:center;padding:0;position:relative}'+
+    '#v2Curve .wire-cell i{display:block;width:78%;border-radius:6px 6px 2px 2px;background:linear-gradient(180deg,rgba(183,174,203,.55),rgba(183,174,203,.18))}'+
+    '#v2Curve .wire-cell.band i{background:linear-gradient(180deg,#4de2ffcc,#4de2ff33)}#v2Curve .wire-cell.top i{background:linear-gradient(180deg,#ff4dd2,#ff4dd255);box-shadow:0 0 14px #ff4dd266}'+
+    '#v2Curve .v2pct{position:absolute;bottom:calc(100% - 2px);left:50%;transform:translateX(-50%);font:700 10.5px Inter,system-ui,sans-serif;color:var(--bone,#f3e9d8);white-space:nowrap}'+
+    '#v2How{margin-top:14px;text-align:left}#v2How p{margin:8px 0 0;font:400 14.5px/1.5 Inter,system-ui,sans-serif;color:var(--steel)}#v2How p b{color:var(--bone)}#v2How .odds-hold{font-size:14px;line-height:1.5;margin-top:10px}'+
     '#wMoves .v2lock{color:#eeb46b}';
     document.head.appendChild(s); }
   function esc(s){ return String(s==null?'':s).replace(/[&<>]/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]; }); }
@@ -66,18 +72,41 @@
     var med=Math.round(L), lo=Math.max(0,Math.round(L-1.5)), hi=Math.min(26,Math.round(L+1.5)), cyc=med>=26;
     var span=Math.min(26,Math.max(hi+2,med+2,8));
     var myId=null; try{ myId=typeof window.myBoardId==='function'?window.myBoardId():null; }catch(e){}
+    var dOf=function(c){ var i=AZ.indexOf(String(c||'').charAt(0).toUpperCase()); return i<0?-1:((i-base)%26+26)%26; }, bLo=dOf(up.lo), bHi=dOf(up.hi); if(bLo<0||bHi<0||bHi<bLo){ bLo=lo; bHi=hi; }
     var myDist=myId?((AZ.indexOf(String(myId).charAt(0).toUpperCase())-base)%26+26)%26:-1;
     if(tr){ var cells='', k, cls, inner;
       for(k=0;k<=span;k++){ cls='wire-cell'; inner=AZ[(base+k)%26];
-        if(k>=lo&&k<=hi)cls+=' band'; if(k===0)cls+=' start'; if(k===med&&!cyc)cls+=' stop'; if(myDist===k)cls+=' youcell';
+        if(k>=bLo&&k<=bHi)cls+=' band'; if(k===0)cls+=' start'; if(k===med&&!cyc)cls+=' stop'; if(myDist===k)cls+=' youcell';
         if(k===0)inner+='<span class="tick">START</span>'; else if(k===med&&!cyc)inner+='<span class="tick">STOP</span>';
         if(myDist===k&&myDist!==0)inner='<span class="you">\uD83C\uDF83</span>'+inner;
         cells+='<div class="'+cls+'">'+inner+'</div>'; }
       tr.innerHTML=cells; tr.classList.toggle('wide',span>16); }
-    if(mt){ var pm=L>=4?97:L>=2?85:L>=1?65:35;
-      mt.style.display=''; mt.innerHTML='<div class="wm-move"><div class="wm-lbl">CHANCE IT MOVES<span class="pct">'+pm+'%</span></div><div class="wm-bar"><div class="wm-fill" style="width:'+pm+'%"></div></div></div>'; }
-    if(run){ run.style.display='block'; run.className='wire-runaway steady';
-      run.innerHTML=cyc?'the numbers say it goes <b>around the book</b>':'typical miss on this engine is about <b>2 letters</b> \u00B7 the band is where it lands most of the time \u00B7 '+(locked?'this call is locked':'locks at flex and never moves after'); }
+    /* #bell(nov5) — no more "chance it moves": a bell curve over the letters shows how likely each stop is. Its width
+       comes from this engine's own recent misses (graded boards), so it tightens as the engine gets sharper. */
+    var graded=rows.filter(function(r){ return r.actual_moved!=null&&r.locked_letters!=null; }).slice(0,8);
+    var mae=graded.length?graded.reduce(function(a,r){ return a+Math.abs(+r.locked_letters-r.actual_moved); },0)/graded.length:null;
+    var sd=graded.length>=3?Math.max(0.9,mae*1.25):2.5;
+    function Phi(x){ var t=1/(1+0.3275911*Math.abs(x)/Math.SQRT2), e=Math.exp(-x*x/2), y=1-(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-0.284496736)*t+0.254829592)*t*e; return x>=0?(1+y)/2:(1-y)/2; }
+    var P=[], pmax=0, inBand=0;
+    for(k=0;k<=span;k++){ var a=k===0?-Infinity:k-0.5, b=k===span?Infinity:k+0.5;
+      var pk=(b===Infinity?1:Phi((b-L)/sd))-(a===-Infinity?0:Phi((a-L)/sd)); P.push(pk); if(pk>pmax)pmax=pk; if(k>=bLo&&k<=bHi)inBand+=pk; }
+    var cv=document.getElementById('v2Curve');
+    if(tr&&!cv){ cv=document.createElement('div'); cv.id='v2Curve'; tr.parentNode.insertBefore(cv,tr); }
+    if(cv){ if(cyc||span>16){ cv.style.display='none'; } else { cv.style.display=''; var bars='';
+        for(k=0;k<=span;k++){ var pct=Math.round(P[k]*100), h=pmax>0?Math.max(3,P[k]/pmax*100):3, c2=k===med?'top':(k>=bLo&&k<=bHi?'band':'');
+          bars+='<div class="wire-cell v2cb '+c2+'">'+(pct>=8?'<span class="v2pct">'+pct+'%</span>':'')+'<i style="height:'+h.toFixed(0)+'%"></i></div>'; }
+        cv.innerHTML=bars; } }
+    if(mt){ mt.style.display='';
+      if(!document.getElementById('v2How')){ mt.innerHTML='<details class="race-how v2how" id="v2How"><summary>How sure is this call?</summary><div id="v2HowBody"></div></details>';
+        var mo=document.getElementById('myOdds'); if(mo)document.getElementById('v2How').appendChild(mo); }
+      var topPct=Math.round((P[med]||0)*100), bandPct=Math.round(inBand*100), stopL=AZ[(base+med)%26];
+      var body=cyc?'<p>The numbers say it goes <b>around the book</b> tonight, so there\u2019s no single stop letter to call.</p>':
+        '<p><b>Most likely stop: '+stopL+'</b> \u2014 about '+topPct+'% on its own.</p>'+
+        '<p><b>'+bandPct+'%</b> chance it stops in the band <b>'+esc(up.lo)+'\u2013'+esc(up.hi)+'</b>.</p>'+
+        (mae!=null?'<p>Recent calls missed by about <b>'+(Math.round(mae*10)/10)+' letter'+(Math.round(mae*10)/10===1?'':'s')+'</b> on average (last '+graded.length+' boards). The curve is built from that.</p>':'<p>Not enough graded boards yet, so the curve is drawn wide.</p>')+
+        '<p>'+(locked?'This call is <b>locked</b> and won\u2019t change.':'It locks at '+(up.k.slice(-2)==='AM'?'6:30 AM':'4:30 PM')+' and doesn\u2019t move after.')+'</p>';
+      var hb=document.getElementById('v2HowBody'); if(hb&&hb.innerHTML!==body)hb.innerHTML=body; }
+    if(run){ run.style.display='none'; }
   }
   /* the Dispatch Post card, the "your number" line and the council line all read callFor(k) = window._lastCall for
      window._publishedKey. The old bot nulls those while it's off; hand them the v2 call instead, and repaint the Hall. */
