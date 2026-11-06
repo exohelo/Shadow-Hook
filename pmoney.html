@@ -1164,7 +1164,7 @@ html.pm-practice .tile.t-ou{filter:grayscale(.65) brightness(.7)}
 .ou-key span.u::before{background:#be123c}
 .ou-empty{grid-column:1/-1;align-self:center;text-align:center;font-family:var(--cond);font-weight:600;font-size:14px;color:#c9b2ea}
 #p-ou .how.rules{margin:0 0 14px;padding:10px 12px;border-radius:14px;background:rgba(0,0,0,.28);border:1px solid rgba(255,217,138,.28)}
-#p-ou .crowd{cursor:default}
+#p-ou .crowd{cursor:pointer}#p-ou .crowd .tap{display:block;margin-top:3px;font-size:12px;color:#ffd45e;opacity:.9}.ou-feed{margin:-6px 0 14px;padding:10px 12px;border-radius:14px;background:rgba(0,0,0,.28);border:1px solid rgba(255,217,138,.22)}.ou-feed .fr{display:flex;align-items:center;gap:10px;padding:7px 2px;border-bottom:1px solid rgba(255,255,255,.06);font-family:var(--cond);font-size:15px}.ou-feed .fr:last-child{border-bottom:0}.ou-feed .fr .h{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#fff4e0}.ou-feed .fr.me .h{color:#ffd45e}.ou-feed .fr .sd{padding:2px 9px;border-radius:99px;font-weight:700;font-size:13px}.ou-feed .fr .sd.over{background:#10b98133;color:#6ee7b7}.ou-feed .fr .sd.under{background:#f43f5e33;color:#fda4af}.ou-feed .fr .st{min-width:78px;text-align:right;color:#ffe9b0;font-weight:700}.ou-feed .fr .st small{font-size:12px;color:#c9b2ea;font-weight:600}.ou-lead .sl.me{background:rgba(255,212,94,.12);border-radius:10px}.ou-lead .sl span:first-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 </style>
 </head>
 <body>
@@ -1287,7 +1287,7 @@ html.pm-practice .tile.t-ou{filter:grayscale(.65) brightness(.7)}
         <div class="odays" id="ouDays" aria-hidden="true"></div>
         <div class="ou-key"><span>went over</span><span class="u">stayed under</span></div>
       </div>
-      <div class="crowd" id="ouCrowd" hidden></div>
+      <div class="crowd" id="ouCrowd" role="button" tabindex="0" hidden></div><div class="ou-feed" id="ouFeed" hidden></div>
       <div class="sect" id="ouHead">Your bet</div>
       <div class="duo">
         <button class="spot" data-ou2="under" aria-pressed="false"><b>Under</b><small></small><span class="odds"></span></button>
@@ -1296,7 +1296,7 @@ html.pm-practice .tile.t-ou{filter:grayscale(.65) brightness(.7)}
       <div class="stakebar" data-for="ou"><span class="k">Your stake</span></div>
       <div class="betslip" id="ouSlip"></div>
       <button class="go" id="ouGo">Place bet</button>
-      <div class="slip" id="ouMine"></div>
+      <div class="slip" id="ouMine"></div><div class="slip ou-lead" id="ouLead"></div>
     </div>
   </section>
 
@@ -1495,7 +1495,7 @@ html.pm-practice .tile.t-ou{filter:grayscale(.65) brightness(.7)}
     <h3>Your plays <span id="net">net ⬡0</span></h3>
     <ol id="wire"></ol>
   </section>
-  <div class="foot"><span>Every bet is Port Bucks. House edge 4–8% on every game.</span><span class="pmver" style="opacity:.55;font-size:11px">casino build pm-nov5a · practice on</span><button id="reset">Reset chips</button></div>
+  <div class="foot"><span>Every bet is Port Bucks. House edge 4–8% on every game.</span><span class="pmver" style="opacity:.55;font-size:11px">casino build pm-nov6a · practice on</span><button id="reset">Reset chips</button></div>
   </div>
 
   <!-- ═══ THE LEAGUE: picks and standings ═══ -->
@@ -3244,7 +3244,7 @@ if(REAL||GATED){
    on 2nd dispatch. The server sets the line (the last same-shift board's 2nd-call count + .5), closes bets at 1st
    dispatch, and settles off every 2nd-call drop members report on the Dispatch Post (pm_ou_*). A member with a bet on
    a board can't report that board's drops, and a board fewer than 2 members reported on is refunded. ═════ */
-var OU=null, OU_off=0, OU_pick='over', OU_seen={}, OU_sig='', OU_busy=false, OU_wasOpen=null;
+var OU_feedOpen=false; var OU=null, OU_off=0, OU_pick='over', OU_seen={}, OU_sig='', OU_busy=false, OU_wasOpen=null;
 function ouDay(k){return String(k||'').split('_')[1]||'';}
 function ouNow(){return Date.now()+OU_off;}
 function ouIsOpen(){return !!(OU&&OU.open&&ouNow()<OU.first_ms);}
@@ -3313,10 +3313,11 @@ function ouDraw(){
   $('#ouSlip').innerHTML=`<div><span>Stake</span><b>⬡${fmt(st)}</b></div><i>→</i><div class="win"><span>To win</span><b>⬡${fmt(win)}</b></div><p>+⬡${fmt(win-st)} profit ${cond}</p>`;
   $('#ouSlip').hidden=!can;
   go.disabled=!can||OU_busy; go.textContent=OU_busy?'Placing…':can?`Place bet · ${OU_pick} ${L}`:'Bets closed';
-  const F=OU.feed||[], cr=$('#ouCrowd'); cr.hidden=!F.length;
+  const F=OU.feed||[], cr=$('#ouCrowd'); cr.hidden=!F.length;{const fd=$('#ouFeed'); fd.hidden=!(OU_feedOpen&&F.length); if(!fd.hidden){const G=[],ix={};F.forEach(f=>{const k=(f.handle||'')+'|'+f.side+'|'+f.line;if(ix[k]==null){ix[k]=G.length;G.push({h:f.handle,side:f.side,line:f.line,me:f.me,n:0,t:0})}const g=G[ix[k]];g.n++;g.t+=+f.stake||0});G.sort((a,b)=>b.t-a.t);fd.innerHTML=G.map(g=>`<div class="fr${g.me?' me':''}"><span class="h">${esc(g.h||'—')}${g.me?' · you':''}</span><span class="sd ${g.side}">${g.side==='over'?'Over':'Under'} ${g.line}</span><span class="st">${g.n>1?'<small>×'+g.n+'</small> ':''}⬡${fmt(g.t)}</span></div>`).join('');}}
   if(F.length){ const who=[...new Map(F.map(f=>[f.handle,{h:f.handle,me:f.me}])).values()];
     const n=k=>F.filter(f=>f.side===k).length, b=k=>F.filter(f=>f.side===k).reduce((a,f)=>a+f.stake,0);
-    cr.innerHTML=`<span class="stack">${who.slice(0,4).map(av).join('')}</span><span class="ct">${who.length} betting this board<small>${n('over')} over · ⬡${fmt(b('over'))} &nbsp;|&nbsp; ${n('under')} under · ⬡${fmt(b('under'))}</small></span>`; }
+    cr.innerHTML=`<span class="stack">${who.slice(0,4).map(av).join('')}</span><span class="ct">${who.length} betting this board<small>${n('over')} over · ⬡${fmt(b('over'))} &nbsp;|&nbsp; ${n('under')} under · ⬡${fmt(b('under'))}</small><span class="tap">${OU_feedOpen?'▾ hide the bets':'▸ tap to see every bet'}</span></span>`; }
+  {const LB=OU.leaders||[], el=$('#ouLead'); if(!LB.length){el.innerHTML='';} else { const row=(x,i)=>`<div class="sl ${x.me?'me ':''}${x.net>0?'w':x.net<0?'l':''}"><span>#${i+1} ${esc(x.handle||'—')}${x.me?' · you':''}</span><span>${x.w}–${x.l}</span><b>${x.net>0?'+':''}⬡${fmt(Math.abs(x.net))}${x.net<0?' down':''}</b></div>`; const top=LB.slice(0,10).map(row).join(''), mi=LB.findIndex(x=>x.me); el.innerHTML='<h4>Over/Under leaderboard</h4>'+top+(mi>=10?row(LB[mi],mi):''); } }
   $('#ouMine').innerHTML=(OU.mine||[]).length?'<h4>Your bets</h4>'+OU.mine.map(x=>{
       const tag=x.board!==OU.key?`<em>${x.board.slice(5,10).replace('-','/')} ${x.board.slice(-2)}</em>`:'';
       const res=x.status==='won'?`+⬡${fmt(x.payout)}`:x.status==='lost'?`lost · ${x.actual}`:x.status==='void'?'refunded':'open';
@@ -3340,6 +3341,7 @@ function ouLobbyText(){
 }
 $$('[data-ou2]').forEach(b=>b.addEventListener('click',()=>{ if(!ouIsOpen()||!OU||OU.line==null)return; FX.sfx('click'); OU_pick=b.dataset.ou2; ouDraw(); }));
 $('#ouGo').addEventListener('click',ouBet);
+{const cr=$('#ouCrowd'),tg=()=>{OU_feedOpen=!OU_feedOpen;OU_sig='';ouDraw();};cr.addEventListener('click',tg);cr.addEventListener('keydown',e=>{(e.key==='Enter'||e.key===' ')&&(e.preventDefault(),tg())});}
 setInterval(()=>{ if(!OU||$('#p-ou').hidden)return; const o=ouIsOpen(); if(o!==OU_wasOpen){ ouDraw(); return; } if(o)setT($('#ouPhase .cd'),ouLeft()); },1000);
 setInterval(()=>{ if(REAL&&!PRACTICE_ON()&&!document.hidden&&(!$('#p-ou').hidden||!$('#lobby').hidden))ouLoad(); },20000);
 function paintMode(){
