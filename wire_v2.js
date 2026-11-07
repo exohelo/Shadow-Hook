@@ -8,19 +8,27 @@
 (function(){
   'use strict';
   if(window.__wireV2)return; window.__wireV2=true;
-  var rows=null, t=null, mark='data-v2', LS='shadowhook_wire_v2';
+  var rows=null, t=null, mark='data-v2', LS='shadowhook_wire_v2', LSV='shadowhook_wire_view', last=null;
+  /* #nov6(swipe): 'odds' = the bell curve over the band (default), 'board' = every letter from the start card to the stop */
+  var view='odds'; try{ if(localStorage.getItem(LSV)==='board')view='board'; }catch(e){}
   /* #oct31(flash): paint the last call this phone saw the instant the Wire exists, so the old label never gets the screen first */
   try{ var cached=JSON.parse(localStorage.getItem(LS)||'null'); if(cached&&cached.rows&&Date.now()-cached.at<36*3600e3)rows=cached.rows; }catch(e){}
   function css(){ if(document.getElementById('v2CSS'))return; var s=document.createElement('style'); s.id='v2CSS'; s.textContent=
     '#wMoves .v2b{font:700 15px "Barlow Condensed",sans-serif;letter-spacing:.06em;color:#dcd6c9}#wMoves .v2i{display:block;margin-top:3px;font:600 11px Inter,system-ui,sans-serif;color:#8f979e;line-height:1.5}'+
     '#wMoves .v2g{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:6px;padding-top:5px;border-top:1px solid rgba(220,214,201,.08);font:600 11px Inter,system-ui,sans-serif;color:#8f979e}#wMoves .v2g b{color:#dcd6c9}#wMoves .v2g .ok{color:#7fcf8a}#wMoves .v2g .bad{color:#e8967a}'+
-    '#v2Curve{display:flex;gap:3px;margin:32px 2px -10px;height:62px;align-items:flex-end}'+
+    '#v2Curve{display:flex;gap:3px;margin:16px 2px -10px;height:62px;align-items:flex-end}'+
     '#v2Curve .wire-cell{aspect-ratio:auto!important;height:100%!important;background:none!important;border:none!important;box-shadow:none!important;transform:none!important;opacity:1!important;align-items:flex-end!important;justify-content:center;padding:0;position:relative}'+
     '#v2Curve .wire-cell i{display:block;width:78%;border-radius:6px 6px 2px 2px;background:linear-gradient(180deg,rgba(183,174,203,.55),rgba(183,174,203,.18))}'+
     '#v2Curve .wire-cell.band i{background:linear-gradient(180deg,#4de2ffcc,#4de2ff33)}#v2Curve .wire-cell.top i{background:linear-gradient(180deg,#ff4dd2,#ff4dd255);box-shadow:0 0 14px #ff4dd266}'+
-    '#v2Curve .v2pct{position:absolute;bottom:calc(100% - 2px);left:50%;transform:translateX(-50%);font:700 10.5px Inter,system-ui,sans-serif;color:var(--bone,#f3e9d8);white-space:nowrap}'+
+    '#v2Curve .v2pct{position:absolute;bottom:5px;left:50%;transform:translateX(-50%);z-index:1;font:700 10.5px Inter,system-ui,sans-serif;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.75);white-space:nowrap;pointer-events:none}'+
     '#v2How{margin-top:14px;text-align:left}#v2How p{margin:8px 0 0;font:400 14.5px/1.5 Inter,system-ui,sans-serif;color:var(--steel)}#v2How p b{color:var(--bone)}#v2How .odds-hold{font-size:14px;line-height:1.5;margin-top:10px}'+
-    '#wMoves .v2lock{color:#eeb46b}';
+    '#wMoves .v2lock{color:#eeb46b}'+
+    /* #nov6(swipe): the odds view and the full-board view share one spot; swipe sideways (or tap the dots) to switch */
+    '#v2View{position:relative;touch-action:pan-y;user-select:none;-webkit-user-select:none}#v2View.v2slide{animation:v2Slide .26s cubic-bezier(.2,.8,.2,1)}#v2View.v2slide.back{animation-name:v2SlideB}'+
+    '@keyframes v2Slide{0%{opacity:0;transform:translateX(26px)}to{opacity:1;transform:none}}@keyframes v2SlideB{0%{opacity:0;transform:translateX(-26px)}to{opacity:1;transform:none}}'+
+    '#v2Dots{display:flex;justify-content:center;align-items:center;gap:14px;margin:2px 0 4px}#v2Dots button{display:flex;align-items:center;gap:6px;background:none;border:0;padding:6px 4px;cursor:pointer;font:600 10px Inter,system-ui,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:var(--steel)}'+
+    '#v2Dots button i{width:6px;height:6px;border-radius:3px;background:var(--line);transition:.2s}#v2Dots button.on{color:var(--copper-hi)}#v2Dots button.on i{width:16px;background:var(--copper-hi)}'+
+    '@media(prefers-reduced-motion:reduce){#v2View.v2slide{animation:none}}';
     document.head.appendChild(s); }
   function esc(s){ return String(s==null?'':s).replace(/[&<>]/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]; }); }
   function lbl(k){ var d=new Date(k.slice(0,10)+'T12:00:00'); return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()]+' '+(d.getMonth()+1)+'/'+d.getDate()+' '+(k.slice(-2)==='AM'?'day':'night'); }
@@ -67,6 +75,7 @@
   }
   /* the letter ladder (#wTrack), the chance bar (#wMeters) and the note (#wRun), drawn the way the old Wire drew them */
   function ladder(up,L,stop,locked){
+    last=[up,L,stop,locked];
     var AZ='ABCDEFGHIJKLMNOPQRSTUVWXYZ', tr=document.getElementById('wTrack'), mt=document.getElementById('wMeters'), run=document.getElementById('wRun');
     var startL=(up.start_code||'A').charAt(0).toUpperCase(), base=AZ.indexOf(startL); if(base<0)base=0;
     var med=Math.round(L), lo=Math.max(0,Math.round(L-1.5)), hi=Math.min(26,Math.round(L+1.5)), cyc=med>=26;
@@ -75,7 +84,7 @@
     var dOf=function(c){ var i=AZ.indexOf(String(c||'').charAt(0).toUpperCase()); return i<0?-1:((i-base)%26+26)%26; }, bLo=dOf(up.lo), bHi=dOf(up.hi); if(bLo<0||bHi<0||bHi<bLo){ bLo=lo; bHi=hi; }
     var myDist=myId?((AZ.indexOf(String(myId).charAt(0).toUpperCase())-base)%26+26)%26:-1;
     /* #bellwin(nov5) — every call shows only the band ±2 letters, with the bell curve over them */
-    var w0=0, w1=span; if(!cyc){ w0=Math.max(0,Math.min(bLo,med)-2); w1=Math.min(span,Math.max(bHi,med)+2); }
+    var w0=0, w1=span; if(!cyc&&view!=='board'){ w0=Math.max(0,Math.min(bLo,med)-2); w1=Math.min(span,Math.max(bHi,med)+2); }
     if(tr){ var cells='', k, cls, inner;
       for(k=w0;k<=w1;k++){ cls='wire-cell'; inner=AZ[(base+k)%26];
         if(k>=bLo&&k<=bHi)cls+=' band'; if(k===0)cls+=' start'; if(k===med&&!cyc)cls+=' stop'; if(myDist===k)cls+=' youcell';
@@ -94,7 +103,8 @@
       var pk=(b===Infinity?1:Phi((b-L)/sd))-(a===-Infinity?0:Phi((a-L)/sd)); P.push(pk); if(pk>pmax)pmax=pk; if(k>=bLo&&k<=bHi)inBand+=pk; }
     var cv=document.getElementById('v2Curve');
     if(tr&&!cv){ cv=document.createElement('div'); cv.id='v2Curve'; tr.parentNode.insertBefore(cv,tr); }
-    if(cv){ if(cyc||(w1-w0)>16){ cv.style.display='none'; } else { cv.style.display=''; var bars='';
+    if(tr&&cv)viewer(tr,cv,cyc);
+    if(cv){ if(cyc||view==='board'||(w1-w0)>16){ cv.style.display='none'; } else { cv.style.display=''; var bars='';
         for(k=w0;k<=w1;k++){ var pct=Math.round(P[k]*100), h=pmax>0?Math.max(3,P[k]/pmax*100):3, c2=k===med?'top':(k>=bLo&&k<=bHi?'band':'');
           bars+='<div class="wire-cell v2cb '+c2+'">'+(pct>=8?'<span class="v2pct">'+pct+'%</span>':'')+'<i style="height:'+h.toFixed(0)+'%"></i></div>'; }
         cv.innerHTML=bars; } }
@@ -109,6 +119,29 @@
         '<p>'+(locked?'This call is <b>locked</b> and won\u2019t change.':'It locks at '+(up.k.slice(-2)==='AM'?'6:30 AM':'4:30 PM')+' and doesn\u2019t move after.')+'</p>';
       var hb=document.getElementById('v2HowBody'); if(hb&&hb.innerHTML!==body)hb.innerHTML=body; }
     if(run){ run.style.display='none'; }
+  }
+  /* #nov6(swipe): wrap the curve and the letters in one swipeable spot, with two dots under it to show which view is up */
+  function setView(v,dir){ if(v===view)return; view=v; try{ localStorage.setItem(LSV,v); }catch(e){}
+    var box=document.getElementById('v2View');
+    if(last)ladder.apply(null,last);
+    if(box){ box.classList.remove('v2slide','back'); void box.offsetWidth; box.classList.add('v2slide'); if(dir<0)box.classList.add('back'); } }
+  function viewer(tr,cv,cyc){
+    var box=document.getElementById('v2View');
+    if(!box){ box=document.createElement('div'); box.id='v2View'; box.setAttribute('data-noswipe','');
+      tr.parentNode.insertBefore(box,cv); box.appendChild(cv); box.appendChild(tr);
+      var dots=document.createElement('div'); dots.id='v2Dots';
+      dots.innerHTML='<button type="button" data-v="odds"><i></i>Odds</button><button type="button" data-v="board"><i></i>Full board</button>';
+      box.insertAdjacentElement('afterend',dots);
+      dots.addEventListener('click',function(e){ var b=e.target.closest('button[data-v]'); if(b)setView(b.getAttribute('data-v'),b.getAttribute('data-v')==='board'?1:-1); });
+      var x0=0,y0=0,on=false;
+      box.addEventListener('touchstart',function(e){ if(e.touches.length!==1){ on=false; return; } x0=e.touches[0].clientX; y0=e.touches[0].clientY; on=true; },{passive:true});
+      box.addEventListener('touchend',function(e){ if(!on)return; on=false; var t=e.changedTouches[0], dx=t.clientX-x0, dy=t.clientY-y0;
+        if(Math.abs(dx)>40&&Math.abs(dx)>Math.abs(dy)*1.4)setView(view==='odds'?'board':'odds',dx<0?1:-1); },{passive:true});
+      var mx=null;   /* mouse drag works too, for anyone on a computer */
+      box.addEventListener('mousedown',function(e){ mx=e.clientX; });
+      window.addEventListener('mouseup',function(e){ if(mx==null)return; var dx=e.clientX-mx; mx=null; if(Math.abs(dx)>40)setView(view==='odds'?'board':'odds',dx<0?1:-1); }); }
+    var d=document.getElementById('v2Dots');
+    if(d){ d.style.display=cyc?'none':''; [].forEach.call(d.querySelectorAll('button'),function(b){ b.classList.toggle('on',b.getAttribute('data-v')===view); }); }
   }
   /* the Dispatch Post card, the "your number" line and the council line all read callFor(k) = window._lastCall for
      window._publishedKey. The old bot nulls those while it's off; hand them the v2 call instead, and repaint the Hall. */
