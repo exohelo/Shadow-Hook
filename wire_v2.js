@@ -106,7 +106,7 @@
     if(tr&&cv)viewer(tr,cv,cyc);
     if(cv){ if(cyc||view==='board'||(w1-w0)>16){ cv.style.display='none'; } else { cv.style.display=''; var bars='';
         for(k=w0;k<=w1;k++){ var pct=Math.round(P[k]*100), h=pmax>0?Math.max(3,P[k]/pmax*100):3, c2=k===med?'top':(k>=bLo&&k<=bHi?'band':'');
-          bars+='<div class="wire-cell v2cb '+c2+'">'+(pct>=8?'<span class="v2pct">'+pct+'%</span>':'')+'<i style="height:'+h.toFixed(0)+'%"></i></div>'; }
+          bars+='<div class="wire-cell v2cb '+c2+'">'+(pct>=1&&h*62/100>=18?'<span class="v2pct">'+pct+'%</span>':'')+'<i style="height:'+h.toFixed(0)+'%"></i></div>'; }
         cv.innerHTML=bars; } }
     if(mt){ mt.style.display='';
       if(!document.getElementById('v2How')){ mt.innerHTML='<details class="race-how v2how" id="v2How"><summary>How sure is this call?</summary><div id="v2HowBody"></div></details>';
