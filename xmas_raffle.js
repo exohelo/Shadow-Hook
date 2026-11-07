@@ -12,6 +12,7 @@
   var DESIGN = "xmas-ice", ART = "./xmas-ice-art.jpg", BG = "./xmas-ice-mickey.jpg", YT = "39ZoU-WflbA", CLIP = 23;
   var EVENT = { when: "FRI · DEC 25 · 11:00 AM", where: "TOYOTA ARENA · ONTARIO, CA", sec: "116", row: "I", seats: "16–19" };
   var R = null, ST = null, BANK = null, COMPS = [], qty = 1, busy = false, armed = false, armT = 0;
+  try { (window.RFL_ART = window.RFL_ART || {})[DESIGN] = { src: BG, credit: "© Disney", focus: "50% 28%" }; } catch (e) {}
   var $ = function (id) { return document.getElementById(id); };
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   var fmt = function (n) { return Number(n || 0).toLocaleString("en-US"); };
@@ -217,7 +218,7 @@
     if (ph === "soon") return "OPENS " + laDraw(R.opens_at).toUpperCase();
     if (ph === "closed") return "SALES CLOSED";
     if (ph === "preview") return "PREVIEW";
-    return "ENTER · " + fmt(R.ticket_price) + " ⬡";
+    return "FREE · ENTER";   /* nov7: raffles are free; tickets are earned in the app */
   }
   /* nov6a: the full banner greets the member when the app opens; the first tab change folds it to the half-size card for the rest of the visit */
   var COMPACT = false, BOOT_AT = Date.now();
@@ -239,7 +240,7 @@
       '<div class="xb-mbody"><span class="xm-script">Christmas Day on Ice</span>' +
       '<span class="xm-bebas xb-mhead">WIN A FAMILY 4-PACK</span>' +
       '<span class="xb-mdraw">' + esc(laDraw(R.closes_at)) + '</span></div>' +
-      (phase() === "open" ? '<span class="xm-bebas xb-enter xb-menter"><b>ENTER</b><small>' + fmt(R.ticket_price) + ' \u2B21</small></span>'
+      (phase() === "open" ? '<span class="xm-bebas xb-enter xb-menter"><b>ENTER</b><small>FREE</small></span>'
         : '<span class="xm-bebas xb-enter">' + esc(enterLabel()) + '</span>') + '</button>';
   }
   function cardHTML() {
@@ -382,17 +383,13 @@
       '<div class="seats"><div><i>SECTION</i><b>' + EVENT.sec + '</b></div><div><i>ROW</i><b>' + EVENT.row + '</b></div><div><i>SEATS</i><b>' + EVENT.seats + '</b></div></div></div>' +
       '<div class="b"><span class="xm-k">THE DRAW</span><b>' + esc(laDraw(R.closes_at)).replace(" · ", "<br>") + '</b></div></div>' +
       statsHTML() + comp +
+      /* nov7: no buying — the earn panel (index.html's rflEarnHTML) shows how tickets are earned and how close they are */
       '<div class="xf-box"><div class="xf-line"><div><div class="xm-k" style="font-size:10px">YOUR TICKETS' + (mine() ? " · YOU HOLD " + mine() : "") + '</div>' +
-      '<div class="xf-sm">' + fmt(R.ticket_price) + ' ⬡ each' + (bq > 1 && bp ? " · " + bq + " for " + fmt(bp) + " ⬡" : "") + ' · max ' + cap() + '</div></div>' +
-      '<div class="xf-step"><button type="button" data-xf="minus" aria-label="One fewer ticket">−</button><b>' + qty + '</b><button type="button" data-xf="plus" aria-label="One more ticket">+</button></div></div>' +
-      packs + '<div class="xf-line xf-sm"><span>' + note + '</span><span>Your bank: ' + (BANK == null ? "…" : fmt(BANK)) + ' ⬡</span></div></div>' +
-      (guest ? '<button type="button" class="xf-buy" data-xf="signin">SIGN IN TO ENTER</button>'
-        : short && !busy ? '<button type="button" class="xf-buy xf-short" data-xf="bank">' + esc(buyLbl) + '</button>'
-        : armed && canBuy ? '<button type="button" class="xf-buy xf-confirm" data-xf="confirm">CONFIRM · ' + qty + ' TICKET' + (qty === 1 ? "" : "S") + ' FOR ' + fmt(cost) + ' ⬡</button>' +
-            '<button type="button" class="xf-cancel" data-xf="cancel">cancel</button>'
-        : '<button type="button" class="xf-buy" data-xf="buy"' + (canBuy ? "" : " disabled") + '>' + esc(buyLbl) + '</button>') +
+      '<div class="xf-sm">Free to enter · max ' + cap() + ' a member</div></div></div>' +
+      (typeof window.rflEarnHTML === "function" ? window.rflEarnHTML(R, { mine: mine() }, true) : '<div class="xf-sm" style="margin-top:8px">Earn tickets in the app: open it 5 days in a row, mark the board, report job drops.</div>') + '</div>' +
+      (guest ? '<button type="button" class="xf-buy" data-xf="signin">SIGN IN TO EARN TICKETS</button>' : "") +
       '<div class="xf-msg' + (cls ? " " + cls : "") + '">' + esc(msg || "") + '</div>' +
-      '<div class="xf-rules"><div>Bought with <span class="g">Port Bucks</span>. Cap of <b>' + cap() + ' tickets a member</b>, so everyone keeps a real shot.</div>' +
+      '<div class="xf-rules"><div><span class="g">Free to enter.</span> Tickets are earned in the app — open it 5 days in a row, mark the board, report job drops. Cap of <b>' + cap() + ' tickets a member</b>, so everyone keeps a real shot.</div>' +
       '<div>One ticket is drawn at random. The winner gets all four seats <b>transferred through Ticketmaster</b> (a free account is all you need).</div>' +
       '<div><span class="g"><b style="color:#F2C14E">Children under 2 are free</b></span>, so bring the little ones along.</div></div>' +
       '<div class="xf-foot">THE ORDER OF THE SHADOW HOOK<br>SAN PEDRO BAY</div>';
