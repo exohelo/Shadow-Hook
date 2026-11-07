@@ -63,7 +63,7 @@
     h2.innerHTML=ROWS.map(function(r){
       var th=r.theme||'plain', ph=phase(r), tl=left(r.closes_at), st=ST[r.id]||{};
       if(ph==='drawn') return '<button class="rfl-rail" type="button" data-rfl2="reveal" data-id="'+E(r.id)+'"'+(th==='spooky'?' style="background:linear-gradient(92deg,#c2188f,#8a1cff);border:1.5px solid #b6ff3d;color:#fff"':'')+'><b'+(th==='spooky'?' style="color:#b6ff3d"':'')+'>\uD83C\uDFC6 WINNER</b><span>'+E(r.title)+' \u00B7 '+E(String(r.winner_handle||'\u2014'))+' \u00B7 ticket #'+num(r.winner_ticket)+' of '+num(r.total_at_draw)+'</span>\u25B8</button>';
-      var t=E(r.title)+' \u00B7 '+num(r.ticket_price)+' \u2B21'+(ph==='live'&&tl?' \u00B7 ends '+tl:ph==='soon'?' \u00B7 opens '+left(r.opens_at):ph==='closed'?' \u00B7 draw soon':'')+(st.mine?' \u00B7 you hold '+st.mine:'');
+      var t=E(r.title)+' \u00B7 FREE'+(ph==='live'&&tl?' \u00B7 ends '+tl:ph==='soon'?' \u00B7 opens '+left(r.opens_at):ph==='closed'?' \u00B7 draw soon':'')+(st.mine?' \u00B7 you hold '+st.mine:'');
       /* same row as the main raffle's rail (label · text · arrow); a spooky raffle keeps its colors by inline style, not by the t-spooky layout */
       var sty=th==='spooky'?' style="background:linear-gradient(92deg,#c2188f,#8a1cff);border:1.5px solid #b6ff3d;color:#fff"':'', bsty=th==='spooky'?' style="color:#b6ff3d"':'';
       return '<button class="rfl-rail" type="button" data-rfl2="open" data-id="'+E(r.id)+'"'+sty+'><b'+bsty+'>'+icon(r)+' RAFFLE</b><span>'+t+'</span>\u25B8</button>';
@@ -120,17 +120,10 @@
     var st=ST[r.id]||{total:0,entrants:0,mine:0}, ph=phase(r), signed=!!window.__shkUid, b=bal(), cap=+r.max_per_member||0, room=cap?Math.max(0,cap-(+st.mine||0)):99, cost=qty*(+r.ticket_price||0);
     var h='';
     if(r.closes_at) h+='<div class="rfl2-clock"><div class="k">'+icon(r)+' '+(ph==='soon'?'OPENS IN':'THE DRAW IN')+'</div><b id="rfl2Clock">'+clock(ph==='soon'?r.opens_at:r.closes_at)+'</b><small>'+E(when(ph==='soon'?r.opens_at:r.closes_at))+'</small></div>';
-    h+='<div class="rfl2-stats"><div><b>'+num(st.total)+'</b><span>tickets in</span></div><div><b>'+num(st.entrants)+'</b><span>casuals</span></div><div><b>'+num(st.mine)+'</b><span>you hold</span></div><div><b>'+num(b)+'</b><span>\u2B21 stack</span></div></div>';
+    h+='<div class="rfl2-stats"><div><b>'+num(st.total)+'</b><span>tickets in</span></div><div><b>'+num(st.entrants)+'</b><span>casuals</span></div><div><b>'+num(st.mine)+'</b><span>you hold</span></div></div>';
     if(ph==='soon') h+='<p class="sub rfl-fly-note">Tickets go on sale when the clock hits zero.</p>';
-    else if(!signed) h+='<button class="btn rfl-fly-go" type="button" data-rfl2b="sign">\uD83C\uDF9F SIGN IN TO BUY TICKETS</button>';
-    else if(cap&&room<=0) h+='<p class="sub rfl-fly-note">You hold the max \u2014 '+cap+' tickets. Good luck at the draw.</p>';
-    else{
-      h+='<div class="rfl-fly-row"><div class="rfl-step"><button type="button" data-rfl2b="minus" aria-label="One fewer">\u2212</button><div class="n">'+qty+'</div><button type="button" data-rfl2b="plus" aria-label="One more">+</button></div>'
-        +'<button class="btn rfl-buy rfl-fly-go" type="button" data-rfl2b="buy"'+(b<cost?' data-short="'+(cost-b)+'"':'')+'>'+(armed===1?'TAP AGAIN TO CONFIRM \u00B7 ':'\uD83C\uDF9F BUY '+qty+' TICKET'+(qty>1?'S':'')+' \u00B7 ')+num(cost)+' \u2B21</button></div>';
-      var bq=+r.bundle_qty||0, bp=+r.bundle_price||0;
-      if(bq&&bp&&room>=bq){ var save=bq*r.ticket_price-bp; h+='<button class="btn-line gold rfl-buy rfl-fly-bundle" type="button" data-rfl2b="bundle"'+(b<bp?' data-short="'+(bp-b)+'"':'')+'>'+(armed===2?'TAP AGAIN TO CONFIRM \u00B7 ':'')+bq+' TICKETS \u00B7 '+num(bp)+' \u2B21'+(save>0?' \u00B7 SAVE '+num(save):'')+'</button>'; }
-      if(b<r.ticket_price) h+='<p class="sub rfl-fly-note">You need '+num(r.ticket_price-b)+' more \u2B21 for a ticket.</p>'+(typeof window.bankOpen==='function'?'<button class="btn" type="button" data-rfl2b="bank" style="width:100%;margin-top:6px">\u2B21 OPEN THE BANK</button>':'');
-    }
+    /* #nov7: raffles are free; tickets are earned in the app (raffle_earn_check), never bought */
+    else h+=(typeof window.rflEarnHTML==='function'?window.rflEarnHTML(r,st,true):'<p class="sub rfl-fly-note">Free to enter. Earn tickets by using the app.</p>');
     h+='<div class="rfl-msg sub" id="rfl2Msg"></div>';
     if(st.mine&&st.total){ var odds=Math.round((st.mine||0)/st.total*1e3)/10; h+='<p class="sub rfl-fly-note">Your odds right now: <b>'+st.mine+' in '+num(st.total)+'</b> ('+odds+'%) \u00B7 one ticket is drawn at random on the server</p>'; }
     box.innerHTML=h;
