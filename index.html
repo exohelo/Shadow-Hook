@@ -344,7 +344,8 @@ html:not(.season-veterans) #camScan .cg-flag{display:none}
      turns the sound up instantly. A small "tap for sound" note shows until then. */
   var needTap=false;
   function hint(on2){ var h=document.getElementById('vetSndHint');
-    if(!on2){ h&&h.remove(); return; } if(h||vMuted())return;
+    if(!on2){ h&&h.remove(); return; } if(h||vMuted()||tapped)return;
+    setTimeout(function(){ var x=document.getElementById('vetSndHint'); x&&x.remove(); },9000);
     h=document.createElement('div'); h.id='vetSndHint'; h.textContent='\uD83D\uDD0A Tap anywhere for sound';
     h.style.cssText='position:fixed;left:50%;bottom:calc(var(--nvH,64px) + 30px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:46;padding:8px 14px;border-radius:999px;background:#0A3161;border:2px solid #fff;color:#fff;font:700 13px Inter,system-ui,sans-serif;letter-spacing:.04em;box-shadow:0 4px 14px rgba(0,0,0,.5);pointer-events:none';
     document.body.appendChild(h); }
@@ -352,11 +353,20 @@ html:not(.season-veterans) #camScan .cg-flag{display:none}
     if(playing||!on()||vMuted()||document.hidden)return;
     playing=true; vPaint();
     vLoad(function(){ try{ yt.unMute(); yt.setVolume(VOL); yt.playVideo(); }catch(e){}
-      setTimeout(function(){ try{ var st=yt.getPlayerState(); if(st!==1||yt.isMuted()){ needTap=true; yt.mute(); yt.playVideo(); hint(true); } }catch(e){} },1200); });
+      setTimeout(function(){ try{ if(tapped)return; var st=yt.getPlayerState(); if(st!==1||yt.isMuted()){ needTap=true; yt.mute(); yt.playVideo(); hint(true); } }catch(e){} },1200); });
   }
-  document.addEventListener('pointerdown',function(){
-    if(needTap&&yt&&ready&&!vMuted()){ needTap=false; hint(false); try{ yt.unMute(); yt.setVolume(VOL); yt.playVideo(); }catch(e){} return; }
-    if(!playing&&vAllowed())vPlay(); },{passive:true,capture:true});
+  /* the first touch: the note goes away no matter what, and the sound comes up (now, or the moment the player is ready) */
+  var tapped=false;
+  function firstTouch(){
+    hint(false);
+    if(tapped)return; tapped=true;
+    if(vMuted())return;
+    needTap=false;
+    if(yt&&ready){ try{ yt.unMute(); yt.setVolume(VOL); yt.playVideo(); }catch(e){} }
+    else if(!playing&&vAllowed()){ vPlay(); }
+    else { vLoad(function(){ try{ yt.unMute(); yt.setVolume(VOL); yt.playVideo(); }catch(e){} }); }
+  }
+  ['pointerdown','touchstart','click','keydown'].forEach(function(ev){ document.addEventListener(ev,firstTouch,{passive:true,capture:true}); });
   (function waitStart(n){ if(document.body&&on()&&!vMuted()){ autoStart(); return; } if(n<40)setTimeout(function(){ waitStart(n+1); },250); })(0);
   document.addEventListener('visibilitychange',function(){ if(document.hidden){ if(playing){ try{ ready&&yt.pauseVideo(); }catch(e){} } } else if(playing&&vAllowed()){ try{ ready&&yt.playVideo(); }catch(e){} } });
   setInterval(vPaint,4000); setTimeout(vPaint,1500);
