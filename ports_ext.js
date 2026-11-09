@@ -699,7 +699,7 @@
   (function () { if (document.querySelector('script[src*="roster_lalb.js"]')) return; var sc = document.createElement("script"); sc.src = "roster_lalb.js?v=nov4a"; (document.head || document.documentElement).appendChild(sc); })();
   /* #nov4(dkexport) — "Download my dockets" on the Dockets tab */
   (function () { if (document.querySelector('script[src*="dockets_export.js"]')) return; var sc = document.createElement("script"); sc.src = "dockets_export.js?v=nov4b"; sc.defer = true; (document.head || document.documentElement).appendChild(sc); })();
-  (function () { if (document.querySelector('script[src*="xmas_raffle.js"]')) return; var sc = document.createElement("script"); sc.src = "xmas_raffle.js?v=nov7a"; sc.defer = true; (document.head || document.documentElement).appendChild(sc); })();
+  (function () { if (document.querySelector('script[src*="xmas_raffle.js"]')) return; var sc = document.createElement("script"); sc.src = "xmas_raffle.js?v=nov8a"; sc.defer = true; (document.head || document.documentElement).appendChild(sc); })();
   function sheetButtonHtml() {
     return '<label class="hm-sheet">📄 Add this hall’s PMA sheet<input type="file" accept="application/pdf,.pdf" multiple hidden></label>';
   }

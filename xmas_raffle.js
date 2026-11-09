@@ -122,7 +122,10 @@
       "#xmasFlyer .xf-pre{font:600 9.5px Inter,sans-serif;letter-spacing:.28em;color:#CFE6FF}",
       "#xmasFlyer .xf-title .xm-script{font-size:37px;line-height:1.05}",
       "#xmasFlyer .xf-h{font-size:34px;line-height:1;letter-spacing:.04em;color:#fff}",
-      "#xmasFlyer .xf-stub{margin-top:auto;display:flex;border-radius:14px;overflow:hidden;background:#F7FBFF;color:#0A1A3D;box-shadow:0 8px 22px rgba(0,0,0,.4);flex:0 0 auto}",
+      /* nov8: a clear window under the title so Mickey's face shows; the ticket and the rest start below it and scroll up over him */
+      "#xmasFlyer .xf-gap{flex:0 0 auto;height:clamp(170px,52vw,250px)}",
+      "#xmasFlyer .xf-gap span{display:block;margin:0 auto;width:max-content;position:relative;top:calc(100% - 26px);padding:4px 12px;border-radius:12px;background:rgba(8,4,20,.55);font:600 11px Inter,sans-serif;letter-spacing:.14em;color:rgba(255,255,255,.75)}",
+      "#xmasFlyer .xf-stub{margin-top:0;display:flex;border-radius:14px;overflow:hidden;background:#F7FBFF;color:#0A1A3D;box-shadow:0 8px 22px rgba(0,0,0,.4);flex:0 0 auto}",
       "#xmasFlyer .xf-stub .a{flex:1 1 auto;padding:10px 12px;display:flex;flex-direction:column;gap:3px}",
       "#xmasFlyer .xf-stub .when{font:700 10px Inter,sans-serif;letter-spacing:.18em;color:#4A5B7C}",
       "#xmasFlyer .xf-stub .where{font-size:21px;line-height:1;letter-spacing:.03em}",
@@ -379,6 +382,7 @@
       '<div class="xf-cred">© Disney</div>' +
       '<div class="xf-title"><div class="xf-pre">THE ORDER OF THE SHADOW HOOK PRESENTS</div>' +
       '<div class="xm-script">Christmas Day on Ice</div><div class="xm-bebas xf-h">RAFFLE · WIN A FAMILY 4-PACK</div></div>' +
+      '<div class="xf-gap" aria-hidden="true"><span>SCROLL FOR YOUR TICKETS ↓</span></div>' +
       '<div class="xf-stub"><div class="a"><div class="when">' + EVENT.when + '</div><div class="xm-bebas where">' + EVENT.where + '</div>' +
       '<div class="seats"><div><i>SECTION</i><b>' + EVENT.sec + '</b></div><div><i>ROW</i><b>' + EVENT.row + '</b></div><div><i>SEATS</i><b>' + EVENT.seats + '</b></div></div></div>' +
       '<div class="b"><span class="xm-k">THE DRAW</span><b>' + esc(laDraw(R.closes_at)).replace(" · ", "<br>") + '</b></div></div>' +
