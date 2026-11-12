@@ -29,6 +29,7 @@ jobs:
     env:
       BUNDLE_ID: com.theshadowhook.app
       APP_VERSION: "1.0"
+      WATCH: "1"   # "1" builds the Apple Watch app and complications too; "0" leaves them out
     steps:
       - uses: actions/checkout@v4
 
@@ -37,7 +38,9 @@ jobs:
           node-version: 22
 
       - name: Show Xcode version
-        run: xcodebuild -version
+        run: |
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i -E 'iphoneos|watchos' || true
 
       - name: Install Capacitor
         run: npm install --no-audit --no-fund
@@ -112,7 +115,8 @@ jobs:
         run: |
           export ASC_KEY_FILE="$RUNNER_TEMP/keys/AuthKey_${ASC_KEY_ID}.p8"
           SIGN_DIR="$RUNNER_TEMP/signing"; echo "SIGN_DIR=$SIGN_DIR" >> "$GITHUB_ENV"
-          export WIDGET_BUNDLE_ID="${BUNDLE_ID}.widgets"
+          export EXTRA_BUNDLES="${BUNDLE_ID}.widgets:Shadow Hook Widgets"
+          if [ "$WATCH" = "1" ]; then EXTRA_BUNDLES="$EXTRA_BUNDLES,${BUNDLE_ID}.watchkitapp:Shadow Hook Watch,${BUNDLE_ID}.watchkitapp.widgets:Shadow Hook Watch Widgets"; fi
           node scripts/signing.mjs setup "$SIGN_DIR"
           # a private keychain on this Mac for the certificate
           KC="$RUNNER_TEMP/signing.keychain-db"; KCPW="$(openssl rand -hex 16)"
@@ -128,9 +132,6 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KCPW" "$KC" >/dev/null
           security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
           security find-identity -v -p codesigning "$KC"
-          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
-          cp "$SIGN_DIR/profile.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$(cat "$SIGN_DIR/profile-uuid.txt").mobileprovision"
-          cp "$SIGN_DIR/widget-profile.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$(cat "$SIGN_DIR/widget-profile-uuid.txt").mobileprovision"
           echo "KC=$KC" >> "$GITHUB_ENV"
 
       - name: Point the app at the certificate and profile
@@ -148,7 +149,7 @@ jobs:
           TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           gem install xcodeproj --no-document >/dev/null 2>&1 || gem install xcodeproj --no-document --user-install
-          export WIDGET_BUNDLE_ID="${BUNDLE_ID}.widgets" WIDGET_PROFILE="$(cat "$SIGN_DIR/widget-profile-name.txt")"
+          export PROFILES_JSON="$SIGN_DIR/profiles.json"
           ruby scripts/add_widgets.rb
 
       - name: Build the archive
@@ -170,8 +171,7 @@ jobs:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
-          PROFILE="$(cat "$SIGN_DIR/profile-name.txt")"
-          WIDGET_PROFILE="$(cat "$SIGN_DIR/widget-profile-name.txt")"
+          PROFILES_XML="$(cat "$SIGN_DIR/export-profiles.xml")"
           cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -181,7 +181,7 @@ jobs:
             <key>teamID</key><string>${TEAM_ID}</string>
             <key>signingStyle</key><string>manual</string>
             <key>signingCertificate</key><string>Apple Distribution</string>
-            <key>provisioningProfiles</key><dict><key>${BUNDLE_ID}</key><string>${PROFILE}</string><key>${BUNDLE_ID}.widgets</key><string>${WIDGET_PROFILE}</string></dict>
+            <key>provisioningProfiles</key><dict>${PROFILES_XML}</dict>
             <key>manageAppVersionAndBuildNumber</key><false/>
           </dict></plist>
           PLIST
