@@ -299,6 +299,371 @@ struct BoardLiveActivity: Widget {
     }
 }
 
+
+// MARK: - Shared dispatch widgets (one feed: widget-feed)
+// Live dispatch · The call · What came down · Last board · Board dashboard (iPad / large)
+
+struct FeedWaves: Codable { var flex: Int?; var first: Int?; var second: Int? }
+struct FeedDrop: Codable { var n: Int?; var phase: String?; var at: String? }
+struct FeedShift: Codable {
+    var label: String?; var onAir: Bool?; var jobsDown: Int?; var waves: FeedWaves?
+    var lastDrop: FeedDrop?; var boardOn: String?; var next: [String]?
+}
+struct FeedCall: Codable {
+    var label: String?; var start: String?; var stop: String?; var lo: String?; var hi: String?
+    var letters: Int?; var locked: Bool?
+}
+struct FeedLast: Codable {
+    var label: String?; var start: String?; var end: String?; var moved: Int?
+    var callStop: String?; var miss: Int?; var inRange: Bool?; var pmaTotal: Int?; var hall: Int?
+}
+struct Feed: Codable { var shift: FeedShift?; var call: FeedCall?; var last: FeedLast? }
+
+struct FeedEntry: TimelineEntry {
+    let date: Date
+    let feed: Feed?
+
+    static let sample = FeedEntry(date: Date(), feed: Feed(
+        shift: FeedShift(label: "Thu AM", onAir: true, jobsDown: 556, waves: FeedWaves(flex: 64, first: 432, second: 60),
+                         lastDrop: FeedDrop(n: 3, phase: "2ND", at: nil), boardOn: "L5060", next: ["L5061", "L5062"]),
+        call: FeedCall(label: "Thu AM", start: "C4289", stop: "M", lo: "K", hi: "N", letters: 10, locked: true),
+        last: FeedLast(label: "Wed PM", start: "X4903", end: "C4288", moved: 5, callStop: "D", miss: -1, inRange: true, pmaTotal: 2245, hall: 974)
+    ))
+}
+
+func loadFeed() async -> Feed? {
+    guard let url = URL(string: "https://ehykqebzkbelwtkgjbml.supabase.co/functions/v1/widget-feed?port=lalb") else { return nil }
+    var req = URLRequest(url: url)
+    req.timeoutInterval = 12
+    guard let result = try? await URLSession.shared.data(for: req) else { return nil }
+    let dec = JSONDecoder()
+    dec.keyDecodingStrategy = .convertFromSnakeCase
+    return try? dec.decode(Feed.self, from: result.0)
+}
+
+struct FeedProvider: TimelineProvider {
+    func placeholder(in context: Context) -> FeedEntry { FeedEntry.sample }
+
+    func getSnapshot(in context: Context, completion: @escaping (FeedEntry) -> Void) {
+        if context.isPreview {
+            completion(FeedEntry.sample)
+            return
+        }
+        Task {
+            let f = await loadFeed()
+            completion(FeedEntry(date: Date(), feed: f))
+        }
+    }
+
+    func getTimeline(in context: Context, completion: @escaping (Timeline<FeedEntry>) -> Void) {
+        Task {
+            let f = await loadFeed()
+            // ask for a fresh look sooner while dispatch is on the air; iOS decides the real pace
+            let mins: Double = (f?.shift?.onAir ?? false) ? 5 : 15
+            completion(Timeline(entries: [FeedEntry(date: Date(), feed: f)], policy: .after(Date().addingTimeInterval(mins * 60))))
+        }
+    }
+}
+
+private let onGreen = Color(red: 0.184, green: 0.561, blue: 0.235)
+private let flexRed = Color(red: 0.702, green: 0.125, blue: 0.227)
+private let firstNavy = Color(red: 0.106, green: 0.169, blue: 0.361)
+
+private func fmtN(_ n: Int?) -> String {
+    guard let n = n else { return "—" }
+    let f = NumberFormatter()
+    f.numberStyle = .decimal
+    return f.string(from: NSNumber(value: n)) ?? String(n)
+}
+
+private func dropDate(_ s: String?) -> Date? {
+    guard let s = s else { return nil }
+    let f = ISO8601DateFormatter()
+    f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    if let d = f.date(from: s) { return d }
+    f.formatOptions = [.withInternetDateTime]
+    return f.date(from: s)
+}
+
+struct FeedLabel: View {
+    let text: String
+    var live: Bool = false
+    var body: some View {
+        HStack(spacing: 4) {
+            if live { Circle().fill(onGreen).frame(width: 6, height: 6) }
+            Text(text).font(.system(size: 11, weight: .bold)).foregroundStyle(steel).lineLimit(1)
+        }
+    }
+}
+
+// --- Live dispatch: jobs down + where the board is
+struct DispatchView: View {
+    @Environment(\.widgetFamily) private var family
+    let entry: FeedEntry
+    private var s: FeedShift? { entry.feed?.shift }
+
+    var body: some View {
+        Group {
+            switch family {
+            case .accessoryInline:
+                Text("⚓ \(fmtN(s?.jobsDown)) jobs down · board \(s?.boardOn ?? "—")")
+            case .accessoryRectangular:
+                VStack(alignment: .leading, spacing: 1) {
+                    Text((s?.onAir ?? false) ? "● ON AIR · \(s?.label ?? "")" : "Last dispatch · \(s?.label ?? "")")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text("\(fmtN(s?.jobsDown)) jobs down").font(.system(size: 15, weight: .bold))
+                    Text("Board on \(s?.boardOn ?? "—")").font(.system(size: 12))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            default:
+                VStack(alignment: .leading, spacing: 2) {
+                    FeedLabel(text: (s?.onAir ?? false) ? "ON AIR · \(s?.label ?? "")" : "LAST · \(s?.label ?? "")", live: s?.onAir ?? false)
+                    Spacer(minLength: 0)
+                    Text(fmtN(s?.jobsDown))
+                        .font(.system(size: 42, weight: .heavy, design: .rounded))
+                        .foregroundStyle(copper).minimumScaleFactor(0.5).lineLimit(1)
+                    HStack(spacing: 4) {
+                        Text("jobs down").font(.system(size: 12, weight: .semibold)).foregroundStyle(bone)
+                        if let n = s?.lastDrop?.n, let d = dropDate(s?.lastDrop?.at) {
+                            Text("+\(n) ·").font(.system(size: 11)).foregroundStyle(onGreen)
+                            Text(d, style: .relative).font(.system(size: 11)).foregroundStyle(onGreen).lineLimit(1)
+                        }
+                    }
+                    Text("Board on \(s?.boardOn ?? "—")").font(.system(size: 13, weight: .bold)).foregroundStyle(bone)
+                    if let nx = s?.next, let first = nx.first {
+                        Text("next \(first)").font(.system(size: 11)).foregroundStyle(steel)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            }
+        }
+        .containerBackground(for: .widget) { plate }
+    }
+}
+
+// --- The call: predicted stop and range
+struct CallView: View {
+    @Environment(\.widgetFamily) private var family
+    let entry: FeedEntry
+    private var c: FeedCall? { entry.feed?.call }
+    private var range: String { (c?.lo != nil && c?.hi != nil) ? "\(c!.lo!)–\(c!.hi!)" : "—" }
+
+    var body: some View {
+        Group {
+            switch family {
+            case .accessoryCircular:
+                ZStack {
+                    AccessoryWidgetBackground()
+                    VStack(spacing: 0) {
+                        Text(c?.stop ?? "—").font(.system(size: 22, weight: .bold, design: .rounded))
+                        Text(range).font(.system(size: 9, weight: .semibold))
+                    }
+                }
+            case .accessoryRectangular:
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("The call · \(c?.label ?? "")").font(.system(size: 12, weight: .semibold))
+                    Text("Stop \(c?.stop ?? "—") (\(range))").font(.system(size: 15, weight: .bold))
+                    Text("about \(c?.letters ?? 0) letters").font(.system(size: 12))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            case .accessoryInline:
+                Text("⚓ Call: stop \(c?.stop ?? "—") (\(range))")
+            default:
+                VStack(alignment: .leading, spacing: 2) {
+                    FeedLabel(text: "THE CALL · \(c?.label ?? "")")
+                    Spacer(minLength: 0)
+                    Text(c?.stop ?? "—")
+                        .font(.system(size: 52, weight: .heavy, design: .rounded))
+                        .foregroundStyle(copper).lineLimit(1)
+                    Text("range \(range) · ~\(c?.letters ?? 0) letters").font(.system(size: 12, weight: .semibold)).foregroundStyle(bone)
+                    Text("Started \(c?.start ?? "—")").font(.system(size: 11)).foregroundStyle(steel)
+                    Text((c?.locked ?? false) ? "locked at flex" : "not locked yet").font(.system(size: 11)).foregroundStyle(steel)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            }
+        }
+        .containerBackground(for: .widget) { plate }
+    }
+}
+
+// --- What came down: flex / 1st / 2nd
+struct WavesBar: View {
+    let w: FeedWaves?
+    var body: some View {
+        let f = CGFloat(w?.flex ?? 0), a = CGFloat(w?.first ?? 0), b = CGFloat(w?.second ?? 0)
+        let t = max(f + a + b, 1)
+        GeometryReader { g in
+            HStack(spacing: 2) {
+                Rectangle().fill(flexRed).frame(width: max(g.size.width * f / t - 2, f > 0 ? 3 : 0))
+                Rectangle().fill(firstNavy).frame(width: max(g.size.width * a / t - 2, a > 0 ? 3 : 0))
+                Rectangle().fill(onGreen).frame(width: max(g.size.width * b / t - 2, b > 0 ? 3 : 0))
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+        }
+        .frame(height: 8)
+    }
+}
+
+struct WavesView: View {
+    let entry: FeedEntry
+    private var s: FeedShift? { entry.feed?.shift }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                FeedLabel(text: "WHAT CAME DOWN · \(s?.label ?? "")", live: s?.onAir ?? false)
+                Spacer(minLength: 0)
+                Text("\(fmtN(s?.jobsDown)) total").font(.system(size: 12, weight: .semibold)).foregroundStyle(bone)
+            }
+            WavesBar(w: s?.waves)
+            HStack {
+                waveCell("FLEX", s?.waves?.flex, flexRed)
+                Spacer(minLength: 0)
+                waveCell("1ST", s?.waves?.first, bone)
+                Spacer(minLength: 0)
+                waveCell("2ND", s?.waves?.second, onGreen)
+            }
+            Text("Board on \(s?.boardOn ?? "—")").font(.system(size: 11)).foregroundStyle(steel)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .containerBackground(for: .widget) { plate }
+    }
+    private func waveCell(_ name: String, _ n: Int?, _ color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(name).font(.system(size: 11, weight: .bold)).foregroundStyle(color)
+            Text(fmtN(n ?? 0)).font(.system(size: 22, weight: .heavy, design: .rounded)).foregroundStyle(bone)
+        }
+    }
+}
+
+// --- Last board: where it walked, and how the call did
+struct LastBoardView: View {
+    let entry: FeedEntry
+    private var l: FeedLast? { entry.feed?.last }
+    private var verdict: String {
+        guard let stop = l?.callStop else { return "" }
+        guard let m = l?.miss else { return "Call was \(stop)" }
+        if m == 0 { return "Call \(stop) · right on it" }
+        return "Call \(stop) · off by \(abs(m))" + ((l?.inRange ?? false) ? ", in range" : "")
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            FeedLabel(text: "LAST BOARD · \(l?.label ?? "")")
+            Spacer(minLength: 0)
+            Text("\(l?.start ?? "—") → \(l?.end ?? "—")")
+                .font(.system(size: 17, weight: .heavy, design: .monospaced)).foregroundStyle(bone)
+                .minimumScaleFactor(0.6).lineLimit(1)
+            Text("\(l?.moved ?? 0) letters walked").font(.system(size: 12, weight: .semibold)).foregroundStyle(copper)
+            Text(verdict).font(.system(size: 11)).foregroundStyle(steel).lineLimit(1)
+            if let t = l?.pmaTotal {
+                Text("\(fmtN(t)) PMA · hall \(fmtN(l?.hall))").font(.system(size: 11)).foregroundStyle(steel).lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .containerBackground(for: .widget) { plate }
+    }
+}
+
+// --- Board dashboard: everything at once (iPad, large)
+struct DashboardView: View {
+    let entry: FeedEntry
+    private var s: FeedShift? { entry.feed?.shift }
+    private var c: FeedCall? { entry.feed?.call }
+    private var l: FeedLast? { entry.feed?.last }
+    private var lastCallText: String {
+        if let n = s?.lastDrop?.n { return "+\(n) last call" }
+        return ""
+    }
+    private var nextText: String {
+        if let nx = s?.next, let first = nx.first { return "next \(first)" }
+        return ""
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            FeedLabel(text: (s?.onAir ?? false) ? "ON AIR · \(s?.label ?? "")" : "THE BOARD · \(s?.label ?? "")", live: s?.onAir ?? false)
+            HStack(alignment: .top, spacing: 10) {
+                tile("JOBS DOWN", fmtN(s?.jobsDown), lastCallText)
+                tile("BOARD ON", s?.boardOn ?? "—", nextText)
+                tile("THE CALL", c?.stop ?? "—", (c?.lo != nil && c?.hi != nil) ? "\(c!.lo!)–\(c!.hi!)" : "")
+            }
+            WavesBar(w: s?.waves)
+            HStack {
+                Text("FLEX \(fmtN(s?.waves?.flex ?? 0))").foregroundStyle(flexRed)
+                Spacer(minLength: 0)
+                Text("1ST \(fmtN(s?.waves?.first ?? 0))").foregroundStyle(bone)
+                Spacer(minLength: 0)
+                Text("2ND \(fmtN(s?.waves?.second ?? 0))").foregroundStyle(onGreen)
+            }
+            .font(.system(size: 13, weight: .bold))
+            Divider().overlay(steel.opacity(0.4))
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("LAST BOARD · \(l?.label ?? "")").font(.system(size: 11, weight: .bold)).foregroundStyle(steel)
+                    Text("\(l?.start ?? "—") → \(l?.end ?? "—")").font(.system(size: 16, weight: .heavy, design: .monospaced)).foregroundStyle(bone)
+                }
+                Spacer(minLength: 0)
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("\(l?.moved ?? 0) letters").font(.system(size: 13, weight: .bold)).foregroundStyle(copper)
+                    if let t = l?.pmaTotal { Text("\(fmtN(t)) PMA").font(.system(size: 11)).foregroundStyle(steel) }
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .containerBackground(for: .widget) { plate }
+    }
+    private func tile(_ k: String, _ v: String, _ sub: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(k).font(.system(size: 10, weight: .bold)).foregroundStyle(steel)
+            Text(v).font(.system(size: 26, weight: .heavy, design: .rounded)).foregroundStyle(copper).minimumScaleFactor(0.5).lineLimit(1)
+            Text(sub).font(.system(size: 10)).foregroundStyle(steel).lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(8)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.06)))
+    }
+}
+
+struct DispatchWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "DispatchWidget", provider: FeedProvider()) { DispatchView(entry: $0) }
+            .configurationDisplayName("Live dispatch")
+            .description("Jobs down and where the board is, during dispatch.")
+            .supportedFamilies([.systemSmall, .accessoryRectangular, .accessoryInline])
+    }
+}
+struct CallWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "CallWidget", provider: FeedProvider()) { CallView(entry: $0) }
+            .configurationDisplayName("The call")
+            .description("Where the board is predicted to stop.")
+            .supportedFamilies([.systemSmall, .accessoryCircular, .accessoryRectangular, .accessoryInline])
+    }
+}
+struct WavesWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "WavesWidget", provider: FeedProvider()) { WavesView(entry: $0) }
+            .configurationDisplayName("What came down")
+            .description("Flex, 1st and 2nd call jobs.")
+            .supportedFamilies([.systemMedium])
+    }
+}
+struct LastBoardWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "LastBoardWidget", provider: FeedProvider()) { LastBoardView(entry: $0) }
+            .configurationDisplayName("Last board")
+            .description("Where the last board walked, and how the call did.")
+            .supportedFamilies([.systemSmall])
+    }
+}
+struct DashboardWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "DashboardWidget", provider: FeedProvider()) { DashboardView(entry: $0) }
+            .configurationDisplayName("Board dashboard")
+            .description("Jobs down, the board, the call and the last board together.")
+            .supportedFamilies([.systemLarge, .systemExtraLarge])
+    }
+}
+
 // MARK: - Widget
 
 struct BoardWidget: Widget {
@@ -316,6 +681,11 @@ struct BoardWidget: Widget {
 struct ShadowHookWidgets: WidgetBundle {
     var body: some Widget {
         BoardWidget()
+        DispatchWidget()
+        CallWidget()
+        WavesWidget()
+        LastBoardWidget()
+        DashboardWidget()
         BoardLiveActivity()
     }
 }
