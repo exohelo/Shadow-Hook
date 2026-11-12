@@ -7,9 +7,9 @@
 #   ASC_ISSUER_ID   App Store Connect API issuer ID
 #   ASC_KEY_P8      the full text of the AuthKey_XXXX.p8 file
 #
-# Signing: each run makes its own Apple Distribution certificate and App Store profile through the API
-# (ios-app/scripts/signing.mjs), signs the archive with them (so push notifications are included), and revokes
-# them at the end. Builds already sent to Apple keep working; Apple re-signs them.
+# Signing: ios-app/scripts/signing.mjs keeps ONE Apple Distribution certificate (stored in the Supabase km_secrets
+# vault, service role only) and reuses it; each run makes its own App Store profiles through the API, signs the
+# archive (so push notifications are included), and removes those profiles at the end. Nothing is revoked.
 # Widgets: ios-app/widgets/ShadowHookWidgets.swift is added to the project as an extension by scripts/add_widgets.rb.
 name: iOS build to TestFlight
 
@@ -106,6 +106,9 @@ jobs:
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          # the vault: one certificate is kept in km_secrets and reused, so nothing gets revoked per build
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: |
           export ASC_KEY_FILE="$RUNNER_TEMP/keys/AuthKey_${ASC_KEY_ID}.p8"
           SIGN_DIR="$RUNNER_TEMP/signing"; echo "SIGN_DIR=$SIGN_DIR" >> "$GITHUB_ENV"
@@ -190,7 +193,7 @@ jobs:
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
 
-      - name: Revoke this run's certificate and profile
+      - name: Remove this run's profiles
         if: always()
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
