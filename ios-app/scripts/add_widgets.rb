@@ -1,5 +1,6 @@
 # Adds the "ShadowHookWidgets" widget extension to the Capacitor-generated Xcode project (ios/App/App.xcodeproj)
-# and embeds it in the app. Run from ios-app/ after "npx cap sync ios".
+# and embeds it in the app; also adds native/ShadowHookNative.swift to the app and wires AppDelegate.
+# Run from ios-app/ after "npx cap sync ios".
 # Env: TEAM_ID, WIDGET_BUNDLE_ID, WIDGET_PROFILE (provisioning profile name)
 require 'xcodeproj'
 require 'fileutils'
@@ -70,5 +71,38 @@ embed.symbol_dst_subfolder_spec = :plug_ins
 bf = embed.add_file_reference(ext.product_reference, true)
 bf.settings = { 'ATTRIBUTES' => ['RemoveHeadersOnCopy'] }
 
+# --- native glue in the app itself: push hook-up and Live Activity plumbing
+FileUtils.cp('native/ShadowHookNative.swift', 'ios/App/App/ShadowHookNative.swift')
+app_group = project.main_group.children.find { |g| g.display_name == 'App' && g.respond_to?(:new_file) } or abort('App group not found')
+app.add_file_references([app_group.new_file('ShadowHookNative.swift')])
+
+delegate = 'ios/App/App/AppDelegate.swift'
+code = File.read(delegate)
+unless code.include?('ShadowHookNative.start()')
+  code.sub!('// Override point for customization after application launch.',
+            "// Override point for customization after application launch.\n        ShadowHookNative.start()") or abort('AppDelegate: launch point not found')
+  hooks = [
+    '    // Hand the Apple push address to Capacitor (the push plugin cannot register without these two).',
+    '    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {',
+    '        NotificationCenter.default.post(name: .capacitorDidRegisterForRemoteNotifications, object: deviceToken)',
+    '    }',
+    '',
+    '    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {',
+    '        NotificationCenter.default.post(name: .capacitorDidFailToRegisterForRemoteNotifications, object: error)',
+    '    }',
+    '',
+    ''
+  ].join("\n")
+  code.sub!('    func applicationWillResignActive') { hooks + '    func applicationWillResignActive' } or abort('AppDelegate: insert point not found')
+  File.write(delegate, code)
+end
+
+plist = 'ios/App/App/Info.plist'
+xml = File.read(plist)
+unless xml.include?('NSSupportsLiveActivities')
+  xml.sub!(%r{</dict>\s*</plist>\s*\z}, "\t<key>NSSupportsLiveActivities</key>\n\t<true/>\n</dict>\n</plist>\n") or abort('Info.plist: end not found')
+  File.write(plist, xml)
+end
+
 project.save
-puts "added #{NAME} (#{ENV['WIDGET_BUNDLE_ID']}) and embedded it in App"
+puts "added #{NAME} (#{ENV['WIDGET_BUNDLE_ID']}), embedded it in App, and wired the native glue"
