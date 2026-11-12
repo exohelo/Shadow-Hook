@@ -12865,5 +12865,49 @@ html.daylight .sf-flag{border-color:rgba(0,0,0,.18)}
   if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",start);else start();
 })();
 </script>
+<script id="shk-native-push">
+/* nov11k: iPhone app only. Native push: the site's existing "turn alerts on" buttons ask iOS for permission, and the
+   phone's Apple push address is saved with the member's other alert sign-ups (push_subs, endpoint "apns:<token>"). */
+(function(){
+  var C=window.Capacitor;
+  if(!C||typeof C.isNativePlatform!=="function"||!C.isNativePlatform())return;
+  var Push=null;try{Push=(C.Plugins&&C.Plugins.PushNotifications)||(C.registerPlugin&&C.registerPlugin("PushNotifications"))}catch(e){}
+  if(!Push)return;
+  var perm="default";
+  function save(t){
+    var tries=0;
+    (function go(){
+      if(!window.SB||!window.__shkUid){if(++tries<90)setTimeout(go,1000);return}
+      var a={};try{a=JSON.parse(localStorage.getItem("shadowhook_account"))||{}}catch(e){}
+      var card=null;try{card=(typeof ACCT_ID==="string"&&/^[A-Z]\d{2,5}$/.test(ACCT_ID))?ACCT_ID:null}catch(e){}
+      window.SB.from("push_subs").upsert({endpoint:"apns:"+t,p256dh:"",auth:"",card:card,handle:a.handle||null,
+        km:!!window.__isKM,uid:window.__shkUid,updated_at:new Date().toISOString()},{onConflict:"endpoint"})
+        .then(function(r){if(r&&r.error)console.warn("[apns] save",r.error.message)},function(){});
+    })();
+  }
+  Push.addListener("registration",function(r){if(r&&r.value){try{localStorage.setItem("shk_apns",r.value)}catch(e){}save(r.value)}});
+  Push.addListener("registrationError",function(e){console.warn("[apns] registration",e&&e.error)});
+  Push.addListener("pushNotificationActionPerformed",function(a){
+    var d=(a&&a.notification&&a.notification.data)||{},go=String(d.go||"");
+    if(/^notifs/.test(go))setTimeout(function(){try{window.SHK_NOTIFS&&SHK_NOTIFS.open()}catch(e){}},900);
+  });
+  Push.checkPermissions().then(function(p){
+    perm=p&&p.receive==="granted"?"granted":p&&p.receive==="denied"?"denied":"default";
+    if(perm==="granted")Push.register();
+  }).catch(function(){});
+  /* the site's alert buttons check window.Notification; inside the app that's Apple push instead */
+  function N(title,o){try{typeof toast==="function"&&toast(String(title||"")+(o&&o.body?" \u2014 "+o.body:""))}catch(e){}}
+  N.requestPermission=function(cb){
+    return Push.requestPermissions().then(function(p){
+      perm=p&&p.receive==="granted"?"granted":"denied";
+      if(perm==="granted")Push.register();
+      if(typeof cb==="function")cb(perm);
+      return perm;
+    }).catch(function(){perm="denied";return perm});
+  };
+  Object.defineProperty(N,"permission",{get:function(){return perm}});
+  try{Object.defineProperty(window,"Notification",{value:N,configurable:true,writable:true})}catch(e){try{window.Notification=N}catch(x){}}
+})();
+</script>
 </body>
 </html>
