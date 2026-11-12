@@ -75,8 +75,20 @@ jobs:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
         run: |
           mkdir -p "$RUNNER_TEMP/keys"
-          printf '%s' "$ASC_KEY_P8" > "$RUNNER_TEMP/keys/AuthKey_${ASC_KEY_ID}.p8"
-          test -s "$RUNNER_TEMP/keys/AuthKey_${ASC_KEY_ID}.p8"
+          KEY="$RUNNER_TEMP/keys/AuthKey_${ASC_KEY_ID}.p8"
+          # Windows copy/paste adds \r and stray spaces; rebuild a clean PEM either way.
+          BODY=$(printf '%s' "$ASC_KEY_P8" | tr -d '\r' | sed -e '/-----BEGIN/d' -e '/-----END/d' | tr -d ' \n\t')
+          {
+            echo "-----BEGIN PRIVATE KEY-----"
+            printf '%s' "$BODY" | fold -w 64
+            echo
+            echo "-----END PRIVATE KEY-----"
+          } > "$KEY"
+          # Safe check: shape only, never the key itself.
+          echo "key id length: ${#ASC_KEY_ID} (should be 10)"
+          echo "secret had BEGIN line: $(printf '%s' "$ASC_KEY_P8" | grep -c 'BEGIN PRIVATE KEY')"
+          echo "key body length: ${#BODY} (a real Apple .p8 is about 200)"
+          if openssl pkey -in "$KEY" -noout 2>/dev/null; then echo "key file: valid"; else echo "::error::ASC_KEY_P8 is not a valid private key. Re-paste the whole .p8 file into that secret."; exit 1; fi
 
       - name: Build the archive
         env:
