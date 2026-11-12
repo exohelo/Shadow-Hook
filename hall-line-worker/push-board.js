@@ -88,6 +88,12 @@ if(apns.length){
     log('iPhone app: '+(j.sent||0)+' sent, '+(j.dead||0)+' dead, '+(j.failed||0)+' failed');
   }catch(e){log('iPhone app send failed:',e.message);}
 }
+/* nov11: the board is over, so close any board Live Activity card still showing on iPhones */
+try{
+  const r=await fetch(SB+'/functions/v1/la-board',{method:'POST',headers:H,body:JSON.stringify({end_all:true,pos:end,line:'Board ended at '+end+' — next opens '+open})});
+  const j=await r.json().catch(()=>({}));
+  log('Live Activity cards closed: '+(j.ended||0));
+}catch(e){log('Live Activity close failed:',e.message);}
 await fetch(SB+'/rest/v1/push_sent',{method:'POST',headers:Object.assign({Prefer:'return=minimal'},H),body:JSON.stringify([{k:sentKey}])});
 log('⚓ announced '+k+' end='+end+' → '+sent+' phones ('+dead+' dead watches cleared)');
 })().catch(e=>{console.error('[lookout] FAILED:',e.message);process.exit(1);});
