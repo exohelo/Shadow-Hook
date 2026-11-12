@@ -7,14 +7,15 @@
 //   node signing.mjs setup   <outdir>   -> writes dist.key, dist.cer, profile.mobileprovision, profile-name.txt, state.json
 //   node signing.mjs cleanup <outdir>   -> revokes what setup made
 //
-// Env: ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_FILE (path to the .p8), BUNDLE_ID
+// Env: ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_FILE (path to the .p8), BUNDLE_ID,
+//      WIDGET_BUNDLE_ID (optional: also registers the widget extension's app ID and makes its profile)
 import { createSign, createPrivateKey, generateKeyPairSync } from "node:crypto";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 
 const [mode, out] = process.argv.slice(2);
-const { ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_FILE, BUNDLE_ID } = process.env;
+const { ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_FILE, BUNDLE_ID, WIDGET_BUNDLE_ID } = process.env;
 const API = "https://api.appstoreconnect.apple.com/v1";
 const PROFILE_NAME = "Shadow Hook CI " + (process.env.GITHUB_RUN_NUMBER || Date.now());
 
@@ -86,15 +87,40 @@ async function setup() {
   writeFileSync(join(out, "profile.mobileprovision"), Buffer.from(prof.j.data.attributes.profileContent, "base64"));
   writeFileSync(join(out, "profile-name.txt"), PROFILE_NAME);
   writeFileSync(join(out, "profile-uuid.txt"), prof.j.data.attributes.uuid);
-  writeFileSync(join(out, "state.json"), JSON.stringify({ cert: cert.j.data.id, profile: prof.j.data.id }));
+  const state = { cert: cert.j.data.id, profiles: [prof.j.data.id] };
+  writeFileSync(join(out, "state.json"), JSON.stringify(state));
   console.log("profile: made \"" + PROFILE_NAME + "\" " + prof.j.data.attributes.uuid);
+
+  // 4. the widget extension: its own app ID (made once) and its own App Store profile
+  if (WIDGET_BUNDLE_ID) {
+    const wb = await api("GET", "/bundleIds?filter[identifier]=" + encodeURIComponent(WIDGET_BUNDLE_ID) + "&limit=5");
+    let wBundle = wb.ok ? (wb.j.data || []).find(x => x.attributes.identifier === WIDGET_BUNDLE_ID) : null;
+    if (!wBundle) {
+      const mk = await api("POST", "/bundleIds", { data: { type: "bundleIds", attributes: { identifier: WIDGET_BUNDLE_ID, name: "Shadow Hook Widgets", platform: "IOS" } } });
+      if (!mk.ok) fail("could not register the widget app ID " + WIDGET_BUNDLE_ID, mk);
+      wBundle = mk.j.data;
+      console.log("widget app ID: registered " + WIDGET_BUNDLE_ID);
+    } else console.log("widget app ID: already registered");
+    const wName = PROFILE_NAME + " Widgets";
+    const wp = await api("POST", "/profiles", { data: { type: "profiles",
+      attributes: { name: wName, profileType: "IOS_APP_STORE" },
+      relationships: { bundleId: { data: { type: "bundleIds", id: wBundle.id } },
+        certificates: { data: [{ type: "certificates", id: cert.j.data.id }] } } } });
+    if (!wp.ok) fail("could not create the widget profile (run the cleanup step to revoke this run's certificate)", wp);
+    writeFileSync(join(out, "widget-profile.mobileprovision"), Buffer.from(wp.j.data.attributes.profileContent, "base64"));
+    writeFileSync(join(out, "widget-profile-name.txt"), wName);
+    writeFileSync(join(out, "widget-profile-uuid.txt"), wp.j.data.attributes.uuid);
+    state.profiles.push(wp.j.data.id);
+    writeFileSync(join(out, "state.json"), JSON.stringify(state));
+    console.log("widget profile: made \"" + wName + "\" " + wp.j.data.attributes.uuid);
+  }
 }
 
 async function cleanup() {
   const f = join(out, "state.json");
   if (!existsSync(f)) { console.log("nothing to clean up"); return; }
   const s = JSON.parse(readFileSync(f, "utf8"));
-  if (s.profile) { const r = await api("DELETE", "/profiles/" + s.profile); console.log("profile removed: " + r.status); }
+  for (const id of (s.profiles || (s.profile ? [s.profile] : []))) { const r = await api("DELETE", "/profiles/" + id); console.log("profile removed: " + r.status); }
   if (s.cert) { const r = await api("DELETE", "/certificates/" + s.cert); console.log("certificate revoked: " + r.status); }
 }
 
