@@ -8,9 +8,9 @@
 //   node signing.mjs cleanup <outdir>   -> revokes what setup made
 //
 // Env: ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_FILE (path to the .p8), BUNDLE_ID,
-//      WIDGET_BUNDLE_ID (optional: also registers the widget extension's app ID and makes its profile)
+//      EXTRA_BUNDLES (optional, "bundle.id:Label,...": also registers each extension's app ID and makes its profile)
 import { createSign, createPrivateKey, generateKeyPairSync } from "node:crypto";
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 
@@ -124,29 +124,44 @@ async function setup() {
   writeFileSync(join(out, "state.json"), JSON.stringify(state));
   console.log("profile: made \"" + PROFILE_NAME + "\" " + prof.j.data.attributes.uuid);
 
-  // 4. the widget extension: its own app ID (made once) and its own App Store profile
-  if (WIDGET_BUNDLE_ID) {
-    const wb = await api("GET", "/bundleIds?filter[identifier]=" + encodeURIComponent(WIDGET_BUNDLE_ID) + "&limit=5");
-    let wBundle = wb.ok ? (wb.j.data || []).find(x => x.attributes.identifier === WIDGET_BUNDLE_ID) : null;
+  // 4. the extensions (widgets, the Apple Watch app and its complications): each has its own app ID (made once)
+  //    and its own App Store profile. EXTRA_BUNDLES = "bundle.id:Label,bundle.id:Label"
+  const profiles = {};
+  profiles[BUNDLE_ID] = { name: PROFILE_NAME, uuid: prof.j.data.attributes.uuid, file: "profile.mobileprovision" };
+  const extras = (process.env.EXTRA_BUNDLES || (WIDGET_BUNDLE_ID ? WIDGET_BUNDLE_ID + ":Shadow Hook Widgets" : "")).split(",").map(x => x.trim()).filter(Boolean);
+  let n = 0;
+  for (const item of extras) {
+    n++;
+    const ident = item.split(":")[0].trim(), label = (item.split(":")[1] || ("Shadow Hook Extra " + n)).trim();
+    const wb = await api("GET", "/bundleIds?filter[identifier]=" + encodeURIComponent(ident) + "&limit=20");
+    let wBundle = wb.ok ? (wb.j.data || []).find(x => x.attributes.identifier === ident) : null;
     if (!wBundle) {
-      const mk = await api("POST", "/bundleIds", { data: { type: "bundleIds", attributes: { identifier: WIDGET_BUNDLE_ID, name: "Shadow Hook Widgets", platform: "IOS" } } });
-      if (!mk.ok) fail("could not register the widget app ID " + WIDGET_BUNDLE_ID, mk);
+      const mk = await api("POST", "/bundleIds", { data: { type: "bundleIds", attributes: { identifier: ident, name: label, platform: "IOS" } } });
+      if (!mk.ok) fail("could not register the app ID " + ident, mk);
       wBundle = mk.j.data;
-      console.log("widget app ID: registered " + WIDGET_BUNDLE_ID);
-    } else console.log("widget app ID: already registered");
-    const wName = PROFILE_NAME + " Widgets";
+      console.log("app ID: registered " + ident);
+    }
+    const wName = PROFILE_NAME + " " + label.replace(/^Shadow Hook /, "");
     const wp = await api("POST", "/profiles", { data: { type: "profiles",
       attributes: { name: wName, profileType: "IOS_APP_STORE" },
       relationships: { bundleId: { data: { type: "bundleIds", id: wBundle.id } },
         certificates: { data: [{ type: "certificates", id: certId }] } } } });
-    if (!wp.ok) fail("could not create the widget profile (run the cleanup step to revoke this run's certificate)", wp);
-    writeFileSync(join(out, "widget-profile.mobileprovision"), Buffer.from(wp.j.data.attributes.profileContent, "base64"));
-    writeFileSync(join(out, "widget-profile-name.txt"), wName);
-    writeFileSync(join(out, "widget-profile-uuid.txt"), wp.j.data.attributes.uuid);
+    if (!wp.ok) fail("could not create the profile for " + ident + " (the cleanup step tidies up)", wp);
+    const file = "profile-" + n + ".mobileprovision";
+    writeFileSync(join(out, file), Buffer.from(wp.j.data.attributes.profileContent, "base64"));
+    profiles[ident] = { name: wName, uuid: wp.j.data.attributes.uuid, file };
     state.profiles.push(wp.j.data.id);
     writeFileSync(join(out, "state.json"), JSON.stringify(state));
-    console.log("widget profile: made \"" + wName + "\" " + wp.j.data.attributes.uuid);
+    console.log("profile: made \"" + wName + "\" for " + ident);
   }
+
+  // 5. hand-offs for the build: the list of profiles, the ExportOptions fragment, and the profiles installed on this Mac
+  writeFileSync(join(out, "profiles.json"), JSON.stringify(profiles));
+  writeFileSync(join(out, "export-profiles.xml"), Object.entries(profiles).map(([id, p]) => "<key>" + id + "</key><string>" + p.name + "</string>").join(""));
+  const dir = join(process.env.HOME || ".", "Library/MobileDevice/Provisioning Profiles");
+  mkdirSync(dir, { recursive: true });
+  for (const p of Object.values(profiles)) copyFileSync(join(out, p.file), join(dir, p.uuid + ".mobileprovision"));
+  console.log("installed " + Object.keys(profiles).length + " profiles");
 }
 
 async function cleanup() {
