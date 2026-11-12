@@ -4,6 +4,7 @@
 import WidgetKit
 import SwiftUI
 import AppIntents
+import ActivityKit
 
 // MARK: - Settings (long-press > Edit Widget)
 
@@ -223,6 +224,81 @@ struct BoardWidgetView: View {
     }
 }
 
+// MARK: - Live Activity (Lock Screen, Dynamic Island, Apple Watch Smart Stack)
+
+// The same definition lives in the app (native/ShadowHookNative.swift). Keep the two in step.
+struct BoardActivityAttributes: ActivityAttributes {
+    public struct ContentState: Codable, Hashable {
+        var pos: String
+        var out: Int
+        var line: String
+        var passed: Bool
+    }
+    var card: String
+}
+
+struct BoardLiveActivity: Widget {
+    var body: some WidgetConfiguration {
+        ActivityConfiguration(for: BoardActivityAttributes.self) { context in
+            HStack(spacing: 14) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("⚓ THE BOARD")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(steel)
+                    Text(context.state.line)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(bone)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.8)
+                    Text("Board at \(context.state.pos) · your card \(context.attributes.card)")
+                        .font(.system(size: 12))
+                        .foregroundStyle(steel)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                VStack(spacing: 0) {
+                    Text(context.state.passed ? "✓" : String(context.state.out))
+                        .font(.system(size: 40, weight: .heavy, design: .rounded))
+                        .foregroundStyle(copper)
+                    Text(context.state.passed ? "PASSED" : "OUT")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(steel)
+                }
+            }
+            .padding(16)
+            .activityBackgroundTint(plate)
+            .activitySystemActionForegroundColor(bone)
+        } dynamicIsland: { context in
+            DynamicIsland {
+                DynamicIslandExpandedRegion(.leading) {
+                    Text("⚓ \(context.state.pos)")
+                        .font(.system(size: 15, weight: .semibold))
+                }
+                DynamicIslandExpandedRegion(.trailing) {
+                    Text(context.state.passed ? "✓" : "\(context.state.out) out")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(copper)
+                }
+                DynamicIslandExpandedRegion(.bottom) {
+                    Text(context.state.line)
+                        .font(.system(size: 14))
+                        .lineLimit(2)
+                }
+            } compactLeading: {
+                Text("⚓")
+            } compactTrailing: {
+                Text(context.state.passed ? "✓" : String(context.state.out))
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(copper)
+            } minimal: {
+                Text(context.state.passed ? "✓" : String(context.state.out))
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(copper)
+            }
+        }
+    }
+}
+
 // MARK: - Widget
 
 struct BoardWidget: Widget {
@@ -240,5 +316,6 @@ struct BoardWidget: Widget {
 struct ShadowHookWidgets: WidgetBundle {
     var body: some Widget {
         BoardWidget()
+        BoardLiveActivity()
     }
 }
