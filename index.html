@@ -12762,5 +12762,108 @@ html.daylight .sf-flag{border-color:rgba(0,0,0,.18)}
   setInterval(scrub,1200); document.addEventListener("DOMContentLoaded",scrub);
 })();
 </script>
+<script id="shk-native">
+/* nov11j: iPhone app only. Native camera for every "take a photo" button, and an optional Face ID lock.
+   Does nothing in Safari or on the website. */
+(function(){
+  var C=window.Capacitor;
+  if(!C||typeof C.isNativePlatform!=="function"||!C.isNativePlatform())return;
+  document.documentElement.classList.add("native-app");
+  function plug(n){try{return (C.Plugins&&C.Plugins[n])||(C.registerPlugin&&C.registerPlugin(n))}catch(e){return null}}
+  var Cam=plug("Camera"), Bio=plug("NativeBiometric");
+
+  /* ---- Native camera: any photo input marked capture="environment" opens the iPhone camera sheet ---- */
+  function dataUrlToFile(u,name){
+    var p=u.split(","),mime=(p[0].match(/:(.*?);/)||[,"image/jpeg"])[1],b=atob(p[1]),n=b.length,a=new Uint8Array(n);
+    while(n--)a[n]=b.charCodeAt(n);
+    return new File([a],name,{type:mime});
+  }
+  document.addEventListener("click",function(e){
+    var el=e.target;
+    if(!Cam||!el||el.tagName!=="INPUT"||el.type!=="file"||!el.hasAttribute("capture"))return;
+    e.preventDefault();e.stopPropagation();
+    Cam.getPhoto({quality:85,resultType:"dataUrl",source:"PROMPT",correctOrientation:true,saveToGallery:false,
+      promptLabelHeader:"Shadow Hook",promptLabelPhoto:"Choose from photos",promptLabelPicture:"Take a photo"})
+    .then(function(r){
+      if(!r||!r.dataUrl)return;
+      var f=dataUrlToFile(r.dataUrl,"photo-"+Date.now()+"."+(r.format||"jpg"));
+      var dt=new DataTransfer();dt.items.add(f);el.files=dt.files;
+      el.dispatchEvent(new Event("change",{bubbles:true}));
+    }).catch(function(err){
+      var m=String(err&&err.message||err||"");
+      if(/cancel/i.test(m))return;
+      if(/denied|permission|access/i.test(m))alert("Shadow Hook needs the camera. Turn it on in iPhone Settings > Shadow Hook > Camera.");
+    });
+  },true);
+
+  /* ---- Face ID lock (member opts in once; off by default) ---- */
+  var KEY="shk_faceid",AWAY="shk_faceid_away",LOCK_AFTER=5*60*1000;
+  function pref(){try{return localStorage.getItem(KEY)}catch(e){return null}}
+  function setPref(v){try{localStorage.setItem(KEY,v)}catch(e){}}
+  function signedIn(){try{var a=JSON.parse(localStorage.getItem("shadowhook_account"));return !!(a&&a.id)}catch(e){return false}}
+  function available(){
+    if(!Bio)return Promise.resolve(false);
+    return Bio.isAvailable({useFallback:true}).then(function(r){return !!(r&&r.isAvailable)}).catch(function(){return false});
+  }
+  var css=document.createElement("style");
+  css.textContent='#shkLock{position:fixed;inset:0;z-index:2147483000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:max(24px,env(safe-area-inset-top)) 24px max(24px,env(safe-area-inset-bottom));background:var(--plate,#0b0d0f);color:var(--bone,#e9e4da);font-family:Inter,system-ui,-apple-system,sans-serif;text-align:center}'
+   +'#shkLock img{width:110px;height:110px;object-fit:contain}#shkLock h2{font-family:Anton,Impact,sans-serif;font-weight:400;font-size:26px;letter-spacing:.04em;margin:0}'
+   +'#shkLock p{margin:0;font-size:14px;line-height:1.45;color:var(--steel,#9aa3ad);max-width:300px}'
+   +'#shkLock .lk-go{min-width:220px;padding:14px 20px;border-radius:12px;border:1px solid var(--copper,#b87333);background:transparent;color:var(--copper-hi,#eeb46b);font-size:16px;font-weight:600}'
+   +'#shkLock .lk-out{background:none;border:0;color:var(--steel,#9aa3ad);font-size:13px;text-decoration:underline;margin-top:6px}'
+   +'#shkAsk{position:fixed;left:12px;right:12px;bottom:max(12px,env(safe-area-inset-bottom));z-index:2147482000;padding:16px;border-radius:16px;background:var(--plate-3,#1a1e23);border:1px solid var(--line,#2c3238);color:var(--bone,#e9e4da);font-family:Inter,system-ui,-apple-system,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.4)}'
+   +'#shkAsk b{display:block;font-size:15px;margin-bottom:4px}#shkAsk p{margin:0 0 12px;font-size:13px;line-height:1.4;color:var(--steel,#9aa3ad)}'
+   +'#shkAsk .row{display:flex;gap:8px}#shkAsk button{flex:1;padding:11px;border-radius:10px;font-size:14px;font-weight:600;border:1px solid var(--line,#2c3238);background:transparent;color:var(--bone,#e9e4da)}#shkAsk .yes{border-color:var(--copper,#b87333);color:var(--copper-hi,#eeb46b)}';
+  document.head.appendChild(css);
+
+  var locked=false;
+  function unlock(){
+    return Bio.verifyIdentity({reason:"Unlock Shadow Hook",title:"Unlock Shadow Hook",useFallback:true})
+      .then(function(){var l=document.getElementById("shkLock");if(l)l.remove();locked=false;try{sessionStorage.removeItem(AWAY)}catch(e){}})
+      .catch(function(){/* stays locked; the button tries again */});
+  }
+  function lock(){
+    if(locked)return;locked=true;
+    var l=document.createElement("div");l.id="shkLock";
+    l.innerHTML='<img src="/shk-crest.webp" alt=""><h2>Shadow Hook is locked</h2><p>Use Face ID or your iPhone passcode to open it.</p>'
+      +'<button class="lk-go" type="button">Unlock with Face ID</button>'
+      +'<button class="lk-out" type="button">Stop using Face ID and sign out</button>';
+    l.querySelector(".lk-go").onclick=unlock;
+    l.querySelector(".lk-out").onclick=function(){
+      if(!confirm("Turn off the Face ID lock and sign out? You can sign back in with your card and password."))return;
+      setPref("off");try{localStorage.removeItem("shadowhook_account")}catch(e){}location.reload();
+    };
+    document.body.appendChild(l);
+    unlock();
+  }
+  function ask(){
+    if(document.getElementById("shkAsk"))return;
+    var a=document.createElement("div");a.id="shkAsk";
+    a.innerHTML='<b>Lock Shadow Hook with Face ID?</b><p>Nobody else can open your dockets and messages if they pick up your phone.</p>'
+      +'<div class="row"><button class="no" type="button">Not now</button><button class="yes" type="button">Turn on</button></div>';
+    a.querySelector(".no").onclick=function(){setPref("off");a.remove()};
+    a.querySelector(".yes").onclick=function(){
+      Bio.verifyIdentity({reason:"Turn on the Face ID lock",title:"Turn on Face ID",useFallback:true})
+        .then(function(){setPref("on");a.remove()})
+        .catch(function(){a.remove()});
+    };
+    document.body.appendChild(a);
+  }
+  function start(){
+    available().then(function(ok){
+      if(!ok)return;
+      if(pref()==="on"&&signedIn())lock();
+      else if(pref()==null&&signedIn())setTimeout(ask,4000);
+    });
+  }
+  document.addEventListener("visibilitychange",function(){
+    if(pref()!=="on")return;
+    if(document.hidden){try{sessionStorage.setItem(AWAY,String(Date.now()))}catch(e){}return}
+    var t=0;try{t=+sessionStorage.getItem(AWAY)||0}catch(e){}
+    if(t&&Date.now()-t>LOCK_AFTER&&signedIn())available().then(function(ok){if(ok)lock()});
+  });
+  if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",start);else start();
+})();
+</script>
 </body>
 </html>
