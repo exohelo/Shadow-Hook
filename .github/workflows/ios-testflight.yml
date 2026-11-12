@@ -10,6 +10,7 @@
 # Signing: each run makes its own Apple Distribution certificate and App Store profile through the API
 # (ios-app/scripts/signing.mjs), signs the archive with them (so push notifications are included), and revokes
 # them at the end. Builds already sent to Apple keep working; Apple re-signs them.
+# Widgets: ios-app/widgets/ShadowHookWidgets.swift is added to the project as an extension by scripts/add_widgets.rb.
 name: iOS build to TestFlight
 
 on:
@@ -108,6 +109,7 @@ jobs:
         run: |
           export ASC_KEY_FILE="$RUNNER_TEMP/keys/AuthKey_${ASC_KEY_ID}.p8"
           SIGN_DIR="$RUNNER_TEMP/signing"; echo "SIGN_DIR=$SIGN_DIR" >> "$GITHUB_ENV"
+          export WIDGET_BUNDLE_ID="${BUNDLE_ID}.widgets"
           node scripts/signing.mjs setup "$SIGN_DIR"
           # a private keychain on this Mac for the certificate
           KC="$RUNNER_TEMP/signing.keychain-db"; KCPW="$(openssl rand -hex 16)"
@@ -125,6 +127,7 @@ jobs:
           security find-identity -v -p codesigning "$KC"
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
           cp "$SIGN_DIR/profile.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$(cat "$SIGN_DIR/profile-uuid.txt").mobileprovision"
+          cp "$SIGN_DIR/widget-profile.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$(cat "$SIGN_DIR/widget-profile-uuid.txt").mobileprovision"
           echo "KC=$KC" >> "$GITHUB_ENV"
 
       - name: Point the app at the certificate and profile
@@ -136,6 +139,14 @@ jobs:
           sed -i '' -e '/CODE_SIGN_STYLE = /d' -e '/CODE_SIGN_IDENTITY/d' -e '/PROVISIONING_PROFILE/d' -e '/DEVELOPMENT_TEAM = /d' -e '/CODE_SIGN_ENTITLEMENTS = /d' "$PBX"
           sed -i '' "s#INFOPLIST_FILE = App/Info.plist;#INFOPLIST_FILE = App/Info.plist; CODE_SIGN_ENTITLEMENTS = App/App.entitlements; CODE_SIGN_STYLE = Manual; DEVELOPMENT_TEAM = $TEAM_ID; CODE_SIGN_IDENTITY = \"Apple Distribution\"; \"CODE_SIGN_IDENTITY[sdk=iphoneos*]\" = \"Apple Distribution\"; PROVISIONING_PROFILE_SPECIFIER = \"$PROFILE\";#" "$PBX"
           echo "app configurations pointed at the profile: $(grep -c "PROVISIONING_PROFILE_SPECIFIER = \"$PROFILE\"" "$PBX")"
+
+      - name: Add the widgets
+        env:
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          gem install xcodeproj --no-document >/dev/null 2>&1 || gem install xcodeproj --no-document --user-install
+          export WIDGET_BUNDLE_ID="${BUNDLE_ID}.widgets" WIDGET_PROFILE="$(cat "$SIGN_DIR/widget-profile-name.txt")"
+          ruby scripts/add_widgets.rb
 
       - name: Build the archive
         run: |
@@ -157,6 +168,7 @@ jobs:
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
           PROFILE="$(cat "$SIGN_DIR/profile-name.txt")"
+          WIDGET_PROFILE="$(cat "$SIGN_DIR/widget-profile-name.txt")"
           cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -166,7 +178,7 @@ jobs:
             <key>teamID</key><string>${TEAM_ID}</string>
             <key>signingStyle</key><string>manual</string>
             <key>signingCertificate</key><string>Apple Distribution</string>
-            <key>provisioningProfiles</key><dict><key>${BUNDLE_ID}</key><string>${PROFILE}</string></dict>
+            <key>provisioningProfiles</key><dict><key>${BUNDLE_ID}</key><string>${PROFILE}</string><key>${BUNDLE_ID}.widgets</key><string>${WIDGET_PROFILE}</string></dict>
             <key>manageAppVersionAndBuildNumber</key><false/>
           </dict></plist>
           PLIST
