@@ -12839,6 +12839,23 @@ html.daylight .sf-flag{border-color:rgba(0,0,0,.18)}
   function plug(n){try{return (C.Plugins&&C.Plugins[n])||(C.registerPlugin&&C.registerPlugin(n))}catch(e){return null}}
   var Cam=plug("Camera"), Bio=plug("NativeBiometric");
 
+  /* ---- nov13: the app stays upright. Portrait is locked; only a full-screen video may turn sideways, and the
+     lock comes back the moment it closes (iPhone: webkitbegin/endfullscreen; Android & embeds: fullscreenchange) ---- */
+  (function(){
+    var SO=plug("ScreenOrientation"); if(!SO||typeof SO.lock!=="function")return;
+    var lock=function(){ try{ SO.lock({orientation:"portrait"}).catch(function(){}); }catch(e){} };
+    var free=function(){ try{ SO.unlock().catch(function(){}); }catch(e){} };
+    var inFs=function(){ return !!(document.fullscreenElement||document.webkitFullscreenElement); };
+    lock();
+    var fs=function(){ inFs()?free():lock(); };
+    document.addEventListener("fullscreenchange",fs);
+    document.addEventListener("webkitfullscreenchange",fs);
+    document.addEventListener("webkitbeginfullscreen",free,true);
+    document.addEventListener("webkitendfullscreen",lock,true);
+    document.addEventListener("visibilitychange",function(){ if(!document.hidden&&!inFs())lock(); });
+    window.SHK_ORIENT={lock:lock,free:free};
+  })();
+
   /* ---- Native camera: any photo input marked capture="environment" opens the iPhone camera sheet ---- */
   function dataUrlToFile(u,name){
     var p=u.split(","),mime=(p[0].match(/:(.*?);/)||[,"image/jpeg"])[1],b=atob(p[1]),n=b.length,a=new Uint8Array(n);
