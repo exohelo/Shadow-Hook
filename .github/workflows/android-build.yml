@@ -2,7 +2,7 @@
 # Run it by hand: GitHub → Actions → "Android build" → Run workflow.
 # Output (Actions run → Artifacts): shadow-hook.apk to install on a phone for testing, shadow-hook.aab for Google Play.
 #
-# Same Capacitor shell as the iPhone app (ios-app/), around the live site. Push is left out until Firebase is set up.
+# Same Capacitor shell as the iPhone app (ios-app/), around the live site. Push uses Firebase (ios-app/android/google-services.json).
 # Signing: one upload key, made on the first run and kept in the Supabase km_secrets vault (service role only), so every
 # build is signed the same way — Google Play refuses updates signed with a different key.
 name: Android build
@@ -35,14 +35,16 @@ jobs:
       - name: Install Capacitor (Android)
         run: |
           npm install --no-audit --no-fund
-          # push needs Firebase on Android; leave it out of this build so the app can't trip over it
-          npm uninstall --no-audit --no-fund @capacitor/push-notifications
           npm install --no-save --no-audit --no-fund @capacitor/android@8.6.0
 
       - name: Create the Android project
         run: |
+          # the repo keeps Firebase's settings in android/; set it aside so "cap add" gets an empty folder
+          if [ -f android/google-services.json ]; then mv android/google-services.json "$RUNNER_TEMP/gs.json"; fi
+          rmdir android 2>/dev/null || true
           npx cap add android
           npx cap sync android
+          if [ -f "$RUNNER_TEMP/gs.json" ]; then cp "$RUNNER_TEMP/gs.json" android/app/google-services.json; echo "Firebase settings in place (push on)"; else echo "::warning::no google-services.json - push will not work"; fi
 
       - name: App icon
         run: |
