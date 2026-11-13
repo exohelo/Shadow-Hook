@@ -58,7 +58,7 @@ const orQ=letters.map(L=>'card.like.'+L+'*').join(',');
 const subs=await sel('push_subs','select=*&or=('+orQ+')&limit=5000');
 let sent=0,dead=0;const apns=[];
 for(const s of subs){
-const isApp=String(s.endpoint||'').startsWith('apns:');
+const isApp=/^(apns|fcm):/.test(String(s.endpoint||''));   // nov13: iPhone app (apns:) and Android app (fcm:)
 if(!s.card||!/^[A-Z]\d{3,5}$/.test(s.card)||(!isApp&&(!s.p256dh||!s.auth)))continue;
 const d=((AZ.indexOf(s.card[0])-openL)%26+26)%26;
 if(d>AHEAD)continue;
@@ -85,7 +85,7 @@ if(apns.length){
     const r=await fetch(SB+'/functions/v1/push-apns',{method:'POST',headers:H,body:JSON.stringify({items:apns})});
     const j=await r.json().catch(()=>({}));
     sent+=j.sent||0;dead+=j.dead||0;
-    log('iPhone app: '+(j.sent||0)+' sent, '+(j.dead||0)+' dead, '+(j.failed||0)+' failed');
+    log('phone apps: '+(j.sent||0)+' sent, '+(j.dead||0)+' dead, '+(j.failed||0)+' failed');
   }catch(e){log('iPhone app send failed:',e.message);}
 }
 /* nov11: the board is over, so close any board Live Activity card still showing on iPhones */
