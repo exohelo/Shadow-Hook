@@ -6,7 +6,7 @@
         the list is already at its top. The sheet follows the finger; let go past ~140 px (or flick fast) and it
         closes, otherwise it springs back. Touches that start in the message box are left alone. The ✕ stays.
    Works whether sc.js has loaded yet or not (it watches for #scChamber to appear).
-   Load once from index.html, after council_mod.js:  <script src="chamber_sheet.js?v=oct17a" defer></script> */
+   Load once from index.html, after council_mod.js:  <script src="chamber_sheet.js?v=nov12a" defer></script> */
 (function(){
   'use strict';
   if(window.__chamberSheet)return; window.__chamberSheet=true;
@@ -20,6 +20,9 @@
     '#'+ID+' img,#'+ID+' video,#'+ID+' canvas,#'+ID+' iframe,#'+ID+' table,#'+ID+' pre{max-width:100%}'+
     '#'+ID+' pre{white-space:pre-wrap}'+
     'html.cs-open,html.cs-open body{overflow-x:hidden!important}'+
+    /* nov12: the seat map's wrapper hung 14px past each side (margin:0 -14px), so the Table could be nudged sideways */
+    '#'+ID+' .sc-floorwrap{margin-left:0!important;margin-right:0!important}'+
+    '#'+ID+'{overflow-x:clip!important}'+
     '#'+ID+'.cs-drag{transition:none!important}'+
     '#'+ID+' .cs-grab{display:block;width:44px;height:5px;margin:6px auto 0;border-radius:3px;background:rgba(220,214,201,.28);pointer-events:none}';
   document.head.appendChild(s);
@@ -32,6 +35,11 @@
       var e=all[i];
       /* a list that scrolls up/down must not also scroll sideways */
       if(!e.__csX){ var ox=''; try{ ox=getComputedStyle(e).overflowX; }catch(x){} if(ox==='auto'||ox==='scroll'){ e.__csX=true; e.style.overflowX='hidden'; e.style.touchAction='pan-y'; } }
+      /* nov12: a row of chips/buttons wider than the screen (The Floor · Council Tickets · Charter …) wraps to a
+         second line instead of hiding the last ones off the edge */
+      if(!e.__csWrap&&e.children.length>1&&e.scrollWidth>e.clientWidth+2){ var cs=null; try{ cs=getComputedStyle(e); }catch(x){}
+        if(cs&&/flex/.test(cs.display)&&cs.flexWrap==='nowrap'&&cs.flexDirection.indexOf('row')===0&&e.querySelector('button,a,[role="button"]')){
+          e.__csWrap=true; e.style.flexWrap='wrap'; e.style.rowGap=e.style.rowGap||'8px'; } }
       if(e.__csFit)continue;
       if(e.offsetWidth>W+1){
         e.__csFit=true;
@@ -42,6 +50,13 @@
     ch.scrollLeft=0;
     ch.querySelectorAll('*').forEach(function(e){ if(e.scrollLeft)e.scrollLeft=0; });
   }
+
+  /* nov12: anything that nudges a list sideways between updates — a tap, focus, the keyboard opening — snaps back at once */
+  document.addEventListener('scroll',function(ev){
+    var t=ev.target, ch=document.getElementById(ID); if(!ch||!ch.classList.contains('on'))return;
+    if(t===document||t===document.documentElement||t===document.body){ if(window.scrollX)window.scrollTo(0,window.scrollY); return; }
+    if(t&&t.nodeType===1&&ch.contains(t)&&t.scrollLeft)t.scrollLeft=0;
+  },{capture:true,passive:true});
 
   /* ---------- 2. pull down to close ---------- */
   function panel(ch){
