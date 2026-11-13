@@ -1,0 +1,36 @@
+# Turns ios-app/resources/AppIcon.svg (the seal, redrawn for small sizes) into the 1024x1024 PNG both app builds use.
+# Run it by hand after changing the SVG: Actions -> "Render app icon" -> Run workflow. It commits the PNG back.
+name: Render app icon
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Render the icon
+        run: |
+          sudo apt-get update -qq >/dev/null
+          sudo apt-get install -y -qq librsvg2-bin imagemagick fontconfig >/dev/null
+          mkdir -p ~/.fonts
+          curl -fsSL -o ~/.fonts/Anton-Regular.ttf https://raw.githubusercontent.com/google/fonts/main/ofl/anton/Anton-Regular.ttf
+          fc-cache -f >/dev/null
+          fc-list | grep -i anton
+          rsvg-convert -w 1024 -h 1024 ios-app/resources/AppIcon.svg -o /tmp/icon.png
+          # Apple rejects app icons with transparency: flatten onto the icon's own dark background
+          convert /tmp/icon.png -background "#06070b" -alpha remove -alpha off -type TrueColor ios-app/resources/AppIcon-1024.png
+          identify ios-app/resources/AppIcon-1024.png
+
+      - name: Commit the PNG
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ios-app/resources/AppIcon-1024.png
+          git commit -m "App icon PNG rendered from AppIcon.svg" || echo "icon unchanged"
+          git push
