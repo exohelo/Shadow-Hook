@@ -385,21 +385,29 @@ async function forecastRun() { try {
   else { const rec = await recordHotline(); sid = rec.callSid; tx = await transcribe(rec.buf, null); }
   log('transcript:', JSON.stringify((tx || '').slice(0, 400)));
   const counts = parseCounts(tx || '');
-  /* the count for THIS board: prefer a count whose kind maps to the target, else the last "N jobs" said */
-  let pick = counts.find(c => countTargetKey(c.kind) === target.key) || counts[counts.length - 1] || null;
+  /* #nov12(holiday) — WHICH board is this forecast about? The hall says it outright ("forecast for Wednesday night,
+     November 11th"). On a holiday morning the tape skips the day board and reads tonight's numbers, and filing by the
+     clock put tonight's count on the morning board. Trust the recording first; the clock only when it doesn't say. */
+  const ft = parseForecastTarget(tx || '');
+  const named = (ft && ft.slot) ? resolveAboutKey(ft, { key: prevKeyOf(target.key) }, 'start') : null;
+  const fileKey = named || target.key;
+  if (fileKey !== target.key) log('the recording names', fileKey, '— not', target.key, '(holiday tape?) — filing it under', fileKey);
+  /* the count for THAT board: prefer a count whose kind maps to it, else the last "N jobs" said */
+  let pick = counts.find(c => countTargetKey(c.kind) === fileKey) || counts[counts.length - 1] || null;
   if (!pick) { const m = /(\d{3,4})\s*jobs/i.exec(tx || ''); if (m) pick = { n: parseInt(m[1], 10), kind: 'unknown', heard: m[0] }; }
   const r = parseLeftOff(tx || '', { keywords: ['casual', 'casuals', 'start', 'starting'] });
   const startCard = r && r.card ? r.card : null;
   const row = {
-    port: CFG.port, k: target.key, card: startCard, conf: pick ? 0.9 : 0,
+    port: CFG.port, k: fileKey, card: startCard, conf: pick ? 0.9 : 0,
     heard: pick ? (pick.n + ' jobs · ' + String(pick.heard || '').slice(0, 80)) : (tx || '').slice(0, 100),
     transcript: (tx || '').slice(0, 4000), call_sid: sid, posted: false,
-    extras: { kind: 'forecast', about: target.key, n: pick ? pick.n : null, count_kind: pick ? pick.kind : null, counts, announced_start: startCard, read: spent + 1 }
+    extras: { kind: 'forecast', about: fileKey, read_for: target.key, n: pick ? pick.n : null, count_kind: pick ? pick.kind : null, counts, announced_start: startCard, read: spent + 1 }
   };
   if (CFG.dryRun) { summary('DRY RUN — would log forecast: ' + JSON.stringify(row.extras)); return; }
   if (CFG.sbUrl && CFG.sbKey) { const ok = await sbInsert('hall_line_log', row); if (!ok) { delete row.extras; await sbInsert('hall_line_log', row); } }
-  summary(pick ? '📣 FORECAST ' + target.key + ': ' + pick.n + ' jobs' + (startCard ? ', starts ' + startCard : '') + ' (read ' + (spent + 1) + ')'
-               : '🔇 FORECAST — no count heard for ' + target.key + ' (read ' + (spent + 1) + ').');
+  summary(pick ? '📣 FORECAST ' + fileKey + ': ' + pick.n + ' jobs' + (startCard ? ', starts ' + startCard : '') + ' (read ' + (spent + 1) + ')'
+                 + (fileKey !== target.key ? ' — read in the ' + target.key + ' window, filed under the board it names' : '')
+               : '🔇 FORECAST — no count heard for ' + fileKey + ' (read ' + (spent + 1) + ').');
 } finally { summary(costLine()); } }
 
 /* #nov1(ids) — a numbered-board hall (Local 10). One read of the pre-tape gives the coming night and the next morning:
