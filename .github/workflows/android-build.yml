@@ -113,6 +113,21 @@ jobs:
           jarsigner -keystore "$KS" -storepass:env KSPW -keypass:env KSPW "$OUT/shadow-hook.aab" upload >/dev/null && echo "AAB signed"
           ls -la "$OUT"
 
+      - name: Publish for the setup page (theshadowhook.com/get)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          U="${SUPABASE_URL%/}/storage/v1/object/downloads"
+          for f in shadow-hook.apk; do
+            curl -fsS -X POST "$U/$f" -H "apikey: $SUPABASE_SERVICE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
+              -H "x-upsert: true" -H "Content-Type: application/vnd.android.package-archive" --data-binary @"$RUNNER_TEMP/out/$f" >/dev/null
+          done
+          printf '{"build":%s,"at":"%s"}' "${{ github.run_number }}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$RUNNER_TEMP/android.json"
+          curl -fsS -X POST "$U/android.json" -H "apikey: $SUPABASE_SERVICE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
+            -H "x-upsert: true" -H "Content-Type: application/octet-stream" --data-binary @"$RUNNER_TEMP/android.json" >/dev/null
+          echo "published: ${SUPABASE_URL%/}/storage/v1/object/public/downloads/shadow-hook.apk (build ${{ github.run_number }})"
+
       - uses: actions/upload-artifact@v4
         with:
           name: shadow-hook-android-${{ github.run_number }}
