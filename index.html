@@ -13094,29 +13094,34 @@ var st=document.createElement("style");st.textContent='.dp-mact.rx{gap:2px;font-
 window.shkRx={btn:btn,set:set,load:load,EMO:EMO};})();</script>
 
 <script id="shk-clerkfix">/* nov14(clerkfix): the scanner used to file unreadable slips as CLERK (it grabbed the word from elsewhere on the docket).
-   Once per member: if any scanned docket says CLERK, show them and offer to switch them to their usual job in one tap. */
+   Once per member, on its own: re-read the saved photo of every scanned CLERK docket with the fixed reader and put the right
+   job on it (or the member's usual job when the slip still can't be read), then show what changed with an Undo. */
 (function(){"use strict";
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
-function key(){try{return "shk_clerkfix1_"+(window.__shkUid||"anon")}catch(e){return "shk_clerkfix1"}}
-function done(){try{localStorage.setItem(key(),"1")}catch(e){}}
+function fkey(){return "shk_clerkfix2_"+(window.__shkUid||"anon")}
+function done(){try{localStorage.setItem(fkey(),"1")}catch(e){}}
 function list(){try{return(typeof DOCKETS!=="undefined"&&Array.isArray(DOCKETS)?DOCKETS:[]).filter(function(j){return j&&String(j.category||"").toUpperCase()==="CLERK"&&(j.slip!==undefined||j.photo)})}catch(e){return[]}}
 function usual(){var n={};try{DOCKETS.forEach(function(d){var c=String(d.category||"").toUpperCase();c&&c.indexOf("CLERK")!==0&&(n[c]=(n[c]||0)+1)})}catch(e){}var k=Object.keys(n).sort(function(a,b){return n[b]-n[a]});return k[0]||"S"}
-function cats(sel){var out=[],seen={};try{var C=typeof JOB_CATALOG!=="undefined"?JOB_CATALOG:{};Object.keys(C).forEach(function(k){if(k.indexOf("CLERK")===0||seen[k])return;seen[k]=1;out.push('<option value="'+esc(k)+'"'+(k===sel?" selected":"")+">"+esc(k)+(C[k]&&C[k].name?" — "+esc(C[k].name):"")+"</option>")})}catch(e){}if(!seen[sel])out.unshift('<option value="'+esc(sel)+'" selected>'+esc(sel)+"</option>");return out.join("")}
 function nice(d){try{return new Date(d+"T12:00").toLocaleDateString("en-US",{weekday:"short",month:"numeric",day:"numeric"})}catch(e){return d||""}}
-function show(){var L=list();if(!L.length){done();return}if(document.getElementById("cfx"))return;var u=usual(),o=document.createElement("div");o.id="cfx";
- o.innerHTML='<div class="cfx-card" role="dialog" aria-label="Fix jobs filed as clerk"><button type="button" class="cfx-x" aria-label="Close">✕</button><b class="cfx-t">'+L.length+" job"+(L.length===1?"":"s")+' filed as CLERK</b><p>The scanner had a bug: when it couldn’t read the job type, it grabbed the word CLERK from elsewhere on the docket. It’s fixed. Check the ones that weren’t clerk jobs and pick what they were.</p><div class="cfx-l">'+
- L.map(function(j,i){return'<label><input type="checkbox" data-i="'+i+'" checked><span><b>'+esc(nice(j.date))+"</b> "+esc(j.ship||j.terminal||"")+(j.shift?" \xB7 "+esc(j.shift):"")+"</span></label>"}).join("")+
- '</div><label class="cfx-s"><span>CHANGE THEM TO</span><select id="cfxCat">'+cats(u)+'</select></label><div class="cfx-b"><button type="button" class="cfx-no">They were clerk jobs</button><button type="button" class="cfx-go">Fix them</button></div></div>';
+async function reread(j){try{if(!window.DKPHOTO||typeof ocrDocket!=="function"||typeof parseDocket!=="function")return null;var b=await DKPHOTO.get(DKPHOTO.key(j));if(!b||!b.size)return null;
+ var bm=await createImageBitmap(b),s=Math.min(1,1400/Math.max(bm.width,bm.height)),c=document.createElement("canvas");c.width=Math.round(bm.width*s);c.height=Math.round(bm.height*s);c.getContext("2d").drawImage(bm,0,0,c.width,c.height);
+ var blob=await new Promise(function(r){c.toBlob(r,"image/jpeg",.9)});var t=await ocrDocket(blob||c),p=parseDocket(t||"");
+ return p&&p.cat&&!p.catFuzzy?String(p.cat).toUpperCase():null}catch(e){return null}}
+function summary(rows){var o=document.createElement("div");o.id="cfx";
+ o.innerHTML='<div class="cfx-card" role="dialog" aria-label="Jobs fixed"><button type="button" class="cfx-x" aria-label="Close">✕</button><b class="cfx-t">Fixed '+rows.length+" job"+(rows.length===1?"":"s")+'</b><p>A scanner bug filed '+(rows.length===1?"this job":"these")+' as CLERK. We re-read '+(rows.length===1?"the photo":"the photos")+' and fixed '+(rows.length===1?"it":"them")+'. If one is still wrong, long-press it in your Job Log to change it.</p><div class="cfx-l">'+
+ rows.map(function(r){return'<div class="cfx-r"><span><b>'+esc(nice(r.j.date))+"</b> "+esc(r.j.ship||r.j.terminal||"")+'</span><em>CLERK → <b>'+esc(r.to)+"</b>"+(r.how==="slip"?" \xB7 read from the slip":" \xB7 your usual job")+"</em></div>"}).join("")+
+ '</div><div class="cfx-b"><button type="button" class="cfx-no">Undo — they were clerk jobs</button><button type="button" class="cfx-go">Looks right</button></div></div>';
  document.body.appendChild(o);
  o.addEventListener("click",function(e){var t=e.target;
-  if(t===o||t.closest(".cfx-x")){o.remove();return}
-  if(t.closest(".cfx-no")){done();o.remove();return}
-  if(t.closest(".cfx-go")){var c=document.getElementById("cfxCat").value||u,n=0;o.querySelectorAll("input[data-i]").forEach(function(b){if(b.checked){var j=L[+b.getAttribute("data-i")];if(j){j.category=c;n++}}});
-   try{saveDK()}catch(x){}try{renderDockets()}catch(x){}try{typeof renderYear=="function"&&renderYear()}catch(x){}done();o.remove();try{toast("✓ "+n+" job"+(n===1?"":"s")+" changed to "+c+" — pay updated")}catch(x){}}});}
-function go(){try{if(localStorage.getItem(key()))return}catch(e){}if(!window.__shkUid)return;show()}
-setTimeout(go,7000);setTimeout(go,30000);
-var st=document.createElement("style");st.textContent='#cfx{position:fixed;inset:0;z-index:99998;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;padding:16px}.cfx-card{position:relative;width:100%;max-width:460px;max-height:82vh;overflow:auto;background:var(--plate,#1b1930);color:var(--bone,#eee);border:1px solid var(--line,rgba(255,255,255,.15));border-radius:20px;padding:18px 16px 16px;font:400 15px/1.4 Inter,system-ui,sans-serif}.cfx-x{position:absolute;top:10px;right:10px;width:36px;height:36px;border-radius:50%;border:1px solid var(--line,rgba(255,255,255,.15));background:transparent;color:inherit;font-size:16px}.cfx-t{display:block;font:400 24px/1.1 Anton,sans-serif;letter-spacing:.02em;margin:2px 40px 8px 0}.cfx-card p{margin:0 0 12px;color:var(--steel,#aab)}.cfx-l{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}.cfx-l label{display:flex;gap:10px;align-items:center;padding:10px 12px;border-radius:12px;background:rgba(0,0,0,.25)}.cfx-l input{width:20px;height:20px;flex:none}.cfx-s{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}.cfx-s span{font:700 11px Inter,sans-serif;letter-spacing:.12em;color:var(--steel,#aab)}.cfx-s select{height:46px;border-radius:12px;padding:0 10px;font-size:16px;background:rgba(0,0,0,.3);color:inherit;border:1px solid var(--line,rgba(255,255,255,.15))}.cfx-b{display:flex;gap:10px}.cfx-b button{flex:1;min-height:50px;border-radius:14px;font:700 15px Inter,sans-serif;border:1px solid var(--line,rgba(255,255,255,.18));background:transparent;color:inherit}.cfx-b .cfx-go{background:#e8445a;border-color:#e8445a;color:#fff}';document.head.appendChild(st);
-window.shkClerkFix=show;})();</script>
+  if(t.closest(".cfx-no")){rows.forEach(function(r){r.j.category="CLERK"});try{saveDK()}catch(x){}try{renderDockets()}catch(x){}o.remove();try{toast("Put back as CLERK")}catch(x){}return}
+  if(t===o||t.closest(".cfx-x")||t.closest(".cfx-go"))o.remove()});}
+var busy=0;
+async function go(){if(busy)return;try{if(localStorage.getItem(fkey()))return}catch(e){return}if(!window.__shkUid)return;var L=list();if(!L.length){done();return}busy=1;
+ var u=usual(),rows=[];for(var i=0;i<L.length;i++){var j=L[i],c=await reread(j),to=c&&c!=="CLERK"?c:(c==="CLERK"?null:u);if(!to)continue;j.category=to;rows.push({j:j,to:to,how:c?"slip":"usual"})}
+ done();busy=0;if(!rows.length)return;try{saveDK()}catch(x){}try{renderDockets()}catch(x){}try{typeof renderYear=="function"&&renderYear()}catch(x){}summary(rows)}
+setTimeout(go,8000);setTimeout(go,40000);
+var st=document.createElement("style");st.textContent='#cfx{position:fixed;inset:0;z-index:99998;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;padding:16px}.cfx-card{position:relative;width:100%;max-width:460px;max-height:82vh;overflow:auto;background:var(--plate,#1b1930);color:var(--bone,#eee);border:1px solid var(--line,rgba(255,255,255,.15));border-radius:20px;padding:18px 16px 16px;font:400 15px/1.4 Inter,system-ui,sans-serif}.cfx-x{position:absolute;top:10px;right:10px;width:36px;height:36px;border-radius:50%;border:1px solid var(--line,rgba(255,255,255,.15));background:transparent;color:inherit;font-size:16px}.cfx-t{display:block;font:400 24px/1.1 Anton,sans-serif;letter-spacing:.02em;margin:2px 40px 8px 0}.cfx-card p{margin:0 0 12px;color:var(--steel,#aab)}.cfx-l{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}.cfx-r{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border-radius:12px;background:rgba(0,0,0,.25)}.cfx-r em{font-style:normal;font-size:13px;color:var(--steel,#aab)}.cfx-r em b{color:#7ee08a}.cfx-b{display:flex;gap:10px}.cfx-b button{flex:1;min-height:50px;border-radius:14px;font:700 14px Inter,sans-serif;border:1px solid var(--line,rgba(255,255,255,.18));background:transparent;color:inherit}.cfx-b .cfx-go{background:#e8445a;border-color:#e8445a;color:#fff}';document.head.appendChild(st);
+window.shkClerkFix=go;})();</script>
 
 </body>
 </html>
