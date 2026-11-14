@@ -20,6 +20,7 @@
     '#v2Curve .wire-cell{aspect-ratio:auto!important;height:100%!important;background:none!important;border:none!important;box-shadow:none!important;transform:none!important;opacity:1!important;align-items:flex-end!important;justify-content:center;padding:0;position:relative}'+
     '#v2Curve .wire-cell i{display:block;width:78%;border-radius:6px 6px 2px 2px;background:linear-gradient(180deg,rgba(183,174,203,.55),rgba(183,174,203,.18))}'+
     '#v2Curve .wire-cell.band i{background:linear-gradient(180deg,#4de2ffcc,#4de2ff33)}#v2Curve .wire-cell.top i{background:linear-gradient(180deg,#ff4dd2,#ff4dd255);box-shadow:0 0 14px #ff4dd266}'+
+    '#v2Curve .v2tail{position:absolute;top:3px;left:50%;transform:translateX(-50%);z-index:1;font:700 9.5px Inter,system-ui,sans-serif;letter-spacing:.04em;color:var(--steel,#9aa);white-space:nowrap;pointer-events:none}#v2Curve .tail i{opacity:.55;background-image:repeating-linear-gradient(135deg,rgba(255,255,255,.12) 0 4px,transparent 4px 8px)}'+
     '#v2Curve .v2pct{position:absolute;bottom:5px;left:50%;transform:translateX(-50%);z-index:1;font:700 10.5px Inter,system-ui,sans-serif;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.75);white-space:nowrap;pointer-events:none}'+
     '#v2How{margin-top:14px;text-align:left}#v2How p{margin:8px 0 0;font:400 14.5px/1.5 Inter,system-ui,sans-serif;color:var(--steel)}#v2How p b{color:var(--bone)}#v2How .odds-hold{font-size:14px;line-height:1.5;margin-top:10px}'+
     '#wMoves .v2lock{color:#eeb46b}'+
@@ -106,7 +107,8 @@
     if(tr&&cv)viewer(tr,cv,cyc);
     if(cv){ if(cyc||view==='board'||(w1-w0)>16){ cv.style.display='none'; } else { cv.style.display=''; var bars='';
         for(k=w0;k<=w1;k++){ var pct=Math.round(P[k]*100), h=pmax>0?Math.max(3,P[k]/pmax*100):3, c2=k===med?'top':(k>=bLo&&k<=bHi?'band':'');
-          bars+='<div class="wire-cell v2cb '+c2+'">'+(pct>=1&&h*62/100>=18?'<span class="v2pct">'+pct+'%</span>':'')+'<i style="height:'+h.toFixed(0)+'%"></i></div>'; }
+          /* #nov13(tail): the last bar holds everything from that letter on (past Z = around the board), so say so */
+          var tail=k===span; bars+='<div class="wire-cell v2cb '+c2+(tail?' tail':'')+'">'+(tail?'<span class="v2tail">'+esc(AZ[(base+k)%26])+' or past</span>':'')+(pct>=1&&h*62/100>=18?'<span class="v2pct">'+pct+'%</span>':'')+'<i style="height:'+h.toFixed(0)+'%"></i></div>'; }
         cv.innerHTML=bars; } }
     if(mt){ mt.style.display='';
       if(!document.getElementById('v2How')){ mt.innerHTML='<details class="race-how v2how" id="v2How"><summary>How sure is this call?</summary><div id="v2HowBody"></div></details>';
