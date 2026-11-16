@@ -177,12 +177,39 @@
       mine().then(function(m){ var v=m[k]; if(!v)return; c.querySelectorAll('[data-rvk]').forEach(function(b){ b.classList.toggle('on',+b.getAttribute('data-rvk')<=v); }); c.querySelector('.rvk-m').textContent='You gave it '+v+'★ — tap to update, read what others say, or rate a boss.'; }); }); }
   document.addEventListener('click',function(e){ var c=e.target.closest&&e.target.closest('.rvk'); if(!c)return; e.stopPropagation(); var b=e.target.closest('[data-rvk]'); open(c.getAttribute('data-k'),'write',b?+b.getAttribute('data-rvk'):0); },true);
 
+  /* ---------- after the shift: "how was the dock?" pops up once per job ---------- */
+  function shiftEnd(j){ var d=String(j.date||''); if(!/^\d{4}-\d{2}-\d{2}$/.test(d))return 0; var sh=String(j.shift||'').toLowerCase(), st=/^(\d{1,2}):(\d{2})/.exec(j.start||''), base=new Date(d+'T00:00:00').getTime(), h;
+    if(st)h=(+st[1])+(+st[2])/60; else h=/hoot/.test(sh)?3:/night/.test(sh)?18:8;
+    if(/hoot/.test(sh)&&h<12)h+=24; /* hoot owl starts after midnight of the next day */
+    return base+(h+9)*3600000; }
+  function seenKey(id){ return 'shk_rvask_'+id; }
+  var asking=false;
+  function shiftPrompt(){ if(asking||document.hidden||!window.SB||!window.__shkUid)return; if(document.getElementById('rvSheet')||document.getElementById('rvAsk'))return;
+    if(document.querySelector('.sheet.on,#boot,.rtw'))return;
+    var D=(typeof DOCKETS!=='undefined'?DOCKETS:window.DOCKETS)||[], now=Date.now(), pick=null;
+    D.forEach(function(j){ var e=shiftEnd(j); if(!e||now<e+20*60000||now>e+20*3600000)return; try{ if(localStorage.getItem(seenKey(j._id)))return; }catch(x){ return; }
+      var t=termOf(j); if(!t)return; if(!pick||e>pick.e)pick={j:j,t:t,e:e}; });
+    if(!pick)return; asking=true;
+    mine().then(function(m){ asking=false; var k=key(pick.t); try{ localStorage.setItem(seenKey(pick.j._id),String(now)); }catch(x){}
+      if(m[k])return; /* already reviewed this dock */
+      var a=document.createElement('div'); a.id='rvAsk'; a.style.cssText='position:fixed;inset:0;z-index:8900;background:#000a;display:flex;align-items:flex-end;justify-content:center';
+      a.innerHTML='<div class="rv-in" style="width:100%;max-width:560px;background:var(--bg,#0d0c0a);border-radius:20px 20px 0 0;border-top:2px solid #f5b731;padding:18px 16px calc(22px + env(safe-area-inset-bottom));text-align:center">'+
+        '<div style="font-size:34px">⚓</div><div class="rv-k" style="margin-top:4px">SHIFT’S DONE · '+E((pick.j.shift||'').toUpperCase())+'</div>'+
+        '<div class="rv-t" style="margin:4px 0 6px">How was '+E(pick.t.aka||pick.t.operator)+'?</div>'+
+        '<div class="rv-sub">Help the next casual — parking, bathrooms, breaks, the bosses. <b style="color:#f5b731">+⬡25</b> for your first review of this dock.</div>'+
+        '<div class="rv-pick">'+[1,2,3,4,5].map(function(i){ return '<button type="button" data-ask="'+i+'">★</button>'; }).join('')+'</div>'+
+        '<button type="button" class="rv-ghost" data-ask="0" style="border-style:solid;border-color:var(--line-soft,rgba(220,214,201,.2));color:var(--steel,#8f979e)">NOT NOW</button></div>';
+      document.body.appendChild(a);
+      a.addEventListener('click',function(e){ var b=e.target.closest('[data-ask]'); if(!b&&e.target!==a)return; var v=b?+b.getAttribute('data-ask'):0; a.remove(); if(v)open(k,'write',v); });
+    }).catch(function(){ asking=false; }); }
+
   /* ---------- wiring ---------- */
   function refreshAll(){ MINEat=0; portsCard(); document.querySelectorAll('.rvk').forEach(function(x){ x.remove(); }); docketCards(); }
   var tm=null; function soon(){ clearTimeout(tm); tm=setTimeout(function(){ docketCards(); var pl=document.getElementById('portList'); if(pl&&OV)rowStars(OV); },60); }
   function hook(){ var dl=document.getElementById('docketList'); if(dl)new MutationObserver(soon).observe(dl,{childList:true,subtree:true});
     var pl=document.getElementById('portList'); if(pl)new MutationObserver(function(){ if(OV)rowStars(OV); }).observe(pl,{childList:true});
-    var tries=0, iv=setInterval(function(){ tries++; if(window.SB&&window.__shkUid){ clearInterval(iv); portsCard(); docketCards(); } if(tries>60)clearInterval(iv); },1000);
+    var tries=0, iv=setInterval(function(){ tries++; if(window.SB&&window.__shkUid){ clearInterval(iv); portsCard(); docketCards(); setTimeout(shiftPrompt,6000); } if(tries>60)clearInterval(iv); },1000);
+    setInterval(shiftPrompt,5*60000); document.addEventListener('visibilitychange',function(){ if(!document.hidden)setTimeout(shiftPrompt,4000); });
     document.addEventListener('click',function(e){ if(e.target.closest&&e.target.closest('[data-scr="ports"]'))setTimeout(portsCard,150); }); }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',hook); else hook();
   window.dockReviews={open:open,picker:picker};
