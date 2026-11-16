@@ -33,7 +33,8 @@
   var CH=[ ['utr','UTR CH','UTR'], ['clerk','CLERK CH','Clerks'], ['boss','DOCK BOSS','Dock Boss'], ['super','SUPERCARGO','Supercargo'] ]; /* key · label · Radio Book title */
   function jobOf(id){ try{ return (typeof DOCKETS!=='undefined'?DOCKETS:window.DOCKETS||[]).filter(function(x){ return String(x._id)===String(id); })[0]||null; }catch(e){ return null; } }
   function shiftOf(id){ var j=jobOf(id); return j&&j.shift==='Day'?'Day':'Night'; }
-  var opened={}; /* slips where the member asked for crane/lane on a non-ship job (this session) */
+  var opened={}, chOpen={}; /* chOpen: channels section unfolded (this session) */
+  function chSum(n){ var c=n.ch||{}, out=[]; CH.forEach(function(x){ if((c[x[0]]||'').trim())out.push(x[1].replace(/ CH$/,'')+' '+c[x[0]].trim()); }); (n.extra||[]).forEach(function(x){ if((x.v||'').trim())out.push((x.k||'CH').trim()+' '+x.v.trim()); }); return out.join(' \u00B7 '); } /* slips where the member asked for crane/lane on a non-ship job (this session) */
   function isSwing(id){ try{ var j=jobOf(id), c=String(j&&j.category||'').toUpperCase().replace(/[^A-Z]/g,''); return c==='S'||/SWING/.test(c); }catch(e){ return false; } }
   function shipWork(id){ try{ var j=jobOf(id); if(!j)return true; if(isSwing(id))return false; var w=typeof dktWorkside==='function'?dktWorkside(j):null; if(!w)return true; return w.side==='ship'&&w.craft!=='clerk'; }catch(e){ return true; } }
   function dockOf(id){ try{ var j=jobOf(id); if(!j)return null; var t=typeof dkTerminal==='function'?dkTerminal(j):null; if(!t&&typeof findTerminal==='function')t=findTerminal(j.terminal); return t?{key:t.berths,name:[t.aka,t.operator].filter(Boolean).join(' \u00B7 ')}:null; }catch(e){ return null; } }
@@ -62,6 +63,7 @@
   }
 
   var st=document.createElement('style'); st.textContent=
+    '.dkn-chd{margin:12px 0 0;border-radius:12px;border:1px solid var(--line-soft,rgba(220,214,201,.12));background:#ffffff05;padding:0 10px}.dkn-chd>summary{list-style:none;display:flex;align-items:center;gap:8px;cursor:pointer;padding:12px 0 2px}.dkn-chd>summary::-webkit-details-marker{display:none}.dkn-chv{font-style:normal;font-size:22px;line-height:1;color:var(--steel,#8f979e);transition:transform .2s}.dkn-chd[open] .dkn-chv{transform:rotate(90deg)}.dkn-chs{font:600 12.5px Inter,system-ui,sans-serif;color:#d8ffb0;padding:0 0 12px;opacity:.85}.dkn-chd[open] .dkn-chs{display:none}.dkn-chd[open]{padding-bottom:10px}'+
     '.dkn-save{display:block;width:100%;height:52px;margin:12px 0 6px;border-radius:12px;border:0;background:linear-gradient(180deg,#f2c46b,#d99a3a);color:#1a1206;font:400 20px Anton,sans-serif;letter-spacing:.08em;cursor:pointer}.dkn-save:active{transform:translateY(1px)}'+
     '.dkn-st{text-align:center;font:600 12.5px Inter,system-ui,sans-serif;color:var(--steel,#8f979e);min-height:18px}.dkn-st.ing{color:var(--copper-hi,#eeb46b)}.dkn-st.ok{color:#7fe08a}.dkn-st.bad{color:#ff8a7a}'+
     '.dkn{margin:12px 0 4px;padding:12px;border-radius:14px;background:var(--well,#0b0d0f);border:1px solid var(--line-soft,rgba(220,214,201,.1))}'+
@@ -101,10 +103,13 @@
       :'<button type="button" class="dkn-more dkn-ship" style="margin:0 0 10px">+ CRANE \u00B7 LANE \u00B7 UTR \u00B7 ROW</button>')+
       (isSwing(id)?'':'<div class="dkn-f" style="margin-bottom:10px"><label>LUNCH</label><div class="dkn-lun">'+LUNCH[shiftOf(id)].map(function(o){ return '<button type="button" data-lunch="'+o[0]+'" class="'+(n.lunch===o[0]?'on':'')+'" title="'+E(o[2])+'">'+o[1]+'</button>'; }).join('')+'<button type="button" class="oth'+(n.lunch==='other'?' on':'')+'" data-lunch="other">\u270E OTHER</button></div></div>'+
       '<div class="dkn-ld">'+E(lunchText(id,n))+'</div>')+
-      '<div class="dkn-sec">CHANNELS'+(dock?' \u00B7 '+E(dock.name.split(' \u00B7 ')[0].toUpperCase()):'')+'</div>'+
+      '<details class="dkn-chd"'+(chOpen[id]?' open':'')+'><summary><span class="dkn-sec" style="margin:0;flex:1">\uD83D\uDCFB CHANNELS'+(dock?' \u00B7 '+E(dock.name.split(' \u00B7 ')[0].toUpperCase()):'')+'</span><i class="dkn-chv">\u203A</i></summary>'+
+      '<div class="dkn-chs">'+E(chSum(n)||'Tap to add UTR, clerk, boss, supercargo channels')+'</div>'+
       '<div class="dkn-ch">'+CH.map(function(c){ return chBox(c[0],c[1],ch[c[0]]||'',suggest(dock,c[2])); }).join('')+'</div>'+
       '<div class="dkn-extra">'+(n.extra||[]).map(function(x,i){ return '<div class="dkn-x" data-xi="'+i+'"><div class="k dkn-f"><label>WHAT</label><input type="text" maxlength="20" data-xk="'+i+'" value="'+E(x.k||'')+'" placeholder="VSL CLK"></div><div class="v dkn-f"><label>CHANNEL</label><input type="text" maxlength="16" data-xv="'+i+'" value="'+E(x.v||'')+'" placeholder="\u2014"></div><button type="button" class="rm" data-xrm="'+i+'">\u2715</button></div>'; }).join('')+'</div>'+
       '<button type="button" class="dkn-more">+ ANOTHER CHANNEL</button>'+
+      '</details>'+
+      '<div class="dkn-rvslot"></div>'+
       '<div class="dkn-sec">NOTES</div>'+
       '<div class="dkn-q"><button type="button" data-stamp="">\u23F1 TIME</button></div>'+
       '<textarea class="dkn-txt" maxlength="4000" placeholder="Reminders, anything that happened\u2026">'+E(n.txt||'')+'</textarea>'+
@@ -133,7 +138,8 @@
     var h=d.querySelector('.dkn-h'), c=h&&h.querySelector('.dkn-clr'); if(h&&hasAny(n)&&!c){ c=document.createElement('button'); c.type='button'; c.className='dkn-clr'; c.title='Clear this slip'; c.textContent='\u2715 CLEAR'; h.appendChild(c); }
     clearTimeout(saveT); saveT=setTimeout(mark,400); }
 
-  document.addEventListener('input',function(e){ var d=e.target.closest&&e.target.closest('.dkn'); if(d)save(d); });
+  document.addEventListener('input',function(e){ var d=e.target.closest&&e.target.closest('.dkn'); if(d){ save(d); var sm=d.querySelector('.dkn-chs'); if(sm)sm.textContent=chSum(read(d))||'Tap to add UTR, clerk, boss, supercargo channels'; } });
+  document.addEventListener('toggle',function(e){ var t=e.target; if(t&&t.classList&&t.classList.contains('dkn-chd')){ var d=t.closest('.dkn'); if(d)chOpen[d.getAttribute('data-dkn')]=t.open; } },true);
   /* a channel box, once left, feeds the Radio Book */
   document.addEventListener('focusout',function(e){
     var i=e.target; if(!i||!i.closest||!i.closest('.dkn'))return; var d=i.closest('.dkn'), id=d.getAttribute('data-dkn'), dock=dockOf(id), crane=(d.querySelector('.dkn-crane')||{}).value||'';
