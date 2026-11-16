@@ -18,10 +18,12 @@
   'use strict';
   if(window.__dkNotes)return; window.__dkNotes=true;
   function key(){ try{ return typeof K==='function'?K('dknotes'):null; }catch(e){ return null; } }
-  function all(){ var k=key(); if(!k)return {}; try{ return JSON.parse(localStorage.getItem(k)||'{}')||{}; }catch(e){ return {}; } }
+  function raw(){ var k=key(); if(!k)return {}; try{ return JSON.parse(localStorage.getItem(k)||'{}')||{}; }catch(e){ return {}; } }
+  /* #nov15: a cleared slip leaves a tombstone {x:1,at} so another phone's older copy can't bring it back (the cloud merges per slip, newest wins) */
+  function all(){ var a=raw(), o={}; Object.keys(a).forEach(function(id){ if(a[id]&&!a[id].x)o[id]=a[id]; }); return o; }
   function get(id){ return all()[id]||{}; }
   function hasAny(n){ return !!((n.crane||'').trim()||n.lane||(n.utr||'').trim()||(n.row||'').trim()||n.lunch||(n.txt||'').trim()||Object.keys(n.ch||{}).some(function(k){ return (n.ch[k]||'').trim(); })||(n.extra||[]).some(function(x){ return (x.v||'').trim(); })); }
-  function put(id,n){ var k=key(); if(!k)return; var a=all(); if(!hasAny(n))delete a[id]; else { n.at=Date.now(); a[id]=n; } try{ localStorage.setItem(k,JSON.stringify(a)); }catch(e){} }
+  function put(id,n){ var k=key(); if(!k)return false; var a=raw(); if(!hasAny(n)){ if(a[id]&&!a[id].x)a[id]={x:1,at:Date.now()}; else return true; } else { n.at=Date.now(); a[id]=n; } try{ localStorage.setItem(k,JSON.stringify(a)); return true; }catch(e){ return false; } }
 
   var LUNCH={
     Day:[ ['early','EARLY','8\u201310 & 12\u20131'], ['11-1','11\u20131','11 AM \u2013 1 PM'], ['12-2','12\u20132','12 \u2013 2 PM'], ['go','EARLY GO','12\u20131 \u00B7 home about 2:30'] ],
@@ -60,6 +62,8 @@
   }
 
   var st=document.createElement('style'); st.textContent=
+    '.dkn-save{display:block;width:100%;height:52px;margin:12px 0 6px;border-radius:12px;border:0;background:linear-gradient(180deg,#f2c46b,#d99a3a);color:#1a1206;font:400 20px Anton,sans-serif;letter-spacing:.08em;cursor:pointer}.dkn-save:active{transform:translateY(1px)}'+
+    '.dkn-st{text-align:center;font:600 12.5px Inter,system-ui,sans-serif;color:var(--steel,#8f979e);min-height:18px}.dkn-st.ing{color:var(--copper-hi,#eeb46b)}.dkn-st.ok{color:#7fe08a}.dkn-st.bad{color:#ff8a7a}'+
     '.dkn{margin:12px 0 4px;padding:12px;border-radius:14px;background:var(--well,#0b0d0f);border:1px solid var(--line-soft,rgba(220,214,201,.1))}'+
     '.dkn-h{display:flex;align-items:center;gap:8px;margin:0 0 10px;font:700 11px Inter,system-ui,sans-serif;letter-spacing:.18em;color:var(--copper-hi,#eeb46b)}.dkn-h small{margin-left:auto;font-weight:600;letter-spacing:.06em;color:var(--steel,#8f979e)}'+
     '.dkn-g{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0 0 10px}'+
@@ -103,7 +107,8 @@
       '<button type="button" class="dkn-more">+ ANOTHER CHANNEL</button>'+
       '<div class="dkn-sec">NOTES</div>'+
       '<div class="dkn-q"><button type="button" data-stamp="">\u23F1 TIME</button></div>'+
-      '<textarea class="dkn-txt" maxlength="4000" placeholder="Reminders, anything that happened\u2026">'+E(n.txt||'')+'</textarea>';
+      '<textarea class="dkn-txt" maxlength="4000" placeholder="Reminders, anything that happened\u2026">'+E(n.txt||'')+'</textarea>'+
+      '<button type="button" class="dkn-save">\uD83D\uDCBE SAVE SLIP</button><div class="dkn-st'+(hasAny(n)?' ok':'')+'">'+(hasAny(n)&&n.at?'\u2713 Saved \u00B7 '+new Date(n.at).toLocaleString([], {month:'numeric',day:'numeric',hour:'numeric',minute:'2-digit'}):'Saves as you type \u2014 tap SAVE when you\'re done')+'</div>';
     if(dock&&!book[dock.key])bookLoad(dock,function(){ setTimeout(function(){ /* refresh the suggestion chips once the book is in */
       var live=null; document.querySelectorAll('.dkn[data-dkn]').forEach(function(x){ if(x.getAttribute('data-dkn')===String(id))live=x; }); if(!live)return; var cur=get(live.getAttribute('data-dkn')), cc=cur.ch||{};
       CH.forEach(function(c){ var f=live.querySelector('.dkn-f[data-ch="'+c[0]+'"]'); if(!f)return; var inp=f.querySelector('input'); f.outerHTML=chBox(c[0],c[1],inp.value||cc[c[0]]||'',suggest(dock,c[2])); });
@@ -119,7 +124,12 @@
       lunch:old.lunch||'', lunchText:old.lunchText||'', ch:ch, extra:extra, txt:v('.dkn-txt',old.txt)};
   }
   var saveT=null;
-  function save(d){ var n=read(d); put(d.getAttribute('data-dkn'),n); var s=d.querySelector('.dkn-s'); if(s)s.textContent='saved \u2713';
+  function stat(d,cls,txt){ d.querySelectorAll('.dkn-st').forEach(function(s){ s.className='dkn-st '+cls; s.textContent=txt; }); }
+  function cloudSave(d,loud){ stat(d,'ing','Saving\u2026'); var p=null; try{ p=typeof window.shkCloudPush==='function'?window.shkCloudPush():null; }catch(e){}
+    var done=function(ok){ if(!d.isConnected)return; if(ok)stat(d,'ok','\u2713 Saved to your account \u00B7 '+clock()); else stat(d,'ok','\u2713 Saved on this phone \u00B7 '+clock()+' \u00B7 syncs when you\'re online'); if(loud){ try{ toast(ok?'\u2713 Job slip saved':'\u2713 Saved on this phone'); }catch(e){} } };
+    if(p&&p.then)p.then(function(r){ done(r!==false); },function(){ done(false); }); else setTimeout(function(){ done(!!window.__shkUid); },600); }
+  var cloudT=null;
+  function save(d){ var n=read(d); var ok=put(d.getAttribute('data-dkn'),n); if(!ok){ stat(d,'bad','\u26A0 Not saved \u2014 phone storage is full'); } else { stat(d,'ing','Saving\u2026'); clearTimeout(cloudT); cloudT=setTimeout(function(){ cloudSave(d,false); },900); }
     var h=d.querySelector('.dkn-h'), c=h&&h.querySelector('.dkn-clr'); if(h&&hasAny(n)&&!c){ c=document.createElement('button'); c.type='button'; c.className='dkn-clr'; c.title='Clear this slip'; c.textContent='\u2715 CLEAR'; h.appendChild(c); }
     clearTimeout(saveT); saveT=setTimeout(mark,400); }
 
@@ -135,9 +145,10 @@
     e.stopPropagation();
     var id=d.getAttribute('data-dkn');
     if(e.target.closest('.dkn-ship')){ opened[id]=1; d.replaceWith(block(id)); var ci=null; document.querySelectorAll('.dkn[data-dkn]').forEach(function(x){ if(x.getAttribute('data-dkn')===String(id))ci=x.querySelector('.dkn-crane'); }); ci&&ci.focus(); return; }
+    if(e.target.closest('.dkn-save')){ save(d); clearTimeout(cloudT); var b=e.target.closest('.dkn-save'); b.textContent='\u2713 SAVED'; setTimeout(function(){ b.textContent='\uD83D\uDCBE SAVE SLIP'; },1800); if(document.activeElement&&document.activeElement.blur)document.activeElement.blur(); cloudSave(d,true); return; }
     var clr=e.target.closest('.dkn-clr');
     if(clr){ if(!clr.classList.contains('arm')){ clr.classList.add('arm'); clr.textContent='\u2715 CLEAR IT?'; setTimeout(function(){ clr.classList.remove('arm'); clr.textContent='\u2715 CLEAR'; },3000); return; }
-      var k=key(); if(k){ var a=all(); delete a[id]; try{ localStorage.setItem(k,JSON.stringify(a)); }catch(x){} } d.replaceWith(block(id)); mark(); try{ toast('Slip cleared'); }catch(x){} return; }
+      var k=key(); if(k){ var a=raw(); a[id]={x:1,at:Date.now()}; try{ localStorage.setItem(k,JSON.stringify(a)); }catch(x){} } d.replaceWith(block(id)); mark(); try{ toast('Slip cleared'); }catch(x){} return; }
     var ln=e.target.closest('.dkn-lane');
     if(ln){ var was=ln.classList.contains('on'); d.querySelectorAll('.dkn-lane').forEach(function(b){ b.classList.remove('on'); }); if(!was)ln.classList.add('on'); save(d); return; }
     var lu=e.target.closest('[data-lunch]');
@@ -157,8 +168,15 @@
   });
 
   /* 📋 on rows that have a slip; the pad inside each opened job, right under The dock */
+  function rescue(){ try{ var D=(typeof DOCKETS!=='undefined'?DOCKETS:window.DOCKETS)||[]; if(!D.length)return; var k=key(); if(!k)return; var a=raw(), ids={}, moved=0;
+    D.forEach(function(j){ ids[String(j._id)]=j; });
+    Object.keys(a).forEach(function(id){ var n=a[id]; if(!n||n.x||ids[id])return; var m=/-(\d{8})$/.exec(id); if(!m)return; var day=m[1].slice(0,4)+'-'+m[1].slice(4,6)+'-'+m[1].slice(6);
+      var c=D.filter(function(j){ return j.date===day&&!(a[String(j._id)]&&!a[String(j._id)].x); }); if(c.length!==1)return;
+      var to=String(c[0]._id); a[to]=n; a[id]={x:1,at:Date.now(),moved:to}; moved++; });
+    if(moved){ localStorage.setItem(k,JSON.stringify(a)); }
+  }catch(e){} }
   function mark(){
-    var list=document.getElementById('docketList'); if(!list)return; var a=all();
+    rescue(); var list=document.getElementById('docketList'); if(!list)return; var a=all();
     list.querySelectorAll('.jx-row[data-id]').forEach(function(r){
       var n=a[r.getAttribute('data-id')], has=!!n, b=r.querySelector('.n b'), i=r.querySelector('.dkn-has');
       var sum=has?[n.crane?'Crane '+n.crane:'',n.lane?'Lane '+n.lane:'',isSwing(r.getAttribute('data-id'))&&/^(1st|2nd)$/.test(n.lunch||'')?(n.lunch==='1st'?'First half':'Second half'):'',(n.ch&&n.ch.utr)?'UTR ch '+n.ch.utr:''].filter(Boolean).join(' \u00B7 '):'';
