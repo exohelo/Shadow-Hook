@@ -94,7 +94,7 @@
   function revHTML(r){ var L=lvl(+r.lvl||0), cs=CATS.filter(function(c){ return (r.cats||{})[c[0]]; }).map(function(c){ return c[1]+' '+r.cats[c[0]]+'★'; }).join(' · ');
     return '<div class="rv-rev" data-id="'+r.id+'"><div class="who">'+E(r.handle||'A casual')+(L?'<span class="lv">'+L[2]+' '+E(L[1])+'</span>':'')+(r.verified?'<span class="ok">✓ Worked here</span>':'')+'<span class="on">'+new Date(r.at).toLocaleDateString([], {month:'short',day:'numeric'})+'</span></div>'+
       stars(r.stars)+(r.tip?'<p>'+E(r.tip)+'</p>':'')+(cs?'<div class="cs">'+E(cs)+'</div>':'')+
-      '<div class="rv-acts">'+(r.mine?'<button type="button" data-rv="del" data-id="'+r.id+'">Delete</button>':'<button type="button" class="'+(r.marked?'on':'')+'" data-rv="help" data-id="'+r.id+'">👍 Helpful'+(r.helpful?' · '+r.helpful:'')+'</button><button type="button" data-rv="rep" data-id="'+r.id+'">⚑ Report</button>'+(S.data.km?'<button type="button" data-rv="del" data-id="'+r.id+'">Remove</button>':''))+'</div></div>'; }
+      '<div class="rv-acts">'+(r.mine?'<button type="button" data-rv="edit" data-id="'+r.id+'">\u270F\uFE0F Edit</button><button type="button" data-rv="del" data-id="'+r.id+'">\uD83D\uDDD1 Delete</button>':'<button type="button" class="'+(r.marked?'on':'')+'" data-rv="help" data-id="'+r.id+'">👍 Helpful'+(r.helpful?' · '+r.helpful:'')+'</button><button type="button" data-rv="rep" data-id="'+r.id+'">⚑ Report</button>'+(S.data.km?'<button type="button" data-rv="del" data-id="'+r.id+'">Remove</button>':''))+'</div></div>'; }
   function writeHTML(D,main){ var tp=S.view==='topic'?D.topics.filter(function(x){ return x.id===S.topic; })[0]:null, h='';
     if(S.view==='topic'&&!tp)return '<p class="rv-sub">That item is gone.</p>';
     var list=tp?D.reviews.filter(function(r){ return r.topic===tp.id; }):[], mine=tp?list.filter(function(r){ return r.mine; })[0]:null;
@@ -128,7 +128,10 @@
         OV=null; S.view=S.view==='topic'?'topic':'read'; S.pick=0; S.tip=''; load(); refreshAll(); }).catch(function(err){ b.disabled=false; b.textContent='TRY AGAIN'; say(err.message); }); return; }
     if(a==='help'||a==='rep'){ if(a==='rep'&&!b.classList.contains('arm')){ b.classList.add('arm'); b.textContent='⚑ Report it?'; return; }
       rpc('rv_mark',{p_id:id,p_kind:a==='help'?'helpful':'report'}).then(function(){ if(a==='rep')say('Reported. Thanks for keeping it fair.'); load(); }).catch(function(err){ say(err.message); }); return; }
-    if(a==='del'){ if(!b.classList.contains('arm')){ b.classList.add('arm'); b.textContent='Delete it?'; return; }
+    if(a==='edit'){ var rv=S.data.reviews.filter(function(x){ return x.id===id; })[0]; if(!rv)return;
+      if(rv.topic){ S.view='topic'; S.topic=rv.topic; } else { S.view='write'; S.topic=null; S.cats=Object.assign({},rv.cats||{}); }
+      S.pick=rv.stars; S.tip=rv.tip||''; paint(); var box=document.querySelector('#rvSheet .rv-in'); if(box)box.scrollTop=0; return; }
+    if(a==='del'){ if(!b.classList.contains('arm')){ b.classList.add('arm'); b.textContent='Tap again to delete'; return; }
       rpc('rv_remove',{p_id:id,p_topic:false}).then(function(){ say('Review removed'); OV=null; load(); refreshAll(); }).catch(function(err){ say(err.message); }); return; }
   });
   function celebrate(L,paid){ var d=document.createElement('div'); d.style.cssText='position:fixed;left:50%;top:38%;transform:translate(-50%,-50%) scale(.6);z-index:9500;padding:22px 26px;border-radius:20px;background:linear-gradient(180deg,#2a1f08,#120d04);border:2px solid #f5b731;box-shadow:0 0 60px #f5b73166;text-align:center;color:#f7e7c2;font:600 14px Inter,system-ui,sans-serif;transition:transform .35s cubic-bezier(.2,1.4,.4,1),opacity .4s;opacity:0;pointer-events:none';
