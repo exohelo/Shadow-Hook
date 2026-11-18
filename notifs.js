@@ -104,8 +104,8 @@
   function go(x) {
     if (!x) return;
     if (/^race/.test(x.kind || "")) {   /* #corral(nov18): a Corral Run call-out, live invite or result opens the game on that race */
-      var rid = String(x.story_id || "").replace(/^cr:/, "");
-      location.href = "/corral-run.html" + (/^\d+$/.test(rid) ? "?race=" + rid : "");
+      var mm = /^(cr|ch):(\d+)$/.exec(String(x.story_id || ""));   /* cr: a 1v1 race, ch: a 4/6-player race */
+      location.href = "/corral-run.html" + (mm ? (mm[1] === "ch" ? "?heat=" : "?race=") + mm[2] : "");
       return;
     }
     if (x.kind === "join") {   /* a hall join request: the Ports tab, looking at that hall, where the Let in / Decline card is */
