@@ -48,7 +48,8 @@
   }catch(e){} }
 
   /* banner runs through Thu Nov 19 (PT) on whatever skin is up; closing it hides it for that visit */
-  function live(){ return on()||Date.now()<Date.parse('2026-11-20T08:00:00Z'); }
+  /* #nov18: the 1,000 STRONG ribbon is retired — the Founding 1,000 mark and its card stay */
+  function live(){ var o=document.getElementById('k1Rib'); o&&o.remove(); return false; }
   function ribbon(){ if(!live()||document.getElementById('k1Rib')||ss('k1rib'))return;
     if(document.documentElement.classList.contains('at-gate'))return;
     var r=document.createElement('div'); r.id='k1Rib';
