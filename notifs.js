@@ -70,6 +70,38 @@
     b.title = S.unseen ? S.unseen + " new" : "Notifications";
   }
 
+  /* #crframe(nov18): Corral Run opens inside the app, under the header, so the header (bell, dispatch clock, menu)
+     stays on screen. The game asks to close with a postMessage (pull down / side drag / back). */
+  var CRF = null;
+  function crTop() { var t = document.querySelector(".topbar"); return t ? Math.max(0, Math.round(t.getBoundingClientRect().bottom)) : 0; }
+  function crPlace() { if (CRF) CRF.style.top = crTop() + "px"; }
+  function crOpen(q) {
+    var src = "/corral-run.html" + (q || "");
+    if (CRF) { CRF.querySelector("iframe").src = src; return; }
+    CRF = document.createElement("div"); CRF.id = "crFrame";
+    CRF.style.cssText = "position:fixed;left:0;right:0;bottom:0;z-index:41;background:#0b0a14;padding-bottom:env(safe-area-inset-bottom,0px);box-sizing:border-box";
+    CRF.innerHTML = '<iframe title="Corral Run" allow="autoplay; vibrate" style="display:block;width:100%;height:100%;border:0;background:#0b0a14"></iframe>';
+    CRF.querySelector("iframe").src = src;
+    document.body.appendChild(CRF); crPlace();
+    document.documentElement.style.overflow = "hidden";
+    try { history.pushState({ crf: 1 }, "", location.href); } catch (e) {}
+  }
+  function crClose(fromPop) {
+    if (!CRF) return; CRF.remove(); CRF = null; document.documentElement.style.overflow = "";
+    if (!fromPop) try { if (history.state && history.state.crf) history.back(); } catch (e) {}
+    setTimeout(function () { load(); }, 300);
+  }
+  window.addEventListener("resize", crPlace);
+  window.addEventListener("popstate", function () { if (CRF) crClose(true); });
+  window.addEventListener("message", function (e) { if (e.origin === location.origin && e.data && e.data.cr === "close") crClose(false); });
+  (function hook() {
+    var og = window.gameOpen;
+    if (typeof og !== "function") { setTimeout(hook, 500); return; }
+    if (og.__crf) return;
+    var w = function (k) { if (k === "corral") { crOpen(""); return; } return og.apply(this, arguments); };
+    w.__crf = true; window.gameOpen = w;
+  })();
+
   /* #invpop(nov18): a Corral Run invite pops up in the middle of the app with ACCEPT / DECLINE instead of only a toast
      up top. Decline tells the sender right away (1v1: their 5 ⬡ comes back); accept opens the game straight into the race. */
   var IP = { cur: null, skip: {}, at: 0, busy: false };
@@ -102,7 +134,7 @@
     el.classList.add("on");
   }
   async function checkInv(force) {
-    if (!sb() || !me() || IP.cur || IP.busy || document.hidden) return;
+    if (!sb() || !me() || IP.cur || IP.busy || document.hidden || CRF) return;   /* inside the game, the game asks */
     if (!force && Date.now() - IP.at < 15e3) return; IP.at = Date.now();
     try {
       var r = await sb().rpc("cr_pending"); if (!r || r.error || !r.data || IP.cur) return;
@@ -113,7 +145,7 @@
     var x = IP.cur; if (!x || IP.busy) return; IP.busy = true;
     pop().querySelectorAll("button").forEach(function (b) { b.disabled = true; });
     try { if (S.unseen) { await sb().rpc("notifs_seen_all"); S.rows.forEach(function (y) { y.seen_at = y.seen_at || new Date().toISOString(); }); S.unseen = 0; paintBell(); } } catch (e) {}
-    if (yes) { location.href = "/corral-run.html?" + (x.t === "heat" ? "heat=" : "race=") + x.id + "&go=1"; return; }
+    if (yes) { IP.busy = false; hidePop(); crOpen("?" + (x.t === "heat" ? "heat=" : "race=") + x.id + "&go=1"); return; }
     try { await sb().rpc(x.t === "heat" ? "cr_heat_decline" : "cr_decline", { p_id: x.id }); try { typeof toast === "function" && toast("Passed — " + x.by + " knows"); } catch (e) {} } catch (e) {}
     IP.skip[x.t + x.id] = 1; IP.busy = false; hidePop(); setTimeout(function () { checkInv(true); }, 600);
   }
@@ -183,7 +215,7 @@
     if (!x) return;
     if (/^race/.test(x.kind || "")) {   /* #corral(nov18): a Corral Run call-out, live invite or result opens the game on that race */
       var mm = /^(cr|ch):(\d+)$/.exec(String(x.story_id || ""));   /* cr: a 1v1 race, ch: a 4/6-player race */
-      location.href = "/corral-run.html" + (mm ? (mm[1] === "ch" ? "?heat=" : "?race=") + mm[2] : "");
+      crOpen(mm ? (mm[1] === "ch" ? "?heat=" : "?race=") + mm[2] : "");
       return;
     }
     if (x.kind === "join") {   /* a hall join request: the Ports tab, looking at that hall, where the Let in / Decline card is */
