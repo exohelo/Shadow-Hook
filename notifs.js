@@ -6,7 +6,26 @@
   if (window.SHK_NOTIFS) return;
   /* #nov1(gate) — the hall gate (hall_gate.js) rides in with this file until index.html carries its own tag */
   try { if (!window.SHK_HALL_GATE && !document.querySelector('script[src*="hall_gate.js"]')) { var hg = document.createElement("script"); hg.src = "hall_gate.js?v=nov1a"; hg.defer = true; (document.head || document.documentElement).appendChild(hg); } } catch (e) {}
-  var S = { rows: [], unseen: 0, chan: null, at: 0 };
+  var S = { rows: [], unseen: 0, chan: null, at: 0, known: null };
+  /* #ping(nov18): a two-note chime when an alert lands while the app is open. Phones only let a page make sound after a
+     first tap, so the sound is unlocked on the first touch anywhere. Members can switch it off in the alerts sheet. */
+  var AC = null;
+  function pingOn() { try { return localStorage.getItem("shk_ntping") !== "0"; } catch (e) { return true; } }
+  function unlock() { try { if (!AC) { var C = window.AudioContext || window.webkitAudioContext; if (C) AC = new C(); } if (AC && AC.state === "suspended") AC.resume(); } catch (e) {} }
+  ["pointerdown", "touchstart", "keydown"].forEach(function (ev) { document.addEventListener(ev, unlock, { passive: true, capture: true }); });
+  function ping() {
+    if (!pingOn()) return;
+    try { navigator.vibrate && navigator.vibrate([18, 60, 18]); } catch (e) {}
+    try {
+      unlock(); if (!AC || AC.state !== "running") return;
+      var t = AC.currentTime;
+      [[880, 0], [1318.5, 0.11]].forEach(function (n) {
+        var o = AC.createOscillator(), g = AC.createGain(); o.type = "sine"; o.frequency.setValueAtTime(n[0], t + n[1]);
+        g.gain.setValueAtTime(0.0001, t + n[1]); g.gain.exponentialRampToValueAtTime(0.18, t + n[1] + 0.015); g.gain.exponentialRampToValueAtTime(0.0001, t + n[1] + 0.32);
+        o.connect(g); g.connect(AC.destination); o.start(t + n[1]); o.stop(t + n[1] + 0.34);
+      });
+    } catch (e) {}
+  }
   function sb() { return window.SB; }
   function me() { return window.__shkUid || null; }
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
@@ -17,7 +36,7 @@
   /* #nov1(rfltag): the floating RAFFLE tag under the header repeats the raffle strip that already runs across the top
      of every tab; the tag is retired */
   try { var rt = document.createElement("style"); rt.id = "rflTagOff"; rt.textContent = "#rflTag,#rflTag.on{display:none!important}"; (document.head || document.documentElement).appendChild(rt); } catch (e) {}
-  var CSS = "#hcnt{position:relative}#hcnt.quiet{opacity:.55}" +
+  var CSS = "#hcnt{position:relative}#hcnt.quiet{background:rgba(255,255,255,.08)!important;border-color:rgba(255,255,255,.22)!important;box-shadow:none!important;animation:none!important;color:inherit!important;opacity:.8}#hcnt.quiet #hcNtN{display:none}html.daylight #hcnt.quiet{background:rgba(0,0,0,.05)!important;border-color:rgba(0,0,0,.18)!important}" +
     "#ntSheet{position:fixed;inset:0;z-index:95;display:none;background:rgba(0,0,0,.55)}#ntSheet.on{display:block}" +
     "#ntSheet .nt-p{position:absolute;left:0;right:0;bottom:0;max-height:78vh;overflow:auto;background:var(--plate-2,#15171b);border-top:1px solid var(--line,#333);border-radius:18px 18px 0 0;padding:14px 14px calc(18px + env(safe-area-inset-bottom,0px))}" +
     "#ntSheet .nt-h{display:flex;align-items:center;gap:8px;margin-bottom:8px;font:700 15px/1 Barlow Condensed,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:var(--bone,#eee)}" +
@@ -44,8 +63,8 @@
   }
   function paintBell() {
     var b = bell(); if (!b) return;
-    /* the bell shows only while something is new; once opened it goes away until the next one */
-    b.style.display = me() && S.unseen > 0 ? "" : "none";
+    /* #bellalways(nov18): the bell stays in the header for anyone signed in — dim when nothing is new, the count when there is */
+    b.style.display = me() ? "" : "none";
     b.classList.toggle("quiet", !S.unseen);
     var n = document.getElementById("hcNtN"); if (n) n.textContent = S.unseen ? (S.unseen > 99 ? "99+" : String(S.unseen)) : "";
     b.title = S.unseen ? S.unseen + " new" : "Notifications";
@@ -55,7 +74,13 @@
     if (!sb() || !me()) return;
     try {
       var r = await sb().from("notifs").select("id,kind,actor_handle,story_id,comment_id,snippet,created_at,seen_at").eq("uid", me()).order("created_at", { ascending: false }).limit(60);
-      if (r && !r.error) { S.rows = r.data || []; S.unseen = S.rows.filter(function (x) { return !x.seen_at; }).length; S.at = Date.now(); }
+      if (r && !r.error) {
+        var rows = r.data || [], fresh = false;
+        if (S.known) rows.forEach(function (x) { if (!x.seen_at && !S.known[x.id]) fresh = true; });
+        S.known = S.known || {}; rows.forEach(function (x) { S.known[x.id] = 1; });
+        S.rows = rows; S.unseen = S.rows.filter(function (x) { return !x.seen_at; }).length; S.at = Date.now();
+        if (fresh) ping();   /* one that slipped past the live wire (the phone napped) still chimes once */
+      }
     } catch (e) {}
     paintBell(); paintList();
   }
@@ -64,7 +89,8 @@
     try {
       S.chan = sb().channel("notifs:" + me()).on("postgres_changes", { event: "INSERT", schema: "public", table: "notifs", filter: "uid=eq." + me() }, function (p) {
         var x = p && p.new; if (!x) return;
-        S.rows.unshift(x); S.unseen++; paintBell(); paintList();
+        if (S.known && S.known[x.id]) return; (S.known = S.known || {})[x.id] = 1;
+        S.rows.unshift(x); S.unseen++; paintBell(); paintList(); ping();
         try { typeof toast === "function" && toast((ICON[x.kind] || "🔔") + " " + (x.actor_handle || "Someone") + " " + (WORD[x.kind] || "")); } catch (e) {}
       }).subscribe();
     } catch (e) {}
@@ -74,24 +100,26 @@
     var el = document.getElementById("ntSheet"); if (el) return el;
     css();
     el = document.createElement("div"); el.id = "ntSheet"; el.setAttribute("role", "dialog"); el.setAttribute("aria-label", "Notifications");
-    el.innerHTML = '<div class="nt-p"><div class="nt-h">🔔 Notifications<button type="button" aria-label="Close">✕</button></div><div id="ntList"></div></div>';
+    el.innerHTML = '<div class="nt-p"><div class="nt-h">🔔 Notifications<span id="ntSnd" role="button" tabindex="0" style="margin-left:auto;font:600 12px Inter,system-ui,sans-serif;letter-spacing:.04em;text-transform:none;color:var(--steel,#999);cursor:pointer;padding:4px 8px;border:1px solid var(--line,#333);border-radius:999px"></span><button type="button" aria-label="Close" style="margin-left:6px">✕</button></div><div id="ntList"></div></div>';
     document.body.appendChild(el);
     el.addEventListener("click", function (e) {
       if (e.target === el || e.target.closest(".nt-h button")) { close(); return; }
+      if (e.target.closest("#ntSnd")) { try { localStorage.setItem("shk_ntping", pingOn() ? "0" : "1"); } catch (x) {} sndLabel(); if (pingOn()) { unlock(); setTimeout(ping, 30); } return; }
       var it = e.target.closest(".nt-it[data-i]"); if (it) { var x = S.rows[+it.getAttribute("data-i")]; close(); go(x); }
     });
     return el;
   }
+  function sndLabel() { var t = document.getElementById("ntSnd"); if (t) t.textContent = pingOn() ? "🔊 Sound on" : "🔇 Sound off"; }
   function paintList() {
     var L = document.getElementById("ntList"); if (!L) return;
-    if (!S.rows.length) { L.innerHTML = '<div class="nt-none">Nothing yet. Likes, comments, replies and @tags on your posts show up here.</div>'; return; }
+    if (!S.rows.length) { L.innerHTML = '<div class="nt-none">Nothing yet. Likes, comments, replies, @tags and Corral Run races show up here.</div>'; return; }
     L.innerHTML = S.rows.map(function (x, i) {
       return '<div class="nt-it' + (x.seen_at ? "" : " new") + '" data-i="' + i + '"><div class="nt-ic">' + (ICON[x.kind] || "🔔") + '</div><div class="nt-tx"><b>' + esc(x.actor_handle || "Someone") + "</b> " + esc(WORD[x.kind] || "") +
         (x.snippet ? '<span class="nt-sn">' + esc(x.snippet) + "</span>" : "") + '</div><div class="nt-t">' + ago(x.created_at) + "</div></div>";
     }).join("");
   }
   async function open() {
-    sheet().classList.add("on"); paintList();
+    sheet().classList.add("on"); paintList(); sndLabel();
     if (!S.at || Date.now() - S.at > 3e4) load();
     if (S.unseen) {
       try { await sb().rpc("notifs_seen_all"); } catch (e) {}
