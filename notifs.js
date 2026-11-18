@@ -32,8 +32,8 @@
   function me() { return window.__shkUid || null; }
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   function ago(ts) { var s = (Date.now() - new Date(ts).getTime()) / 1e3; return s < 60 ? "just now" : s < 3600 ? Math.round(s / 60) + "m" : s < 86400 ? Math.round(s / 3600) + "h" : Math.round(s / 86400) + "d"; }
-  var WORD = { race: "called you out on Corral Run", racelive: "wants a LIVE race on Corral Run", raced: "raced you on Corral Run", racenope: "passed on your Corral Run race", join: "asked to join", like: "liked your post", clike: "liked your comment", comment: "commented on your post", reply: "replied to you", mention: "tagged you" };
-  var ICON = { race: "🏁", racelive: "🔴", raced: "🏁", racenope: "🚫", join: "🚪", like: "❤️", clike: "❤️", comment: "💬", reply: "↩️", mention: "@" };
+  var WORD = { race: "called you out on Corral Run", racelive: "wants a LIVE race on Corral Run", raced: "raced you on Corral Run", racenope: "passed on your Corral Run race", news: "", join: "asked to join", like: "liked your post", clike: "liked your comment", comment: "commented on your post", reply: "replied to you", mention: "tagged you" };
+  var ICON = { race: "🏁", racelive: "🔴", raced: "🏁", racenope: "🚫", news: "📲", join: "🚪", like: "❤️", clike: "❤️", comment: "💬", reply: "↩️", mention: "@" };
 
   /* #nov1(rfltag): the floating RAFFLE tag under the header repeats the raffle strip that already runs across the top
      of every tab; the tag is retired */
@@ -71,6 +71,33 @@
     var n = document.getElementById("hcNtN"); if (n) n.textContent = S.unseen ? (S.unseen > 99 ? "99+" : String(S.unseen)) : "";
     b.title = S.unseen ? S.unseen + " new" : "Notifications";
   }
+
+  /* #appstore(nov18): the iPhone app is on the App Store. iPhone visitors on the website get a one-time card with the
+     download button; it never shows on Android, on computers, or inside the iPhone app itself. */
+  (function () {
+    var URL = "https://apps.apple.com/us/app/shadow-hook/id6833596735", KEY = "shk_appstore_card1";
+    try {
+      var ua = navigator.userAgent || "", ios = /iPhone|iPod|iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+      var native = !!(window.SHK_IOS || (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()));
+      if (!ios || native || localStorage.getItem(KEY)) return;
+    } catch (e) { return; }
+    function show() {
+      if (document.getElementById("asCard") || document.getElementById("ntPop") && document.getElementById("ntPop").classList.contains("on")) return;
+      var st = document.createElement("style");
+      st.textContent = "#asCard{position:fixed;left:12px;right:12px;bottom:calc(84px + env(safe-area-inset-bottom,0px));z-index:94;max-width:420px;margin:0 auto;background:var(--plate-2,#15171b);border:1.5px solid #7c5cff;border-radius:18px;padding:16px 14px 12px;box-shadow:0 18px 50px rgba(0,0,0,.55);display:flex;gap:12px;align-items:center;animation:asIn .3s ease-out;font-family:Inter,system-ui,sans-serif}" +
+        "@keyframes asIn{from{transform:translateY(20px);opacity:0}to{transform:none;opacity:1}}#asCard img{width:54px;height:54px;border-radius:13px;flex:none}" +
+        "#asCard .t{font:800 17px/1.15 Barlow Condensed,sans-serif;letter-spacing:.04em;color:var(--bone,#eee)}#asCard .s{font-size:12.5px;color:var(--steel,#999);margin-top:3px;line-height:1.35}" +
+        "#asCard a{display:inline-block;margin-top:9px;background:#7c5cff;color:#fff;font:700 13px Inter,system-ui,sans-serif;padding:9px 14px;border-radius:10px;text-decoration:none}#asCard .x{position:absolute;top:6px;right:8px;background:none;border:0;color:var(--steel,#999);font-size:18px;cursor:pointer}";
+      document.head.appendChild(st);
+      var c = document.createElement("div"); c.id = "asCard"; c.setAttribute("role", "dialog"); c.setAttribute("aria-label", "Get the iPhone app");
+      c.innerHTML = '<img src="/icon-192.png?v=hook2" alt=""><div style="flex:1;min-width:0"><div class="t">📲 THE SHADOW HOOK IS ON THE APP STORE</div><div class="s">Get the iPhone app: faster, with dispatch alerts and Corral Run.</div><a href="' + URL + '" id="asGo">Download on the App Store</a></div><button type="button" class="x" aria-label="Close">✕</button>';
+      document.body.appendChild(c);
+      var done = function () { try { localStorage.setItem(KEY, String(Date.now())); } catch (e) {} c.remove(); };
+      c.querySelector(".x").addEventListener("click", done);
+      c.querySelector("#asGo").addEventListener("click", function () { try { localStorage.setItem(KEY, String(Date.now())); } catch (e) {} });
+    }
+    var tries = 0, t = setInterval(function () { if (document.body && (++tries > 3)) { clearInterval(t); show(); } }, 1000);
+  })();
 
   /* #crframe(nov18): Corral Run opens inside the app, under the header, so the header (bell, dispatch clock, menu)
      stays on screen. The game asks to close with a postMessage (pull down / side drag / back). */
@@ -220,6 +247,7 @@
       crOpen(mm ? (mm[1] === "ch" ? "?heat=" : "?race=") + mm[2] : "");
       return;
     }
+    if (x.kind === "news") { var u = String(x.story_id || ""); if (/^https:\/\//.test(u)) location.href = u; else open(); return; }   /* #appstore(nov18): a notice from the Order, with a link */
     if (x.kind === "join") {   /* a hall join request: the Ports tab, looking at that hall, where the Let in / Decline card is */
       try { var pb = document.querySelector('.nav button[data-scr="ports"]'); pb && pb.click(); } catch (e) {}
       setTimeout(function () { try { window.SHK_PORTS && SHK_PORTS.explore(/SD ·/.test(x.snippet || "") ? "sd" : "sf"); window.SHK_HALL_GATE && SHK_HALL_GATE.requests(); } catch (e) {} }, 400);
