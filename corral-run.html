@@ -68,6 +68,9 @@ html,body{margin:0;height:100%;background:#0b0a14;overflow:hidden;overscroll-beh
 .muted{font:600 14px "Barlow Condensed",sans-serif;color:#8f86a8;text-align:left;padding:4px 2px}
 .dot{width:9px;height:9px;border-radius:50%;background:#22c55e;box-shadow:0 0 6px #22c55e;flex:none}
 table.lb{width:100%;border-collapse:collapse;font:700 16px "Barlow Condensed",sans-serif;text-align:left}table.lb td,table.lb th{padding:6px 4px;border-bottom:1px solid #ffffff14}table.lb th{color:#a79fc0;font-size:13px;letter-spacing:1px}table.lb tr.me td{color:#fbbf24}
+.panel.pulling{pointer-events:auto}
+#pullCue{position:fixed;z-index:9;left:50%;top:calc(env(safe-area-inset-top) + 14px);transform:translateX(-50%);font:400 15px/1 Anton,sans-serif;letter-spacing:2px;color:#c4b5fd;background:#1a1530;border:1px solid #ffffff33;padding:9px 14px;border-radius:999px;opacity:0;transition:opacity .15s;pointer-events:none}
+#pullCue.on{opacity:1}#pullCue.go{color:#1a1206;background:#fbbf24;border-color:#fde68a}
 #toast{position:fixed;z-index:9;left:50%;top:calc(env(safe-area-inset-top) + 12px);transform:translateX(-50%);background:#1a1530;border:1px solid #fbbf24;color:#fff;font:700 16px "Barlow Condensed",sans-serif;padding:10px 16px;border-radius:12px;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw;text-align:center}
 </style>
 </head>
@@ -86,6 +89,7 @@ table.lb{width:100%;border-collapse:collapse;font:700 16px "Barlow Condensed",sa
 <div id="mark" class="ctl">MARK</div>
 <button id="snd" type="button">🔊</button>
 <div id="toast"></div>
+<div id="pullCue">PULL TO CLOSE</div>
 
 <div id="menu" class="panel top"><div class="card wide">
   <h1>CORRAL RUN</h1>
@@ -140,7 +144,7 @@ table.lb{width:100%;border-collapse:collapse;font:700 16px "Barlow Condensed",sa
   </ul>
   <div class="kb">Keyboard: arrows / WASD · Space = item · Enter = MARK</div>
   </div>
-  <a class="btn alt" href="/" style="margin-top:14px">BACK TO THE HOOK</a>
+  <a class="btn alt" href="/" data-home style="margin-top:14px">BACK TO THE HOOK</a>
 </div></div>
 
 <div id="wait" class="panel top" style="display:none"><div class="card">
@@ -1296,6 +1300,31 @@ $('wCancel').addEventListener('click',function(){ var id=+this.dataset.id, b=thi
 (function(){ var t=0, el=$('callH'); el.addEventListener('input',function(){ clearTimeout(t); var q=el.value.trim(); if(q.length<2){ $('callSug').innerHTML=''; return; }
   t=setTimeout(function(){ rpc('handle_search',{p_q:q}).then(function(hs){ $('callSug').innerHTML=(hs||[]).map(function(h){ return '<button type="button" data-pick="'+esc(h)+'">'+esc(h)+'</button>'; }).join(''); }).catch(function(){}); },220); }); })();
 ['keydown','keyup'].forEach(function(ev){ $('callH').addEventListener(ev,function(e){ e.stopPropagation(); }); });
+
+/* ───────────── close back to the app: hard pull down or a side drag (like the other games) ───────────── */
+function goHome(){ try{ if(document.referrer&&document.referrer.indexOf(location.origin)===0&&history.length>1){ history.back(); setTimeout(function(){ location.href='/'; },700); return; } }catch(e){} location.href='/'; }
+document.addEventListener('click',function(e){ var a=e.target.closest&&e.target.closest('[data-home]'); if(a){ e.preventDefault(); goHome(); } },true);
+(function(){
+  var TH=110, SX=95, P=null, cue=document.getElementById('pullCue');
+  function panel(){ if(state==='race'||state==='count'||state==='scramble') return null; if(NET.goT&&state==='waiting'&&$('wBig').textContent.indexOf('IN ')===0) return null;
+    var ids=['done','wait','menu']; for(var i=0;i<ids.length;i++){ var el=$(ids[i]); if(el.style.display!=='none') return el; } return null; }
+  function scrolled(t,root){ for(var n=t;n&&n!==document.body;n=n.parentElement){ if(n.scrollTop>0&&n.scrollHeight>n.clientHeight+2) return true; if(n===root) break; } return false; }
+  function begin(t,x,y){ P=null; var pn=panel(); if(!pn) return; if(t.closest('input,textarea,select')) return; P={x:x,y:y,pn:pn,card:pn.querySelector('.card'),mode:null,top:!scrolled(t,pn),d:0}; }
+  function move(x,y){ if(!P||P.mode==='dead') return false; var dx=x-P.x, dy=y-P.y;
+    if(!P.mode){ if(Math.abs(dx)>14&&Math.abs(dx)>Math.abs(dy)*1.4) P.mode='side'; else if(dy>12&&P.top&&Math.abs(dy)>Math.abs(dx)) P.mode='down'; else if(Math.abs(dy)>12||Math.abs(dx)>14){ P.mode='dead'; return false; } else return false; }
+    var d=P.mode==='side'?Math.abs(dx):Math.max(0,dy), lim=P.mode==='side'?SX:TH, off=d<lim?d:lim+(d-lim)*.4; P.d=d;
+    P.card.style.transition='none'; P.card.style.transform=P.mode==='side'?'translateX('+(dx<0?-off:off)+'px)':'translateY('+off+'px)'; P.card.style.opacity=String(Math.max(.4,1-d/450));
+    var go=d>=lim; cue.classList.add('on'); cue.classList.toggle('go',go); cue.textContent=go?'LET GO · BACK TO THE HOOK':(P.mode==='side'?'DRAG TO CLOSE':'PULL TO CLOSE');
+    if(go&&!P.buzz){ P.buzz=1; try{ navigator.vibrate&&navigator.vibrate(10); }catch(e){} } if(!go) P.buzz=0; return true; }
+  function end(){ if(!P) return; var p=P; P=null; cue.classList.remove('on','go'); if(!p.mode||p.mode==='dead') return;
+    var eat=function(ev){ ev.stopPropagation(); ev.preventDefault(); }; document.addEventListener('click',eat,true); setTimeout(function(){ document.removeEventListener('click',eat,true); },400);
+    var c=p.card, lim=p.mode==='side'?SX:TH; c.style.transition='transform .22s cubic-bezier(.2,.9,.3,1),opacity .22s';
+    if(p.d>=lim){ c.style.transform=p.mode==='side'?'translateX('+(c.style.transform.indexOf('-')>=0?'-':'')+'110%)':'translateY(40%)'; c.style.opacity='0'; setTimeout(goHome,170); }
+    else { c.style.transform=''; c.style.opacity=''; setTimeout(function(){ c.style.transition=''; },240); } }
+  document.addEventListener('touchstart',function(e){ if(e.touches.length!==1){ P=null; return; } begin(e.target,e.touches[0].clientX,e.touches[0].clientY); },{passive:true});
+  document.addEventListener('touchmove',function(e){ if(P&&move(e.touches[0].clientX,e.touches[0].clientY)) e.preventDefault(); },{passive:false});
+  document.addEventListener('touchend',end); document.addEventListener('touchcancel',end);
+})();
 
 function start(race){
   au(); ['menu','done','wait'].forEach(function(id){ document.getElementById(id).style.display='none'; });
