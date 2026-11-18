@@ -94,6 +94,7 @@ table.lb{width:100%;border-collapse:collapse;font:700 16px "Barlow Condensed",sa
   <div class="tabs"><button type="button" data-tab="race" class="on">RACE</button><button type="button" data-tab="board">LEADERBOARD</button><button type="button" data-tab="how">HOW TO</button></div>
   <div id="tab-race">
     <div id="inbox"></div>
+    <div id="topPrev"></div>
     <div class="sect">🗺 PICK YOUR DOCK</div>
     <div id="maps" class="maps"></div>
     <div class="sect">⚔️ RACE FOR ⬡ <small id="potLine">5 ⬡ in · winner takes 10 ⬡</small></div>
@@ -142,7 +143,7 @@ table.lb{width:100%;border-collapse:collapse;font:700 16px "Barlow Condensed",sa
   <a class="btn alt" href="/" style="margin-top:14px">BACK TO THE HOOK</a>
 </div></div>
 
-<div id="wait" class="panel" style="display:none"><div class="card">
+<div id="wait" class="panel top" style="display:none"><div class="card">
   <div class="tag" id="wTag">LIVE RACE</div>
   <div class="res" id="wBig" style="font-size:48px">WAITING</div>
   <div class="sub" id="wSub"></div>
@@ -150,6 +151,11 @@ table.lb{width:100%;border-collapse:collapse;font:700 16px "Barlow Condensed",sa
   <button class="btn gold" id="wGo" type="button" style="display:none">START NOW</button>
   <button class="btn alt" id="wCancel" type="button">TAKE IT BACK · 5 ⬡ REFUND</button>
   <button class="btn alt" id="wLeave" type="button" style="display:none">LEAVE · 5 ⬡ BACK</button>
+  <div id="wInvBox" style="display:none;margin-top:14px">
+    <div class="sect2">➕ INVITE MORE <small>everyone you invite gets a push · first in ride</small></div>
+    <div class="rowf"><input id="wInvH" placeholder="Invite a handle…" autocomplete="off" autocapitalize="characters" spellcheck="false"><button class="btn sm" id="wInvAdd" type="button">INVITE</button></div>
+    <div id="wInvList" class="list"></div>
+  </div>
 </div></div>
 
 <div id="done" class="panel" style="display:none"><div class="card">
@@ -462,7 +468,7 @@ function engineOff(){ if(eng){ try{ eng.o.stop(); }catch(e){} eng=null; } }
 /* ───────────── state ───────────── */
 var cv=document.getElementById('c'), ctx=cv.getContext('2d'), DPR=1, VW=0, VH=0, zoom=1;
 var cans=[], stops=[], runners=[], scrT=0, racers=[], player=null, trucks=[], handlers=[], rtgs=[], train=null, boxes=[], cones=[], chassis=[], parts=[], rings=[], posts=[];
-var MODE='practice', RACE=null, GH=[], recT=0, liveSendT=0, LG={}, ghostG=null;
+var PRAC={id:null,res:null}, MODE='practice', RACE=null, GH=[], recT=0, liveSendT=0, LG={}, ghostG=null;
 var GCOL=['#f43f5e','#22d3ee','#a3e635','#f97316','#e879f9','#facc15'];
 var state='menu', clock=0, countT=0, shake=0, msgT=0, camX=W/2, camY=H-8*T, lastHonk=0, bellT=0;
 var keys={}, touch={L:0,R:0,gas:0,brk:0};
@@ -722,7 +728,7 @@ function step(dt){
   }
   var racing=state==='race';
   if(racing) clock+=dt;
-  if(racing&&MODE==='paid'&&!player.finished){ recT+=dt; if(!GH.length) GH.push([Math.round(player.x),Math.round(player.y)]); while(recT>=.1){ recT-=.1; GH.push([Math.round(player.x),Math.round(player.y)]); } }
+  if(racing&&(MODE==='paid'||PRAC.id)&&!player.finished){ recT+=dt; if(!GH.length) GH.push([Math.round(player.x),Math.round(player.y)]); while(recT>=.1){ recT-=.1; GH.push([Math.round(player.x),Math.round(player.y)]); } }
   racers.forEach(function(r){ var inp=(racing&&(r.ai?aiInput(r,dt):(player.finished?{steer:0,gas:0,brake:1}:playerInput())))||{steer:0,gas:0,brake:1}; stepCar(r,inp,dt); if(r.ai&&!racing){ r.vx=r.vy=0; } });
   if(state==='count'||state==='menu'||state==='scramble'){ racers.forEach(function(r){ r.vx=r.vy=0; }); }
   interact(dt);
@@ -744,6 +750,7 @@ function doMark(){
   player.finished=true; player.ft=clock; var res=canMark; markBtn.style.display='none'; SFX.mark(); engineOff();
   say('MARKED! '+res.label,res.col);
   if(MODE==='paid'){ if(GH.length) GH.push([Math.round(player.x),Math.round(player.y)]); setTimeout(function(){ paidDone(res); },900); return; }
+  if(PRAC.id){ GH.push([Math.round(player.x),Math.round(player.y)]); var pid=PRAC.id; PRAC.id=null; rpc('cr_practice_finish',{p_id:pid,p_clock:+player.ft.toFixed(2),p_pen:player.pen,p_park:res.adj,p_ghost:GH}).then(function(x){ PRAC.res=x; var el=$('dLb'); if(el) el.textContent=x.ok?'✓ On the leaderboard · your best here '+(+x.best).toFixed(2)+'s':'This run did not count for the board (paused or left the app)'; }).catch(function(){}); }
   setTimeout(function(){ showDone(res); },1100);
 }
 function showDone(res){
@@ -758,6 +765,7 @@ function showDone(res){
   document.getElementById('dTag').textContent=['1ST','2ND','3RD','4TH'][place-1]+' TO THE CORRAL'+(pb?' · NEW BEST':'');
   document.getElementById('dTime').textContent=final.toFixed(2)+'s';
   document.getElementById('dPark').textContent='clock '+player.ft.toFixed(2)+'s · '+res.label+(player.pen?' · written up +'+player.pen.toFixed(1)+'s':'');
+  if(!document.getElementById('dLb')){ var lb=document.createElement('div'); lb.id='dLb'; lb.className='kb'; document.getElementById('dRows').after(lb); } document.getElementById('dLb').textContent=PRAC.res?(PRAC.res.ok?'✓ On the leaderboard · your best here '+(+PRAC.res.best).toFixed(2)+'s':'This run did not count for the board (paused or left the app)'):NET.uid?'Sending your time to the leaderboard…':'Sign in on the app to put practice times on the leaderboard';
   document.getElementById('dRows').innerHTML=list.map(function(x,i){ return '<div class="'+(x.me?'me':'')+'"><span>'+(i+1)+'. '+x.n+'</span><span>'+(x.t==null?'still driving':x.t.toFixed(2)+'s')+'</span></div>'; }).join('')+'<div><span>Your best</span><span>'+best.toFixed(2)+'s</span></div>';
   $('again').textContent='RUN IT BACK'; $('toLobby').style.display=''; document.getElementById('done').style.display='flex';
 }
@@ -1043,6 +1051,7 @@ function lobby(first){
     $('paidBox').style.display='';
     renderInbox(); renderMine(); renderResults(); renderBoard(); renderOnline(); renderInv();
     if(L.my_heats&&state==='menu') L.my_heats.forEach(function(r){ if(r.status==='live'&&r.start_at&&new Date(r.start_at).getTime()>snow()) rpc('cr_heat_state',{p_id:r.id}).then(countdownTo).catch(function(){}); });
+    if(first||!BOARD||Date.now()-(NET.bAt||0)>30000){ NET.bAt=Date.now(); loadBoard(); }
     if(L.go&&state==='menu') enterRace(L.go);
     if(first&&NET.wantHeat){ var wh=NET.wantHeat; NET.wantHeat=null; rpc('cr_heat_state',{p_id:wh}).then(function(v){
       if(v.status==='open'&&v.seated) heatRoom(v);
@@ -1078,16 +1087,37 @@ function renderResults(){
   (L.heat_results||[]).forEach(function(r){ h+='<div class="it"><div class="nm">'+(r.place===1?'🏆 ':'👥 ')+r.size+'-player · '+esc(mshort(r.map))+'<small>'+(r.place===1?'WON '+r.pot+' ⬡':(r.winner||'nobody')+' took '+r.pot+' ⬡ · you '+(r.place?ord(r.place):'—'))+' · '+(r.my_time!=null?(+r.my_time).toFixed(2)+'s':'DNF')+'</small></div></div>'; });
   $('results').innerHTML=h?'<div class="sect">📋 RECENT RACES</div>'+h:'';
 }
+var BOARD=null, BTAB='wins', BMAP=null;
+function loadBoard(){ if(!NET.uid) return; rpc('cr_board',{p_lim:100}).then(function(B){ BOARD=B; renderBoard(); renderTop(); }).catch(function(){}); }
+function lbRow(r,cells){ return '<tr class="'+(r.me?'me':'')+'"><td>'+r.rk+'</td>'+cells+'</tr>'; }
+function renderTop(){
+  var B=BOARD, el=$('topPrev'); if(!el) return; if(!B||!B.drivers){ el.innerHTML=''; return; }
+  var list=(B.wins&&B.wins.length?B.wins:[]).slice(0,5), h='<div class="sect">🏆 TOP DRIVERS <small>'+B.drivers+' driver'+(B.drivers===1?'':'s')+' on the board</small></div>';
+  if(list.length){ h+='<table class="lb">'+list.map(function(r){ return lbRow(r,'<td>'+esc(r.h)+(r.streak>=3?' 🔥'+r.streak:'')+'</td><td>'+r.w+'–'+r.l+'</td><td>'+(r.net>0?'+':'')+r.net+' ⬡</td>'); }).join('')+'</table>'; }
+  else { h+='<table class="lb">'+(B.runs||[]).slice(0,5).map(function(r){ return lbRow(r,'<td>'+esc(r.h)+'</td><td style="text-align:right">'+r.tot+' runs</td>'); }).join('')+'</table>'; }
+  h+='<button type="button" class="btn alt full" data-tab="board" style="margin-top:8px;font-size:16px">SEE THE FULL BOARD</button>';
+  el.innerHTML=h;
+}
 function renderBoard(){
-  var L=NET.L; if(!L){ $('tab-board').innerHTML='<div class="muted">Sign in on The Shadow Hook to see the leaderboard.</div>'; return; }
-  var h='<div class="sect">🏆 MOST WINS</div>';
-  if(!(L.board||[]).length) h+='<div class="muted">No paid races yet. Be the first on the board.</div>';
-  else { h+='<table class="lb"><tr><th>#</th><th>DRIVER</th><th>W–L</th><th>⬡ NET</th></tr>'; L.board.forEach(function(r,i){ h+='<tr class="'+(r.h===L.me?'me':'')+'"><td>'+(i+1)+'</td><td>'+esc(r.h)+(r.streak>=3?' 🔥'+r.streak:'')+'</td><td>'+r.w+'–'+r.l+(r.t?'–'+r.t:'')+'</td><td>'+(r.net>0?'+':'')+r.net+'</td></tr>'; }); h+='</table>'; }
-  var F=L.fastest||{}; if(Array.isArray(F)) F={};
-  MAP_ORDER.forEach(function(k){ var rows=F[k]||[]; h+='<div class="sect">⏱ FASTEST · '+esc(mapName(k))+'</div>';
-    if(!rows.length) h+='<div class="muted">No paid times on this dock yet.</div>';
-    else { h+='<table class="lb">'; rows.forEach(function(r,i){ h+='<tr class="'+(r.h===L.me?'me':'')+'"><td>'+(i+1)+'</td><td>'+esc(r.h)+'</td><td style="text-align:right">'+(+r.best).toFixed(2)+'s</td></tr>'; }); h+='</table>'; } });
-  $('tab-board').innerHTML=h;
+  var el=$('tab-board'); if(!NET.uid){ el.innerHTML='<div class="muted">Sign in on The Shadow Hook to see the leaderboard.</div>'; return; }
+  var B=BOARD; if(!B){ el.innerHTML='<div class="muted">Loading the board…</div>'; loadBoard(); return; }
+  BMAP=BMAP||SEL;
+  var h='<div class="muted" style="text-align:center">'+B.drivers+' driver'+(B.drivers===1?'':'s')+' on the board · everyone who has driven Corral Run</div>';
+  h+='<div class="sizes"><button type="button" data-btab="wins" class="'+(BTAB==='wins'?'on':'')+'">WINS & ⬡</button><button type="button" data-btab="fast" class="'+(BTAB==='fast'?'on':'')+'">FASTEST</button><button type="button" data-btab="runs" class="'+(BTAB==='runs'?'on':'')+'">MOST RUNS</button></div>';
+  if(BTAB==='wins'){
+    h+='<div class="muted">Races for ⬡ — 1v1 and 4/6-player.</div>';
+    if(!(B.wins||[]).length) h+='<div class="muted">No races for ⬡ yet.</div>';
+    else h+='<table class="lb"><tr><th>#</th><th>DRIVER</th><th>W–L</th><th>⬡ NET</th></tr>'+B.wins.map(function(r){ return lbRow(r,'<td>'+esc(r.h)+(r.streak>=3?' 🔥'+r.streak:'')+'</td><td>'+r.w+'–'+r.l+(r.t?'–'+r.t:'')+'</td><td>'+(r.net>0?'+':'')+r.net+'</td>'); }).join('')+'</table>';
+  } else if(BTAB==='fast'){
+    h+='<div class="maps" style="margin-bottom:8px">'+MAP_ORDER.map(function(k){ return '<button type="button" class="mapc'+(k===BMAP?' on':'')+'" data-bmap="'+k+'"><span class="mn">'+esc(mshort(k))+'</span><span class="ms">'+esc(MAPS[k].sub)+'</span></button>'; }).join('')+'</div>';
+    var rows=(B.fastest||{})[BMAP]||[];
+    h+='<div class="muted">Best time per driver on '+esc(mapName(BMAP))+' · ⚔️ race for ⬡ · 🏁 practice</div>';
+    if(!rows.length) h+='<div class="muted">Nobody has a time on this dock yet.</div>';
+    else h+='<table class="lb">'+rows.map(function(r){ return lbRow(r,'<td>'+esc(r.h)+'</td><td>'+(r.paid?'⚔️':'🏁')+'</td><td style="text-align:right">'+(+r.best).toFixed(2)+'s</td>'); }).join('')+'</table>';
+  } else {
+    h+='<table class="lb"><tr><th>#</th><th>DRIVER</th><th>⚔️ FOR ⬡</th><th>🏁 PRACTICE</th></tr>'+(B.runs||[]).map(function(r){ return lbRow(r,'<td>'+esc(r.h)+'</td><td>'+r.paid+'</td><td>'+r.prac+'</td>'); }).join('')+'</table>';
+  }
+  el.innerHTML=h;
 }
 function renderOnline(){
   var el=$('online'); if(!NET.uid){ el.innerHTML=''; return; }
@@ -1100,7 +1130,7 @@ function floorJoin(){
     var ch=NET.sb.channel('floor2',{config:{presence:{key:NET.uid}}});
     ch.on('presence',{event:'sync'},function(){ try{ var st=ch.presenceState()||{}, out=[];
       Object.keys(st).forEach(function(k){ var ms=st[k]||[]; if(!ms.length) return; var m=ms[ms.length-1]; if(m.ghost||m.anon) return; var h=String(m.h==null?'':m.h).trim(); if(!h||h==='—'||/^a (masked )?casual$/i.test(h)) return; out.push({uid:k,h:h.toUpperCase(),g:m.room==='corral-run'}); });
-      out.sort(function(a,b){ return (b.g?1:0)-(a.g?1:0)||a.h.localeCompare(b.h); }); NET.online=out; if(state==='menu'){ renderOnline(); renderInv(); } }catch(e){} });
+      out.sort(function(a,b){ return (b.g?1:0)-(a.g?1:0)||a.h.localeCompare(b.h); }); NET.online=out; if(state==='menu'){ renderOnline(); renderInv(); } if(state==='waiting') paintWInv(); }catch(e){} });
     ch.subscribe(function(s){ if(s==='SUBSCRIBED'&&NET.me) try{ ch.track({h:NET.me,room:'corral-run'}); }catch(e){} });
     NET.floor=ch;
     var t=setInterval(function(){ if(NET.me&&NET.floor){ try{ NET.floor.track({h:NET.me,room:'corral-run'}); }catch(e){} clearInterval(t); } },1000);
@@ -1122,12 +1152,12 @@ function joinRace(id,btn){
 function enterRace(id){ rpc('cr_state',{p_id:id}).then(function(d){ if(d.status==='live'&&d.live&&!d.my_done) countdownTo(d); }).catch(function(){}); }
 function waitLive(d){
   state='waiting'; $('menu').style.display='none'; $('wait').style.display='flex'; $('wCancel').style.display=''; $('wCancel').dataset.id=d.id;
-  $('wGo').style.display='none'; $('wLeave').style.display='none'; $('wSeats').innerHTML=''; $('wTag').textContent='🔴 LIVE RACE · 5 ⬡ HELD'; $('wBig').textContent='WAITING'; $('wSub').textContent='Waiting for '+(d.foe_name||'anyone on the app')+' to accept. They got a push.';
+  $('wGo').style.display='none'; $('wLeave').style.display='none'; $('wInvBox').style.display='none'; $('wSeats').innerHTML=''; $('wTag').textContent='🔴 LIVE RACE · 5 ⬡ HELD'; $('wBig').textContent='WAITING'; $('wSub').textContent='Waiting for '+(d.foe_name||'anyone on the app')+' to accept. They got a push.';
   clearInterval(NET.waitT); NET.waitT=setInterval(function(){ rpc('cr_state',{p_id:d.id}).then(function(x){ if(x.status==='live'&&x.start_at){ clearInterval(NET.waitT); countdownTo(x); } else if(x.status==='void'){ clearInterval(NET.waitT); toast('Nobody took it — 5 ⬡ back'); showLobby(); } }).catch(function(){}); },1500);
 }
 function countdownTo(d){
   clearInterval(NET.waitT); clearInterval(NET.goT); state='waiting'; $('menu').style.display='none'; $('wait').style.display='flex'; $('wCancel').style.display='none';
-  $('wTag').textContent=d.heat?'🔴 '+d.size+'-PLAYER RACE · POT '+d.pot+' ⬡':'🔴 LIVE vs '+(d.foe_name||''); $('wSub').textContent='Get your thumbs ready. Don\'t leave the app.'; $('wGo').style.display='none'; $('wLeave').style.display='none'; $('wSeats').innerHTML=d.heat?seatRows(d):'';
+  $('wTag').textContent=d.heat?'🔴 '+d.size+'-PLAYER RACE · POT '+d.pot+' ⬡':'🔴 LIVE vs '+(d.foe_name||''); $('wSub').textContent='Get your thumbs ready. Don\'t leave the app.'; $('wGo').style.display='none'; $('wLeave').style.display='none'; $('wInvBox').style.display='none'; $('wSeats').innerHTML=d.heat?seatRows(d):'';
   RACE=d; liveJoin(d);
   var t0=new Date(d.start_at).getTime();
   NET.goT=setInterval(function(){ var left=(t0-snow())/1000; if(left<=0){ clearInterval(NET.goT); start(d); } else $('wBig').textContent='IN '+Math.ceil(left); },100);
@@ -1155,7 +1185,7 @@ function paidDone(res){
   if(NET.chan) try{ NET.chan.send({type:'broadcast',event:'pos',payload:{u:NET.uid,h:NET.me,x:Math.round(player.x),y:Math.round(player.y),a:+player.a.toFixed(2),done:true}}); }catch(e){}
   $('dTag').textContent='MARKED · SENDING YOUR TIME'; $('dTime').textContent=final.toFixed(2)+'s';
   $('dPark').textContent='clock '+player.ft.toFixed(2)+'s · '+res.label+(player.pen?' · written up +'+player.pen.toFixed(1)+'s':'');
-  $('dRows').innerHTML=''; $('again').textContent='BACK TO THE LOBBY'; $('toLobby').style.display='none'; $('done').style.display='flex';
+  $('dRows').innerHTML=''; if($('dLb')) $('dLb').textContent=''; $('again').textContent='BACK TO THE LOBBY'; $('toLobby').style.display='none'; $('done').style.display='flex';
   var tries=0;
   if(RACE.heat){ (function sendH(){ rpc('cr_heat_finish',{p_id:RACE.id,p_clock:+player.ft.toFixed(2),p_pen:player.pen,p_park:res.adj,p_ghost:GH}).then(showHeat).catch(function(e){ if(++tries<4) setTimeout(sendH,1500); else { $('dTag').textContent='COULD NOT SEND YOUR TIME'; $('dRows').innerHTML='<div><span>'+esc(e.message)+'</span></div>'; } }); })(); return; }
   (function send(){ rpc('cr_finish',{p_id:RACE.id,p_clock:+player.ft.toFixed(2),p_pen:player.pen,p_park:res.adj,p_ghost:GH}).then(showPaid).catch(function(e){ if(++tries<4) setTimeout(send,1500); else { $('dTag').textContent='COULD NOT SEND YOUR TIME'; $('dRows').innerHTML='<div><span>'+esc(e.message)+'</span></div>'; } }); })();
@@ -1183,11 +1213,24 @@ function heatRoom(d){
     $('wSub').textContent=v.me_host?'Your invites are out. It starts the moment the last seat fills — or start it now with who\'s here.':'Waiting on '+v.host_handle+' and the last seats. Don\'t leave the app.';
     $('wSeats').innerHTML=seatRows(v);
     $('wGo').style.display=v.me_host&&n>=2?'':'none'; $('wGo').textContent='START NOW WITH '+n; $('wGo').dataset.id=v.id;
-    $('wLeave').style.display=''; $('wLeave').textContent=v.me_host?'CALL IT OFF · REFUND EVERYONE':'LEAVE · 5 ⬡ BACK'; $('wLeave').dataset.id=v.id; };
+    $('wLeave').style.display=''; $('wLeave').textContent=v.me_host?'CALL IT OFF · REFUND EVERYONE':'LEAVE · 5 ⬡ BACK'; $('wLeave').dataset.id=v.id;
+    WROOM=v; paintWInv(); };
   paint(d);
   clearInterval(NET.waitT); NET.waitT=setInterval(function(){ if(state!=='waiting'){ clearInterval(NET.waitT); return; } rpc('cr_heat_state',{p_id:d.id}).then(function(v){
     if(v.status==='live'&&v.start_at){ clearInterval(NET.waitT); countdownTo(v); } else if(v.status==='void'){ clearInterval(NET.waitT); toast('Called off — 5 ⬡ back'); showLobby(); } else paint(v); }).catch(function(){}); },1500);
 }
+var WROOM=null;
+function paintWInv(){
+  var v=WROOM, box=$('wInvBox'); if(!v||v.status!=='open'||state!=='waiting'){ box.style.display='none'; return; } box.style.display='';
+  var seated={}, inv={}; (v.seats||[]).forEach(function(x){ seated[x.h]=1; }); (v.invited_list||[]).forEach(function(h){ inv[h]=1; });
+  var list=NET.online.filter(function(o){ return o.uid!==NET.uid&&!seated[o.h]; });
+  $('wInvList').innerHTML=list.length?list.slice(0,40).map(function(o){ var done=inv[o.h];
+    return '<div class="it"><span class="dot"></span><div class="nm">'+esc(o.h)+(o.g?'<small>in Corral Run</small>':'')+'</div><button type="button" class="inv'+(done?' on':'')+'" '+(done?'disabled':'data-winv="'+esc(o.h)+'"')+'>'+(done?'✓ INVITED':'INVITE')+'</button></div>'; }).join('')
+    :'<div class="muted">Nobody else is on the app right now — invite by handle and they get a push.</div>';
+}
+function wInvite(hs,btn){ if(!WROOM) return; if(btn) btn.disabled=true;
+  rpc('cr_heat_invite',{p_id:WROOM.id,p_handles:hs}).then(function(v){ toast(v.invited?'📣 Invited '+hs.join(', '):'Already invited or in the race'); WROOM=v; paintWInv(); })
+    .catch(function(e){ if(btn) btn.disabled=false; toast('✗ '+e.message); }); }
 function joinHeat(id,btn){
   if(NET.busy) return; busy(btn,true);
   rpc('cr_heat_join',{p_id:id}).then(function(v){ busy(btn,false); toast('👥 You\'re in — 5 ⬡ seat'); if(v.status==='live'&&v.start_at) countdownTo(v); else heatRoom(v); })
@@ -1217,11 +1260,14 @@ function renderInv(){ $('hChips').innerHTML=Object.keys(INV).map(function(h){ re
 function lobbyQuiet(){ if(NET.uid) rpc('cr_lobby').then(function(L){ NET.L=L; }).catch(function(){}); }
 document.addEventListener('click',function(e){
   var b=e.target.closest('button'); if(!b) return;
-  if(b.dataset.tab){ document.querySelectorAll('.tabs button').forEach(function(x){ x.classList.toggle('on',x===b); }); ['race','board','how'].forEach(function(t){ $('tab-'+t).style.display=t===b.dataset.tab?'':'none'; }); return; }
+  if(b.dataset.tab){ var tb=b.dataset.tab; document.querySelectorAll('.tabs button').forEach(function(x){ x.classList.toggle('on',x.dataset.tab===tb); }); ['race','board','how'].forEach(function(t){ $('tab-'+t).style.display=t===tb?'':'none'; }); if(tb==='board'){ renderBoard(); loadBoard(); $('menu').scrollTop=0; } return; }
+  if(b.dataset.btab){ BTAB=b.dataset.btab; renderBoard(); return; }
+  if(b.dataset.bmap){ BMAP=b.dataset.bmap; renderBoard(); return; }
   if(b.dataset.map){ pickMap(b.dataset.map); return; }
   if(b.dataset.join){ joinRace(+b.dataset.join,b); return; }
   if(b.dataset.size){ setSize(+b.dataset.size); return; }
   if(b.dataset.hjoin){ joinHeat(+b.dataset.hjoin,b); return; }
+  if(b.dataset.winv){ wInvite([b.dataset.winv],b); return; }
   if(b.dataset.hroom){ rpc('cr_heat_state',{p_id:+b.dataset.hroom}).then(function(v){ if(v.status==='live'&&v.start_at) countdownTo(v); else heatRoom(v); }).catch(function(e){ toast('✗ '+e.message); }); return; }
   if(b.dataset.inv){ var hh=b.dataset.inv; if(INV[hh]) delete INV[hh]; else INV[hh]=1; renderInv(); return; }
   if(b.dataset.uninv){ delete INV[b.dataset.uninv]; renderInv(); return; }
@@ -1231,6 +1277,8 @@ document.addEventListener('click',function(e){
   if(b.dataset.cancel){ b.disabled=true; rpc('cr_cancel',{p_id:+b.dataset.cancel}).then(function(){ toast('↩ Taken back — 5 ⬡ returned'); lobby(false); }).catch(function(x){ b.disabled=false; toast('✗ '+x.message); }); return; }
   if(b.dataset.pick){ $('callH').value=b.dataset.pick; $('callSug').innerHTML=''; return; }
 });
+$('wInvAdd').addEventListener('click',function(){ var h=$('wInvH').value.trim().toUpperCase(); if(!h) return; $('wInvH').value=''; wInvite([h],null); });
+['keydown','keyup'].forEach(function(ev){ $('wInvH').addEventListener(ev,function(e){ e.stopPropagation(); }); });
 $('hAdd').addEventListener('click',function(){ var h=$('hInv').value.trim().toUpperCase(); if(!h) return; INV[h]=1; $('hInv').value=''; $('hSug').innerHTML=''; renderInv(); });
 $('hSend').addEventListener('click',function(){ var hs=Object.keys(INV), any=$('hAny').checked, b=this; if(!hs.length&&!any){ toast('Pick some drivers, or open it to anyone'); return; } if(NET.busy) return; busy(b,true);
   rpc('cr_heat_open',{p_size:SIZE,p_map:SEL,p_handles:hs,p_anyone:any}).then(function(v){ busy(b,false); INV={}; renderInv(); toast('👥 Invites out to '+(v.invited||0)+(any?' + anyone':'')+' — 5 ⬡ seat held'); heatRoom(v); }).catch(function(e){ busy(b,false); toast('✗ '+e.message); }); });
@@ -1250,6 +1298,7 @@ function start(race){
   au(); ['menu','done','wait'].forEach(function(id){ document.getElementById(id).style.display='none'; });
   MODE=race?'paid':'practice'; RACE=race||null; R=race?rng(race.seed||7):Math.random; loadMap(race?race.map:SEL);
   reset(); state='count'; countT=3; step.lastN=0; markBtn.style.display='none';
+  PRAC.id=null; PRAC.res=null; if(!race&&NET.uid){ rpc('cr_practice_start',{p_map:MAP.key}).then(function(id){ if(state==='count'||state==='scramble'||state==='race') PRAC.id=id; }).catch(function(){}); }
   if(race&&race.ghost&&race.ghost.length) ghostG={pts:race.ghost,x:race.ghost[0][0],y:race.ghost[0][1],a:-Math.PI/2,done:false};
   if(race&&race.live) liveJoin(race);
 }
