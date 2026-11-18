@@ -11,8 +11,8 @@
   function me() { return window.__shkUid || null; }
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   function ago(ts) { var s = (Date.now() - new Date(ts).getTime()) / 1e3; return s < 60 ? "just now" : s < 3600 ? Math.round(s / 60) + "m" : s < 86400 ? Math.round(s / 3600) + "h" : Math.round(s / 86400) + "d"; }
-  var WORD = { join: "asked to join", like: "liked your post", clike: "liked your comment", comment: "commented on your post", reply: "replied to you", mention: "tagged you" };
-  var ICON = { join: "🚪", like: "❤️", clike: "❤️", comment: "💬", reply: "↩️", mention: "@" };
+  var WORD = { race: "called you out on Corral Run", racelive: "wants a LIVE race on Corral Run", raced: "raced you on Corral Run", join: "asked to join", like: "liked your post", clike: "liked your comment", comment: "commented on your post", reply: "replied to you", mention: "tagged you" };
+  var ICON = { race: "🏁", racelive: "🔴", raced: "🏁", join: "🚪", like: "❤️", clike: "❤️", comment: "💬", reply: "↩️", mention: "@" };
 
   /* #nov1(rfltag): the floating RAFFLE tag under the header repeats the raffle strip that already runs across the top
      of every tab; the tag is retired */
@@ -103,6 +103,11 @@
   /* tap → the Social tab, the post itself; for a comment, reply or tag in comments, its comments open too */
   function go(x) {
     if (!x) return;
+    if (/^race/.test(x.kind || "")) {   /* #corral(nov18): a Corral Run call-out, live invite or result opens the game on that race */
+      var rid = String(x.story_id || "").replace(/^cr:/, "");
+      location.href = "/corral-run.html" + (/^\d+$/.test(rid) ? "?race=" + rid : "");
+      return;
+    }
     if (x.kind === "join") {   /* a hall join request: the Ports tab, looking at that hall, where the Let in / Decline card is */
       try { var pb = document.querySelector('.nav button[data-scr="ports"]'); pb && pb.click(); } catch (e) {}
       setTimeout(function () { try { window.SHK_PORTS && SHK_PORTS.explore(/SD ·/.test(x.snippet || "") ? "sd" : "sf"); window.SHK_HALL_GATE && SHK_HALL_GATE.requests(); } catch (e) {} }, 400);
