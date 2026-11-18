@@ -4,6 +4,8 @@
 (function () {
   "use strict";
   if (window.SHK_NOTIFS) return;
+  /* #hookicon(nov18): browsers hold on to an old tab / shortcut icon for days; pointing the links at a versioned URL makes them fetch the purple hook now */
+  try { [["icon", "icon-192.png"], ["apple-touch-icon", "apple-touch-icon.png"]].forEach(function (r) { var l = document.querySelector('link[rel="' + r[0] + '"]'); if (l && !/\?v=hook2/.test(l.getAttribute("href") || "")) l.setAttribute("href", r[1] + "?v=hook2"); }); } catch (e) {}
   /* #nov1(gate) — the hall gate (hall_gate.js) rides in with this file until index.html carries its own tag */
   try { if (!window.SHK_HALL_GATE && !document.querySelector('script[src*="hall_gate.js"]')) { var hg = document.createElement("script"); hg.src = "hall_gate.js?v=nov1a"; hg.defer = true; (document.head || document.documentElement).appendChild(hg); } } catch (e) {}
   var S = { rows: [], unseen: 0, chan: null, at: 0, known: null };
