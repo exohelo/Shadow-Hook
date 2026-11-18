@@ -71,7 +71,7 @@ html,body{margin:0;height:100%;background:#0b0a14;overflow:hidden;overscroll-beh
   <h1>CORRAL RUN</h1>
   <div class="sub">Shift's over · Pier 1 · Last Whistle</div>
   <ul>
-    <li><i>🚻</i>Everybody's hiding in the restroom. When the <b>whistle</b> blows, run for your rig.</li>
+    <li><i>🚻</i>Everybody's hiding in the restroom asking if they're cutting yet. When the boss thanks the drivers, <b>run for your rig</b>.</li>
     <li><i>🏁</i>Race your UTR from the wharf to the <b>corral</b>. Pull into a stall, stop, hit <b>MARK</b>.</li>
     <li><i>🅿️</i>Park it straight: <b>−1.0s</b> for a perfect park, <b>+1.5s</b> for a crooked one.</li>
     <li><i>🚛</i>Watch out for outside truckers, top handlers, the trans (RTG) and the <b>train</b>.</li>
@@ -151,7 +151,7 @@ MAP.feats.forEach(function(f){ if(f[0]==='H') grid[f[2]][f[1]]='H'; else if(f[0]
 
 var SOLID={'#':1,'w':1,'B':1,'H':1,'~':1};
 var DOOR_Y=44.5*T, doorsOpen=0;
-var BUBBLES=['is it time?','💤','📱','5 more min…','🎧','almost done…'];
+var BUBBLES=['are they cutting yet?','💤','📱','5 more min…','🎧','almost done…'];
 var gateT=0;
 function tileAt(c,r){ if(c<0||r<0||c>=COLS||r>=ROWS) return 'w'; return grid[r][c]; }
 function solidAt(c,r){ var ch=tileAt(c,r); if(ch==='G') return gateT<=0; return !!SOLID[ch]; }
@@ -371,6 +371,7 @@ var SFX={
   train:function(){ tone(311,1.2,'sawtooth',.05); tone(370,1.2,'sawtooth',.04); },
   mark:function(){ [523,659,784,1047].forEach(function(f,i){ tone(f,.18,'square',.06,null,i*.09); }); },
   bell:function(){ tone(980,.12,'square',.035); },
+  radio:function(){ noise(.12,.08); tone(1200,.05,'square',.03); tone(900,.05,'square',.03,null,.06); },
   door:function(){ noise(.18,.22); tone(120,.15,'square',.08,60); },
   step:function(){ tone(260+Math.random()*80,.04,'triangle',.05); },
   start:function(){ tone(70,.35,'sawtooth',.05,140); }
@@ -610,7 +611,7 @@ function step(dt){
   updTrucks(dt);
   if(state==='count'){ countT-=dt; var n=Math.ceil(countT); var el=document.getElementById('count');
     if(n!==step.lastN&&countT>0){ step.lastN=n; el.textContent=n; el.style.opacity=1; SFX.beep(); }
-    if(countT<=0){ state='scramble'; scrT=0; el.textContent='WHISTLE!'; el.style.fontSize='64px'; SFX.whistle(); say("SHIFT'S OVER — RUN!",'#fbbf24'); setTimeout(function(){ SFX.door(); shake=4; },120); }
+    if(countT<=0){ state='scramble'; scrT=0; el.textContent='WHISTLE!'; el.style.fontSize='64px'; SFX.whistle(); say('📻 BOSS: "Thank you drivers for all your help, have a good night."','#fde68a',20,3); SFX.radio(); setTimeout(function(){ SFX.door(); shake=4; },120); }
   }
   if(state==='scramble'){
     scrT+=dt; doorsOpen=Math.min(1,doorsOpen+dt*7);
@@ -799,7 +800,7 @@ function drawRestroom(g){
   });
 }
 function drawBubbles(g){
-  racers.forEach(function(r,k){ var txt=BUBBLES[(k+(r===player?0:1)+Math.floor(Date.now()/1600))%BUBBLES.length]; if(r===player) txt='is it time?';
+  racers.forEach(function(r,k){ var txt=BUBBLES[(k+(r===player?0:1)+Math.floor(Date.now()/1600))%BUBBLES.length]; if(r===player) txt='are they cutting yet?';
     var y=DOOR_Y+34+Math.sin(Date.now()/300+k)*2; g.font='700 12px "Barlow Condensed",sans-serif'; var w=g.measureText(txt).width+12;
     g.fillStyle='rgba(255,255,255,.95)'; rr(g,r.x-w/2,y,w,18,8); g.fill(); g.beginPath(); g.moveTo(r.x-4,y); g.lineTo(r.x,y-6); g.lineTo(r.x+4,y); g.fill();
     g.fillStyle='#111'; g.textAlign='center'; g.fillText(txt,r.x,y+13); });
@@ -840,7 +841,7 @@ function drawMini(){
 
 /* ───────────── HUD ───────────── */
 var elTime=document.getElementById('time'), elPlace=document.getElementById('place'), elMsg=document.getElementById('msg'), itemBtn=document.getElementById('item');
-function say(t,col){ elMsg.textContent=t; elMsg.style.color=col||'#fff'; elMsg.style.opacity=1; msgT=1.6; }
+function say(t,col,size,dur){ elMsg.textContent=t; elMsg.style.color=col||'#fff'; elMsg.style.fontSize=(size||30)+'px'; elMsg.style.opacity=1; msgT=dur||1.6; }
 function setItemBtn(){ var it=player&&player.item; itemBtn.textContent=it?ITEMS[it]:''; itemBtn.classList.toggle('has',!!it); }
 function ord(n){ return n+(['th','st','nd','rd'][n]||'th'); }
 function hud(dt){
