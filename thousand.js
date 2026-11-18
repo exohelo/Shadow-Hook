@@ -47,12 +47,14 @@
       if(el<3500)requestAnimationFrame(f); else c.remove(); })(t0);
   }catch(e){} }
 
-  function ribbon(){ if(!on()||document.getElementById('k1Rib')||ss('k1rib'))return; ss('k1rib','1');
+  /* banner runs through Thu Nov 19 (PT) on whatever skin is up; closing it hides it for that visit */
+  function live(){ return on()||Date.now()<Date.parse('2026-11-20T08:00:00Z'); }
+  function ribbon(){ if(!live()||document.getElementById('k1Rib')||ss('k1rib'))return;
+    if(document.documentElement.classList.contains('at-gate'))return;
     var r=document.createElement('div'); r.id='k1Rib';
     r.innerHTML='<span>⚓</span><b>1,000 STRONG</b><span>thank you for building the Order</span><button type="button" aria-label="Close">✕</button>';
-    document.body.appendChild(r); confetti();
-    r.querySelector('button').addEventListener('click',function(){ r.remove(); });
-    setTimeout(function(){ r.style.transition='opacity .6s'; r.style.opacity='0'; setTimeout(function(){ r.remove(); },700); },9000); }
+    document.body.appendChild(r); if(!ss('k1boom')){ ss('k1boom','1'); confetti(); }
+    r.querySelector('button').addEventListener('click',function(){ ss('k1rib','1'); r.remove(); }); }
 
   /* the Founding 1,000 mark */
   function wallKey(){ try{ return typeof K==='function'?K('badges'):null; }catch(e){ return null; } }
@@ -77,5 +79,5 @@
 
   var tries=0, iv=setInterval(function(){ tries++; if(founder()||tries>90)clearInterval(iv); },1000);
   setTimeout(ribbon,2500);
-  new MutationObserver(function(){ if(on())setTimeout(ribbon,800); }).observe(document.documentElement,{attributes:true,attributeFilter:['class']});
+  new MutationObserver(function(){ if(live())setTimeout(ribbon,800); }).observe(document.documentElement,{attributes:true,attributeFilter:['class']});
 })();
