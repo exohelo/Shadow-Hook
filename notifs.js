@@ -72,14 +72,14 @@
     b.title = S.unseen ? S.unseen + " new" : "Notifications";
   }
 
-  /* #appstore(nov18): the iPhone app is on the App Store. iPhone visitors on the website get a one-time card with the
-     download button; it never shows on Android, on computers, or inside the iPhone app itself. */
+  /* #appstore(nov18): the iPhone app is on the App Store. Every visitor on the website gets a one-time card: iPhones get the
+     download button, Android gets "coming soon to the Play Store", computers get both lines. Never inside the phone apps. */
   (function () {
     var URL = "https://apps.apple.com/us/app/shadow-hook/id6833596735", KEY = "shk_appstore_card1";
     try {
       var ua = navigator.userAgent || "", ios = /iPhone|iPod|iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
       var native = !!(window.SHK_IOS || (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()));
-      if (!ios || native || localStorage.getItem(KEY)) return;
+      if (native || localStorage.getItem(KEY)) return;   /* #appstore2: everyone sees it; Android and computers get "coming soon to the Play Store" */
     } catch (e) { return; }
     function show() {
       if (document.getElementById("asCard") || document.getElementById("ntPop") && document.getElementById("ntPop").classList.contains("on")) return;
@@ -90,11 +90,15 @@
         "#asCard a{display:inline-block;margin-top:9px;background:#7c5cff;color:#fff;font:700 13px Inter,system-ui,sans-serif;padding:9px 14px;border-radius:10px;text-decoration:none}#asCard .x{position:absolute;top:6px;right:8px;background:none;border:0;color:var(--steel,#999);font-size:18px;cursor:pointer}";
       document.head.appendChild(st);
       var c = document.createElement("div"); c.id = "asCard"; c.setAttribute("role", "dialog"); c.setAttribute("aria-label", "Get the iPhone app");
-      c.innerHTML = '<img src="/icon-192.png?v=hook2" alt=""><div style="flex:1;min-width:0"><div class="t">📲 THE SHADOW HOOK IS ON THE APP STORE</div><div class="s">Get the iPhone app: faster, with dispatch alerts and Corral Run.</div><a href="' + URL + '" id="asGo">Download on the App Store</a></div><button type="button" class="x" aria-label="Close">✕</button>';
+      var andr = /Android/i.test(navigator.userAgent || "");
+      c.innerHTML = '<img src="/icon-192.png?v=hook2" alt=""><div style="flex:1;min-width:0"><div class="t">📲 THE SHADOW HOOK IS ON THE APP STORE</div>' +
+        (ios ? '<div class="s">Get the iPhone app: faster, with dispatch alerts and Corral Run.</div><a href="' + URL + '" id="asGo">Download on the App Store</a>'
+             : '<div class="s">' + (andr ? 'Android: coming soon to the Play Store.' : 'iPhone: download it now. Android: coming soon to the Play Store.') + '</div>' + (andr ? '' : '<a href="' + URL + '" id="asGo">See it on the App Store</a>')) +
+        '</div><button type="button" class="x" aria-label="Close">✕</button>';
       document.body.appendChild(c);
       var done = function () { try { localStorage.setItem(KEY, String(Date.now())); } catch (e) {} c.remove(); };
       c.querySelector(".x").addEventListener("click", done);
-      c.querySelector("#asGo").addEventListener("click", function () { try { localStorage.setItem(KEY, String(Date.now())); } catch (e) {} });
+      var go = c.querySelector("#asGo"); go && go.addEventListener("click", function () { try { localStorage.setItem(KEY, String(Date.now())); } catch (e) {} });
     }
     var tries = 0, t = setInterval(function () { if (document.body && (++tries > 3)) { clearInterval(t); show(); } }, 1000);
   })();
