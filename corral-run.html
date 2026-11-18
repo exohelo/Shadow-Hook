@@ -1033,7 +1033,7 @@ var toastT=0; function toast(t){ var el=$('toast'); el.textContent=t; el.style.o
 function rpc(fn,args){ if(!NET.sb) return Promise.reject(new Error('offline')); return NET.sb.rpc(fn,args||{}).then(function(r){ if(r.error) throw new Error(r.error.message||'the bank said no'); return r.data; }); }
 function snow(){ return Date.now()+NET.off; }
 function netInit(){
-  try{ var q=new URLSearchParams(location.search); var rq=q.get('race'); if(rq&&/^\d+$/.test(rq)) NET.want=+rq; var hq=q.get('heat'); if(hq&&/^\d+$/.test(hq)) NET.wantHeat=+hq; }catch(e){}
+  try{ var q=new URLSearchParams(location.search); NET.go=q.get('go')==='1'; if(NET.go) try{ history.replaceState(null,'',location.pathname+location.search.replace(/[?&]go=1/,'').replace(/^&/,'?')); }catch(e){} var rq=q.get('race'); if(rq&&/^\d+$/.test(rq)) NET.want=+rq; var hq=q.get('heat'); if(hq&&/^\d+$/.test(hq)) NET.wantHeat=+hq; }catch(e){}
   showLobby();
   var s=document.createElement('script'); s.src='/supabase-js-2.112.2.js';
   s.onload=function(){ try{ NET.sb=window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:true}}); }catch(e){ NET.sb=null; }
@@ -1060,12 +1060,14 @@ function lobby(first){
     if(L.go&&state==='menu') enterRace(L.go);
     if(first&&NET.wantHeat){ var wh=NET.wantHeat; NET.wantHeat=null; rpc('cr_heat_state',{p_id:wh}).then(function(v){
       if(v.status==='open'&&v.seated) heatRoom(v);
+      else if(v.status==='open'&&NET.go) joinHeat(wh,null);
       else if(v.status==='open'){ var el=document.querySelector('[data-hjoin="'+wh+'"]'); if(el){ el.scrollIntoView({block:'center'}); } toast('👥 '+v.host_handle+'\'s '+v.size+'-player race — '+(v.seats||[]).length+'/'+v.size+' in. Tap JOIN.'); }
       else if(v.status==='live'&&v.seated&&v.start_at&&new Date(v.start_at).getTime()>snow()) countdownTo(v);
       else if(v.status==='live'&&!v.seated) toast('Too late — that race already started');
       else if(v.status==='done') toast((v.winner_handle||'Nobody')+' took that race'); }).catch(function(e){ toast('✗ '+e.message); }); }
     if(first&&NET.want){ var w=NET.want; NET.want=null; rpc('cr_state',{p_id:w}).then(function(d){
-      if(d.status==='open'&&!d.me_by){ var el=document.querySelector('[data-join="'+w+'"]'); if(el){ el.closest('.it').classList.add('hot'); el.scrollIntoView({block:'center'}); } toast((d.live?'🔴 LIVE race':'⚔️ Call-out')+' from '+d.by_handle+' — tap '+(d.live?'ACCEPT':'RACE')); }
+      if(d.status==='open'&&!d.me_by&&NET.go) joinRace(w,null);
+      else if(d.status==='open'&&!d.me_by){ var el=document.querySelector('[data-join="'+w+'"]'); if(el){ el.closest('.it').classList.add('hot'); el.scrollIntoView({block:'center'}); } toast((d.live?'🔴 LIVE race':'⚔️ Call-out')+' from '+d.by_handle+' — tap '+(d.live?'ACCEPT':'RACE')); }
       else if(d.status==='live'&&d.live&&d.start_at&&new Date(d.start_at).getTime()>snow()-2000) enterRace(w);
       else if(d.status==='done') toast(d.winner==='me'?'🏆 You won that race':d.winner==='them'?'That race went to '+(d.foe_name||'them'):'Dead heat — 5 ⬡ back'); }).catch(function(){}); }
   }).catch(function(e){ var m=String(e.message||''); if(/sign in|claim/i.test(m)){ NET.uid=null; whoOff(); } else if(first) $('who').textContent='The bank is not answering — practice still works. ('+m+')'; });
@@ -1158,7 +1160,7 @@ function enterRace(id){ rpc('cr_state',{p_id:id}).then(function(d){ if(d.status=
 function waitLive(d){
   state='waiting'; $('menu').style.display='none'; $('wait').style.display='flex'; $('wCancel').style.display=''; $('wCancel').dataset.id=d.id;
   $('wGo').style.display='none'; $('wLeave').style.display='none'; $('wInvBox').style.display='none'; $('wSeats').innerHTML=''; $('wTag').textContent='🔴 LIVE RACE · 5 ⬡ HELD'; $('wBig').textContent='WAITING'; $('wSub').textContent='Waiting for '+(d.foe_name||'anyone on the app')+' to accept. They got a push.';
-  clearInterval(NET.waitT); NET.waitT=setInterval(function(){ rpc('cr_state',{p_id:d.id}).then(function(x){ if(x.status==='live'&&x.start_at){ clearInterval(NET.waitT); countdownTo(x); } else if(x.status==='void'){ clearInterval(NET.waitT); toast('Nobody took it — 5 ⬡ back'); showLobby(); } }).catch(function(){}); },1500);
+  clearInterval(NET.waitT); NET.waitT=setInterval(function(){ rpc('cr_state',{p_id:d.id}).then(function(x){ if(x.status==='live'&&x.start_at){ clearInterval(NET.waitT); countdownTo(x); } else if(x.status==='void'){ clearInterval(NET.waitT); toast(x.declined_by?'🚫 '+x.declined_by+' passed — 5 ⬡ back':'Nobody took it — 5 ⬡ back'); showLobby(); } }).catch(function(){}); },1500);
 }
 function countdownTo(d){
   clearInterval(NET.waitT); clearInterval(NET.goT); state='waiting'; $('menu').style.display='none'; $('wait').style.display='flex'; $('wCancel').style.display='none';
@@ -1212,7 +1214,7 @@ function showPaid(d){
   }
 }
 function mshort(k){ return mapName(k).split(' · ')[0]; }
-function seatRows(d){ return (d.seats||[]).map(function(x){ return '<div class="'+(x.me?'me':'')+'"><span>'+(x.place?x.place+'. ':'')+esc(x.h)+(x.h===d.host_handle?' 👑':'')+'</span><span>'+(d.status==='done'?(x.time!=null?(+x.time).toFixed(2)+'s':'DNF'):x.done?'✓ in':'')+'</span></div>'; }).join('')+(d.status==='open'?'<div><span style="color:#8f86a8">'+(d.size-(d.seats||[]).length)+' seat'+(d.size-(d.seats||[]).length===1?'':'s')+' open…</span><span></span></div>':''); }
+function seatRows(d){ return (d.seats||[]).map(function(x){ return '<div class="'+(x.me?'me':'')+'"><span>'+(x.place?x.place+'. ':'')+esc(x.h)+(x.h===d.host_handle?' 👑':'')+'</span><span>'+(d.status==='done'?(x.time!=null?(+x.time).toFixed(2)+'s':'DNF'):x.done?'✓ in':'')+'</span></div>'; }).join('')+(d.status==='open'?(d.declined_list||[]).map(function(h){ return '<div><span style="color:#8f86a8">'+esc(h)+'</span><span style="color:#f87171">🚫 passed</span></div>'; }).join(''):'')+(d.status==='open'?'<div><span style="color:#8f86a8">'+(d.size-(d.seats||[]).length)+' seat'+(d.size-(d.seats||[]).length===1?'':'s')+' open…</span><span></span></div>':''); }
 function heatRoom(d){
   state='waiting'; RACE=d; $('menu').style.display='none'; $('done').style.display='none'; $('wait').style.display='flex'; $('wCancel').style.display='none';
   var paint=function(v){ var n=(v.seats||[]).length;
@@ -1343,6 +1345,49 @@ window.addEventListener('resize',resize);
 loadMap(SEL); resize(); reset(); setSize(2); netInit();
 if(document.fonts&&document.fonts.ready) document.fonts.ready.then(function(){ buildArt(); buildMini(); });
 requestAnimationFrame(frame);
+/* #invpop(nov18): a race invite pops up with ACCEPT / DECLINE. Decline tells the sender right away (1v1: their 5 ⬡
+   comes back). Accept during a practice run ends the practice and puts you in the race. */
+var IPOP={cur:null,skip:{},t:null,busy:false};
+(function(){ var st=document.createElement('style'); st.textContent=
+  '#iPop{position:fixed;inset:0;z-index:40;display:none;align-items:center;justify-content:center;background:rgba(6,4,14,.62);padding:18px}#iPop.on{display:flex}'+
+  '#iPop .ip{width:100%;max-width:360px;background:#17122b;border:1.5px solid #fbbf24;border-radius:18px;padding:18px 16px 14px;text-align:center;box-shadow:0 18px 50px rgba(0,0,0,.6);animation:ipIn .22s ease-out}'+
+  '@keyframes ipIn{from{transform:scale(.9);opacity:0}to{transform:none;opacity:1}}'+
+  '#iPop .ipT{font:800 13px "Barlow Condensed",sans-serif;letter-spacing:.2em;color:#fbbf24}#iPop .ipW{font:800 26px/1.1 "Barlow Condensed",sans-serif;color:#fff;margin:6px 0 4px}'+
+  '#iPop .ipS{font:600 13px/1.4 Inter,system-ui,sans-serif;color:#c9c1e0;margin-bottom:14px}#iPop .ipB{display:flex;gap:10px}'+
+  '#iPop .ipB button{flex:1;border-radius:12px;padding:13px 8px;font:800 17px "Barlow Condensed",sans-serif;letter-spacing:.08em;cursor:pointer}'+
+  '#iPop .no{background:transparent;border:1.5px solid #6b6290;color:#d8d2ee}#iPop .yes{background:#fbbf24;border:0;color:#1a1206}'+
+  '#iPop .ipL{margin-top:10px;background:none;border:0;color:#8f86a8;font:600 12px Inter,system-ui,sans-serif;cursor:pointer}#iPop button:disabled{opacity:.5}';
+  document.head.appendChild(st);
+  var el=document.createElement('div'); el.id='iPop'; el.innerHTML='<div class="ip"><div class="ipT">🏁 INVITED TO RACE</div><div class="ipW" id="ipW"></div><div class="ipS" id="ipS"></div><div class="ipB"><button type="button" class="no" id="ipNo">DECLINE</button><button type="button" class="yes" id="ipYes">ACCEPT · 5 ⬡</button></div><button type="button" class="ipL" id="ipLater">not now — keep it in my races</button></div>';
+  document.body.appendChild(el);
+  ['pointerdown','touchstart'].forEach(function(ev){ el.addEventListener(ev,function(e){ e.stopPropagation(); },{passive:true}); });
+  $('ipYes').addEventListener('click',function(){ ipAnswer(true); }); $('ipNo').addEventListener('click',function(){ ipAnswer(false); });
+  $('ipLater').addEventListener('click',function(){ if(IPOP.cur) IPOP.skip[IPOP.cur.t+IPOP.cur.id]=1; ipHide(); });
+})();
+function ipFree(){ return !NET.busy&&(state==='menu'||state==='done'||MODE!=='paid'); }   /* never over a race you paid for */
+function ipHide(){ IPOP.cur=null; $('iPop').classList.remove('on'); }
+function ipShow(x){
+  IPOP.cur=x; var m=mshort(x.map);
+  $('ipW').textContent=x.t==='heat'?x.by+'\'s '+x.size+'-player race':x.by+(x.live?' wants a LIVE race':' called you out');
+  $('ipS').textContent=x.t==='heat'?m+' · '+x.n+'/'+x.size+' in · 5 ⬡ a seat, winner takes the pot':m+' · '+(x.live?'start together · ':'race their ghost · ')+'5 ⬡ each, winner takes 10 ⬡';
+  $('ipYes').disabled=$('ipNo').disabled=false; $('iPop').classList.add('on'); try{ SFX.mark(); }catch(e){}
+}
+function ipCheck(){
+  if(!NET.uid||document.hidden||IPOP.busy) return;
+  if(IPOP.cur&&!ipFree()){ ipHide(); return; }
+  if(IPOP.cur||!ipFree()) return;
+  rpc('cr_pending').then(function(r){ if(IPOP.cur||!ipFree()) return;
+    var x=(r.list||[]).filter(function(y){ return !IPOP.skip[y.t+y.id]; })[0]; if(x) ipShow(x); }).catch(function(){}); }
+function ipAnswer(yes){
+  var x=IPOP.cur; if(!x||IPOP.busy) return; IPOP.busy=true; $('ipYes').disabled=$('ipNo').disabled=true;
+  if(!yes){ rpc(x.t==='heat'?'cr_heat_decline':'cr_decline',{p_id:x.id}).then(function(){ toast('Passed — '+x.by+' knows'); }).catch(function(e){ toast('✗ '+e.message); })
+      .then(function(){ IPOP.busy=false; IPOP.skip[x.t+x.id]=1; ipHide(); if(state==='menu') lobby(false); setTimeout(ipCheck,600); }); return; }
+  IPOP.busy=false; ipHide();
+  if(state!=='menu') showLobby();   /* ends the practice run */
+  if(x.t==='heat') joinHeat(x.id,null); else joinRace(x.id,null);
+}
+setInterval(ipCheck,6000); setTimeout(ipCheck,2500);
+document.addEventListener('visibilitychange',function(){ if(!document.hidden) setTimeout(ipCheck,800); });
 window.__cr={pick:function(k){ pickMap(k); }, maps:MAPS, get mapKey(){ return MAP.key; }, get state(){ return state; }, racers:function(){ return racers; }, player:function(){ return player; }, clock:function(){ return clock; }, MAP:MAP, DIST:DIST};
 })();
 </script>

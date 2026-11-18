@@ -30,8 +30,8 @@
   function me() { return window.__shkUid || null; }
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   function ago(ts) { var s = (Date.now() - new Date(ts).getTime()) / 1e3; return s < 60 ? "just now" : s < 3600 ? Math.round(s / 60) + "m" : s < 86400 ? Math.round(s / 3600) + "h" : Math.round(s / 86400) + "d"; }
-  var WORD = { race: "called you out on Corral Run", racelive: "wants a LIVE race on Corral Run", raced: "raced you on Corral Run", join: "asked to join", like: "liked your post", clike: "liked your comment", comment: "commented on your post", reply: "replied to you", mention: "tagged you" };
-  var ICON = { race: "🏁", racelive: "🔴", raced: "🏁", join: "🚪", like: "❤️", clike: "❤️", comment: "💬", reply: "↩️", mention: "@" };
+  var WORD = { race: "called you out on Corral Run", racelive: "wants a LIVE race on Corral Run", raced: "raced you on Corral Run", racenope: "passed on your Corral Run race", join: "asked to join", like: "liked your post", clike: "liked your comment", comment: "commented on your post", reply: "replied to you", mention: "tagged you" };
+  var ICON = { race: "🏁", racelive: "🔴", raced: "🏁", racenope: "🚫", join: "🚪", like: "❤️", clike: "❤️", comment: "💬", reply: "↩️", mention: "@" };
 
   /* #nov1(rfltag): the floating RAFFLE tag under the header repeats the raffle strip that already runs across the top
      of every tab; the tag is retired */
@@ -70,6 +70,54 @@
     b.title = S.unseen ? S.unseen + " new" : "Notifications";
   }
 
+  /* #invpop(nov18): a Corral Run invite pops up in the middle of the app with ACCEPT / DECLINE instead of only a toast
+     up top. Decline tells the sender right away (1v1: their 5 ⬡ comes back); accept opens the game straight into the race. */
+  var IP = { cur: null, skip: {}, at: 0, busy: false };
+  var MAPN = { pier1c: "Maersk · Pier 400", china: "China Shipping · Berth 100", yangming: "Yang Ming · Berth 121" };
+  var IPCSS = "#ntPop{position:fixed;inset:0;z-index:96;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.6);padding:18px}#ntPop.on{display:flex}" +
+    "#ntPop .ip{width:100%;max-width:360px;background:var(--plate-2,#15171b);border:1.5px solid var(--copper-hi,#e8a33d);border-radius:18px;padding:18px 16px 14px;text-align:center;box-shadow:0 18px 50px rgba(0,0,0,.55);animation:ntIpIn .22s ease-out}" +
+    "@keyframes ntIpIn{from{transform:scale(.9);opacity:0}to{transform:none;opacity:1}}" +
+    "#ntPop .ipT{font:700 13px Barlow Condensed,sans-serif;letter-spacing:.2em;color:var(--copper-hi,#e8a33d)}#ntPop .ipW{font:800 25px/1.1 Barlow Condensed,sans-serif;color:var(--bone,#eee);margin:6px 0 4px}" +
+    "#ntPop .ipS{font:13px/1.4 Inter,system-ui,sans-serif;color:var(--steel,#999);margin-bottom:14px}#ntPop .ipB{display:flex;gap:10px}" +
+    "#ntPop .ipB button{flex:1;border-radius:12px;padding:13px 8px;font:800 17px Barlow Condensed,sans-serif;letter-spacing:.08em;cursor:pointer}" +
+    "#ntPop .no{background:transparent;border:1.5px solid var(--line,#444);color:var(--bone,#eee)}#ntPop .yes{background:var(--copper-hi,#e8a33d);border:0;color:#1a1206}" +
+    "#ntPop .ipL{margin-top:10px;background:none;border:0;color:var(--steel,#999);font:12px Inter,system-ui,sans-serif;cursor:pointer}#ntPop button:disabled{opacity:.5}";
+  function pop() {
+    var el = document.getElementById("ntPop"); if (el) return el;
+    var st = document.createElement("style"); st.textContent = IPCSS; document.head.appendChild(st);
+    el = document.createElement("div"); el.id = "ntPop"; el.setAttribute("role", "dialog"); el.setAttribute("aria-label", "Race invite");
+    el.innerHTML = '<div class="ip"><div class="ipT">🏁 INVITED TO RACE</div><div class="ipW" id="ntIpW"></div><div class="ipS" id="ntIpS"></div><div class="ipB"><button type="button" class="no" id="ntIpNo">DECLINE</button><button type="button" class="yes" id="ntIpYes">ACCEPT · 5 ⬡</button></div><button type="button" class="ipL" id="ntIpL">not now</button></div>';
+    document.body.appendChild(el);
+    el.querySelector("#ntIpYes").addEventListener("click", function () { answer(true); });
+    el.querySelector("#ntIpNo").addEventListener("click", function () { answer(false); });
+    el.querySelector("#ntIpL").addEventListener("click", function () { if (IP.cur) IP.skip[IP.cur.t + IP.cur.id] = 1; hidePop(); });
+    return el;
+  }
+  function hidePop() { IP.cur = null; var el = document.getElementById("ntPop"); el && el.classList.remove("on"); }
+  function showPop(x) {
+    var el = pop(); IP.cur = x; var m = (MAPN[x.map] || "Maersk").split(" · ")[0];
+    el.querySelector("#ntIpW").textContent = x.t === "heat" ? x.by + "'s " + x.size + "-player race" : x.by + (x.live ? " wants a LIVE race" : " called you out");
+    el.querySelector("#ntIpS").textContent = x.t === "heat" ? m + " · " + x.n + "/" + x.size + " in · 5 ⬡ a seat, winner takes the pot" : m + " · " + (x.live ? "start together · " : "race their ghost · ") + "5 ⬡ each, winner takes 10 ⬡";
+    el.querySelectorAll("button").forEach(function (b) { b.disabled = false; });
+    el.classList.add("on");
+  }
+  async function checkInv(force) {
+    if (!sb() || !me() || IP.cur || IP.busy || document.hidden) return;
+    if (!force && Date.now() - IP.at < 15e3) return; IP.at = Date.now();
+    try {
+      var r = await sb().rpc("cr_pending"); if (!r || r.error || !r.data || IP.cur) return;
+      var x = (r.data.list || []).filter(function (y) { return !IP.skip[y.t + y.id]; })[0]; if (x) showPop(x);
+    } catch (e) {}
+  }
+  async function answer(yes) {
+    var x = IP.cur; if (!x || IP.busy) return; IP.busy = true;
+    pop().querySelectorAll("button").forEach(function (b) { b.disabled = true; });
+    try { if (S.unseen) { await sb().rpc("notifs_seen_all"); S.rows.forEach(function (y) { y.seen_at = y.seen_at || new Date().toISOString(); }); S.unseen = 0; paintBell(); } } catch (e) {}
+    if (yes) { location.href = "/corral-run.html?" + (x.t === "heat" ? "heat=" : "race=") + x.id + "&go=1"; return; }
+    try { await sb().rpc(x.t === "heat" ? "cr_heat_decline" : "cr_decline", { p_id: x.id }); try { typeof toast === "function" && toast("Passed — " + x.by + " knows"); } catch (e) {} } catch (e) {}
+    IP.skip[x.t + x.id] = 1; IP.busy = false; hidePop(); setTimeout(function () { checkInv(true); }, 600);
+  }
+
   async function load() {
     if (!sb() || !me()) return;
     try {
@@ -83,6 +131,7 @@
       }
     } catch (e) {}
     paintBell(); paintList();
+    checkInv(false);
   }
   function live() {
     if (S.chan || !sb() || !me()) return;
@@ -91,6 +140,7 @@
         var x = p && p.new; if (!x) return;
         if (S.known && S.known[x.id]) return; (S.known = S.known || {})[x.id] = 1;
         S.rows.unshift(x); S.unseen++; paintBell(); paintList(); ping();
+        if (x.kind === "race" || x.kind === "racelive") { setTimeout(function () { checkInv(true); }, 400); return; }   /* the pop-up is the alert */
         try { typeof toast === "function" && toast((ICON[x.kind] || "🔔") + " " + (x.actor_handle || "Someone") + " " + (WORD[x.kind] || "")); } catch (e) {}
       }).subscribe();
     } catch (e) {}
