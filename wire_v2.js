@@ -38,7 +38,8 @@
   /* the board that's running stays on the Wire until its dispatch is over (day ~9:40, night ~7:00): the morning board
      until 10:00, the night board until 7:30 PM, then the next one. Switching at the flex hid the live board's call. */
   function upcomingKey(){ var n=new Date(), m=n.getHours()*60+n.getMinutes(), d=new Date(n), sh='AM';
-    if(m<10*60){ sh='AM'; } else if(m<19*60+30){ sh='PM'; } else { d.setDate(d.getDate()+1); sh='AM'; }
+    /* #nov18: the Wire moves on when dispatch ends (day 9:30 AM, night 7:00 PM) */
+    if(m<9*60+30){ sh='AM'; } else if(m<19*60){ sh='PM'; } else { d.setDate(d.getDate()+1); sh='AM'; }
     var iso=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
     return iso+'_'+['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()]+'_'+sh; }
   function nextKey(k){ var m=/^(\d{4})-(\d{2})-(\d{2})_\w{3}_(AM|PM)$/.exec(k); if(!m)return k;
@@ -59,7 +60,7 @@
     var g=done.length?'<div class="v2g">'+done.map(function(r){ var m=Math.abs(Math.round(+r.locked_letters)-r.actual_moved);   /* graded on the letters people saw: called A, landed B = 1 off = ✓ */ return '<span>'+lbl(r.k).replace(/^\w+ /,'')+' <b>'+(+r.locked_letters).toFixed(0)+'\u2192'+r.actual_moved+'</b> <i class="'+(m<=1?'ok':m<=2?'':'bad')+'">'+(m<=1?'\u2713':'\u00B1'+m.toFixed(0))+'</i></span>'; }).join('')+'</div>':'';
     if(!up){
       ps.innerHTML='<span '+mark+'="1">\u2014</span>';
-      mv.innerHTML='<span '+mark+'="1"><span class="v2b">WAITING ON THE SHEETS</span><span class="v2i">An early call comes the moment the hall\u2019s early count or the PMA sheet for '+esc(lbl(key))+' is in, and sharpens with the hall\u2019s final. Locks at '+(key.slice(-2)==='AM'?'6:30 AM':'4:30 PM')+' and doesn\u2019t move after.</span>'+g+'</span>';
+      mv.innerHTML='<span '+mark+'="1"><span class="v2b">WAITING ON THE SHEETS</span><span class="v2i">The call for '+esc(lbl(key))+' lands a few minutes after dispatch ends, once PMA\u2019s sheet and the hall line\u2019s end card are in. It sharpens with the hall\u2019s final, locks at '+(key.slice(-2)==='AM'?'6:30 AM':'4:30 PM')+' and doesn\u2019t move after.</span>'+g+'</span>';
       if(src){ src.className='wire-src est'; src.textContent='\u26A1 WIRE \u00B7 STANDING BY'; }
       return;
     }

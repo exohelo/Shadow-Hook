@@ -30,6 +30,8 @@
     box.querySelector("textarea").value = currentText(p);
     if (t) { t.style.display = "none"; t.insertAdjacentElement("afterend", box); }
     else { var head = p.querySelector(".bp-head"); (p.querySelector(".bp-dock") || head).insertAdjacentElement("afterend", box); }
+    /* #nov18: taps inside the editor stay in the editor (a tap on the post opens the photo viewer) */
+    ["click", "pointerup", "touchend"].forEach(function (ev) { box.addEventListener(ev, function (e) { e.stopPropagation(); }); });
     var ta = box.querySelector("textarea"); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
     box.querySelector(".pe-cancel").addEventListener("click", function (e) { e.stopPropagation(); box.remove(); t && (t.style.display = ""); });
     box.querySelector(".pe-save").addEventListener("click", async function (e) {
