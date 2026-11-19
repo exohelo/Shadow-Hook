@@ -167,6 +167,7 @@
     el.classList.add("on");
   }
   async function checkInv(force) {
+    if (window.SHK_IOS_STORE) return;   /* nov19: no games in the iPhone app until the LLC account */
     if (!sb() || !me() || IP.cur || IP.busy || document.hidden || CRF) return;   /* inside the game, the game asks */
     if (!force && Date.now() - IP.at < 15e3) return; IP.at = Date.now();
     try {
@@ -213,6 +214,7 @@
   }
   function obOff() { OB.cur = null; var el = document.getElementById("obBar"); el && el.classList.remove("on"); }
   async function obCheck() {
+    if (window.SHK_IOS_STORE) return;   /* nov19: no games in the iPhone app until the LLC account */
     if (!sb() || !me() || document.hidden || OB.busy) return;
     if (CRF || IP.cur || document.getElementById("asCard")) { obOff(); return; }   /* inside a game, a direct invite is up, or the App Store card is showing */
     OB.busy = true;
