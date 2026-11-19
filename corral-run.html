@@ -106,6 +106,8 @@ table.lb{width:100%;border-collapse:collapse;font:700 16px "Barlow Condensed",sa
       <div class="sizes"><button type="button" data-size="2" class="on">1 V 1</button><button type="button" data-size="4">4 PLAYERS</button><button type="button" data-size="6">6 PLAYERS</button></div>
       <div id="heatBox" style="display:none">
         <div class="muted" id="heatHint"></div>
+        <button class="btn gold full" id="hLobby" type="button" style="margin:8px 0 6px">OPEN LOBBY · ANYONE CAN JOIN · 5 ⬡</button>
+        <div class="muted" style="margin-bottom:8px">Everyone on the app gets a little JOIN bar. Or invite drivers below.</div>
         <div class="rowf"><input id="hInv" placeholder="Invite a handle…" autocomplete="off" autocapitalize="characters" spellcheck="false"><button class="btn sm" id="hAdd" type="button">ADD</button></div>
         <div id="hSug" class="sug"></div>
         <div id="hChips" class="sug"></div>
@@ -1289,6 +1291,8 @@ document.addEventListener('click',function(e){
 $('wInvAdd').addEventListener('click',function(){ var h=$('wInvH').value.trim().toUpperCase(); if(!h) return; $('wInvH').value=''; wInvite([h],null); });
 ['keydown','keyup'].forEach(function(ev){ $('wInvH').addEventListener(ev,function(e){ e.stopPropagation(); }); });
 $('hAdd').addEventListener('click',function(){ var h=$('hInv').value.trim().toUpperCase(); if(!h) return; INV[h]=1; $('hInv').value=''; $('hSug').innerHTML=''; renderInv(); });
+$('hLobby').addEventListener('click',function(){ if(NET.busy) return; var b=this; busy(b,true);   /* #openbar: no invites, anyone on the app sees the JOIN bar */
+  rpc('cr_heat_open',{p_size:SIZE,p_map:SEL,p_handles:[],p_anyone:true}).then(function(v){ busy(b,false); toast('👥 Lobby open — everyone on the app sees it · 5 ⬡ seat held'); heatRoom(v); }).catch(function(e){ busy(b,false); toast('✗ '+e.message); }); });
 $('hSend').addEventListener('click',function(){ var hs=Object.keys(INV), any=$('hAny').checked, b=this; if(!hs.length&&!any){ toast('Pick some drivers, or open it to anyone'); return; } if(NET.busy) return; busy(b,true);
   rpc('cr_heat_open',{p_size:SIZE,p_map:SEL,p_handles:hs,p_anyone:any}).then(function(v){ busy(b,false); INV={}; renderInv(); toast('👥 Invites out to '+(v.invited||0)+(any?' + anyone':'')+' — 5 ⬡ seat held'); heatRoom(v); }).catch(function(e){ busy(b,false); toast('✗ '+e.message); }); });
 $('wGo').addEventListener('click',function(){ var b=this; b.disabled=true; rpc('cr_heat_go',{p_id:+b.dataset.id}).then(function(v){ b.disabled=false; if(v.status==='live'&&v.start_at) countdownTo(v); }).catch(function(e){ b.disabled=false; toast('✗ '+e.message); }); });
@@ -1388,6 +1392,25 @@ function ipAnswer(yes){
 }
 setInterval(ipCheck,6000); setTimeout(ipCheck,2500);
 document.addEventListener('visibilitychange',function(){ if(!document.hidden) setTimeout(ipCheck,800); });
+/* #openbar(nov18): inside the game, an open lobby shows as a small bar at the top (the app's bar hides while the game is open) */
+var OBG={cur:null,busy:false};
+(function(){ var st=document.createElement('style'); st.textContent='#obG{position:fixed;left:10px;right:10px;top:calc(env(safe-area-inset-top) + 64px);z-index:39;max-width:520px;margin:0 auto;display:none;align-items:center;gap:10px;padding:8px 8px 8px 12px;border-radius:14px;background:rgba(23,18,43,.96);border:1.5px solid #fbbf24;box-shadow:0 8px 24px rgba(0,0,0,.45);font-family:Inter,system-ui,sans-serif}#obG.on{display:flex}#obG .tx{flex:1;min-width:0;color:#fff}#obG .t{font:800 15px/1.15 "Barlow Condensed",sans-serif;letter-spacing:.03em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#obG .s{font:600 11.5px Inter,system-ui,sans-serif;color:#c9c1e0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#obG .j{flex:none;height:34px;padding:0 14px;border-radius:9px;border:0;background:#fbbf24;color:#1a1206;font:800 14px "Barlow Condensed",sans-serif;letter-spacing:.06em}#obG .x{flex:none;width:30px;height:34px;border-radius:9px;border:1px solid #6b6290;background:transparent;color:#d8d2ee;font:700 15px Inter}'; document.head.appendChild(st);
+  var el=document.createElement('div'); el.id='obG'; el.innerHTML='<span style="font-size:20px">🏁</span><div class="tx"><div class="t" id="obGt"></div><div class="s" id="obGs"></div></div><button type="button" class="j" id="obGj">JOIN</button><button type="button" class="x" id="obGx" aria-label="Not now">✕</button>'; document.body.appendChild(el);
+  ['pointerdown','touchstart'].forEach(function(ev){ el.addEventListener(ev,function(e){ e.stopPropagation(); },{passive:true}); });
+  $('obGx').addEventListener('click',function(){ if(OBG.cur){ try{ var a=JSON.parse(localStorage.getItem('shk_ob_x')||'[]'); a.push(OBG.cur.key); localStorage.setItem('shk_ob_x',JSON.stringify(a.slice(-40))); }catch(e){} } obgOff(); });
+  $('obGj').addEventListener('click',function(){ var x=OBG.cur; if(!x) return; obgOff(); if(state!=='menu') showLobby(); joinHeat(x.id,null); });
+})();
+function obgOff(){ OBG.cur=null; $('obG').classList.remove('on'); }
+function obgCheck(){
+  if(!NET.uid||document.hidden||OBG.busy) return;
+  if(!ipFree()||IPOP.cur||state==='waiting'){ obgOff(); return; }
+  OBG.busy=true;
+  rpc('open_games').then(function(L){ var gone=[]; try{ gone=JSON.parse(localStorage.getItem('shk_ob_x')||'[]'); }catch(e){}
+    var x=(L||[]).filter(function(y){ return y.game==='corral'&&gone.indexOf(y.key)<0&&!(RACE&&RACE.heat&&RACE.id===y.id); })[0];
+    if(!x||!ipFree()||IPOP.cur){ obgOff(); return; } OBG.cur=x; $('obGt').textContent=x.title; $('obGs').textContent=x.sub; $('obG').classList.add('on'); })
+    .catch(function(){}).then(function(){ OBG.busy=false; }); }
+setInterval(obgCheck,15000); setTimeout(obgCheck,3500);
+document.addEventListener('visibilitychange',function(){ if(!document.hidden) setTimeout(obgCheck,900); });
 window.__cr={pick:function(k){ pickMap(k); }, maps:MAPS, get mapKey(){ return MAP.key; }, get state(){ return state; }, racers:function(){ return racers; }, player:function(){ return player; }, clock:function(){ return clock; }, MAP:MAP, DIST:DIST};
 })();
 </script>

@@ -115,7 +115,7 @@
     CRF.style.cssText = "position:fixed;left:0;right:0;bottom:0;z-index:41;background:#0b0a14;padding-bottom:env(safe-area-inset-bottom,0px);box-sizing:border-box";
     CRF.innerHTML = '<iframe title="Corral Run" allow="autoplay; vibrate" style="display:block;width:100%;height:100%;border:0;background:#0b0a14"></iframe>';
     CRF.querySelector("iframe").src = src;
-    document.body.appendChild(CRF); crPlace();
+    document.body.appendChild(CRF); crPlace(); try { obOff(); } catch (e) {}
     document.documentElement.style.overflow = "hidden";
     try { history.pushState({ crf: 1 }, "", location.href); } catch (e) {}
   }
@@ -182,6 +182,52 @@
     try { await sb().rpc(x.t === "heat" ? "cr_heat_decline" : "cr_decline", { p_id: x.id }); try { typeof toast === "function" && toast("Passed — " + x.by + " knows"); } catch (e) {} } catch (e) {}
     IP.skip[x.t + x.id] = 1; IP.busy = false; hidePop(); setTimeout(function () { checkInv(true); }, 600);
   }
+
+  /* #openbar(nov18): a small bar just above the menu when a game lobby is open to anyone on the app ("LUCBONE's
+     6-player race is open · JOIN / ✕"). public.open_games() lists them in one shape, so trivia and later games
+     only need a new branch there. ✕ hides that one lobby on this phone. Not shown inside a game. */
+  var OB = { cur: null, t: 0, busy: false };
+  function obGone() { try { return JSON.parse(localStorage.getItem("shk_ob_x") || "[]"); } catch (e) { return []; } }
+  function obHide(x) { try { var a = obGone(); a.push(x); localStorage.setItem("shk_ob_x", JSON.stringify(a.slice(-40))); } catch (e) {} }
+  function obEl() {
+    var el = document.getElementById("obBar"); if (el) return el;
+    var st = document.createElement("style");
+    st.textContent = "#obBar{position:fixed;left:10px;right:10px;z-index:93;max-width:520px;margin:0 auto;display:none;align-items:center;gap:10px;padding:9px 9px 9px 12px;border-radius:14px;background:rgba(23,18,43,.96);border:1.5px solid #fbbf24;box-shadow:0 8px 24px rgba(0,0,0,.35);font-family:Inter,system-ui,sans-serif;animation:obIn .25s ease-out}" +
+      "#obBar.on{display:flex}@keyframes obIn{from{transform:translateY(12px);opacity:0}to{transform:none;opacity:1}}#obBar .i{font-size:20px;flex:none}" +
+      "#obBar .tx{flex:1;min-width:0;color:#fff}#obBar .t{font:800 15px/1.15 Barlow Condensed,sans-serif;letter-spacing:.03em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}" +
+      "#obBar .s{font:600 11.5px/1.3 Inter,system-ui,sans-serif;color:#c9c1e0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}" +
+      "#obBar .j{flex:none;height:34px;padding:0 14px;border-radius:9px;border:0;background:#fbbf24;color:#1a1206;font:800 14px Barlow Condensed,sans-serif;letter-spacing:.06em;cursor:pointer}" +
+      "#obBar .x{flex:none;width:30px;height:34px;border-radius:9px;border:1px solid #6b6290;background:transparent;color:#d8d2ee;font:700 15px Inter;cursor:pointer}";
+    document.head.appendChild(st);
+    el = document.createElement("div"); el.id = "obBar"; el.setAttribute("role", "status");
+    el.innerHTML = '<span class="i"></span><div class="tx"><div class="t"></div><div class="s"></div></div><button type="button" class="j">JOIN</button><button type="button" class="x" aria-label="Not now">✕</button>';
+    document.body.appendChild(el);
+    el.querySelector(".j").addEventListener("click", function () { var x = OB.cur; if (!x) return; obOff(); if (/^\/corral-run\.html/.test(x.go)) crOpen(x.go.replace(/^\/corral-run\.html/, "")); else location.href = x.go; });
+    el.querySelector(".x").addEventListener("click", function () { if (OB.cur) obHide(OB.cur.key); obOff(); });
+    return el;
+  }
+  function obPlace(el) {
+    var nav = document.querySelector(".nav"), r = nav && nav.getBoundingClientRect();
+    if (r && r.width < innerWidth / 2) { el.style.bottom = "14px"; el.style.left = (Math.round(r.right) + 12) + "px"; }   /* side menu on wide screens */
+    else { el.style.left = "10px"; el.style.bottom = ((r ? Math.round(innerHeight - r.top) : 70) + 8) + "px"; }
+  }
+  function obOff() { OB.cur = null; var el = document.getElementById("obBar"); el && el.classList.remove("on"); }
+  async function obCheck() {
+    if (!sb() || !me() || document.hidden || OB.busy) return;
+    if (CRF || IP.cur || document.getElementById("asCard")) { obOff(); return; }   /* inside a game, a direct invite is up, or the App Store card is showing */
+    OB.busy = true;
+    try {
+      var r = await sb().rpc("open_games"); var L = (r && !r.error && Array.isArray(r.data)) ? r.data : [];
+      var gone = obGone(), x = L.filter(function (y) { return gone.indexOf(y.key) < 0; })[0];
+      if (!x) { obOff(); return; }
+      var el = obEl(); OB.cur = x;
+      el.querySelector(".i").textContent = x.icon || "🎮"; el.querySelector(".t").textContent = x.title || "A game is open"; el.querySelector(".s").textContent = x.sub || "";
+      obPlace(el); el.classList.add("on");
+    } catch (e) {} finally { OB.busy = false; }
+  }
+  setInterval(obCheck, 15000); setTimeout(obCheck, 4000);
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) setTimeout(obCheck, 900); });
+  window.addEventListener("resize", function () { var el = document.getElementById("obBar"); el && el.classList.contains("on") && obPlace(el); });
 
   async function load() {
     if (!sb() || !me()) return;
