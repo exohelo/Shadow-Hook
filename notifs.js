@@ -341,3 +341,20 @@
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot); else boot();
   window.SHK_NOTIFS = { open: open, load: load, get rows() { return S.rows; } };
 })();
+
+// Apple Watch: hand the member's dispatch # to the iPhone app, which passes it to the watch (needs app build 20+).
+(function () {
+  var last = "", n = 0;
+  function push() {
+    try {
+      var h = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.shkWatch;
+      if (!h) return;
+      var c = String((typeof myBoardId === "function" && myBoardId()) || "").toUpperCase();
+      if (!/^[A-Z]\d{2,5}$/.test(c) || c === last) return;
+      h.postMessage({ card: c });
+      last = c;
+    } catch (e) {}
+  }
+  var t = setInterval(function () { push(); if (++n > 40 && last) { clearInterval(t); setInterval(push, 60000); } }, 3000);
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) { last = ""; push(); } });
+})();
