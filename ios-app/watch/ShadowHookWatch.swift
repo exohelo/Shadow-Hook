@@ -2,9 +2,15 @@
 //   · the watch app  (compiled with SHK_WATCH_APP): shows the board and is where the member enters their dispatch #
 //   · the watch widget extension: watch-face complications ("letters out")
 // The card is kept in a keychain group both targets can read. Data comes from the read-only board-now feed.
+// nov18: the iPhone app now hands the member's card to the watch (WatchConnectivity), so nobody has to type it on
+// the watch; the app refreshes whenever it comes to the front and every minute while open; "Live on" during dispatch.
 import SwiftUI
 import WidgetKit
 import Security
+#if SHK_WATCH_APP
+import WatchConnectivity
+import Combine
+#endif
 
 // MARK: - Shared
 
@@ -50,6 +56,15 @@ struct BoardNow: Codable {
     var letters_out: Int?
     var passed: Bool?
     var line: String?
+    var live: Bool?
+    var pos: String?
+}
+
+// The small grey line under the number: during dispatch, where the board is now; otherwise where it opens next.
+func subLine(_ b: BoardNow?) -> String {
+    guard let b = b else { return "" }
+    if b.live ?? false { return "Live on \(b.pos ?? b.next ?? "—")" }
+    return "Next opens \(b.next ?? "—")"
 }
 
 func fetchBoard(card: String) async -> BoardNow? {
@@ -61,6 +76,7 @@ func fetchBoard(card: String) async -> BoardNow? {
     guard let url = comps?.url else { return nil }
     var req = URLRequest(url: url)
     req.timeoutInterval = 12
+    req.cachePolicy = .reloadIgnoringLocalCacheData
     guard let result = try? await URLSession.shared.data(for: req) else { return nil }
     return try? JSONDecoder().decode(BoardNow.self, from: result.0)
 }
@@ -78,8 +94,42 @@ let shkCopper = Color(red: 0.933, green: 0.706, blue: 0.420)
 
 // MARK: - Watch app
 
+// Receives the card from the iPhone app. updateApplicationContext keeps the latest value; transferUserInfo is the
+// queued backup. Either way the card is saved where the complications read it, and the face is reloaded.
+final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
+    static let shared = PhoneLink()
+    @Published var card: String = CardStore.load()
+
+    func start() {
+        guard WCSession.isSupported() else { return }
+        let s = WCSession.default
+        s.delegate = self
+        s.activate()
+    }
+
+    private func take(_ info: [String: Any]) {
+        guard let raw = info["card"] as? String else { return }
+        let clean = raw.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard clean.range(of: "^[A-Z][0-9]{2,5}$", options: .regularExpression) != nil else { return }
+        DispatchQueue.main.async {
+            if clean == self.card { return }
+            CardStore.save(clean)
+            self.card = clean
+            WidgetCenter.shared.reloadAllTimelines()
+        }
+    }
+
+    func session(_ session: WCSession, activationDidCompleteWith state: WCSessionActivationState, error: Error?) {
+        take(session.receivedApplicationContext)
+    }
+    func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) { take(applicationContext) }
+    func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) { take(userInfo) }
+    func session(_ session: WCSession, didReceiveMessage message: [String: Any]) { take(message) }
+}
+
 @main
 struct ShadowHookWatchApp: App {
+    init() { PhoneLink.shared.start() }
     var body: some Scene {
         WindowGroup {
             WatchHome()
@@ -88,7 +138,10 @@ struct ShadowHookWatchApp: App {
 }
 
 struct WatchHome: View {
+    @Environment(\.scenePhase) private var phase
+    @ObservedObject private var link = PhoneLink.shared
     @State private var card: String = CardStore.load()
+    private let tick = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
     @State private var draft: String = ""
     @State private var board: BoardNow? = nil
     @State private var loading: Bool = false
@@ -107,7 +160,7 @@ struct WatchHome: View {
                         .lineLimit(1)
                     Text(b.line ?? "")
                         .font(.footnote)
-                    Text("Next opens \(b.next ?? "—")")
+                    Text(subLine(b))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 } else {
@@ -115,7 +168,7 @@ struct WatchHome: View {
                         .font(.footnote)
                 }
                 Divider()
-                Text(card.isEmpty ? "Add your dispatch #" : "Your card: \(card)")
+                Text(card.isEmpty ? "Open Shadow Hook on your iPhone, or type your dispatch #" : "Your card: \(card)")
                     .font(.caption2)
                 TextField("e.g. M4207", text: $draft)
                 Button("Save card") { saveCard() }
@@ -125,6 +178,11 @@ struct WatchHome: View {
             .padding(.horizontal, 4)
         }
         .task { await refresh() }
+        .onChange(of: phase) { _, p in if p == .active { Task { await refresh() } } }
+        .onReceive(tick) { _ in if phase == .active { Task { await refresh() } } }
+        .onReceive(link.$card) { c in
+            if !c.isEmpty && c != card { card = c; Task { await refresh() } }
+        }
     }
 
     private func saveCard() {
@@ -132,6 +190,7 @@ struct WatchHome: View {
         if clean.isEmpty { return }
         CardStore.save(clean)
         card = clean
+        PhoneLink.shared.card = clean
         draft = ""
         WidgetCenter.shared.reloadAllTimelines()
         Task { await refresh() }
@@ -140,7 +199,11 @@ struct WatchHome: View {
     private func refresh() async {
         loading = true
         let b = await fetchBoard(card: card)
-        board = b
+        if let b = b {
+            let changed = b.letters_out != board?.letters_out || b.next != board?.next || b.pos != board?.pos
+            board = b
+            if changed { WidgetCenter.shared.reloadAllTimelines() }
+        }
         loading = false
     }
 }
@@ -182,7 +245,9 @@ struct WatchProvider: TimelineProvider {
             let card = CardStore.load()
             let board = await fetchBoard(card: card)
             let entry = WatchEntry(date: Date(), card: card, board: board)
-            completion(Timeline(entries: [entry], policy: .after(Date().addingTimeInterval(15 * 60))))
+            // every 5 minutes while the board is live, 15 otherwise (watchOS may stretch this to save battery)
+            let mins: Double = (board?.live ?? false) ? 5 : 15
+            completion(Timeline(entries: [entry], policy: .after(Date().addingTimeInterval(mins * 60))))
         }
     }
 }
@@ -195,7 +260,7 @@ struct WatchComplicationView: View {
     private var big: String { bigText(entry.board, card: entry.card) }
     private var line: String {
         if hasCard { return entry.board?.line ?? "" }
-        return "Next opens \(entry.board?.next ?? "—")"
+        return subLine(entry.board)
     }
 
     var body: some View {
@@ -205,7 +270,7 @@ struct WatchComplicationView: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text("⚓ The Board").font(.system(size: 12, weight: .semibold))
                     Text(line).font(.system(size: 14, weight: .bold)).minimumScaleFactor(0.7).lineLimit(1)
-                    Text(hasCard ? "Next opens \(entry.board?.next ?? "—")" : "Open the app to add your #")
+                    Text(hasCard ? subLine(entry.board) : "Open Shadow Hook on your iPhone")
                         .font(.system(size: 11)).lineLimit(1)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
