@@ -10,9 +10,16 @@
   "use strict";
   if (window.__xmasRaffle) return; window.__xmasRaffle = true;
   var DESIGN = "xmas-ice", ART = "./xmas-ice-art.jpg", BG = "./xmas-ice-mickey.jpg", YT = "39ZoU-WflbA", CLIP = 23;
+  /* nov18: the reviewed iPhone app (SHK_IOS_STORE) shows the Order's own art — no show artwork, no trailer player —
+     and a plain link that opens the trailer on YouTube. The website and Android keep the show art and trailer. */
+  var APP = !!window.SHK_IOS_STORE, ALT = "Christmas Day on Ice";
+  if (APP) { ART = "./xmas-ice-app.jpg"; BG = "./xmas-ice-app-bg.jpg"; } else { ALT = "Disney On Ice presents Jump In!"; }
+  var CRED = APP ? "" : "© Disney";
+  var TRAILER = "https://www.youtube.com/watch?v=" + YT;
+  var RULES = '<div class="xf-legal">Free to enter · no purchase necessary · 18+ · <a href="/raffle-rules.html" target="_blank" rel="noopener">Official rules</a> · Apple and Google are not sponsors and are not involved.</div>';
   var EVENT = { when: "FRI · DEC 25 · 11:00 AM", where: "TOYOTA ARENA · ONTARIO, CA", sec: "116", row: "I", seats: "16–19" };
   var R = null, ST = null, BANK = null, COMPS = [], qty = 1, busy = false, armed = false, armT = 0;
-  try { (window.RFL_ART = window.RFL_ART || {})[DESIGN] = { src: BG, credit: "© Disney", focus: "50% 28%" }; } catch (e) {}
+  try { (window.RFL_ART = window.RFL_ART || {})[DESIGN] = { src: BG, credit: CRED, focus: "50% 28%" }; } catch (e) {}
   var $ = function (id) { return document.getElementById(id); };
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
   var fmt = function (n) { return Number(n || 0).toLocaleString("en-US"); };
@@ -161,6 +168,9 @@
       "#xmasFlyer .xf-msg.ok{color:#7EE2A8}#xmasFlyer .xf-msg.bad{color:#FF8A8A}",
       "#xmasFlyer .xf-rules{padding:10px 12px;border-radius:14px;background:rgba(5,12,34,.82);border:1px solid rgba(255,255,255,.12);display:flex;flex-direction:column;gap:5px;font:500 12px/1.4 Inter,sans-serif;color:#E6EEFA;flex:0 0 auto}",
       "#xmasFlyer .xf-rules b{color:#fff}#xmasFlyer .xf-rules .g{color:#F2C14E}",
+      "#xmasFlyer .xf-legal{text-align:center;font:500 10.5px/1.5 Inter,sans-serif;color:#C9D6EA;flex:0 0 auto}#xmasFlyer .xf-legal a{color:#F2C14E}",
+      "html.ios-store #xmasBanner .xb-mart img{position:absolute;inset:0;left:0;top:0;width:100%;height:100%;max-width:100%;object-fit:cover;object-position:18% 40%;transform:none}",
+      "html.ios-store #xmasFlyer a.xf-again{text-decoration:none;font-size:13px;padding:8px 12px}",
       "#xmasFlyer .xf-foot{line-height:1.6;text-align:center;font:600 9.5px Inter,sans-serif;letter-spacing:.24em;color:#D9CCF2;flex:0 0 auto}"
     ].join("\n");
     document.head.appendChild(s);
@@ -239,7 +249,7 @@
   })();
   function miniHTML() {
     return '<button type="button" class="xb-card xb-mini" data-xm="open" aria-label="Open the Christmas Day on Ice raffle">' +
-      '<div class="xb-mart"><img src="' + ART + '" alt="Disney On Ice presents Jump In!"></div>' +
+      '<div class="xb-mart"><img src="' + ART + '" alt="' + ALT + '"></div>' +
       '<div class="xb-mbody"><span class="xm-script">Christmas Day on Ice</span>' +
       '<span class="xm-bebas xb-mhead">WIN A FAMILY 4-PACK</span>' +
       '<span class="xb-mdraw">' + esc(laDraw(R.closes_at)) + '</span></div>' +
@@ -249,7 +259,7 @@
   function cardHTML() {
     if (COMPACT) return miniHTML();
     return '<button type="button" class="xb-card" data-xm="open" aria-label="Open the Christmas Day on Ice raffle">' +
-      '<div class="xb-art"><img src="' + ART + '" alt="Disney On Ice presents Jump In!"><span class="xm-cred">© Disney</span></div>' +
+      '<div class="xb-art"><img src="' + ART + '" alt="' + ALT + '">' + (CRED ? '<span class="xm-cred">' + CRED + '</span>' : '') + '</div>' +
       '<div class="xb-body"><div class="xb-row"><span class="xm-script">Christmas Day on Ice</span><span class="xb-tag">RAFFLE</span></div>' +
       '<div class="xm-bebas xb-head">WIN A FAMILY 4-PACK</div>' +
       '<div class="xb-foot"><div class="xb-draw"><span class="xm-k">THE DRAW</span><b>' + esc(laDraw(R.closes_at)) + '</b></div>' +
@@ -267,6 +277,7 @@
       b.addEventListener("click", onBannerClick);
       intro = intro == null ? introDue() : intro;
     } else if (b.previousElementSibling !== at.after && at.after) { at.after.insertAdjacentElement("afterend", b); }
+    if (intro && APP) intro = false;
     if (intro) {
       b.innerHTML = '<div class="xb-box" style="aspect-ratio:16/9">' + vidHTML() + "</div>";
       b._intro = true; introSeen();
@@ -294,7 +305,7 @@
       '<div class="xf-fade"></div><div class="xf-fade2"></div>' +
       '<div class="xf-top" id="xfTop"></div>' +
       '<div class="xf-grab" aria-hidden="true"></div>' +
-      '<button type="button" class="xf-again" data-xf="again">▶ Trailer</button>' +
+      (APP ? '<a class="xf-again" href="' + TRAILER + '" target="_blank" rel="noopener">▶ Watch the trailer on YouTube</a>' : '<button type="button" class="xf-again" data-xf="again">▶ Trailer</button>') +
       '<div class="xf-col" id="xfCol"></div></div>';
     document.body.appendChild(f);
     f.addEventListener("click", onFlyerClick);
@@ -304,6 +315,7 @@
   function startTop() {
     var f = flyer(), top = $("xfTop");
     f.classList.remove("lifted");
+    if (APP) { top.innerHTML = ""; f.classList.add("lifted"); return; }
     top.innerHTML = vidHTML();
     runClip(top, function () { f.classList.add("lifted"); });   /* the panel slides away at 0:21; the trailer keeps playing, so the sound carries on */
   }
@@ -379,7 +391,7 @@
       (cap() >= bq * 2 ? '<button type="button" class="' + (qty === bq * 2 ? "on" : "") + '" data-xf="q" data-q="' + bq * 2 + '" aria-pressed="' + (qty === bq * 2) + '">Two ' + bq + '-packs · ' + fmt(bp * 2) + ' ⬡</button>' : "") + "</div>" : "";
     var note = saved > 0 ? "You save " + fmt(saved) + " ⬡" : (bq > 1 && bp ? "Buy " + bq + " and save " + fmt(bq * R.ticket_price - bp) + " ⬡" : "");
     col.innerHTML =
-      '<div class="xf-cred">© Disney</div>' +
+      (CRED ? '<div class="xf-cred">' + CRED + '</div>' : '') +
       '<div class="xf-title"><div class="xf-pre">THE ORDER OF THE SHADOW HOOK PRESENTS</div>' +
       '<div class="xm-script">Christmas Day on Ice</div><div class="xm-bebas xf-h">RAFFLE · WIN A FAMILY 4-PACK</div></div>' +
       '<div class="xf-gap" aria-hidden="true"><span>SCROLL FOR YOUR TICKETS ↓</span></div>' +
@@ -396,7 +408,7 @@
       '<div class="xf-rules"><div><span class="g">Free to enter.</span> Tickets are earned in the app — open it 5 days in a row, mark the board, report job drops. Cap of <b>' + cap() + ' tickets a member</b>, so everyone keeps a real shot.</div>' +
       '<div>One ticket is drawn at random. The winner gets all four seats <b>transferred through Ticketmaster</b> (a free account is all you need).</div>' +
       '<div><span class="g"><b style="color:#F2C14E">Children under 2 are free</b></span>, so bring the little ones along.</div></div>' +
-      '<div class="xf-foot">THE ORDER OF THE SHADOW HOOK<br>SAN PEDRO BAY</div>';
+      RULES + '<div class="xf-foot">THE ORDER OF THE SHADOW HOOK<br>SAN PEDRO BAY</div>';
   }
   function statsHTML() {
     var total = ST && typeof ST.total === "number" ? ST.total : null, who = ST && typeof ST.entrants === "number" ? ST.entrants : null, m = mine();
