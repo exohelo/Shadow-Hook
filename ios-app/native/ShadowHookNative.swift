@@ -2,9 +2,13 @@
 //  1. Remembers this phone's Apple push address when Capacitor's push plugin registers.
 //  2. Live Activity plumbing: tells the server the addresses it needs to start ("start") and update ("update")
 //     the board card on the Lock Screen / Dynamic Island, and when a card was ended.
+//  3. Apple Watch: the website posts the member's card (window.webkit.messageHandlers.shkWatch, from notifs.js);
+//     it's handed to the watch app over WatchConnectivity so the watch and its complications know the card.
 import UIKit
 import Capacitor
 import ActivityKit
+import WebKit
+import WatchConnectivity
 
 // The same definition lives in the widget extension (widgets/ShadowHookWidgets.swift). Keep the two in step.
 @available(iOS 16.2, *)
@@ -38,6 +42,7 @@ enum ShadowHookNative {
         if #available(iOS 17.2, *) {
             LiveBoard.watch()
         }
+        WatchLink.shared.start()
     }
 
     static func hex(_ data: Data) -> String {
@@ -100,5 +105,76 @@ enum LiveBoard {
                 }
             }
         }
+    }
+}
+
+// MARK: - Apple Watch link
+
+final class WatchLink: NSObject, WCSessionDelegate, WKScriptMessageHandler {
+    static let shared = WatchLink()
+    private let cardKey = "shk_watch_card"
+    private var hooked = false
+
+    func start() {
+        if WCSession.isSupported() {
+            WCSession.default.delegate = self
+            WCSession.default.activate()
+        }
+        hook(tries: 0)
+    }
+
+    // The Capacitor web view appears a moment after launch; keep looking for it for about a minute.
+    private func hook(tries: Int) {
+        DispatchQueue.main.async {
+            if self.hooked { return }
+            if let web = self.findWebView() {
+                web.configuration.userContentController.add(self, name: "shkWatch")
+                self.hooked = true
+                return
+            }
+            if tries < 60 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self.hook(tries: tries + 1) }
+            }
+        }
+    }
+
+    private func findWebView() -> WKWebView? {
+        for scene in UIApplication.shared.connectedScenes {
+            guard let ws = scene as? UIWindowScene else { continue }
+            for w in ws.windows {
+                if let vc = w.rootViewController as? CAPBridgeViewController, let web = vc.webView { return web }
+            }
+        }
+        if let vc = UIApplication.shared.delegate?.window??.rootViewController as? CAPBridgeViewController { return vc.webView }
+        return nil
+    }
+
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard let body = message.body as? [String: Any], let raw = body["card"] as? String else { return }
+        let card = raw.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard card.range(of: "^[A-Z][0-9]{2,5}$", options: .regularExpression) != nil else { return }
+        let old = UserDefaults.standard.string(forKey: cardKey) ?? ""
+        UserDefaults.standard.set(card, forKey: cardKey)
+        send(card, queue: card != old)
+    }
+
+    private func send(_ card: String, queue: Bool) {
+        guard WCSession.isSupported() else { return }
+        let s = WCSession.default
+        guard s.activationState == .activated, s.isPaired, s.isWatchAppInstalled else { return }
+        try? s.updateApplicationContext(["card": card])
+        if queue { s.transferUserInfo(["card": card]) }
+        if s.isReachable { s.sendMessage(["card": card], replyHandler: nil, errorHandler: nil) }
+    }
+
+    func session(_ session: WCSession, activationDidCompleteWith state: WCSessionActivationState, error: Error?) {
+        let card = UserDefaults.standard.string(forKey: cardKey) ?? ""
+        if !card.isEmpty { DispatchQueue.main.async { self.send(card, queue: false) } }
+    }
+    func sessionDidBecomeInactive(_ session: WCSession) {}
+    func sessionDidDeactivate(_ session: WCSession) { WCSession.default.activate() }
+    func sessionWatchStateDidChange(_ session: WCSession) {
+        let card = UserDefaults.standard.string(forKey: cardKey) ?? ""
+        if !card.isEmpty { DispatchQueue.main.async { self.send(card, queue: true) } }
     }
 }
