@@ -47,7 +47,7 @@
     "#ntSheet .nt-it.new{background:rgba(232,163,61,.08)}#ntSheet .nt-it:hover{background:rgba(255,255,255,.04)}" +
     "#ntSheet .nt-ic{flex:0 0 30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);font-size:14px;color:var(--copper-hi,#e8a33d);font-weight:700}" +
     "#ntSheet .nt-tx{flex:1;min-width:0;font:13px/1.4 Inter,system-ui,sans-serif;color:var(--bone,#eee)}#ntSheet .nt-tx b{color:var(--copper-hi,#e8a33d)}" +
-    "#ntSheet .nt-sn{display:block;color:var(--steel,#999);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#ntSheet .nt-t{flex:0 0 auto;font:12px Inter,system-ui,sans-serif;color:var(--steel,#999)}" +
+    "#ntSheet .nt-sn{display:block;color:var(--steel,#999);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#ntSheet .nt-full .nt-sn{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.45;margin-top:2px}#ntSheet .nt-t{flex:0 0 auto;font:12px Inter,system-ui,sans-serif;color:var(--steel,#999)}" +
     "#ntSheet .nt-none{padding:24px 8px;text-align:center;color:var(--steel,#999);font:13px Inter,system-ui,sans-serif}" +
     ".bpost.nt-flash{outline:2px solid var(--copper-hi,#e8a33d);outline-offset:3px;transition:outline-color 1.2s}";
   function css() { if (document.getElementById("ntCss")) return; var st = document.createElement("style"); st.id = "ntCss"; st.textContent = CSS; document.head.appendChild(st); }
@@ -277,7 +277,7 @@
     var L = document.getElementById("ntList"); if (!L) return;
     if (!S.rows.length) { L.innerHTML = '<div class="nt-none">Nothing yet. Likes, comments, replies, @tags and Corral Run races show up here.</div>'; return; }
     L.innerHTML = S.rows.map(function (x, i) {
-      return '<div class="nt-it' + (x.seen_at ? "" : " new") + '" data-i="' + i + '"><div class="nt-ic">' + (ICON[x.kind] || "🔔") + '</div><div class="nt-tx"><b>' + esc(x.actor_handle || "Someone") + "</b> " + esc(WORD[x.kind] || "") +
+      return '<div class="nt-it' + (x.seen_at ? "" : " new") + (x.kind === "news" ? " nt-full" : "") + '" data-i="' + i + '"><div class="nt-ic">' + (ICON[x.kind] || "🔔") + '</div><div class="nt-tx"><b>' + esc(x.actor_handle || "Someone") + "</b> " + esc(WORD[x.kind] || "") +
         (x.snippet ? '<span class="nt-sn">' + esc(x.snippet) + "</span>" : "") + '</div><div class="nt-t">' + ago(x.created_at) + "</div></div>";
     }).join("");
   }
