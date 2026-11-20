@@ -1050,7 +1050,7 @@ window.DEVLOG=(function(){const S={errs:[],notes:[],tables:{},t0:Date.now(),buil
           <div><span class="lbl">Date *</span><input class="field" id="njDate" type="date"></div>
         </div>
         <div class="row2" style="margin-bottom:12px;align-items:end">
-          <div><span class="lbl">Hours paid</span><input class="field" id="njHours" type="number" min="1" max="16" step="0.5" placeholder="8"></div>
+          <div><span class="lbl">Hours paid</span><input class="field" id="njHours" type="number" inputmode="decimal" min="1" max="16" step="0.5" placeholder="8"><div class="nj-ot" id="njOT"><button type="button" data-ot="0.5">+½ hr</button><button type="button" data-ot="1">+1 hr</button><button type="button" data-ot="-0.5">−½</button></div></div>
           <div><span class="lbl">Job start <small style="text-transform:none;letter-spacing:0">— flex &amp; hoot auto-detect</small></span>
             <div style="display:flex;gap:6px"><select class="field" id="njStartHr" style="flex:1"><option value="">—</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option><option>11</option><option>12</option></select><select class="field" id="njStartAp" style="flex:1"><option>AM</option><option>PM</option></select></div>
           </div>
@@ -2479,7 +2479,7 @@ html.daylight .arm-bucks .ab-v,html.daylight .arm-bucks .ab-coin{color:#1f7a94}
       <div class="big" style="font-size:20px;letter-spacing:.06em">STRIKE THIS ENTRY?</div>
       <p class="sub" style="margin:8px 0 16px"><b style="color:var(--bone)" id="strikeName">—</b> · <span class="mono" id="strikeDate">—</span><br>It leaves the log, the Take, and the clock. This can't be undone.</p>
       <button class="btn-del" id="strikeGo">✕ Delete It</button>
-      <button class="btn-ghost" id="strikeEdit" style="width:100%;margin-top:10px">✎ Edit It</button>
+      <button class="btn-line gold" id="strikeOT" style="width:100%;margin-top:10px">＋ 30 MIN OT <small id="strikeOTh" style="opacity:.75;font-weight:500"></small></button> <button class="btn-ghost" id="strikeEdit" style="width:100%;margin-top:10px">✎ Edit It</button>
       <button class="btn-ghost" id="strikeNo" style="width:100%;margin-top:10px">Keep It</button>
     </div>
   </div>
@@ -13215,5 +13215,37 @@ function go(){try{if(typeof DOCKETS==="undefined"||!Array.isArray(DOCKETS)||!DOC
 try{var d=document.getElementById("cfx");d&&d.remove()}catch(e){}
 window.shkClerkFix=go;})();</script>
 
+<style id="otCSS">.nj-ot{display:flex;gap:6px;margin-top:6px}.nj-ot button{flex:1;min-width:0;padding:7px 0;border-radius:9px;border:1px solid rgba(242,193,78,.35);background:rgba(242,193,78,.08);color:var(--copper-hi,#f2c14e);font:600 12.5px Inter,system-ui,sans-serif}.nj-ot button:active{transform:scale(.97)}</style>
+<script id="otJS">
+/* nov19 (member request): overtime is often paid in half hours. +½ / +1 / −½ on the job form, and "+30 MIN OT" on a sealed job's menu. */
+(function(){
+  function fmt(h){ return (Math.round(h*2)/2).toString().replace(/\.5$/,"½").replace(/^0½$/,"½")+" hr"; }
+  function baseFor(){ try{ var sh=document.getElementById("njShift").value, cat=document.getElementById("njCat").value.trim().toUpperCase(); return defaultHours(sh,cat)||8; }catch(e){ return 8; } }
+  document.addEventListener("click",function(e){
+    var b=e.target&&e.target.closest&&e.target.closest("#njOT button"); if(!b) return;
+    e.preventDefault();
+    var inp=document.getElementById("njHours"); if(!inp) return;
+    var cur=parseFloat(inp.value); if(!(cur>0)) cur=baseFor();
+    var nx=Math.max(1,Math.min(16,Math.round((cur+parseFloat(b.dataset.ot))*2)/2));
+    inp.value=String(nx); try{ inp.dispatchEvent(new Event("input",{bubbles:true})); }catch(_){}
+  });
+  function curJob(){ try{ var id=document.getElementById("strikeGo").dataset.id; return DOCKETS.find(function(x){ return x._id==id; }); }catch(e){ return null; } }
+  function paintOT(){ var j=curJob(), el=document.getElementById("strikeOTh"); if(!el) return; try{ el.textContent=j?"· now "+fmt(jobHours(j)):""; }catch(e){ el.textContent=""; } }
+  var sh=document.getElementById("strikeSheet");
+  if(sh&&window.MutationObserver){ new MutationObserver(function(){ sh.classList.contains("on")&&paintOT(); }).observe(sh,{attributes:true,attributeFilter:["class"]}); }
+  var btn=document.getElementById("strikeOT");
+  btn&&btn.addEventListener("click",function(){
+    var j=curJob(); if(!j) return;
+    var h; try{ h=jobHours(j); }catch(e){ h=+j.hours||8; }
+    if(h>=16){ try{ toast("That job is already at 16 hours"); }catch(e){} return; }
+    j.hours=Math.min(16,Math.round((h+0.5)*2)/2);
+    try{ saveDK(); }catch(e){}
+    try{ renderDockets(); }catch(e){}
+    try{ typeof drawWG=="function"&&drawWG(); }catch(e){}
+    paintOT();
+    try{ toast("+30 min · this job is now "+fmt(j.hours)); }catch(e){}
+  });
+})();
+</script>
 </body>
 </html>
