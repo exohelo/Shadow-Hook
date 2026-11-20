@@ -270,3 +270,13 @@ test('holiday and closure flagged with snippets', () => {
 test('quiet recording flags nothing', () => {
   assert.equal(parseSpecial('the day board left off on whiskey 4912 thank you for calling').length, 0);
 });
+
+test('#nov19 misheard letter: the "as in" word wins (B as in Victor = V)', () => {
+  const r = parseLeftOff('I have a casual job forecast for Thursday night, November 19th. We\'re going to start with the letter B as in Victor, 3020, B, 3020. We have 1,179 jobs. We\'ll see you tonight');
+  assert.equal(r.card, 'V3020');
+  assert.equal(r.mode, 'start');
+});
+
+test('#nov19 matching exemplar still reads the same letter (B as in Baker = B)', () => {
+  assert.equal(parseLeftOff("we're going to start with the letter B, B is in Baker 4704").card, 'B4704');
+});

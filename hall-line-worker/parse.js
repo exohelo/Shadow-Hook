@@ -142,6 +142,10 @@ function readLetter(tokens, i){
   if (exemplar){
     if (exemplar[0].toUpperCase() === L) confirmed = true;                       // Baker→B, yellow→Y
     else if (NATO[exemplar] === L || SAFE_NAMES[exemplar] === L) confirmed = true;
+    /* #nov19 — the spoken letter gets misheard (B/V/D/E/P/T all rhyme) but the exemplar word is clear:
+       "B as in Victor, 3020" was the hall saying V. When the exemplar is a real word that starts with a
+       different letter, the exemplar wins: Victor→V, Baker→B. */
+    else if (/^[a-z]{3,}$/.test(exemplar)) { L = NATO[exemplar] || exemplar[0].toUpperCase(); confirmed = true; }
     risky = risky && !confirmed;
   }
   return { L, risky, next, confirmed };

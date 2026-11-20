@@ -405,6 +405,26 @@ async function forecastRun() { try {
   };
   if (CFG.dryRun) { summary('DRY RUN — would log forecast: ' + JSON.stringify(row.extras)); return; }
   if (CFG.sbUrl && CFG.sbKey) { const ok = await sbInsert('hall_line_log', row); if (!ok) { delete row.extras; await sbInsert('hall_line_log', row); } }
+  /* #nov19 — the forecast's "we're going to start with V3020" is the hall's own word on where this board opens, so it
+     sets the record: the board before it ended on the card just before (V3019). The hall's earlier "left off at V3020"
+     (which the bot read as the END card) is corrected. Only the bot's own row is rewritten — never a member's. */
+  if (startCard && CFG.sbUrl && CFG.sbKey) {
+    try {
+      const pk = prevKeyOf(fileKey), endC = prevCardId(startCard);
+      if (pk && endC) {
+        const ex = await sbSelect('board_wire', 'port=eq.' + CFG.port + '&k=eq.' + encodeURIComponent(pk) + '&select=k,patch,by,by_handle');
+        const cur = ex && ex[0];
+        if (cur && cur.by === CFG.botId && endOf(cur) !== endC) {
+          const patch = Object.assign({}, cur.patch || {}, { end: endC });
+          if (patch.start) { const mv = boardMoved(patch.start, endC); patch.act = mv.act; if (mv.cyc) patch.cyc = true; else delete patch.cyc; }
+          await sbUpsert('board_wire', Object.assign({}, cur, { port: CFG.port, patch }), 'port,k');
+          summary('✎ RECORD CORRECTED — the hall says ' + fileKey + ' starts on ' + startCard + ', so ' + pk + ' ended on ' + endC + ' (was ' + endOf(cur) + ').');
+        } else if (cur && cur.by !== CFG.botId && endOf(cur) !== endC) {
+          summary('ℹ the hall says ' + fileKey + ' starts on ' + startCard + ' but a hand logged ' + pk + ' ending ' + endOf(cur) + ' — left as is (the bot never writes over a member).');
+        }
+      }
+    } catch (e) { log('warn: forecast start → record correction failed:', e.message); }
+  }
   summary(pick ? '📣 FORECAST ' + fileKey + ': ' + pick.n + ' jobs' + (startCard ? ', starts ' + startCard : '') + ' (read ' + (spent + 1) + ')'
                  + (fileKey !== target.key ? ' — read in the ' + target.key + ' window, filed under the board it names' : '')
                : '🔇 FORECAST — no count heard for ' + fileKey + ' (read ' + (spent + 1) + ').');
@@ -754,6 +774,10 @@ function fallbackLeftOff(text) {
   let m = tx.match(/\b([a-z])\b[\s,]*(?:(?:is|as|like)\s+(?:in\s+)?)([a-z]{3,12})[^0-9]{0,20}?(\d{3,5})\b/);
   if (m && m[2][0] === m[1]) {
     return { card: (m[1] + m[3]).toUpperCase(), conf: 0.85, mode: mode, heard: m[0].slice(0, 60) };
+  }
+  /* #nov19 — "B as in Victor 3020": the spoken letter was misheard; the exemplar word wins */
+  if (m && m[2][0] !== m[1]) {
+    return { card: (m[2][0] + m[3]).toUpperCase(), conf: 0.8, mode: mode, heard: m[0].slice(0, 60) };
   }
   m = tx.match(/\bletter\s+([a-z])\b[^0-9]{0,40}?(\d{3,5})\b/);
   if (m) {
