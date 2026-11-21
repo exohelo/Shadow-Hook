@@ -936,7 +936,7 @@
 (function () {
   try {
     if (document.getElementById("haStripJS")) return;
-    var sc = document.createElement("script"); sc.id = "haStripJS"; sc.src = "harbor_alerts.js?v=nov21a"; sc.defer = true;
+    var sc = document.createElement("script"); sc.id = "haStripJS"; sc.src = "harbor_alerts.js?v=nov21b"; sc.defer = true;
     (document.head || document.documentElement).appendChild(sc);
   } catch (e) {}
 })();
