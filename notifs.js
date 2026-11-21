@@ -138,7 +138,7 @@
   /* #invpop(nov18): a Corral Run invite pops up in the middle of the app with ACCEPT / DECLINE instead of only a toast
      up top. Decline tells the sender right away (1v1: their 5 ⬡ comes back); accept opens the game straight into the race. */
   var IP = { cur: null, skip: {}, at: 0, busy: false };
-  var MAPN = { pier1c: "Maersk · Pier 400", china: "China Shipping · Berth 100", yangming: "Yang Ming · Berth 121" };
+  var MAPN = { pier1c: "Maersk · Pier 400", china: "China Shipping · Berth 100", yangming: "Yang Ming · Berth 121", trapac: "TraPac · Berth 136", lbct: "LBCT · Pier E", everport: "Everport · Berth 226" };
   var IPCSS = "#ntPop{position:fixed;inset:0;z-index:96;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.6);padding:18px}#ntPop.on{display:flex}" +
     "#ntPop .ip{width:100%;max-width:360px;background:var(--plate-2,#15171b);border:1.5px solid var(--copper-hi,#e8a33d);border-radius:18px;padding:18px 16px 14px;text-align:center;box-shadow:0 18px 50px rgba(0,0,0,.55);animation:ntIpIn .22s ease-out}" +
     "@keyframes ntIpIn{from{transform:scale(.9);opacity:0}to{transform:none;opacity:1}}" +
