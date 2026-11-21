@@ -931,3 +931,12 @@
     sheets: { read: readSheet, parse: pmaParse2, port: sheetPort, key: sheetKey, add: addSheetsFor }
   };
 })();
+
+/* #alertstrip(nov21) — the harbor alert strip lives in its own file; ports_ext loads it so index.html didn't change */
+(function () {
+  try {
+    if (document.getElementById("haStripJS")) return;
+    var sc = document.createElement("script"); sc.id = "haStripJS"; sc.src = "harbor_alerts.js?v=nov21a"; sc.defer = true;
+    (document.head || document.documentElement).appendChild(sc);
+  } catch (e) {}
+})();
