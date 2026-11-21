@@ -59,6 +59,16 @@
       "#haStrip .ha-row span{display:block;font-size:12.5px;color:#aaa4d4;margin-top:2px;line-height:1.45}" +
       "#haStrip .ha-ft{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:11.5px;color:#8d87b8;margin-top:4px}" +
       "#haStrip .ha-ft button{background:none;border:1px solid rgba(160,150,220,.35);color:#cfc9f5;border-radius:8px;padding:5px 10px;font:inherit;font-size:11.5px;cursor:pointer}" +
+      /* daylight theme (html.daylight): cream and brown to match the day header instead of a dark slab */
+      "html.daylight #haStrip .ha-bar{background:#fbf0d2;border-color:#d8b25a;color:#6b4710}" +
+      "html.daylight #haStrip.red .ha-bar{background:#fde7e1;border-color:#dc8a74;color:#8a2a17}" +
+      "html.daylight #haStrip .ha-list{background:#fffaf0;border-color:rgba(150,110,40,.28);box-shadow:0 6px 18px rgba(90,60,20,.12)}" +
+      "html.daylight #haStrip .ha-row{background:rgba(150,110,40,.07)}" +
+      "html.daylight #haStrip .ha-row b{color:#3a2810}" +
+      "html.daylight #haStrip .ha-row span{color:#76603d}" +
+      "html.daylight #haStrip .ha-row:not(.gold):not(.red){border-left-color:#b9a27a}" +
+      "html.daylight #haStrip .ha-ft{color:#8a7550}" +
+      "html.daylight #haStrip .ha-ft button{border-color:#c9a76a;color:#6b4710}" +
       /* Mayday's old card goes away (the strip replaces it) */
       ".card:has(#alertsList){display:none!important}";
     (document.head || document.documentElement).appendChild(st);
