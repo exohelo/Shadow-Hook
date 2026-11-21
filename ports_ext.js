@@ -72,9 +72,58 @@
 
   /* ------------------------------------------------------------------ LA/LB-only machinery off elsewhere ------------------------------------------ */
   function guardLalbOnly() {
+    hallTrim();
     if (S.home === "lalb") return;
     try { if (window.PORTSIG) { window.PORTSIG.adjust = function () { return null; }; window.PORTSIG.load = function () {}; } } catch (e) {}
   }
+
+  /* ------------------------------------------------------------------ #sftrim(nov20) — Local 10's app ----------------------------------------
+     The Keymaster: the SF casual hall doesn't run like LA's (no A–Z letter board, no live drop log), so a Local 10
+     casual gets a lean app until we build their pieces with them. Kept: Dockets · Take · Ports · Social.
+     Social keeps only The Hall (minus the live Dispatch Post) and the messenger/network pill.
+     Gone for SF: the Wire, the Armory, Mayday, The Order (race/rank), After Hours, and the Dispatch Post + its room.
+     Pure hide + redirect — nothing is deleted, LA/LB is untouched, and flipping home_port back restores everything. */
+  var TRIM = { sf: true };
+  var TRIM_CSS =
+    'html[data-trim="1"] .nav button[data-scr="board"],' +
+    'html[data-trim="1"] .nav button[data-scr="armory"],' +
+    'html[data-trim="1"] .nav button[data-scr="mayday"],' +
+    'html[data-trim="1"] #hallSeg button[data-hv="order"],' +
+    'html[data-trim="1"] #hallSeg button[data-hv="after"],' +
+    'html[data-trim="1"] #orderView,' +
+    'html[data-trim="1"] #socialFeed .dp-post,' +
+    'html[data-trim="1"] #dpRoom{display:none!important}';
+  var TRIM_GONE_TABS = { board: 1, armory: 1, mayday: 1 };
+  function trimOn() { return !!TRIM[S.home]; }
+  function trimFix() {
+    if (!trimOn()) return;
+    try {   /* standing on a tab Local 10 doesn't have → Dockets */
+      var tab = document.documentElement.dataset.tab || "";
+      if (TRIM_GONE_TABS[tab] && typeof window.gotoTab === "function") window.gotoTab("dockets");
+    } catch (e) {}
+    try {   /* Social sitting on The Order / After Hours → The Hall */
+      var on = document.querySelector('#hallSeg button.on');
+      if (on && (on.dataset.hv === "order" || on.dataset.hv === "after") && typeof window.setHallView === "function") window.setHallView("hall");
+    } catch (e) {}
+    try { var room = document.getElementById("dpRoom"); if (room && room.classList.contains("on")) room.classList.remove("on"); } catch (e) {}
+  }
+  function hallTrim() {
+    try {
+      if (!document.getElementById("shkTrimCSS")) {
+        var st = document.createElement("style"); st.id = "shkTrimCSS"; st.textContent = TRIM_CSS;
+        (document.head || document.documentElement).appendChild(st);
+      }
+      if (trimOn()) document.documentElement.setAttribute("data-trim", "1");
+      else document.documentElement.removeAttribute("data-trim");
+    } catch (e) {}
+    trimFix();
+  }
+  hallTrim();
+  try {
+    new MutationObserver(function () { if (trimOn()) trimFix(); })
+      .observe(document.documentElement, { attributes: true, attributeFilter: ["data-tab"] });
+    document.addEventListener("click", function () { if (trimOn()) setTimeout(trimFix, 0); }, true);
+  } catch (e) {}
 
   /* ------------------------------------------------------------------ Supabase scoping ------------------------------------------------------------ */
   function addPort(rows, table) {
