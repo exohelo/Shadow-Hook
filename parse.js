@@ -34,6 +34,16 @@ const SAFE_NAMES = {
 };
 /* homophones of letters that are also everyday words — only trusted when they
    sit right against a number (and they still cost confidence) */
+/* #nov20 — the hall sometimes says ONLY the alphabet word, no letter in front:
+   "We're going to start in Robert, 4955." These words count as the letter only when a
+   3-5 digit number follows right away AND a start/left-off phrase sits just before
+   (unanchored ones are dropped in parseLeftOff), so a name in ordinary speech can't fake a card. */
+const SPOKEN = {
+  adam:'A', apple:'A', baker:'B', boy:'B', charles:'C', david:'D', edward:'E', frank:'F',
+  george:'G', henry:'H', ida:'I', john:'J', king:'K', lincoln:'L', larry:'L', mary:'M',
+  nora:'N', nancy:'N', ocean:'O', paul:'P', peter:'P', queen:'Q', robert:'R', sam:'S',
+  tom:'T', union:'U', william:'W', young:'Y', yellow:'Y', zebra:'Z'
+};
 const RISKY = {
   a:'A', be:'B', sea:'C', see:'C', e:'E', i:'I', eye:'I', o:'O', oh:'O',
   are:'R', arr:'R', tea:'T', u:'U', you:'U', why:'Y'
@@ -60,6 +70,7 @@ const ANCHORS_START = [
   ['start','with'], ['start','for'], ['start','at'], ['start','on'], ['start','the'],
   ['starting','with'], ['starting','for'], ['starting','at'], ['starting','on'],
   ['starts','with'], ['starts','on'], ['starts','at'],
+  ['start','in'], ['starting','in'], ['starts','in'],   // #nov20 — "we're going to start in Robert, 4955"
   ['begin','with'], ['beginning','with'], ['opening','with'], ['open','with'],
   ['going','to','start'], ['gonna','start'],
   ['letter']                       // "…for letter Y…" — in these recordings 'letter' precedes the callout
@@ -123,11 +134,12 @@ function readNumber(tokens, i){
    letter is CONFIRMED and scores higher. */
 function readLetter(tokens, i){
   const w = tokens[i];
-  let L = null, risky = false;
+  let L = null, risky = false, bare = false;
   if (/^[a-z]$/.test(w)) L = w.toUpperCase();
   else if (w in NATO) L = NATO[w];
   else if (w in SAFE_NAMES) L = SAFE_NAMES[w];
   else if (w in RISKY) { L = RISKY[w]; risky = true; }
+  else if (w in SPOKEN) { L = SPOKEN[w]; bare = true; }        // #nov20 — bare alphabet word; kept only when anchored
   if (!L) return null;
   let next = i + 1, confirmed = false;
   // stuttered / doubled letter: "letter B, B …" — treat as one callout
@@ -148,7 +160,7 @@ function readLetter(tokens, i){
     else if (/^[a-z]{3,}$/.test(exemplar)) { L = NATO[exemplar] || exemplar[0].toUpperCase(); confirmed = true; }
     risky = risky && !confirmed;
   }
-  return { L, risky, next, confirmed };
+  return { L, risky, next, confirmed, bare };
 }
 
 function matchAnchorList(list, tokens, i, span){
@@ -199,11 +211,13 @@ function parseLeftOff(transcript, opts){
     if (!lt) continue;
     const nm = readNumber(tokens, lt.next);
     if (!nm) continue;
-    cands.push(score(tokens, i, nm.next, lt.L + nm.num, lt.risky, keywords, nm.num.length === 4, lt.confirmed));
+    const c = score(tokens, i, nm.next, lt.L + nm.num, lt.risky, keywords, nm.num.length === 4, lt.confirmed);
+    c.bare = !!lt.bare;
+    cands.push(c);
   }
 
   // a risky homophone with no anchor near it is almost certainly a plain word — drop it
-  const kept = cands.filter(c => !(c.risky && !c.anchored));
+  const kept = cands.filter(c => !((c.risky || c.bare) && !c.anchored));
   /* #jul23 — the announcer REPEATS the card ("…4879. Y, 4879."). A card heard more
      than once is far more trustworthy: each extra hearing adds confidence. */
   const times = {};
