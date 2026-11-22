@@ -74,6 +74,12 @@
     ".xm-lights.xm-img{height:46px}.xm-limg{display:block;height:46px;background-repeat:repeat-x;background-size:auto 46px;background-position:0 -2px;mix-blend-mode:screen;animation:xmGlow 3.2s ease-in-out infinite}" +
     "@keyframes xmGlow{0%,100%{filter:brightness(1.05) saturate(1.1)}50%{filter:brightness(.78) saturate(1)}}" +
     ".xm-nav.xm-img{margin-bottom:-14px}" +
+    ".xm-limg.xm-off{animation:none;filter:brightness(.42) saturate(.75)}" +
+    ".xm-limg.xm-on{position:absolute;left:0;right:0;top:0;-webkit-mask-repeat:repeat-x;mask-repeat:repeat-x;-webkit-mask-size:auto 46px;mask-size:auto 46px;-webkit-mask-position:0 -2px;mask-position:0 -2px;animation:xmBlink 1.7s steps(1,end) infinite}" +
+    ".xm-limg.g1{animation-duration:2.3s;animation-delay:-.6s}.xm-limg.g2{animation-duration:1.9s;animation-delay:-1.3s}.xm-limg.g3{animation-duration:2.9s;animation-delay:-.2s}" +
+    "@keyframes xmBlink{0%{opacity:1;filter:brightness(1.15) saturate(1.15)}55%{opacity:.08}100%{opacity:1}}" +
+    "html.daylight .xm-limg.xm-off{filter:brightness(.7) saturate(.8)}" +
+    "@media (prefers-reduced-motion:reduce){.xm-limg.xm-on{animation:none!important;opacity:1}}" +
     "#xmHarbor.xm-img{background-position:center 70%;background-size:cover;opacity:.62}#xmHarbor.xm-img:after{content:\"\";position:absolute;inset:0;background:linear-gradient(180deg,rgba(6,10,14,.45),rgba(6,10,14,.15) 60%,rgba(6,10,14,.55))}" +
     "html.daylight #xmHarbor.xm-img{opacity:.35}" +
     ".xm-mjicon{position:absolute;inset:-2px;width:calc(100% + 4px);height:calc(100% + 4px);object-fit:cover;border-radius:24%;pointer-events:none;z-index:2;box-shadow:0 0 10px rgba(255,90,180,.35)}" +
@@ -159,6 +165,20 @@
     return "<svg viewBox='0 0 " + W + " " + Hh + "' preserveAspectRatio='xMidYMax slice' aria-hidden='true'>" + g + "</svg>";
   }
 
+  // the photo lights: a dim copy underneath (bulbs "off"), then four bright copies, each showing every 4th bulb through
+  // a mask and blinking on its own beat, so the bulbs flash one by one instead of the whole string pulsing
+  function lightsImg(A) {
+    var bg = "background-image:url(\"" + A.lights + "\")", spots = A.spots || [], iw = A.w || 2688, ih = A.h || 448, h = "<i class='xm-limg xm-off' style='" + bg + "'></i>";
+    if (!spots.length) return h.replace(" xm-off", "");
+    for (var g = 0; g < 4; g++) {
+      var r = "";
+      spots.forEach(function (c, i) { if (i % 4 === g) r += "<rect x='" + Math.round(c * iw - iw * 0.045) + "' y='0' width='" + Math.round(iw * 0.09) + "' height='" + ih + "' fill='#fff'/>"; });
+      var m = "url(\"data:image/svg+xml," + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='" + iw + "' height='" + ih + "'>" + r + "</svg>") + "\")";
+      h += "<i class='xm-limg xm-on g" + g + "' style='" + bg + ";-webkit-mask-image:" + m + ";mask-image:" + m + "'></i>";
+    }
+    return h;
+  }
+
   var HAT = "<svg class='xm-hat' viewBox='0 0 30 24' aria-hidden='true'><path d='M4 19C6 10 12 3 20 3c4 0 7 3 6 8-2-2-4-3-6-2-3 2-4 6-5 10Z' fill='#d7263d'/><path d='M4 19C6 10 12 3 20 3' stroke='#9e1b2c' stroke-width='1' fill='none'/>" +
     "<rect x='1.5' y='17' width='17' height='6' rx='3' fill='#f4f6fb'/><circle cx='26.5' cy='12' r='3.3' fill='#f4f6fb'/></svg>";
 
@@ -176,7 +196,7 @@
   function build() {
     var tb = document.querySelector(".topbar"), nav = document.querySelector("nav.nav"), w = window.innerWidth || 390;
     var ART = window.SHK_XMAS_ART || {};
-    var LH = ART.lights ? "<i class='xm-limg' style='background-image:url(\"" + ART.lights + "\")'></i>" : null;
+    var LH = ART.lights ? lightsImg(ART) : null;
     if (tb) { var t = el("xmLightsTop", "xm-lights xm-top" + (LH ? " xm-img" : ""), LH || lightsSVG(w, false)); if (t.parentNode !== tb) tb.appendChild(t); }
     if (nav) {
       var nb = el("xmBank", "xm-bank", ""); if (nb.parentNode !== nav) nav.appendChild(nb);
