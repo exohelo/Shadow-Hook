@@ -92,6 +92,15 @@
     "html.daylight #xmSanta,html.calm #xmSanta,html.xm-nodecor #xmCity,html.xm-nodecor #xmSanta{display:none!important}" +
     /* no lights over the menu (Nov 21): just the skyline and the snow bank down there */
     "#xmLightsNav{display:none!important}" +
+    /* white snow menu: Midjourney snow hills on its top edge and a little sled that slides with the phone's tilt */
+    "html.season-xmas.xm-on.xm-snownav .nav{background:linear-gradient(180deg,#f6faff,#e4edf7)!important;border-top:0!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;box-shadow:0 -1px 0 rgba(255,255,255,.6)}" +
+    "html.season-xmas.xm-on.xm-snownav .nav button{color:#3b4c60!important}html.season-xmas.xm-on.xm-snownav .nav button .ico{filter:none!important}" +
+    "html.season-xmas.xm-on.xm-snownav .nav button.on{color:#c3262e!important}html.season-xmas.xm-on.xm-snownav .nav button.on .ico{filter:drop-shadow(0 1px 2px rgba(195,38,46,.35))!important}" +
+    "html.season-xmas.xm-on.xm-snownav .nav button[data-scr=mayday]{color:#d0342b!important}" +
+    "html.season-xmas.xm-on.xm-snownav .xm-bank{display:none!important}" +
+    "#xmHills{position:absolute;left:0;right:0;bottom:100%;height:48px;margin-bottom:-3px;pointer-events:none;z-index:1;background:center bottom/cover no-repeat;mix-blend-mode:screen}" +
+    "#xmSled{position:absolute;left:0;bottom:calc(100% - 7px);width:62px;height:31px;pointer-events:none;z-index:3;background:center/contain no-repeat;mix-blend-mode:multiply;will-change:transform}" +
+    "html.xm-nodecor #xmHills,html.xm-nodecor #xmSled{display:none!important}" +
     /* off switches */
     "html.xm-nodecor .xm-lights,html.xm-nodecor .xm-bank,html.xm-nodecor #xmHarbor,html.xm-nodecor #xmSnow,html.xm-nodecor .xm-hat,html.xm-nodecor .xm-mjicon{display:none!important}" +
     "html.xm-nodecor #xmBg{background-image:none!important}" +
@@ -222,12 +231,15 @@
     if (crest && ART.crest && !crest.querySelector(".xm-mjicon")) { crest.classList.add("xm-hasicon"); crest.insertAdjacentHTML("beforeend", "<img class='xm-mjicon' alt='' src='" + ART.crest + "'>"); }
     if (nav && ART.city) { var cy = el("xmCity", "", ""); cy.style.backgroundImage = "url(\"" + ART.city + "\")"; if (cy.parentNode !== nav) nav.insertBefore(cy, nav.firstChild); }
     if (ART.santa && !document.getElementById("xmSanta")) { var sa = el("xmSanta", "", ""); sa.style.backgroundImage = "url(\"" + ART.santa + "\")"; document.body.appendChild(sa); santaLoop(); }
+    H.classList.toggle("xm-snownav", !!ART.hills);
+    if (nav && ART.hills) { var hl = el("xmHills", "", ""); hl.style.backgroundImage = "url(\"" + ART.hills + "\")"; if (hl.parentNode !== nav) nav.insertBefore(hl, document.getElementById("xmCity") ? document.getElementById("xmCity").nextSibling : nav.firstChild); }
+    if (nav && ART.sled) { var sd = el("xmSled", "", ""); sd.style.backgroundImage = "url(\"" + ART.sled + "\")"; if (sd.parentNode !== nav) nav.appendChild(sd); sledStart(); }
     // the app's still mode (theme_switch.js) stops every endless animation unless it sits under [data-keep-motion]: the lights may blink
     ["xmLightsTop", "xmLightsNav"].forEach(function (id) { var e = document.getElementById(id); if (e) e.setAttribute("data-keep-motion", ""); });
     built = true; lastW = w;
   }
   function wipe() {
-    ["xmLightsTop", "xmLightsNav", "xmBank", "xmHarbor", "xmSnow", "xmBg", "xmCity", "xmSanta"].forEach(function (id) { var e = document.getElementById(id); if (e && e.parentNode) e.parentNode.removeChild(e); });
+    ["xmLightsTop", "xmLightsNav", "xmBank", "xmHarbor", "xmSnow", "xmBg", "xmCity", "xmSanta", "xmHills", "xmSled"].forEach(function (id) { var e = document.getElementById(id); if (e && e.parentNode) e.parentNode.removeChild(e); });
     document.querySelectorAll(".xm-hat,.xm-mjicon").forEach(function (e) { e.remove(); });
     document.querySelectorAll(".xm-hasicon").forEach(function (e) { e.classList.remove("xm-hasicon"); });
     built = false;
@@ -251,6 +263,44 @@
     ], { duration: 9500, easing: "linear" });
   }
   function santaLoop() { clearTimeout(santaT); santaT = setTimeout(function () { if (ON) { santa(); santaLoop(); } }, (window.SHK_XMAS_TEST ? 25 : 80) * 1000 + Math.random() * 40000); setTimeout(function () { if (ON) santa(); }, 6000); santaLoop = function () { clearTimeout(santaT); santaT = setTimeout(function () { if (ON) { santa(); santaLoop(); } }, (window.SHK_XMAS_TEST ? 25 : 80) * 1000 + Math.random() * 40000); }; }
+  // the sled: tilt the phone and it slides along the snow; with no tilt (computers, or motion not allowed) it drifts on its own
+  var sl = { on: false, x: -1, v: 0, g: null, last: 0, raf: 0, asked: false };
+  function sledTilt(e) { if (e && e.gamma != null) sl.g = e.gamma; }
+  function sledAsk() {
+    if (sl.asked) return; sl.asked = true;
+    var D = window.DeviceOrientationEvent;
+    try {
+      if (D && typeof D.requestPermission === "function") D.requestPermission().then(function (r) { if (r === "granted") window.addEventListener("deviceorientation", sledTilt, { passive: true }); }).catch(function () {});
+      else if (D) window.addEventListener("deviceorientation", sledTilt, { passive: true });
+    } catch (e) {}
+  }
+  function sledStep(ts) {
+    sl.raf = 0;
+    var s = document.getElementById("xmSled"), nav = s && s.parentNode;
+    if (!s || !ON || document.hidden) { sl.on = false; return; }
+    if (sl.last && ts - sl.last < 30) { sl.raf = requestAnimationFrame(sledStep); return; }
+    var dt = sl.last ? Math.min(0.05, (ts - sl.last) / 1000) : 0; sl.last = ts;
+    var W = nav.clientWidth || window.innerWidth, sw = s.offsetWidth || 62, max = Math.max(0, W - sw);
+    if (sl.x < 0) sl.x = max * 0.62;
+    var calm = H.classList.contains("calm"), acc;
+    if (sl.g != null) acc = Math.max(-35, Math.min(35, sl.g)) * 34;              // tilt right, it slides right
+    else acc = calm ? 0 : Math.sin(ts / 2600) * 60;                             // idle drift
+    sl.v = (sl.v + acc * dt) * Math.pow(0.35, dt);                              // snow friction
+    sl.x += sl.v * dt;
+    if (sl.x < 0) { sl.x = 0; sl.v = -sl.v * 0.3; } else if (sl.x > max) { sl.x = max; sl.v = -sl.v * 0.3; }
+    var face = sl.v > 4 ? -1 : (sl.v < -4 ? 1 : (s._face || 1)); s._face = face;    // the art faces left; flip when it goes right
+    var tilt = Math.max(-7, Math.min(7, sl.v * 0.03));
+    s.style.transform = "translateX(" + sl.x.toFixed(1) + "px) rotate(" + (tilt * -face).toFixed(1) + "deg) scaleX(" + face + ")";
+    sl.raf = requestAnimationFrame(sledStep);
+  }
+  function sledStart() {
+    if (!sl.bound) {
+      sl.bound = true;
+      ["pointerdown", "touchstart"].forEach(function (ev) { document.addEventListener(ev, sledAsk, { passive: true, once: true }); });
+      document.addEventListener("visibilitychange", function () { if (!document.hidden && ON && !sl.raf) { sl.last = 0; sl.raf = requestAnimationFrame(sledStep); } });
+    }
+    if (!sl.raf) { sl.last = 0; sl.raf = requestAnimationFrame(sledStep); }
+  }
   function setBg(url) {
     window.SHK_XMAS_BG = url;
     var bg = document.getElementById("xmBg"); if (bg) bg.style.backgroundImage = url ? "url(\"" + url + "\")" : "none";
