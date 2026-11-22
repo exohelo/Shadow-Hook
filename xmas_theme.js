@@ -101,6 +101,9 @@
     "#xmHills{position:absolute;left:0;right:0;bottom:100%;height:30px;margin-bottom:-2px;pointer-events:none;z-index:1;background-repeat:no-repeat;background-size:100% 100%,cover;background-position:0 0,center bottom}" +
     "#xmSled{position:absolute;left:0;bottom:calc(100% - 4px);width:62px;height:31px;pointer-events:none;z-index:3;background:center/contain no-repeat;mix-blend-mode:multiply;will-change:transform}" +
     "html.xm-nodecor #xmHills,html.xm-nodecor #xmSled{display:none!important}" +
+    /* the Wire's predicted stop sits inside a red glass ornament (Midjourney art, black keyed out) */
+    "html.season-xmas.xm-on.xm-orn .wire-stop{position:relative;z-index:0;width:150px;height:184px;margin:2px auto 0;display:flex;align-items:center;justify-content:center;padding-top:30px;box-sizing:border-box;color:#fff7e0!important;-webkit-text-fill-color:#fff7e0!important;background:none!important;text-shadow:0 2px 6px rgba(70,0,0,.75),0 0 18px rgba(255,214,140,.65)!important}" +
+    "html.season-xmas.xm-on.xm-orn .wire-stop:before{content:\"\";position:absolute;inset:0;z-index:-1;background:var(--xmOrn) center/contain no-repeat;filter:drop-shadow(0 6px 14px rgba(0,0,0,.5)) drop-shadow(0 0 16px rgba(255,80,80,.25))}" +
     /* off switches */
     "html.xm-nodecor .xm-lights,html.xm-nodecor .xm-bank,html.xm-nodecor #xmHarbor,html.xm-nodecor #xmSnow,html.xm-nodecor .xm-hat,html.xm-nodecor .xm-mjicon{display:none!important}" +
     "html.xm-nodecor #xmBg{background-image:none!important}" +
@@ -203,6 +206,20 @@
       }).catch(function () {});
     } catch (e) {}
   }
+  // generic: key a black background out of a Midjourney picture (alpha from brightness) and hand back a blob URL
+  var keyed = {};
+  function keyArt(src, lo, span, cb) {
+    if (keyed[src]) return cb(keyed[src]);
+    try {
+      fetch(src).then(function (r) { return r.blob(); }).then(createImageBitmap).then(function (bm) {
+        var W = Math.min(900, bm.width), Hh = Math.round(bm.height * W / bm.width), c = document.createElement("canvas"); c.width = W; c.height = Hh;
+        var g = c.getContext("2d"); g.drawImage(bm, 0, 0, W, Hh); var id = g.getImageData(0, 0, W, Hh), d = id.data;
+        for (var i = 0; i < d.length; i += 4) { var m = Math.max(d[i], d[i + 1], d[i + 2]) / 255; d[i + 3] = Math.round(Math.max(0, Math.min(1, (m - lo) / span)) * 255); }
+        g.putImageData(id, 0, 0);
+        c.toBlob(function (b) { if (!b) return; keyed[src] = URL.createObjectURL(b); cb(keyed[src]); }, "image/png");
+      }).catch(function () {});
+    } catch (e) {}
+  }
   function lightsImg(A) {
     var bg = "background-image:url(\"" + A.lights + "\")", spots = A.spots || [], iw = A.w || 2688, ih = A.h || 448, h = "<i class='xm-limg xm-off' style='" + bg + "'></i>";
     if (!spots.length) return h.replace(" xm-off", "");
@@ -255,6 +272,7 @@
     H.classList.toggle("xm-snownav", !!(ART.hills || ART.snownav));
     if (nav && ART.hills) { var hl = el("xmHills", "", ""); if (hl.parentNode !== nav) nav.insertBefore(hl, document.getElementById("xmCity") ? document.getElementById("xmCity").nextSibling : nav.firstChild); hillsArt(ART.hills, hl); }
     if (nav && ART.sled) { var sd = el("xmSled", "", ""); sd.style.backgroundImage = "url(\"" + ART.sled + "\")"; if (sd.parentNode !== nav) nav.appendChild(sd); sledStart(); }
+    if (ART.ornament && !H.classList.contains("xm-orn")) keyArt(ART.ornament, 0.03, 0.12, function (u) { H.style.setProperty("--xmOrn", "url(\"" + u + "\")"); H.classList.add("xm-orn"); });
     // the app's still mode (theme_switch.js) stops every endless animation unless it sits under [data-keep-motion]: the lights may blink
     ["xmLightsTop", "xmLightsNav"].forEach(function (id) { var e = document.getElementById(id); if (e) e.setAttribute("data-keep-motion", ""); });
     built = true; lastW = w;
@@ -263,6 +281,7 @@
     ["xmLightsTop", "xmLightsNav", "xmBank", "xmHarbor", "xmSnow", "xmBg", "xmCity", "xmSanta", "xmHills", "xmSled"].forEach(function (id) { var e = document.getElementById(id); if (e && e.parentNode) e.parentNode.removeChild(e); });
     document.querySelectorAll(".xm-hat,.xm-mjicon").forEach(function (e) { e.remove(); });
     document.querySelectorAll(".xm-hasicon").forEach(function (e) { e.classList.remove("xm-hasicon"); });
+    H.classList.remove("xm-orn");
     built = false;
   }
   // Santa crosses the sky now and then: a one-shot animation (the app's still mode only stops endless loops)
