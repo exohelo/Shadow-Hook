@@ -104,6 +104,12 @@
     /* the Wire's predicted stop sits inside a red glass ornament (Midjourney art, black keyed out) */
     "html.season-xmas.xm-on.xm-orn .wire-stop{position:relative;z-index:0;width:150px;height:184px;margin:2px auto 0;display:flex;align-items:center;justify-content:center;padding-top:30px;box-sizing:border-box;color:#fff7e0!important;-webkit-text-fill-color:#fff7e0!important;background:none!important;text-shadow:0 2px 6px rgba(70,0,0,.75),0 0 18px rgba(255,214,140,.65)!important}" +
     "html.season-xmas.xm-on.xm-orn .wire-stop:before{content:\"\";position:absolute;inset:0;z-index:-1;background:var(--xmOrn) center/contain no-repeat;filter:drop-shadow(0 6px 14px rgba(0,0,0,.5)) drop-shadow(0 0 16px rgba(255,80,80,.25))}" +
+    /* a whole lit Christmas tree with presents holds the predicted stop; the screen titles get a festive script and a garland (Midjourney art, black keyed out) */
+    "html.season-xmas.xm-on.xm-tree .wire-stop{position:relative;z-index:0;width:230px;height:300px;margin:0 auto;display:flex;align-items:center;justify-content:center;padding-top:40px;box-sizing:border-box;font-size:64px!important;color:#fff8e6!important;-webkit-text-fill-color:#fff8e6!important;background:none!important;text-shadow:0 0 4px #000,0 2px 10px rgba(0,0,0,.95),0 0 22px rgba(255,200,90,.9)!important}" +
+    "html.season-xmas.xm-on.xm-tree .wire-stop:before{content:\"\";position:absolute;inset:0;z-index:-1;background:var(--xmTree) center bottom/contain no-repeat;filter:drop-shadow(0 0 18px rgba(255,190,80,.35));animation:xmTwinkle 2.6s ease-in-out infinite}" +
+    "@keyframes xmTwinkle{0%,100%{filter:drop-shadow(0 0 14px rgba(255,190,80,.3)) brightness(1)}50%{filter:drop-shadow(0 0 24px rgba(255,200,100,.55)) brightness(1.16)}}" +
+    "html.season-xmas.xm-on.xm-gar .screen-title{position:relative;font-family:\"Mountains of Christmas\",cursive!important;font-weight:700!important;font-size:38px!important;letter-spacing:.5px!important;text-transform:none!important;line-height:1.05!important;padding-bottom:34px!important;background:linear-gradient(180deg,#fff6d8 0%,#f5d27a 55%,#d99a2b 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent!important;filter:drop-shadow(0 2px 3px rgba(0,0,0,.85)) drop-shadow(0 0 10px rgba(255,190,90,.35))}" +
+    "html.season-xmas.xm-on.xm-gar .screen-title:after{content:\"\";position:absolute;left:-6px;right:-6px;bottom:0;height:40px;background:var(--xmGar) center/100% 100% no-repeat;pointer-events:none}" +
     /* off switches */
     "html.xm-nodecor .xm-lights,html.xm-nodecor .xm-bank,html.xm-nodecor #xmHarbor,html.xm-nodecor #xmSnow,html.xm-nodecor .xm-hat,html.xm-nodecor .xm-mjicon{display:none!important}" +
     "html.xm-nodecor #xmBg{background-image:none!important}" +
@@ -272,16 +278,18 @@
     H.classList.toggle("xm-snownav", !!(ART.hills || ART.snownav));
     if (nav && ART.hills) { var hl = el("xmHills", "", ""); if (hl.parentNode !== nav) nav.insertBefore(hl, document.getElementById("xmCity") ? document.getElementById("xmCity").nextSibling : nav.firstChild); hillsArt(ART.hills, hl); }
     if (nav && ART.sled) { var sd = el("xmSled", "", ""); sd.style.backgroundImage = "url(\"" + ART.sled + "\")"; if (sd.parentNode !== nav) nav.appendChild(sd); sledStart(); }
-    if (ART.ornament && !H.classList.contains("xm-orn")) keyArt(ART.ornament, 0.03, 0.12, function (u) { H.style.setProperty("--xmOrn", "url(\"" + u + "\")"); H.classList.add("xm-orn"); });
+    if (ART.tree && !H.classList.contains("xm-tree")) keyArt(ART.tree, 0.04, 0.12, function (u) { H.style.setProperty("--xmTree", "url(\"" + u + "\")"); H.classList.add("xm-tree"); });
+    if (ART.garland && !H.classList.contains("xm-gar")) keyArt(ART.garland, 0.03, 0.12, function (u) { H.style.setProperty("--xmGar", "url(\"" + u + "\")"); H.classList.add("xm-gar"); });
+    if (ART.ornament && !ART.tree && !H.classList.contains("xm-orn")) keyArt(ART.ornament, 0.03, 0.12, function (u) { H.style.setProperty("--xmOrn", "url(\"" + u + "\")"); H.classList.add("xm-orn"); });
     // the app's still mode (theme_switch.js) stops every endless animation unless it sits under [data-keep-motion]: the lights may blink
-    ["xmLightsTop", "xmLightsNav"].forEach(function (id) { var e = document.getElementById(id); if (e) e.setAttribute("data-keep-motion", ""); });
+    ["xmLightsTop", "xmLightsNav", "predStop"].forEach(function (id) { var e = document.getElementById(id); if (e) e.setAttribute("data-keep-motion", ""); });
     built = true; lastW = w;
   }
   function wipe() {
     ["xmLightsTop", "xmLightsNav", "xmBank", "xmHarbor", "xmSnow", "xmBg", "xmCity", "xmSanta", "xmHills", "xmSled"].forEach(function (id) { var e = document.getElementById(id); if (e && e.parentNode) e.parentNode.removeChild(e); });
     document.querySelectorAll(".xm-hat,.xm-mjicon").forEach(function (e) { e.remove(); });
     document.querySelectorAll(".xm-hasicon").forEach(function (e) { e.classList.remove("xm-hasicon"); });
-    H.classList.remove("xm-orn");
+    H.classList.remove("xm-orn", "xm-tree", "xm-gar");
     built = false;
   }
   // Santa crosses the sky now and then: a one-shot animation (the app's still mode only stops endless loops)
