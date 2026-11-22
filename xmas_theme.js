@@ -90,6 +90,8 @@
     "html.daylight #xmCity{opacity:.85}" +
     "#xmSanta{position:fixed;left:0;top:20vh;width:min(96vw,480px);aspect-ratio:3/1;pointer-events:none;z-index:38;background:center/contain no-repeat;mix-blend-mode:screen;filter:brightness(1.35) saturate(1.15);opacity:0;will-change:transform}" +
     "html.daylight #xmSanta,html.calm #xmSanta,html.xm-nodecor #xmCity,html.xm-nodecor #xmSanta{display:none!important}" +
+    /* no lights over the menu (Nov 21): just the skyline and the snow bank down there */
+    "#xmLightsNav{display:none!important}" +
     /* off switches */
     "html.xm-nodecor .xm-lights,html.xm-nodecor .xm-bank,html.xm-nodecor #xmHarbor,html.xm-nodecor #xmSnow,html.xm-nodecor .xm-hat,html.xm-nodecor .xm-mjicon{display:none!important}" +
     "html.xm-nodecor #xmBg{background-image:none!important}" +
