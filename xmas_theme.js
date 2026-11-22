@@ -110,6 +110,9 @@
     "@keyframes xmTwinkle{0%,100%{filter:drop-shadow(0 0 14px rgba(255,190,80,.3)) brightness(1)}50%{filter:drop-shadow(0 0 24px rgba(255,200,100,.55)) brightness(1.16)}}" +
     "html.season-xmas.xm-on.xm-gar .screen-title{position:relative;font-family:\"Mountains of Christmas\",cursive!important;font-weight:700!important;font-size:38px!important;letter-spacing:.5px!important;text-transform:none!important;line-height:1.05!important;padding-bottom:calc(12.5% - 24px)!important;background:none!important;color:#f7dc92!important;-webkit-text-fill-color:#f7dc92!important;filter:drop-shadow(0 2px 3px rgba(0,0,0,.85)) drop-shadow(0 0 10px rgba(255,190,90,.35))}" +
     "html.season-xmas.xm-on.xm-gar .screen-title:after{content:\"\";position:absolute;left:0;right:0;bottom:0;aspect-ratio:8/1;z-index:-1;background:var(--xmGar) center/100% 100% no-repeat;pointer-events:none}" +
+    /* the docket camera's scan box gets a lit garland frame; its hint drops below the garland */
+    "html.season-xmas.xm-on.xm-cam .xm-camframe{position:absolute;left:-40.9%;top:-34.4%;width:182.7%;height:165.6%;background:var(--xmCam) center/100% 100% no-repeat;pointer-events:none;z-index:0;animation:xmTwinkle 2.6s ease-in-out infinite}" +
+    "html.season-xmas.xm-on.xm-cam .cg-frame .cg-lbl{top:calc(131.2% + 6px)!important;bottom:auto!important;z-index:2;text-shadow:0 1px 4px #000}" +
     /* off switches */
     "html.xm-nodecor .xm-lights,html.xm-nodecor .xm-bank,html.xm-nodecor #xmHarbor,html.xm-nodecor #xmSnow,html.xm-nodecor .xm-hat,html.xm-nodecor .xm-mjicon{display:none!important}" +
     "html.xm-nodecor #xmBg{background-image:none!important}" +
@@ -280,16 +283,25 @@
     if (nav && ART.sled) { var sd = el("xmSled", "", ""); sd.style.backgroundImage = "url(\"" + ART.sled + "\")"; if (sd.parentNode !== nav) nav.appendChild(sd); sledStart(); }
     if (ART.tree && !H.classList.contains("xm-tree")) keyArt(ART.tree, 0.04, 0.12, function (u) { H.style.setProperty("--xmTree", "url(\"" + u + "\")"); H.classList.add("xm-tree"); });
     if (ART.garland && !H.classList.contains("xm-gar")) keyArt(ART.garland, 0.03, 0.12, function (u) { H.style.setProperty("--xmGar", "url(\"" + u + "\")"); H.classList.add("xm-gar"); });
+    if (ART.camframe && !H.classList.contains("xm-cam")) keyArt(ART.camframe, 0.03, 0.12, function (u) { H.style.setProperty("--xmCam", "url(\"" + u + "\")"); H.classList.add("xm-cam"); camFrame(); });
     if (ART.ornament && !ART.tree && !H.classList.contains("xm-orn")) keyArt(ART.ornament, 0.03, 0.12, function (u) { H.style.setProperty("--xmOrn", "url(\"" + u + "\")"); H.classList.add("xm-orn"); });
     // the app's still mode (theme_switch.js) stops every endless animation unless it sits under [data-keep-motion]: the lights may blink
     ["xmLightsTop", "xmLightsNav", "predStop"].forEach(function (id) { var e = document.getElementById(id); if (e) e.setAttribute("data-keep-motion", ""); });
     built = true; lastW = w;
   }
+  // the camera's scan box (#cgFrame) is built when the scanner opens: hang the garland frame on it whenever it shows up
+  var camMO = null;
+  function camFrame() {
+    var f = document.getElementById("cgFrame");
+    if (f && !f.querySelector(".xm-camframe")) { var d = document.createElement("div"); d.className = "xm-camframe"; d.setAttribute("data-keep-motion", ""); f.appendChild(d); }
+    if (!camMO && window.MutationObserver) { camMO = new MutationObserver(function () { if (H.classList.contains("xm-cam")) camFrame(); }); camMO.observe(document.body, { childList: true }); document.addEventListener("click", function () { setTimeout(function () { if (H.classList.contains("xm-cam")) camFrame(); }, 400); }, true); }
+  }
   function wipe() {
     ["xmLightsTop", "xmLightsNav", "xmBank", "xmHarbor", "xmSnow", "xmBg", "xmCity", "xmSanta", "xmHills", "xmSled"].forEach(function (id) { var e = document.getElementById(id); if (e && e.parentNode) e.parentNode.removeChild(e); });
     document.querySelectorAll(".xm-hat,.xm-mjicon").forEach(function (e) { e.remove(); });
     document.querySelectorAll(".xm-hasicon").forEach(function (e) { e.classList.remove("xm-hasicon"); });
-    H.classList.remove("xm-orn", "xm-tree", "xm-gar");
+    H.classList.remove("xm-orn", "xm-tree", "xm-gar", "xm-cam");
+    document.querySelectorAll(".xm-camframe").forEach(function (e) { e.remove(); });
     built = false;
   }
   // Santa crosses the sky now and then: a one-shot animation (the app's still mode only stops endless loops)
