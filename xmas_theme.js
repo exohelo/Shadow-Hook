@@ -86,7 +86,7 @@
     ".xm-hatwrap.xm-hasicon .xm-hat{display:none}" +
     "html.daylight .xm-limg{mix-blend-mode:normal;filter:none}" +
     /* the snowy city skyline riding on top of the menu, and Santa's occasional fly-over (Midjourney art) */
-    "#xmCity{position:absolute;left:0;right:0;bottom:100%;height:118px;margin-bottom:-6px;pointer-events:none;z-index:0;background:center bottom/cover no-repeat;-webkit-mask-image:linear-gradient(180deg,transparent 0,#000 42%);mask-image:linear-gradient(180deg,transparent 0,#000 42%)}" +
+    "#xmCity{position:absolute;left:0;right:0;bottom:100%;height:132px;margin-bottom:-2px;pointer-events:none;z-index:0;background:center bottom/cover no-repeat;-webkit-mask-image:linear-gradient(180deg,transparent 0,#000 42%);mask-image:linear-gradient(180deg,transparent 0,#000 42%)}" +
     "html.daylight #xmCity{opacity:.85}" +
     "#xmSanta{position:fixed;left:0;top:20vh;width:min(25vw,124px);aspect-ratio:3/1;pointer-events:none;z-index:38;background:center/contain no-repeat;mix-blend-mode:screen;filter:brightness(1.35) saturate(1.15);opacity:0;will-change:transform}" +
     "html.daylight #xmSanta,html.calm #xmSanta,html.xm-nodecor #xmCity,html.xm-nodecor #xmSanta{display:none!important}" +
@@ -229,9 +229,9 @@
     var crest = document.querySelector(".hc-left .sc-ribbon") || document.querySelector(".hcrest");
     if (crest && !crest.querySelector(".xm-hat")) { crest.classList.add("xm-hatwrap"); crest.insertAdjacentHTML("beforeend", HAT); }
     if (crest && ART.crest && !crest.querySelector(".xm-mjicon")) { crest.classList.add("xm-hasicon"); crest.insertAdjacentHTML("beforeend", "<img class='xm-mjicon' alt='' src='" + ART.crest + "'>"); }
-    if (nav && ART.city) { var cy = el("xmCity", "", ""); cy.style.backgroundImage = "url(\"" + ART.city + "\")"; if (cy.parentNode !== nav) nav.insertBefore(cy, nav.firstChild); }
+    if (nav && ART.city) { var cy = el("xmCity", "", ""); cy.style.backgroundImage = (ART.snownav ? "linear-gradient(180deg,rgba(246,250,255,0) 80%,#f6faff 100%)," : "") + "url(\"" + ART.city + "\")"; if (cy.parentNode !== nav) nav.insertBefore(cy, nav.firstChild); }
     if (ART.santa && !document.getElementById("xmSanta")) { var sa = el("xmSanta", "", ""); sa.style.backgroundImage = "url(\"" + ART.santa + "\")"; document.body.appendChild(sa); santaLoop(); }
-    H.classList.toggle("xm-snownav", !!ART.hills);
+    H.classList.toggle("xm-snownav", !!(ART.hills || ART.snownav));
     if (nav && ART.hills) { var hl = el("xmHills", "", ""); if (hl.parentNode !== nav) nav.insertBefore(hl, document.getElementById("xmCity") ? document.getElementById("xmCity").nextSibling : nav.firstChild); hillsArt(ART.hills, hl); }
     if (nav && ART.sled) { var sd = el("xmSled", "", ""); sd.style.backgroundImage = "url(\"" + ART.sled + "\")"; if (sd.parentNode !== nav) nav.appendChild(sd); sledStart(); }
     // the app's still mode (theme_switch.js) stops every endless animation unless it sits under [data-keep-motion]: the lights may blink
