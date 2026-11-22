@@ -1084,3 +1084,26 @@
   }
   if (!guard()) { var n = 0, iv = setInterval(function () { if (guard() || ++n > 40) clearInterval(iv); }, 500); }
 })();
+
+/* #berthloose(nov22) — two "missing terminal" reports (11/21, 11/22) were docks the app already lists: the scanner read
+   "LB 266" as "TI266", and a slip printing just "121" became "L121". A berth only matched when its letters were exactly
+   right, so both were refused. Now, when the letters don't match anything, the number alone decides — if exactly one
+   listed dock covers it (or one dock whose port starts with the same letter), that dock is the answer. */
+(function () {
+  function loose(raw) {
+    try {
+      var q = String(raw || "").toUpperCase().replace(/\s+/g, " ").trim();
+      var m = /^([A-Z]{1,3})?\s*0*(\d{2,4})$/.exec(q); if (!m) return null;
+      var pre = m[1] || "", num = m[2];
+      var c = TERMINALS.filter(function (t) { try { return berthMatch(num, t.berths); } catch (e) { return false; } });
+      if (c.length === 1) return c[0];
+      if (c.length > 1 && pre) { var f = c.filter(function (t) { return t.berths.charAt(0) === pre.charAt(0); }); if (f.length === 1) return f[0]; }
+    } catch (e) {}
+    return null;
+  }
+  ["termResolveTerm", "findTerminal"].forEach(function (name) {
+    var orig = window[name]; if (typeof orig !== "function" || orig.__loose) return;
+    var w = function (raw) { var r = orig.apply(this, arguments); return r || loose(raw); };
+    w.__loose = true; window[name] = w;
+  });
+})();
