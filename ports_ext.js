@@ -940,3 +940,12 @@
     (document.head || document.documentElement).appendChild(sc);
   } catch (e) {}
 })();
+
+/* #boardgames(nov21) — Board Games card next to Corral Run; lives in its own file */
+(function () {
+  try {
+    if (document.getElementById("bgHookJS")) return;
+    var sc = document.createElement("script"); sc.id = "bgHookJS"; sc.src = "board_games_hook.js?v=nov21a"; sc.defer = true;
+    (document.head || document.documentElement).appendChild(sc);
+  } catch (e) {}
+})();
