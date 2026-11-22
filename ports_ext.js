@@ -983,9 +983,9 @@
     spots: [0.052, 0.181, 0.317, 0.444, 0.572, 0.694, 0.816, 0.953],
     header: "https://cdn.midjourney.com/bf779394-f627-46f1-9c4f-f62742636075/0_0.png",
     crest: "https://cdn.midjourney.com/7f840443-6fea-49b9-b0c5-e3aa551a7a42/0_3_640_N.webp",
-    city: "https://cdn.midjourney.com/c5871713-b497-44df-b4d0-7eb9575d6c19/0_3.png",
+    city: "https://cdn.midjourney.com/0079f088-a269-46f3-a21d-5d206184c462/0_1.png", snownav: true,
     santa: "https://cdn.midjourney.com/620109df-f216-4b06-9e42-5c926fe976ae/0_0.png",
-    hills: "https://cdn.midjourney.com/dc7fdd05-474d-4fab-9a7e-767fdc11208f/0_1.png"
+    hills: null
   };
   window.seasonNow = function () { return "xmas"; };
   window.greetMaybe = function () {};
