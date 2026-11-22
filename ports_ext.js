@@ -1003,3 +1003,19 @@
   }
   if (document.body) badge(); else document.addEventListener("DOMContentLoaded", badge);
 })();
+
+/* #musicoff(nov21) — the Veterans week music kept starting on the first tap after the week was over
+   (its first-tap handler loads the player without checking the season). Outside Veterans week: mark it muted on this
+   phone, stop it, and take the hidden player out. */
+(function () {
+  function off() {
+    try {
+      var H = document.documentElement; if (H.classList.contains("season-veterans")) return;
+      try { if (localStorage.getItem("shadowhook_vetmusic") !== "off") localStorage.setItem("shadowhook_vetmusic", "off"); } catch (e) {}
+      var f = document.getElementById("vetYtHost");
+      if (f) { try { f.contentWindow.postMessage(JSON.stringify({ event: "command", func: "stopVideo", args: [] }), "*"); } catch (e) {} var box = f.parentNode; f.remove(); if (box && box !== document.body && !box.children.length) box.remove(); }
+    } catch (e) {}
+  }
+  off(); var n = 0, t = setInterval(function () { off(); if (++n > 60) clearInterval(t); }, 1000);
+  document.addEventListener("visibilitychange", off);
+})();
