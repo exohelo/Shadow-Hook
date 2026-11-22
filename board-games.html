@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#0b0a14">
+<title>Board Games · The Shadow Hook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<!-- #boardgames(nov21) — turn-based games members play against each other: make a move, walk away, come back on your turn.
+     Connect 4 · Sink the Ship · Dock Words · Checkers. Every move is checked on the server (bg_move); this page only draws. -->
+<style>
+:root{--bg:#0b0a14;--card:#161327;--card2:#1e1a35;--line:#ffffff1f;--tx:#f4f1ff;--mut:#a9a2cf;--gold:#fbbf24;--vio:#8b5cf6;--red:#ef4444;--grn:#22c55e;--blu:#38bdf8}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--tx);font-family:"Barlow Condensed",system-ui,sans-serif;-webkit-tap-highlight-color:transparent}
+body{min-height:100vh;padding:calc(env(safe-area-inset-top) + 12px) 14px calc(env(safe-area-inset-bottom) + 28px)}
+button{font:inherit;color:inherit;cursor:pointer}
+.wrap{max-width:520px;margin:0 auto}
+.top{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.top a{color:var(--mut);text-decoration:none;font-weight:700;font-size:15px}
+h1{font:400 34px/1 Anton,sans-serif;letter-spacing:1px;margin:6px 0 2px;color:var(--gold);text-align:center}
+.sub{text-align:center;color:var(--mut);font-size:15px;margin-bottom:12px}
+.tabs{display:flex;gap:6px;margin:8px 0 14px}
+.tabs button{flex:1;padding:10px 4px;border-radius:12px;border:2px solid var(--line);background:var(--card);font:400 15px/1 Anton,sans-serif;letter-spacing:1px}
+.tabs button.on{border-color:var(--vio);background:#2b2052}
+.sec{margin:14px 0 6px;font:400 17px/1 Anton,sans-serif;letter-spacing:1px;color:var(--gold)}
+.empty{color:var(--mut);font-size:15px;padding:6px 2px 10px}
+.row{display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:14px;background:var(--card);border:1px solid var(--line);margin-bottom:8px}
+.row.hot{border-color:#fbbf24aa;background:#241c0b}
+.ico{font-size:24px;width:32px;text-align:center;flex:none}
+.rt{flex:1;min-width:0}
+.rt b{display:block;font-size:17px}
+.rt span{display:block;font-size:14px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.btn{padding:9px 14px;border-radius:11px;border:0;background:var(--vio);color:#fff;font:400 15px/1 Anton,sans-serif;letter-spacing:1px;white-space:nowrap}
+.btn.gold{background:var(--gold);color:#2a1d02}.btn.ghost{background:transparent;border:2px solid var(--line)}.btn.red{background:#7f1d1d}
+.btn:disabled{opacity:.45}
+.picks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.pick{padding:14px 10px;border-radius:14px;border:2px solid var(--line);background:var(--card);text-align:left}
+.pick.on{border-color:var(--gold);background:#2a210b}
+.pick .pi{font-size:28px}.pick b{display:block;font:400 18px/1.1 Anton,sans-serif;letter-spacing:.5px;margin-top:4px}.pick span{display:block;color:var(--mut);font-size:13.5px;margin-top:3px;line-height:1.3}
+.field{display:flex;gap:8px;margin:12px 0}
+.field input{flex:1;min-width:0;padding:12px;border-radius:12px;border:2px solid var(--line);background:#0f0d1c;color:var(--tx);font:600 17px "Barlow Condensed",sans-serif;text-transform:uppercase}
+.note{color:var(--mut);font-size:14px;line-height:1.45}
+table.lb{width:100%;border-collapse:collapse;font-size:16px}
+table.lb td{padding:8px 6px;border-bottom:1px solid var(--line)}
+table.lb td:first-child{color:var(--mut);width:34px}
+table.lb tr.me td{color:var(--gold)}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.chips button{padding:7px 11px;border-radius:999px;border:2px solid var(--line);background:var(--card);font-weight:700;font-size:14px}
+.chips button.on{border-color:var(--gold);color:var(--gold)}
+#toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 18px);transform:translateX(-50%);background:#000d;border:1px solid var(--line);padding:10px 14px;border-radius:12px;font-weight:700;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw;text-align:center;z-index:50}
+/* game view */
+#game{display:none}
+.ghead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:4px 0 8px}
+.pl{flex:1;padding:8px 10px;border-radius:12px;background:var(--card);border:2px solid var(--line);text-align:center;min-width:0}
+.pl b{display:block;font:400 17px/1.1 Anton,sans-serif;letter-spacing:.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pl span{font-size:13px;color:var(--mut)}
+.pl.on{border-color:var(--gold);box-shadow:0 0 14px #fbbf2444}
+.vs{font:400 16px Anton,sans-serif;color:var(--mut)}
+.status{text-align:center;font:400 21px/1.2 Anton,sans-serif;letter-spacing:.5px;margin:8px 0 12px;min-height:26px}
+.status small{display:block;font:600 14px "Barlow Condensed",sans-serif;color:var(--mut);letter-spacing:0;margin-top:3px}
+.gfoot{display:flex;gap:8px;justify-content:center;margin-top:14px}
+/* connect 4 */
+.c4{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;padding:8px;border-radius:16px;background:#1d3a8a;max-width:420px;margin:0 auto}
+.c4 .cell{aspect-ratio:1;border-radius:50%;background:#0b0a14;box-shadow:inset 0 3px 6px #0008}
+.c4 .cell.p1{background:radial-gradient(circle at 35% 35%,#ffe27a,#f2a900)}.c4 .cell.p2{background:radial-gradient(circle at 35% 35%,#ff8a80,#d32f2f)}
+.c4 .cell.last{outline:3px solid #fff;outline-offset:-3px}
+.c4cols{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;max-width:420px;margin:0 auto 6px;padding:0 8px}
+.c4cols button{border:0;background:#ffffff14;border-radius:8px;padding:8px 0;font:400 16px Anton,sans-serif}
+.c4cols button:disabled{opacity:.25}
+/* checkers */
+.ck{display:grid;grid-template-columns:repeat(8,1fr);max-width:440px;margin:0 auto;border:6px solid #5b3a1e;border-radius:10px;overflow:hidden}
+.ck .sq{aspect-ratio:1;display:flex;align-items:center;justify-content:center;position:relative}
+.ck .sq.l{background:#e8d3a6}.ck .sq.d{background:#7a4b26}
+.ck .sq.tgt::after{content:"";width:34%;height:34%;border-radius:50%;background:#22c55ecc}
+.ck .sq.last{box-shadow:inset 0 0 0 3px #fbbf2499}
+.pc{width:78%;height:78%;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 3px 0 #0007, inset 0 -3px 0 #0003}
+.pc.s1{background:radial-gradient(circle at 35% 35%,#fff3c4,#e0b84a)}.pc.s2{background:radial-gradient(circle at 35% 35%,#ff8a80,#b71c1c)}
+.pc.sel{outline:3px solid #22c55e;outline-offset:2px}
+/* sink the ship */
+.grid{display:grid;grid-template-columns:repeat(10,1fr);gap:2px;max-width:400px;margin:0 auto;padding:4px;border-radius:10px;background:#0c3a5c}
+.grid .g{aspect-ratio:1;background:#14507d;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700}
+.grid .g.ship{background:#9aa5b1}.grid .g.ship.pv{background:#6ee7b7}.grid .g.bad{background:#ef4444aa}
+.grid .g.hit{background:#dc2626;color:#fff}.grid .g.miss::after{content:"";width:28%;height:28%;border-radius:50%;background:#cbd5e1}
+.grid .g.sunk{background:#7f1d1d;color:#fca5a5}
+.grid .g.last{outline:2px solid var(--gold)}
+.gl{text-align:center;font:400 15px Anton,sans-serif;letter-spacing:1px;color:var(--mut);margin:12px 0 6px}
+.fleetbar{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:10px 0}
+.fleetbar button{padding:7px 10px;border-radius:10px;border:2px solid var(--line);background:var(--card);font-weight:700;font-size:14px}
+.fleetbar button.on{border-color:var(--gold)}.fleetbar button.done{opacity:.5}
+/* dock words */
+.hangsvg{display:block;margin:0 auto;width:200px;height:170px}
+.mask{text-align:center;font:400 30px/1.2 Anton,sans-serif;letter-spacing:7px;margin:10px 0 4px;word-break:break-all}
+.hint{text-align:center;color:var(--mut);font-size:15px;margin-bottom:10px}
+.kb{display:grid;grid-template-columns:repeat(9,1fr);gap:5px;max-width:440px;margin:0 auto}
+.kb button{padding:11px 0;border-radius:8px;border:0;background:#ffffff1a;font:400 18px Anton,sans-serif}
+.kb button.hit{background:#166534}.kb button.miss{background:#3f1d1d;color:#a8a29e}
+.opp{text-align:center;color:var(--mut);font-size:15px;margin-top:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top" id="mainTop"><a href="/">← The Hook</a><span style="flex:1"></span><span id="who" style="color:var(--mut);font-weight:700"></span></div>
+  <div id="lobby">
+    <h1>BOARD GAMES</h1>
+    <div class="sub">Make your move, walk away, come back on your turn.</div>
+    <div class="tabs"><button data-tab="games" class="on">MY GAMES</button><button data-tab="new">NEW GAME</button><button data-tab="board">LEADERBOARD</button></div>
+    <div id="tab-games"></div>
+    <div id="tab-new" style="display:none"></div>
+    <div id="tab-board" style="display:none"></div>
+  </div>
+  <div id="game"></div>
+</div>
+<div id="toast"></div>
+<script>
+var SB_URL='https://ehykqebzkbelwtkgjbml.supabase.co', SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVoeWtxZWJ6a2JlbHd0a2dqYm1sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzMDMwNTMsImV4cCI6MjA5OTg3OTA1M30.RgdTFy1HNE36lN3bM6ovjkmAJsTEps0GmgRuI6h6IpI';
+var sb=null, ME=null, L=null, G=null, TAB='games', NEWG='c4', BOARDG='all', pollT=null, busy=false;
+var GAMES={c4:{n:'Connect 4',i:'🔴',d:'Drop discs. Four in a row wins.'},ship:{n:'Sink the Ship',i:'🚢',d:'Hide your fleet. Call your shots.'},hang:{n:'Dock Words',i:'🪝',d:'Same dock word for both. Fewer misses wins.'},checkers:{n:'Checkers',i:'⛀',d:'Classic. Jumps are a must.'}};
+function $(id){ return document.getElementById(id); }
+function esc(t){ return String(t==null?'':t).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+var toastT=0; function toast(t){ var el=$('toast'); el.textContent=t; el.style.opacity=1; clearTimeout(toastT); toastT=setTimeout(function(){ el.style.opacity=0; },2800); }
+function rpc(fn,args){ if(!sb) return Promise.reject(new Error('offline')); return sb.rpc(fn,args||{}).then(function(r){ if(r.error) throw new Error(r.error.message||'something went wrong'); return r.data; }); }
+function oppName(g){ return g.seat===1?(g.p2||'anyone'):g.p1; }
+function left(g){ var ms=new Date(g.deadline).getTime()-Date.now(); if(ms<=0) return 'time\'s up'; var h=Math.floor(ms/3600000), m=Math.floor(ms%3600000/60000); return h?h+'h '+m+'m left':m+'m left'; }
+function ago(t){ var s=(Date.now()-new Date(t).getTime())/1000; if(s<60) return 'just now'; if(s<3600) return Math.floor(s/60)+'m ago'; if(s<86400) return Math.floor(s/3600)+'h ago'; return Math.floor(s/86400)+'d ago'; }
+
+/* ───────────── boot ───────────── */
+(function(){
+  var s=document.createElement('script'); s.src='/supabase-js-2.112.2.js';
+  s.onload=function(){
+    try{ sb=window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:true}}); }catch(e){ sb=null; }
+    if(!sb) return signedOut();
+    sb.auth.getSession().then(function(r){ var se=r&&r.data&&r.data.session; if(!se) return signedOut();
+      var q=new URLSearchParams(location.search), gid=q.get('g');
+      loadLobby().then(function(){ if(gid&&/^\d+$/.test(gid)) openGame(+gid); });
+    }).catch(signedOut);
+  };
+  s.onerror=signedOut; document.head.appendChild(s);
+  document.querySelectorAll('.tabs button').forEach(function(b){ b.addEventListener('click',function(){ setTab(b.dataset.tab); }); });
+  document.addEventListener('visibilitychange',function(){ if(!document.hidden){ if(G) refreshGame(); else loadLobby(); } });
+})();
+function signedOut(){ $('tab-games').innerHTML='<div class="row"><div class="rt"><b>Sign in first</b><span>Open <a href="/" style="color:var(--gold)">The Shadow Hook</a>, sign in, then come back.</span></div></div>'; }
+function setTab(t){ TAB=t; document.querySelectorAll('.tabs button').forEach(function(b){ b.classList.toggle('on',b.dataset.tab===t); });
+  ['games','new','board'].forEach(function(k){ $('tab-'+k).style.display=k===t?'':'none'; });
+  if(t==='new') renderNew(); if(t==='board') loadBoard(); if(t==='games') renderGames(); }
+function startPoll(){ clearInterval(pollT); pollT=setInterval(function(){ if(document.hidden) return; if(G){ if(!G.my_turn&&G.status!=='done') refreshGame(); } else if(TAB==='games') loadLobby(); }, G?4000:9000); }
+
+/* ───────────── lobby ───────────── */
+function loadLobby(){ return rpc('bg_lobby').then(function(x){ L=x; ME=x.me; $('who').textContent=ME; if(TAB==='games') renderGames(); startPoll(); }).catch(function(e){ $('tab-games').innerHTML='<div class="empty">'+esc(e.message)+'</div>'; }); }
+function gameRow(g,act){
+  var gm=GAMES[g.game], line;
+  if(g.status==='open'){ line=g.invite_for_me?(g.p1+' challenged you'):(g.p2?'waiting on '+g.p2+' to accept':'open to anyone'); }
+  else if(g.status==='live'){ line=(g.my_turn?'your move':'waiting on '+oppName(g))+' · '+left(g); }
+  else if(g.status==='done'){ line=(g.winner===0?'draw':g.winner===g.seat?'you won':'you lost')+(g.reason?' · '+g.reason:'')+' · '+ago(g.updated_at); }
+  else line=g.status;
+  return '<div class="row'+(g.my_turn||g.invite_for_me?' hot':'')+'"><div class="ico">'+gm.i+'</div><div class="rt"><b>'+esc(gm.n)+' vs '+esc(g.status==='open'&&g.invite_for_me?g.p1:oppName(g))+'</b><span>'+esc(line)+'</span></div>'+act+'</div>';
+}
+function renderGames(){
+  if(!L) return;
+  var mine=L.games||[], h='';
+  var yours=mine.filter(function(g){ return g.my_turn||g.invite_for_me; });
+  var wait=mine.filter(function(g){ return (g.status==='live'&&!g.my_turn)||g.mine_open; });
+  var done=mine.filter(function(g){ return g.status==='done'; }).slice(0,10);
+  h+='<div class="sec">YOUR MOVE</div>';
+  h+=yours.length?yours.map(function(g){ return gameRow(g, g.invite_for_me?'<button class="btn gold" data-acc="'+g.id+'">PLAY</button><button class="btn ghost" data-dec="'+g.id+'">✕</button>':'<button class="btn gold" data-open="'+g.id+'">GO</button>'); }).join(''):'<div class="empty">Nothing waiting on you. Start a game below.</div>';
+  h+='<div class="sec">WAITING ON THEM</div>';
+  h+=wait.length?wait.map(function(g){ return gameRow(g, g.mine_open?'<button class="btn ghost" data-dec="'+g.id+'">CANCEL</button>':'<button class="btn ghost" data-open="'+g.id+'">VIEW</button>'); }).join(''):'<div class="empty">No games waiting on others.</div>';
+  var open=(L.open||[]);
+  h+='<div class="sec">OPEN CHALLENGES</div>';
+  h+=open.length?open.map(function(g){ return gameRow(g,'<button class="btn" data-acc="'+g.id+'">JOIN</button>'); }).join(''):'<div class="empty">No open challenges right now.</div>';
+  if(done.length){ h+='<div class="sec">FINISHED</div>'+done.map(function(g){ return gameRow(g,'<button class="btn ghost" data-open="'+g.id+'">SEE</button>'); }).join(''); }
+  h+='<div style="margin-top:16px"><button class="btn gold" style="width:100%;padding:14px" onclick="setTab(\'new\')">＋ NEW GAME</button></div>';
+  $('tab-games').innerHTML=h;
+  $('tab-games').querySelectorAll('[data-open]').forEach(function(b){ b.onclick=function(){ openGame(+b.dataset.open); }; });
+  $('tab-games').querySelectorAll('[data-acc]').forEach(function(b){ b.onclick=function(){ b.disabled=true; rpc('bg_accept',{p_id:+b.dataset.acc}).then(function(g){ showGame(g); }).catch(function(e){ toast(e.message); loadLobby(); }); }; });
+  $('tab-games').querySelectorAll('[data-dec]').forEach(function(b){ b.onclick=function(){ b.disabled=true; rpc('bg_decline',{p_id:+b.dataset.dec}).then(loadLobby).catch(function(e){ toast(e.message); }); }; });
+}
+function renderNew(){
+  var h='<div class="picks">'+Object.keys(GAMES).map(function(k){ var g=GAMES[k]; return '<button class="pick'+(k===NEWG?' on':'')+'" data-g="'+k+'"><div class="pi">'+g.i+'</div><b>'+g.n+'</b><span>'+g.d+'</span></button>'; }).join('')+'</div>';
+  h+='<div class="field"><input id="toWho" placeholder="Handle, or leave blank for anyone" autocomplete="off" autocapitalize="characters"></div>';
+  h+='<button class="btn gold" id="sendCh" style="width:100%;padding:14px">SEND CHALLENGE</button>';
+  h+='<p class="note">You get 24 hours per move. Run out of time and the game goes to the other player. Wins move your rating up the leaderboard.</p>';
+  $('tab-new').innerHTML=h;
+  $('tab-new').querySelectorAll('.pick').forEach(function(b){ b.onclick=function(){ NEWG=b.dataset.g; renderNew(); }; });
+  $('sendCh').onclick=function(){ var to=$('toWho').value.trim()||'anyone', b=this; b.disabled=true;
+    rpc('bg_new',{p_game:NEWG,p_to:to}).then(function(){ toast(to==='anyone'?'Posted — anyone can take it':'Challenge sent to '+to.toUpperCase()); setTab('games'); loadLobby(); })
+    .catch(function(e){ toast(e.message); b.disabled=false; }); };
+}
+function loadBoard(){
+  var h='<div class="chips">'+[['all','All games']].concat(Object.keys(GAMES).map(function(k){ return [k,GAMES[k].n]; })).map(function(c){ return '<button data-b="'+c[0]+'"'+(c[0]===BOARDG?' class="on"':'')+'>'+c[1]+'</button>'; }).join('')+'</div><div id="lbBody" class="empty">Loading…</div>';
+  $('tab-board').innerHTML=h;
+  $('tab-board').querySelectorAll('[data-b]').forEach(function(b){ b.onclick=function(){ BOARDG=b.dataset.b; loadBoard(); }; });
+  rpc('bg_board',{p_game:BOARDG}).then(function(rows){
+    var mine=L&&L.ratings&&BOARDG!=='all'?L.ratings[BOARDG]:null;
+    if(!rows||!rows.length){ $('lbBody').innerHTML='No finished games yet. Be the first on the board.'; return; }
+    $('lbBody').outerHTML='<table class="lb">'+rows.map(function(r,i){ return '<tr'+(r.h===ME?' class="me"':'')+'><td>#'+(i+1)+'</td><td><b>'+esc(r.h)+'</b></td><td>'+(BOARDG==='all'?'avg ':'')+r.r+'</td><td>'+r.w+'–'+r.l+(r.d?'–'+r.d:'')+'</td></tr>'; }).join('')+'</table>'+
+      (mine?'<p class="note">Your '+GAMES[BOARDG].n+' rating: <b style="color:var(--gold)">'+mine.r+'</b> · '+mine.w+'–'+mine.l+(mine.d?'–'+mine.d:'')+'</p>':'');
+  }).catch(function(e){ $('lbBody').textContent=e.message; });
+}
+
+/* ───────────── game view ───────────── */
+var UI={sel:null,path:null,tb:null,fleet:null,cur:0,dir:'h'};
+function openGame(id){ rpc('bg_state',{p_id:id}).then(showGame).catch(function(e){ toast(e.message); }); }
+function refreshGame(){ if(!G||busy) return; rpc('bg_state',{p_id:G.id}).then(function(g){ if(JSON.stringify(g.state)!==JSON.stringify(G.state)||g.status!==G.status||g.turn!==G.turn) showGame(g,true); }).catch(function(){}); }
+function backToLobby(){ G=null; $('game').style.display='none'; $('lobby').style.display=''; $('mainTop').style.display=''; try{ history.replaceState(null,'','/board-games.html'); }catch(e){} loadLobby(); }
+function showGame(g,keep){
+  var fresh=!G||G.id!==g.id; G=g; if(fresh){ UI={sel:null,path:null,tb:null,fleet:null,cur:0,dir:'h'}; }
+  if(!keep&&fresh){ try{ history.replaceState(null,'','/board-games.html?g='+g.id); }catch(e){} }
+  $('lobby').style.display='none'; $('mainTop').style.display='none'; var el=$('game'); el.style.display='block';
+  var me=g.seat, p1on=g.status==='live'&&(g.turn===1||(g.turn===0&&!(g.game==='hang'?g.state.p1.done:g.state.fleetset&&g.state.fleetset['1'])));
+  var p2on=g.status==='live'&&(g.turn===2||(g.turn===0&&!(g.game==='hang'?g.state.p2.done:g.state.fleetset&&g.state.fleetset['2'])));
+  var col1=g.game==='c4'?'🟡 ':g.game==='checkers'?'⚪ ':'', col2=g.game==='c4'?'🔴 ':g.game==='checkers'?'🔴 ':'';
+  var h='<div class="top"><a href="#" id="gBack">← My games</a><span style="flex:1"></span><span style="color:var(--mut);font-weight:700">'+GAMES[g.game].i+' '+esc(g.name)+'</span></div>';
+  h+='<div class="ghead"><div class="pl'+(p1on?' on':'')+'"><b>'+col1+esc(g.p1)+(me===1?' (you)':'')+'</b><span>'+playerSub(g,1)+'</span></div><div class="vs">VS</div><div class="pl'+(p2on?' on':'')+'"><b>'+col2+esc(g.p2||'—')+(me===2?' (you)':'')+'</b><span>'+playerSub(g,2)+'</span></div></div>';
+  h+='<div class="status" id="gStatus">'+statusLine(g)+'</div><div id="gBoard"></div>';
+  h+='<div class="gfoot">'+(g.status==='live'&&me?'<button class="btn red" id="gResign">RESIGN</button>':'')+(g.status==='done'?'<button class="btn gold" id="gRematch">REMATCH</button>':'')+'<button class="btn ghost" id="gBack2">MY GAMES</button></div>';
+  el.innerHTML=h;
+  $('gBack').onclick=function(e){ e.preventDefault(); backToLobby(); }; $('gBack2').onclick=backToLobby;
+  if($('gResign')) $('gResign').onclick=function(){ if(this.dataset.sure){ rpc('bg_resign',{p_id:g.id}).then(function(x){ showGame(x,true); }).catch(function(e){ toast(e.message); }); } else { this.dataset.sure=1; this.textContent='TAP AGAIN TO RESIGN'; } };
+  if($('gRematch')) $('gRematch').onclick=function(){ var b=this; b.disabled=true; rpc('bg_new',{p_game:g.game,p_to:oppName(g)}).then(function(){ toast('Rematch sent to '+oppName(g)); backToLobby(); }).catch(function(e){ toast(e.message); b.disabled=false; }); };
+  ({c4:drawC4,checkers:drawCK,ship:drawShip,hang:drawHang})[g.game](g);
+  startPoll();
+}
+function playerSub(g,s){
+  if(g.game==='hang'&&g.status!=='open'){ var p=g.state['p'+s]; return p.done?(p.won?'solved · '+p.miss+' miss':'out of tries'):p.miss+'/'+g.state.max+' misses'; }
+  if(g.game==='ship'&&g.status==='live'){ var sunk=(g.state['sunk'+(3-s)]||[]).length; return sunk+'/5 sunk'; }
+  if(g.status==='done') return g.winner===s?'🏆 winner':g.winner===0?'draw':'';
+  return '';
+}
+function statusLine(g){
+  if(g.status==='done'){ var t=g.winner===0?'DRAW':g.seat&&g.winner===g.seat?'YOU WON 🏆':(g.winner===1?g.p1:g.p2)+' WON'; return t+'<small>'+esc(g.reason||'')+'</small>'; }
+  if(g.status==='open') return 'WAITING FOR A PLAYER<small>'+(g.p2?'Sent to '+esc(g.p2):'Open to anyone')+'</small>';
+  if(g.status!=='live') return esc(g.status.toUpperCase());
+  if(g.game==='ship'&&g.turn===0) return (g.my_turn?'SET YOUR FLEET':'WAITING ON '+esc(oppName(g))+' TO SET THEIR FLEET')+'<small>'+left(g)+'</small>';
+  if(g.game==='hang') return (g.my_turn?'GUESS THE WORD':'WAITING ON '+esc(oppName(g)))+'<small>'+left(g)+'</small>';
+  return (g.my_turn?'YOUR MOVE':'WAITING ON '+esc(oppName(g)))+'<small>'+left(g)+'</small>';
+}
+function send(move){ if(busy) return; busy=true;
+  return rpc('bg_move',{p_id:G.id,p_move:move}).then(function(g){ busy=false; UI.sel=null; UI.path=null; UI.tb=null; showGame(g,true); if(g.status==='done') toast(g.winner===g.seat?'You won! 🏆':g.winner===0?'It\'s a draw':'Game over'); })
+  .catch(function(e){ busy=false; toast(e.message); UI.sel=null; UI.path=null; UI.tb=null; refreshGame(); });
+}
+
+/* ───────────── connect 4 ───────────── */
+function drawC4(g){
+  var b=g.state.b, last=g.state.last, can=g.status==='live'&&g.my_turn, h='<div class="c4cols">';
+  for(var c=0;c<7;c++) h+='<button data-col="'+c+'"'+(can&&b[c]===0?'':' disabled')+'>▼</button>';
+  h+='</div><div class="c4">';
+  for(var r=0;r<6;r++) for(c=0;c<7;c++){ var v=b[r*7+c]; h+='<div class="cell'+(v?' p'+v:'')+(last&&last.r===r&&last.c===c?' last':'')+'" data-col="'+c+'"></div>'; }
+  $('gBoard').innerHTML=h+'</div>';
+  if(can) $('gBoard').querySelectorAll('[data-col]').forEach(function(x){ x.onclick=function(){ var c=+x.dataset.col; if(b[c]!==0) return toast('That column is full'); send({col:c}); }; });
+}
+
+/* ───────────── checkers ───────────── */
+function ckRC(i){ var r=Math.floor(i/4); return [r,(i%4)*2+(r%2===0?1:0)]; }
+function ckIdx(r,c){ return (r<0||r>7||c<0||c>7||(r+c)%2===0)?-1:r*4+Math.floor(c/2); }
+function own(p,s){ return p!==0&&((p-1)%2)+1===s; }
+function dirs(p,s){ return p>2?[-1,1]:(s===1?[-1]:[1]); }
+function jumpsFrom(b,i,s){ var p=b[i], out=[]; if(!own(p,s)) return out; var rc=ckRC(i);
+  dirs(p,s).forEach(function(dr){ [-1,1].forEach(function(dc){ var m=ckIdx(rc[0]+dr,rc[1]+dc), l=ckIdx(rc[0]+2*dr,rc[1]+2*dc); if(m>=0&&l>=0&&b[m]!==0&&!own(b[m],s)&&b[l]===0) out.push(l); }); }); return out; }
+function stepsFrom(b,i,s){ var p=b[i], out=[]; if(!own(p,s)) return out; var rc=ckRC(i);
+  dirs(p,s).forEach(function(dr){ [-1,1].forEach(function(dc){ var t=ckIdx(rc[0]+dr,rc[1]+dc); if(t>=0&&b[t]===0) out.push(t); }); }); return out; }
+function anyJump(b,s){ for(var i=0;i<32;i++) if(jumpsFrom(b,i,s).length) return true; return false; }
+function drawCK(g){
+  var s=g.seat, b=UI.tb||g.state.b.slice(), can=g.status==='live'&&g.my_turn, flip=s===2, must=can&&anyJump(g.state.b,s);
+  var tg=[];
+  if(can&&UI.sel!=null){ tg=UI.path&&UI.path.length>1?jumpsFrom(b,UI.sel,s):(must?jumpsFrom(b,UI.sel,s):stepsFrom(b,UI.sel,s).concat(jumpsFrom(b,UI.sel,s))); }
+  var lastSet={}; if(g.state.last&&g.state.last.path) g.state.last.path.forEach(function(i){ lastSet[i]=1; });
+  var h='<div class="ck">';
+  for(var vr=0;vr<8;vr++) for(var vc=0;vc<8;vc++){
+    var r=flip?7-vr:vr, c=flip?7-vc:vc, dark=(r+c)%2===1, i=dark?ckIdx(r,c):-1, p=i>=0?b[i]:0;
+    h+='<div class="sq '+(dark?'d':'l')+(i>=0&&tg.indexOf(i)>=0?' tgt':'')+(i>=0&&lastSet[i]?' last':'')+'"'+(i>=0?' data-i="'+i+'"':'')+'>'+
+      (p?'<div class="pc s'+(((p-1)%2)+1)+(UI.sel===i?' sel':'')+'">'+(p>2?'👑':'')+'</div>':'')+'</div>';
+  }
+  $('gBoard').innerHTML=h+'</div>'+(can&&must&&!UI.path?'<p class="note" style="text-align:center">You have a jump — you must take it.</p>':'')+(UI.path&&UI.path.length>1?'<p class="note" style="text-align:center">Keep jumping. <a href="#" id="ckUndo" style="color:var(--gold)">Undo</a></p>':'');
+  if($('ckUndo')) $('ckUndo').onclick=function(e){ e.preventDefault(); UI.sel=null; UI.path=null; UI.tb=null; drawCK(G); };
+  if(!can) return;
+  $('gBoard').querySelectorAll('[data-i]').forEach(function(x){ x.onclick=function(){
+    var i=+x.dataset.i;
+    if(UI.path&&UI.path.length>1){ if(tg.indexOf(i)>=0) ckStep(i); return; }
+    if(own(b[i],s)){ if(must&&!jumpsFrom(b,i,s).length) return toast('Take the jump'); UI.sel=i; UI.path=[i]; drawCK(G); return; }
+    if(UI.sel!=null&&tg.indexOf(i)>=0) ckStep(i);
+  }; });
+}
+function ckStep(i){
+  var s=G.seat, b=(UI.tb||G.state.b).slice(), from=UI.sel, a=ckRC(from), z=ckRC(i), jump=Math.abs(z[0]-a[0])===2;
+  UI.path.push(i);
+  if(!jump) return send({path:UI.path});
+  var m=ckIdx((a[0]+z[0])/2,(a[1]+z[1])/2); b[m]=0; b[i]=b[from]; b[from]=0;
+  var crowned=b[i]<=2&&((s===1&&z[0]===0)||(s===2&&z[0]===7)); if(crowned) b[i]+=2;
+  if(!crowned&&jumpsFrom(b,i,s).length){ UI.tb=b; UI.sel=i; drawCK(G); return; }
+  send({path:UI.path});
+}
+
+/* ───────────── sink the ship ───────────── */
+var SHIPS=[[5,'Mega-ship'],[4,'Feeder'],[3,'Barge'],[3,'Tug'],[2,'Pilot boat']];
+function cellsOf(sp){ var out=[]; for(var k=0;k<sp[2];k++) out.push(sp[3]==='h'?[sp[0],sp[1]+k]:[sp[0]+k,sp[1]]); return out; }
+function fits(fl,idx,r,c,len,dir){ var occ={}; fl.forEach(function(sp,j){ if(sp&&j!==idx) cellsOf(sp).forEach(function(x){ occ[x[0]+','+x[1]]=1; }); });
+  for(var k=0;k<len;k++){ var rr=dir==='h'?r:r+k, cc=dir==='h'?c+k:c; if(rr>9||cc>9||occ[rr+','+cc]) return false; } return true; }
+function randomFleet(){ var fl=[]; SHIPS.forEach(function(s,j){ for(var t=0;t<500;t++){ var d=Math.random()<.5?'h':'v', r=Math.floor(Math.random()*10), c=Math.floor(Math.random()*10); if(fits(fl,j,r,c,s[0],d)){ fl[j]=[r,c,s[0],d]; break; } } }); return fl; }
+function drawShip(g){
+  var s=g.seat, st=g.state;
+  if(g.status==='live'&&g.turn===0&&g.my_turn){ return drawSetup(g); }
+  var opp=3-s, myShots=st['s'+s]||[], theirShots=st['s'+opp]||[], sunkOpp=st['sunk'+opp]||[], last=st.last;
+  var shotMap={}; myShots.forEach(function(x){ shotMap[x[0]+','+x[1]]=x[2]; });
+  var sunkSet={}; sunkOpp.forEach(function(sh){ sh.forEach(function(c){ sunkSet[c]=1; }); });
+  var fleetOpp=g.status==='done'?(st['fleet'+opp]||[]):[], oppShip={}; fleetOpp.forEach(function(sh){ sh.forEach(function(c){ oppShip[c]=1; }); });
+  var can=g.status==='live'&&g.my_turn&&g.turn===s;
+  var h='<div class="gl">THEIR WATERS'+(can?' — TAP TO FIRE':'')+'</div><div class="grid" id="tw">';
+  for(var r=0;r<10;r++) for(var c=0;c<10;c++){ var k=r+','+c, v=shotMap[k], cls=sunkSet[k]?'sunk':v===1?'hit':v===0?'miss':oppShip[k]?'ship':'';
+    h+='<div class="g '+cls+(last&&last.by===s&&last.r===r&&last.c===c?' last':'')+'" data-r="'+r+'" data-c="'+c+'">'+(v===1||sunkSet[k]?'✕':'')+'</div>'; }
+  h+='</div>';
+  var mine={}; (st.myfleet||[]).forEach(function(sh){ sh.forEach(function(c){ mine[c]=1; }); });
+  var theirMap={}; theirShots.forEach(function(x){ theirMap[x[0]+','+x[1]]=x[2]; });
+  h+='<div class="gl">YOUR FLEET</div><div class="grid">';
+  for(r=0;r<10;r++) for(c=0;c<10;c++){ k=r+','+c; v=theirMap[k]; h+='<div class="g '+(v===1?'hit':mine[k]?'ship':'')+(v===0?' miss':'')+(last&&last.by===opp&&last.r===r&&last.c===c?' last':'')+'">'+(v===1?'✕':'')+'</div>'; }
+  h+='</div>';
+  if(last&&last.sunk) h='<p class="note" style="text-align:center;color:var(--gold)">'+(last.by===s?'You sank a ship!':'They sank your ship!')+'</p>'+h;
+  $('gBoard').innerHTML=h;
+  if(can) $('tw').querySelectorAll('.g').forEach(function(x){ x.onclick=function(){ var r=+x.dataset.r, c=+x.dataset.c; if(shotMap[r+','+c]!==undefined) return toast('You already fired there'); send({r:r,c:c}); }; });
+}
+function drawSetup(g){
+  if(!UI.fleet) UI.fleet=[];
+  var fl=UI.fleet, occ={}; fl.forEach(function(sp,j){ if(sp) cellsOf(sp).forEach(function(x){ occ[x[0]+','+x[1]]=j; }); });
+  var h='<p class="note" style="text-align:center">Pick a ship, then tap where its front goes. Tap a placed ship to move it.</p><div class="fleetbar">'+
+    SHIPS.map(function(s,j){ return '<button data-s="'+j+'" class="'+(j===UI.cur?'on':'')+(fl[j]?' done':'')+'">'+s[1]+' ('+s[0]+')</button>'; }).join('')+'</div>';
+  h+='<div class="grid" id="sg">';
+  for(var r=0;r<10;r++) for(var c=0;c<10;c++){ var k=r+','+c; h+='<div class="g'+(occ[k]!==undefined?' ship'+(occ[k]===UI.cur?' pv':''):'')+'" data-r="'+r+'" data-c="'+c+'"></div>'; }
+  h+='</div><div class="gfoot"><button class="btn ghost" id="rot">↻ '+(UI.dir==='h'?'ACROSS':'DOWN')+'</button><button class="btn ghost" id="rnd">🎲 RANDOM</button><button class="btn gold" id="rdy"'+(fl.filter(Boolean).length===5?'':' disabled')+'>READY</button></div>';
+  $('gBoard').innerHTML=h;
+  $('gBoard').querySelectorAll('[data-s]').forEach(function(b){ b.onclick=function(){ UI.cur=+b.dataset.s; drawSetup(g); }; });
+  $('rot').onclick=function(){ UI.dir=UI.dir==='h'?'v':'h'; var sp=fl[UI.cur]; if(sp&&fits(fl,UI.cur,sp[0],sp[1],sp[2],UI.dir)) fl[UI.cur]=[sp[0],sp[1],sp[2],UI.dir]; drawSetup(g); };
+  $('rnd').onclick=function(){ UI.fleet=randomFleet(); drawSetup(g); };
+  $('rdy').onclick=function(){ send({fleet:UI.fleet}); };
+  $('sg').querySelectorAll('.g').forEach(function(x){ x.onclick=function(){ var r=+x.dataset.r, c=+x.dataset.c, k=r+','+c;
+    if(occ[k]!==undefined&&occ[k]!==UI.cur){ UI.cur=occ[k]; UI.dir=fl[UI.cur][3]; drawSetup(g); return; }
+    var len=SHIPS[UI.cur][0]; if(!fits(fl,UI.cur,r,c,len,UI.dir)) return toast('It doesn\'t fit there');
+    fl[UI.cur]=[r,c,len,UI.dir]; var nx=SHIPS.findIndex(function(s,j){ return !fl[j]; }); if(nx>=0) UI.cur=nx; drawSetup(g); }; });
+}
+
+/* ───────────── dock words ───────────── */
+function hookSvg(miss){
+  // a crane lowers its hook one step per miss; on the 7th miss the load hits the deck
+  var drop=12+miss*13, parts='';
+  parts+='<line x1="30" y1="160" x2="170" y2="160" stroke="#64748b" stroke-width="4"/>';
+  parts+='<line x1="45" y1="160" x2="45" y2="18" stroke="#fbbf24" stroke-width="6"/><line x1="40" y1="20" x2="160" y2="20" stroke="#fbbf24" stroke-width="6"/>';
+  parts+='<line x1="45" y1="50" x2="75" y2="20" stroke="#fbbf24" stroke-width="3"/>';
+  parts+='<line x1="140" y1="20" x2="140" y2="'+(20+drop)+'" stroke="#cbd5e1" stroke-width="2"/>';
+  parts+='<path d="M134 '+(20+drop)+' h12 v6 a8 8 0 1 1 -8 8" fill="none" stroke="#e2e8f0" stroke-width="3"/>';
+  var boxY=20+drop+16; if(boxY>132) boxY=132;
+  parts+='<rect x="115" y="'+boxY+'" width="50" height="26" rx="2" fill="'+(miss>=7?'#dc2626':'#2563eb')+'" stroke="#0f172a" stroke-width="2"/>';
+  for(var i=0;i<4;i++) parts+='<line x1="'+(122+i*11)+'" y1="'+(boxY+3)+'" x2="'+(122+i*11)+'" y2="'+(boxY+23)+'" stroke="#0f172a55" stroke-width="2"/>';
+  return '<svg class="hangsvg" viewBox="0 0 200 170" aria-label="'+miss+' misses">'+parts+'</svg>';
+}
+function drawHang(g){
+  var s=g.seat, st=g.state, me=st['p'+s]||{}, op=st['p'+(3-s)]||{}, guesses=me.g||'', mask=me.mask||'', can=g.status==='live'&&g.my_turn;
+  var h=hookSvg(me.miss||0);
+  var ml=st.len||8, mfs=ml>13?17:ml>10?21:ml>8?25:30, mls=ml>10?3:6;
+  h+='<div class="mask" style="font-size:'+mfs+'px;letter-spacing:'+mls+'px">'+esc((g.status==='done'?(st.word||mask):mask).split('').join(' '))+'</div>';
+  h+='<div class="hint">Hint: '+esc(st.hint||'')+' · '+st.len+' letters · '+(me.miss||0)+'/'+st.max+' misses</div>';
+  if(me.done&&g.status!=='done') h+='<p class="note" style="text-align:center;color:var(--gold)">'+(me.won?'You solved it with '+me.miss+' miss'+(me.miss===1?'':'es')+'!':'Out of tries.')+' Waiting on '+esc(oppName(g))+'…</p>';
+  h+='<div class="kb">';
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').forEach(function(ch){ var used=guesses.indexOf(ch)>=0, hit=used&&mask.indexOf(ch)>=0;
+    h+='<button data-l="'+ch+'"'+(used||!can?' disabled':'')+' class="'+(used?(hit?'hit':'miss'):'')+'">'+ch+'</button>'; });
+  h+='</div>';
+  if(g.status!=='done'&&op) h+='<div class="opp">'+esc(oppName(g))+': '+(op.done?(op.won?'solved it':'out of tries'):'found '+(op.found||0)+'/'+st.len+' letters')+' · '+(op.miss||0)+' misses</div>';
+  if(g.status==='done'&&op&&op.g!=null) h+='<div class="opp">'+esc(oppName(g))+' guessed: '+esc(op.g.split('').join(' '))+'</div>';
+  $('gBoard').innerHTML=h;
+  if(can) $('gBoard').querySelectorAll('[data-l]').forEach(function(b){ b.onclick=function(){ send({letter:b.dataset.l}); }; });
+}
+</script>
+</body>
+</html>
