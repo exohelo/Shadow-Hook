@@ -985,8 +985,7 @@
     crest: "https://cdn.midjourney.com/7f840443-6fea-49b9-b0c5-e3aa551a7a42/0_3_640_N.webp",
     city: "https://cdn.midjourney.com/c5871713-b497-44df-b4d0-7eb9575d6c19/0_3.png",
     santa: "https://cdn.midjourney.com/620109df-f216-4b06-9e42-5c926fe976ae/0_0.png",
-    hills: "https://cdn.midjourney.com/dc7fdd05-474d-4fab-9a7e-767fdc11208f/0_1.png",
-    sled: "https://cdn.midjourney.com/eb30aec4-087e-4296-b738-a0bcf8393d73/0_2_640_N.webp"
+    hills: "https://cdn.midjourney.com/dc7fdd05-474d-4fab-9a7e-767fdc11208f/0_1.png"
   };
   window.seasonNow = function () { return "xmas"; };
   window.greetMaybe = function () {};
