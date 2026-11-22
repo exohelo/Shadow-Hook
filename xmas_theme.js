@@ -213,6 +213,8 @@
     var crest = document.querySelector(".hc-left .sc-ribbon") || document.querySelector(".hcrest");
     if (crest && !crest.querySelector(".xm-hat")) { crest.classList.add("xm-hatwrap"); crest.insertAdjacentHTML("beforeend", HAT); }
     if (crest && ART.crest && !crest.querySelector(".xm-mjicon")) { crest.classList.add("xm-hasicon"); crest.insertAdjacentHTML("beforeend", "<img class='xm-mjicon' alt='' src='" + ART.crest + "'>"); }
+    // the app's still mode (theme_switch.js) stops every endless animation unless it sits under [data-keep-motion]: the lights may blink
+    ["xmLightsTop", "xmLightsNav"].forEach(function (id) { var e = document.getElementById(id); if (e) e.setAttribute("data-keep-motion", ""); });
     built = true; lastW = w;
   }
   function wipe() {
