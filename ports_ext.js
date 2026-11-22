@@ -984,7 +984,7 @@
     header: "https://cdn.midjourney.com/bf779394-f627-46f1-9c4f-f62742636075/0_0.png",
     crest: "https://cdn.midjourney.com/7f840443-6fea-49b9-b0c5-e3aa551a7a42/0_3_640_N.webp",
     city: "https://cdn.midjourney.com/c5871713-b497-44df-b4d0-7eb9575d6c19/0_3.png",
-    santa: "https://cdn.midjourney.com/77ad8ba7-856b-4d2a-8ebd-83c4216af5b5/0_0.png"
+    santa: "https://cdn.midjourney.com/620109df-f216-4b06-9e42-5c926fe976ae/0_0.png"
   };
   window.seasonNow = function () { return "xmas"; };
   window.greetMaybe = function () {};
