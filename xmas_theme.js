@@ -88,7 +88,7 @@
     /* the snowy city skyline riding on top of the menu, and Santa's occasional fly-over (Midjourney art) */
     "#xmCity{position:absolute;left:0;right:0;bottom:100%;height:118px;margin-bottom:-6px;pointer-events:none;z-index:0;background:center bottom/cover no-repeat;-webkit-mask-image:linear-gradient(180deg,transparent 0,#000 42%);mask-image:linear-gradient(180deg,transparent 0,#000 42%)}" +
     "html.daylight #xmCity{opacity:.85}" +
-    "#xmSanta{position:fixed;left:0;top:20vh;width:min(96vw,480px);aspect-ratio:3/1;pointer-events:none;z-index:38;background:center/contain no-repeat;mix-blend-mode:screen;filter:brightness(1.35) saturate(1.15);opacity:0;will-change:transform}" +
+    "#xmSanta{position:fixed;left:0;top:20vh;width:min(50vw,250px);aspect-ratio:3/1;pointer-events:none;z-index:38;background:center/contain no-repeat;mix-blend-mode:screen;filter:brightness(1.35) saturate(1.15);opacity:0;will-change:transform}" +
     "html.daylight #xmSanta,html.calm #xmSanta,html.xm-nodecor #xmCity,html.xm-nodecor #xmSanta{display:none!important}" +
     /* no lights over the menu (Nov 21): just the skyline and the snow bank down there */
     "#xmLightsNav{display:none!important}" +
@@ -240,11 +240,11 @@
     try { if (!force && window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches) return; } catch (e) {}
     s.style.top = (12 + Math.random() * 22).toFixed(1) + "vh";
     s.animate([
-      { transform: "translate(-75vw,2vh) rotate(-3deg)", opacity: 0 },
+      { transform: "translate(110vw,2vh) rotate(3deg)", opacity: 0 },
       { opacity: 1, offset: 0.08 },
-      { transform: "translate(25vw,-3vh) rotate(-6deg)", offset: 0.5 },
+      { transform: "translate(30vw,-3vh) rotate(6deg)", offset: 0.5 },
       { opacity: 1, offset: 0.9 },
-      { transform: "translate(125vw,-9vh) rotate(-9deg)", opacity: 0 }
+      { transform: "translate(-60vw,-9vh) rotate(9deg)", opacity: 0 }
     ], { duration: 9500, easing: "linear" });
   }
   function santaLoop() { clearTimeout(santaT); santaT = setTimeout(function () { if (ON) { santa(); santaLoop(); } }, (window.SHK_XMAS_TEST ? 25 : 80) * 1000 + Math.random() * 40000); setTimeout(function () { if (ON) santa(); }, 6000); santaLoop = function () { clearTimeout(santaT); santaT = setTimeout(function () { if (ON) { santa(); santaLoop(); } }, (window.SHK_XMAS_TEST ? 25 : 80) * 1000 + Math.random() * 40000); }; }
