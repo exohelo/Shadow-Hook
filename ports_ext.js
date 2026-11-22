@@ -960,7 +960,8 @@
 })();
 
 /* #xmastest(nov21) — the Christmas test site: open theshadowhook.com/?xmas=test to see the Christmas skin on that tab only.
-   Nothing is saved for anyone else and the season switch is untouched. ?xmas=off (or the badge) ends it. */
+   Nothing is saved for anyone else and the season switch is untouched. ?xmas=off (or the badge's ✕) ends it.
+   The badge's middle button flips the background between the two Midjourney picks (test only: served from Midjourney). */
 (function () {
   var on = false, q = location.search || "";
   try {
@@ -969,7 +970,14 @@
     on = sessionStorage.getItem("shk_xmas_test") === "1";
   } catch (e) {}
   if (!on) return;
+  var BGS = {
+    pine: ["🌲 PINE", "https://cdn.midjourney.com/adcf3378-bfa0-49a5-8eb7-9c28d6368511/0_0.png"],
+    harbor: ["⚓ HARBOR", "https://cdn.midjourney.com/86a516bb-ceaf-4985-af1c-503746beb184/0_1.png"]
+  };
+  var pick = "pine"; try { pick = sessionStorage.getItem("shk_xmas_bg") || "pine"; } catch (e) {}
+  if (!BGS[pick]) pick = "pine";
   window.SHK_XMAS_TEST = true;
+  window.SHK_XMAS_BG = BGS[pick][1];
   window.seasonNow = function () { return "xmas"; };
   window.greetMaybe = function () {};
   function apply() { try { window.applySeason ? window.applySeason() : document.documentElement.classList.add("season-xmas"); } catch (e) {} }
@@ -980,11 +988,18 @@
   }
   function badge() {
     if (!document.body || document.getElementById("xmTestBadge")) return;
-    var b = document.createElement("button"); b.id = "xmTestBadge"; b.type = "button";
-    b.textContent = "🎄 XMAS TEST · ✕";
-    b.style.cssText = "position:fixed;left:50%;transform:translateX(-50%);bottom:calc(74px + env(safe-area-inset-bottom));z-index:99999;border:1px solid #7ce0a0;background:#0d2a1cee;color:#d9ffe8;font:700 12px/1 system-ui,sans-serif;letter-spacing:.06em;padding:7px 12px;border-radius:999px;box-shadow:0 0 12px rgba(124,224,160,.45)";
-    b.onclick = function () { try { sessionStorage.removeItem("shk_xmas_test"); } catch (e) {} location.href = location.pathname; };
-    document.body.appendChild(b);
+    var w = document.createElement("div"); w.id = "xmTestBadge";
+    w.style.cssText = "position:fixed;left:50%;transform:translateX(-50%);bottom:calc(74px + env(safe-area-inset-bottom));z-index:99999;display:flex;gap:2px;border:1px solid #7ce0a0;background:#0d2a1cee;border-radius:999px;box-shadow:0 0 12px rgba(124,224,160,.45);overflow:hidden";
+    var bs = "border:0;background:none;color:#d9ffe8;font:700 12px/1 system-ui,sans-serif;letter-spacing:.06em;padding:8px 11px;white-space:nowrap";
+    w.innerHTML = "<span style='" + bs + "'>🎄 XMAS TEST</span><button type='button' data-x='bg' style='" + bs + ";background:#1f5a3c'>" + BGS[pick][0] + "</button><button type='button' data-x='off' style='" + bs + "'>✕</button>";
+    w.addEventListener("click", function (e) {
+      var b = e.target.closest("button"); if (!b) return;
+      if (b.dataset.x === "off") { try { sessionStorage.removeItem("shk_xmas_test"); } catch (x) {} location.href = location.pathname; return; }
+      pick = pick === "pine" ? "harbor" : "pine"; try { sessionStorage.setItem("shk_xmas_bg", pick); } catch (x) {}
+      b.textContent = BGS[pick][0];
+      try { window.xmasTheme && window.xmasTheme.setBg(BGS[pick][1]); } catch (x) {}
+    });
+    document.body.appendChild(w);
   }
   if (document.body) badge(); else document.addEventListener("DOMContentLoaded", badge);
 })();
