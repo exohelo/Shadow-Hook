@@ -958,3 +958,33 @@
     if (++n > 240) clearInterval(t);
   }, 250);
 })();
+
+/* #xmastest(nov21) — the Christmas test site: open theshadowhook.com/?xmas=test to see the Christmas skin on that tab only.
+   Nothing is saved for anyone else and the season switch is untouched. ?xmas=off (or the badge) ends it. */
+(function () {
+  var on = false, q = location.search || "";
+  try {
+    if (/[?&]xmas=off\b/.test(q)) sessionStorage.removeItem("shk_xmas_test");
+    else if (/[?&]xmas=test\b/.test(q)) sessionStorage.setItem("shk_xmas_test", "1");
+    on = sessionStorage.getItem("shk_xmas_test") === "1";
+  } catch (e) {}
+  if (!on) return;
+  window.SHK_XMAS_TEST = true;
+  window.seasonNow = function () { return "xmas"; };
+  window.greetMaybe = function () {};
+  function apply() { try { window.applySeason ? window.applySeason() : document.documentElement.classList.add("season-xmas"); } catch (e) {} }
+  apply(); var n = 0, t = setInterval(function () { apply(); if (++n > 20) clearInterval(t); }, 500);
+  if (!document.getElementById("xmThemeJS")) {
+    var sc = document.createElement("script"); sc.id = "xmThemeJS"; sc.src = "xmas_theme.js?v=" + Date.now(); sc.defer = true;
+    (document.head || document.documentElement).appendChild(sc);
+  }
+  function badge() {
+    if (!document.body || document.getElementById("xmTestBadge")) return;
+    var b = document.createElement("button"); b.id = "xmTestBadge"; b.type = "button";
+    b.textContent = "🎄 XMAS TEST · ✕";
+    b.style.cssText = "position:fixed;left:50%;transform:translateX(-50%);bottom:calc(74px + env(safe-area-inset-bottom));z-index:99999;border:1px solid #7ce0a0;background:#0d2a1cee;color:#d9ffe8;font:700 12px/1 system-ui,sans-serif;letter-spacing:.06em;padding:7px 12px;border-radius:999px;box-shadow:0 0 12px rgba(124,224,160,.45)";
+    b.onclick = function () { try { sessionStorage.removeItem("shk_xmas_test"); } catch (e) {} location.href = location.pathname; };
+    document.body.appendChild(b);
+  }
+  if (document.body) badge(); else document.addEventListener("DOMContentLoaded", badge);
+})();
