@@ -69,6 +69,13 @@
       "html.daylight #haStrip .ha-row:not(.gold):not(.red){border-left-color:#b9a27a}" +
       "html.daylight #haStrip .ha-ft{color:#8a7550}" +
       "html.daylight #haStrip .ha-ft button{border-color:#c9a76a;color:#6b4710}" +
+      /* #hamini(nov21): after a few seconds the strip tucks into a small pill under the header's right edge; tap it to open */
+      "#haStrip .ha-n{display:none;font-size:12px;font-weight:700}" +
+      "#haStrip.mini{position:absolute;right:10px;top:calc(100% + 6px);width:auto;max-width:none;margin:0;padding:0;z-index:41}" +
+      "#haStrip.mini .ha-tx,#haStrip.mini .ha-cv,#haStrip.mini .ha-list{display:none!important}" +
+      "#haStrip.mini .ha-bar{width:auto;padding:5px 10px;gap:5px;border-radius:999px;box-shadow:0 2px 10px rgba(0,0,0,.45)}" +
+      "#haStrip.mini .ha-ic{font-size:14px}#haStrip.mini .ha-n{display:inline}" +
+      "#haStrip.ha-in{animation:haIn .25s ease-out}@keyframes haIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}" +
       /* Mayday's old card goes away (the strip replaces it) */
       ".card:has(#alertsList){display:none!important}";
     (document.head || document.documentElement).appendChild(st);
@@ -87,13 +94,17 @@
     el.id = "haStrip"; el.hidden = true;
     el.innerHTML =
       '<button type="button" class="ha-bar" aria-expanded="false"><span class="ha-ic" aria-hidden="true">⚠️</span>' +
-      '<span class="ha-tx"><span class="ha-t"></span><span class="ha-s"></span></span><span class="ha-cv" aria-hidden="true">▾</span></button>' +
+      '<span class="ha-n"></span><span class="ha-tx"><span class="ha-t"></span><span class="ha-s"></span></span><span class="ha-cv" aria-hidden="true">▾</span></button>' +
       '<div class="ha-list" role="region" aria-label="Harbor alerts"></div>';
     var con = tb.querySelector(".hdr-console");
     if (con && con.parentNode === tb) tb.insertBefore(el, con.nextSibling); else tb.appendChild(el);
     el.querySelector(".ha-bar").addEventListener("click", function () {
-      open = !open; el.classList.toggle("open", open);
+      clearTimeout(miniT);
+      if (el.classList.contains("mini")) { el.classList.remove("mini"); open = true; }
+      else open = !open;
+      el.classList.toggle("open", open);
       this.setAttribute("aria-expanded", open ? "true" : "false");
+      if (!open) goMini();
     });
     el.addEventListener("click", function (e) {
       var b = e.target && e.target.closest && e.target.closest("[data-ha-refresh]");
@@ -102,6 +113,12 @@
     return el;
   }
 
+  var miniT = 0;
+  function goMini() {
+    var el = document.getElementById("haStrip"); if (!el || el.hidden) return;
+    open = false; el.classList.remove("open"); el.classList.add("mini");
+    el.classList.remove("ha-in"); void el.offsetWidth; el.classList.add("ha-in");
+  }
   function paint() {
     var el = mount(); if (!el) return;
     if (!items.length) { el.hidden = true; open = false; el.classList.remove("open"); return; }
@@ -114,7 +131,16 @@
     el.querySelector(".ha-list").innerHTML =
       items.map(function (a) { return '<div class="ha-row ' + (a.sev || "") + '"><b>' + esc(a.t) + "</b><span>" + esc(a.d) + "</span></div>"; }).join("") +
       '<div class="ha-ft"><span>National Weather Service + USGS · checked ' + esc(clock(lastAt)) + '</span><button type="button" data-ha-refresh="1">↻ Check again</button></div>';
-    el.hidden = false;
+    el.querySelector(".ha-n").textContent = items.length > 1 ? String(items.length) : "";
+    var wasHidden = el.hidden; el.hidden = false;
+    // a new set of alerts shows in full for a few seconds, then tucks away; one already seen this visit starts tucked
+    var key = home() + "|" + items.map(function (a) { return a.t; }).join("|"), seen = "";
+    try { seen = sessionStorage.getItem("ha_seen") || ""; } catch (e) {}
+    if (key !== seen) {
+      try { sessionStorage.setItem("ha_seen", key); } catch (e) {}
+      el.classList.remove("mini"); clearTimeout(miniT);
+      miniT = setTimeout(function () { if (!open) goMini(); }, 6000);
+    } else if (wasHidden || !open) { if (!el.classList.contains("mini")) goMini(); }
   }
 
   /* ---------------------------------------------------------------- the feeds */
