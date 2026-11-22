@@ -71,7 +71,7 @@
     "html.season-xmas.xm-on.daylight .topbar{background:rgba(252,252,250,.9)!important}html.season-xmas.xm-on.daylight .nav{background:rgba(252,252,250,.92)!important}" +
     "html.season-xmas.xm-on #boot{background:linear-gradient(180deg,rgba(4,10,8,.6),rgba(4,10,8,.35) 45%,rgba(4,10,8,.85)),#06100b var(--xmBoot,none) center/cover no-repeat!important}" +
     /* Midjourney art (when SHK_XMAS_ART is set): photo string lights, the harbor panorama, the Santa-hat hook icon */
-    ".xm-lights.xm-img{height:46px}.xm-limg{display:block;height:46px;background-repeat:repeat-x;background-size:auto 46px;background-position:0 -2px;mix-blend-mode:screen;animation:xmGlow 3.2s ease-in-out infinite}" +
+    ".xm-limg.xm-alpha{mix-blend-mode:normal!important}.xm-lights.xm-img{height:46px}.xm-limg{display:block;height:46px;background-repeat:repeat-x;background-size:auto 46px;background-position:0 -2px;mix-blend-mode:screen;animation:xmGlow 3.2s ease-in-out infinite}" +
     "@keyframes xmGlow{0%,100%{filter:brightness(1.05) saturate(1.1)}50%{filter:brightness(.78) saturate(1)}}" +
     ".xm-nav.xm-img{margin-bottom:-14px}" +
     ".xm-limg.xm-off{animation:none;filter:brightness(.42) saturate(.75)}" +
@@ -183,6 +183,26 @@
 
   // the photo lights: a dim copy underneath (bulbs "off"), then four bright copies, each showing every 4th bulb through
   // a mask and blinking on its own beat, so the bulbs flash one by one instead of the whole string pulsing
+  // the photo lights come on black: turn the black clear so no dark band shows under the header (blending can't reach
+  // past the header's own layer), and un-darken the glow so the colors stay bright
+  var lightsURL = {};
+  function lightsAlpha(src) {
+    function put(u) { document.querySelectorAll(".xm-limg").forEach(function (e) { e.style.backgroundImage = "url(\"" + u + "\")"; e.classList.add("xm-alpha"); }); }
+    if (lightsURL[src]) return put(lightsURL[src]);
+    try {
+      fetch(src).then(function (r) { return r.blob(); }).then(createImageBitmap).then(function (bm) {
+        var W = Math.min(1600, bm.width), Hh = Math.round(bm.height * W / bm.width), c = document.createElement("canvas"); c.width = W; c.height = Hh;
+        var g = c.getContext("2d"); g.drawImage(bm, 0, 0, W, Hh); var id = g.getImageData(0, 0, W, Hh), d = id.data;
+        for (var i = 0; i < d.length; i += 4) {
+          var m = Math.max(d[i], d[i + 1], d[i + 2]) / 255, a = Math.max(0, Math.min(1, (m - 0.05) / 0.45));
+          if (a > 0) { d[i] = Math.min(255, d[i] / Math.max(a, m)); d[i + 1] = Math.min(255, d[i + 1] / Math.max(a, m)); d[i + 2] = Math.min(255, d[i + 2] / Math.max(a, m)); }
+          d[i + 3] = Math.round(a * 255);
+        }
+        g.putImageData(id, 0, 0);
+        c.toBlob(function (b) { if (!b) return; lightsURL[src] = URL.createObjectURL(b); put(lightsURL[src]); }, "image/png");
+      }).catch(function () {});
+    } catch (e) {}
+  }
   function lightsImg(A) {
     var bg = "background-image:url(\"" + A.lights + "\")", spots = A.spots || [], iw = A.w || 2688, ih = A.h || 448, h = "<i class='xm-limg xm-off' style='" + bg + "'></i>";
     if (!spots.length) return h.replace(" xm-off", "");
@@ -213,6 +233,7 @@
     var tb = document.querySelector(".topbar"), nav = document.querySelector("nav.nav"), w = window.innerWidth || 390;
     var ART = window.SHK_XMAS_ART || {};
     var LH = ART.lights ? lightsImg(ART) : null;
+    if (ART.lights) setTimeout(function () { lightsAlpha(ART.lights); }, 0);
     if (tb) { var t = el("xmLightsTop", "xm-lights xm-top" + (LH ? " xm-img" : ""), LH || lightsSVG(w, false)); if (t.parentNode !== tb) tb.appendChild(t); }
     if (nav) {
       var nb = el("xmBank", "xm-bank", ""); if (nb.parentNode !== nav) nav.appendChild(nb);
