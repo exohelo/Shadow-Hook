@@ -60,8 +60,19 @@
     ".xm-hat{position:absolute;left:50%;top:-15px;width:30px;height:24px;transform:translateX(-38%) rotate(-14deg);pointer-events:none;z-index:3;filter:drop-shadow(0 2px 2px rgba(0,0,0,.45))}" +
     /* the active tab gets a little glow ring */
     "html.season-xmas.xm-on .nav button.on .ico{filter:drop-shadow(0 0 6px rgba(255,90,95,.6)) drop-shadow(0 0 10px rgba(124,224,160,.35))}" +
+    /* the background picture (like November's table), tinted dark so the cards read */
+    "#xmBg{position:fixed;inset:0;z-index:0;pointer-events:none;background:#06100b center/cover no-repeat}" +
+    "#xmBg:after{content:\"\";position:absolute;inset:0;background:linear-gradient(180deg,rgba(4,10,8,.58),rgba(4,10,8,.30) 38%,rgba(4,10,8,.74))}" +
+    "html.season-xmas.xm-on body{background:#06100b}" +
+    "html.season-xmas.xm-on .topbar{background:rgba(8,12,14,.62)!important;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}" +
+    "html.season-xmas.xm-on .nav{background:rgba(8,12,14,.66)!important;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}" +
+    "html.season-xmas.xm-on.daylight body{background:#eef3ee}html.season-xmas.xm-on.daylight #xmBg{background-color:#eef3ee}" +
+    "html.season-xmas.xm-on.daylight #xmBg:after{background:linear-gradient(180deg,rgba(244,248,244,.86),rgba(244,248,244,.72) 40%,rgba(244,248,244,.9))}" +
+    "html.season-xmas.xm-on.daylight .topbar{background:rgba(252,252,250,.9)!important}html.season-xmas.xm-on.daylight .nav{background:rgba(252,252,250,.92)!important}" +
+    "html.season-xmas.xm-on #boot{background:linear-gradient(180deg,rgba(4,10,8,.6),rgba(4,10,8,.35) 45%,rgba(4,10,8,.85)),#06100b var(--xmBoot,none) center/cover no-repeat!important}" +
     /* off switches */
     "html.xm-nodecor .xm-lights,html.xm-nodecor .xm-bank,html.xm-nodecor #xmHarbor,html.xm-nodecor #xmSnow,html.xm-nodecor .xm-hat{display:none!important}" +
+    "html.xm-nodecor #xmBg{background-image:none!important}" +
     "html.xm-nodecor.season-xmas.xm-on .card:before,html.xm-nodecor.season-xmas.xm-on .bpost:before,html.xm-nodecor.season-xmas.xm-on .hcard:before{display:none}" +
     "html.calm #xmSnow{display:none}" +
     "@media (prefers-reduced-motion:reduce){#xmSnow{display:none}.xm-b,.xm-cl,.xm-star{animation:none!important}}" +
@@ -162,14 +173,21 @@
     }
     if (tb) { var hb = el("xmHarbor", "", document.getElementById("xmHarbor") ? null : harborSVG()); if (hb.parentNode !== tb) tb.insertBefore(hb, tb.firstChild); }
     if (!document.getElementById("xmSnow")) document.body.appendChild(el("xmSnow", "", flakes()));
+    var bg = document.getElementById("xmBg"); if (!bg) { bg = el("xmBg", "", ""); document.body.insertBefore(bg, document.body.firstChild); }
+    setBg(window.SHK_XMAS_BG || "xmas-bg.jpg");
     var crest = document.querySelector(".hc-left .sc-ribbon") || document.querySelector(".hcrest");
     if (crest && !crest.querySelector(".xm-hat")) { crest.classList.add("xm-hatwrap"); crest.insertAdjacentHTML("beforeend", HAT); }
     built = true; lastW = w;
   }
   function wipe() {
-    ["xmLightsTop", "xmLightsNav", "xmBank", "xmHarbor", "xmSnow"].forEach(function (id) { var e = document.getElementById(id); if (e && e.parentNode) e.parentNode.removeChild(e); });
+    ["xmLightsTop", "xmLightsNav", "xmBank", "xmHarbor", "xmSnow", "xmBg"].forEach(function (id) { var e = document.getElementById(id); if (e && e.parentNode) e.parentNode.removeChild(e); });
     document.querySelectorAll(".xm-hat").forEach(function (e) { e.remove(); });
     built = false;
+  }
+  function setBg(url) {
+    window.SHK_XMAS_BG = url;
+    var bg = document.getElementById("xmBg"); if (bg) bg.style.backgroundImage = url ? "url(\"" + url + "\")" : "none";
+    H.style.setProperty("--xmBoot", url ? "url(\"" + url + "\")" : "none");
   }
   function decorOff() { try { return localStorage.getItem("shadowhook_decor") === "off"; } catch (e) { return false; } }
   function sync() {
@@ -188,5 +206,5 @@
   window.addEventListener("storage", function (e) { if (e.key === "shadowhook_decor") sync(); });
   function start() { sync(); setTimeout(sync, 1500); setTimeout(sync, 5000); }
   if (document.body) start(); else document.addEventListener("DOMContentLoaded", start);
-  window.xmasTheme = { sync: sync, rebuild: function () { wipe(); if (ON) build(); } };
+  window.xmasTheme = { setBg: setBg, sync: sync, rebuild: function () { wipe(); if (ON) build(); } };
 })();
