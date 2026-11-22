@@ -1042,3 +1042,45 @@
   s.textContent = ".cg-frame.cg-docket{width:max(min(72vw,330px),min(86vw,calc((100vh - 300px)*.44)))!important}";
   (document.head || document.documentElement).appendChild(s);
 })();
+
+/* #tgiving(nov22) — Thanksgiving week (11/22–11/28) matches its own season first, and that season only changes a few
+   colors, so the full fall look (table backdrop, falling leaves, leaf wreath on the camera) switched off on 11/22.
+   During Thanksgiving week keep the November skin on as well; the November runtime re-checks every second. */
+(function () {
+  var H = document.documentElement;
+  function fix() {
+    var tg = H.classList.contains("season-thanksgiving");
+    if (tg && !H.classList.contains("season-november")) H.classList.add("season-november");
+  }
+  fix();
+  try { new MutationObserver(fix).observe(H, { attributes: true, attributeFilter: ["class"] }); } catch (e) {}
+  setInterval(fix, 2000);
+})();
+
+/* #craftguard(nov22) — the docket scanner shares "lessons" (corrections) between members, and for each misread token
+   the most-voted correction wins for everyone. Clerks had taught "UTR → CLERK" (36 members) more often than longshore
+   taught "UTR → S" (30), so a longshore UTR docket whose job line was hard to read got filed as a CLERK job
+   (reported by P5034, 11/21). Craft is personal: another member's correction may never switch a docket between
+   clerk and longshore. A member's own corrections still apply to their own scans. */
+(function () {
+  function isClerk(v) { return /^CLERK/.test(String(v || "").toUpperCase()); }
+  function guard() {
+    if (typeof window.lessonsTally !== "function" || window.lessonsTally.__craftGuard) return !!(window.lessonsTally && window.lessonsTally.__craftGuard);
+    var orig = window.lessonsTally;
+    var wrapped = function () {
+      var t = orig.apply(this, arguments);
+      try {
+        var c = t && t.cat;
+        if (c) Object.keys(c).forEach(function (tok) {
+          var b = c[tok];
+          if (b && !b.self && isClerk(tok) !== isClerk(b.val)) delete c[tok];
+        });
+      } catch (e) {}
+      return t;
+    };
+    wrapped.__craftGuard = true;
+    window.lessonsTally = wrapped;
+    return true;
+  }
+  if (!guard()) { var n = 0, iv = setInterval(function () { if (guard() || ++n > 40) clearInterval(iv); }, 500); }
+})();
