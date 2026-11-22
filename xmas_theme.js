@@ -112,6 +112,8 @@
     "html.season-xmas.xm-on.xm-gar .screen-title:after{content:\"\";position:absolute;left:0;right:0;bottom:0;aspect-ratio:8/1;z-index:-1;background:var(--xmGar) center/100% 100% no-repeat;pointer-events:none}" +
     /* the docket camera's scan box gets a lit garland frame; its hint drops below the garland */
     "html.season-xmas.xm-on.xm-cam .xm-camframe{position:absolute;left:-40.9%;top:-34.4%;width:182.7%;height:165.6%;background:var(--xmCam) center/100% 100% no-repeat;pointer-events:none;z-index:0;animation:xmTwinkle 2.6s ease-in-out infinite}" +
+    /* bigger scan box on tall screens so the camera fills the space (never smaller than the normal box; the capture crops to wherever the box is) */
+    "html.season-xmas.xm-on.xm-cam .cg-frame.cg-docket{width:max(min(72vw,330px),min(86vw,calc((100vh - 300px)*.44)))!important;top:45%!important}" +
     "html.season-xmas.xm-on.xm-cam .cg-frame .cg-lbl{top:calc(131.2% + 6px)!important;bottom:auto!important;z-index:2;text-shadow:0 1px 4px #000}" +
     /* off switches */
     "html.xm-nodecor .xm-lights,html.xm-nodecor .xm-bank,html.xm-nodecor #xmHarbor,html.xm-nodecor #xmSnow,html.xm-nodecor .xm-hat,html.xm-nodecor .xm-mjicon{display:none!important}" +
