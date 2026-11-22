@@ -88,7 +88,7 @@
     /* the snowy city skyline riding on top of the menu, and Santa's occasional fly-over (Midjourney art) */
     "#xmCity{position:absolute;left:0;right:0;bottom:100%;height:118px;margin-bottom:-6px;pointer-events:none;z-index:0;background:center bottom/cover no-repeat;-webkit-mask-image:linear-gradient(180deg,transparent 0,#000 42%);mask-image:linear-gradient(180deg,transparent 0,#000 42%)}" +
     "html.daylight #xmCity{opacity:.85}" +
-    "#xmSanta{position:fixed;left:0;top:20vh;width:min(34vw,170px);aspect-ratio:3/1;pointer-events:none;z-index:38;background:center/contain no-repeat;mix-blend-mode:screen;filter:brightness(1.35) saturate(1.15);opacity:0;will-change:transform}" +
+    "#xmSanta{position:fixed;left:0;top:20vh;width:min(25vw,124px);aspect-ratio:3/1;pointer-events:none;z-index:38;background:center/contain no-repeat;mix-blend-mode:screen;filter:brightness(1.35) saturate(1.15);opacity:0;will-change:transform}" +
     "html.daylight #xmSanta,html.calm #xmSanta,html.xm-nodecor #xmCity,html.xm-nodecor #xmSanta{display:none!important}" +
     /* no lights over the menu (Nov 21): just the skyline and the snow bank down there */
     "#xmLightsNav{display:none!important}" +
@@ -98,7 +98,7 @@
     "html.season-xmas.xm-on.xm-snownav .nav button.on{color:#c3262e!important}html.season-xmas.xm-on.xm-snownav .nav button.on .ico{filter:drop-shadow(0 1px 2px rgba(195,38,46,.35))!important}" +
     "html.season-xmas.xm-on.xm-snownav .nav button[data-scr=mayday]{color:#d0342b!important}" +
     "html.season-xmas.xm-on.xm-snownav .xm-bank{display:none!important}" +
-    "#xmHills{position:absolute;left:0;right:0;bottom:100%;height:54px;margin-bottom:-2px;pointer-events:none;z-index:1;background-repeat:no-repeat;background-size:100% 100%,cover;background-position:0 0,center bottom}" +
+    "#xmHills{position:absolute;left:0;right:0;bottom:100%;height:30px;margin-bottom:-2px;pointer-events:none;z-index:1;background-repeat:no-repeat;background-size:100% 100%,cover;background-position:0 0,center bottom}" +
     "#xmSled{position:absolute;left:0;bottom:calc(100% - 4px);width:62px;height:31px;pointer-events:none;z-index:3;background:center/contain no-repeat;mix-blend-mode:multiply;will-change:transform}" +
     "html.xm-nodecor #xmHills,html.xm-nodecor #xmSled{display:none!important}" +
     /* off switches */
