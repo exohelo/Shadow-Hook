@@ -85,6 +85,11 @@
     ".xm-mjicon{position:absolute;inset:-2px;width:calc(100% + 4px);height:calc(100% + 4px);object-fit:cover;border-radius:24%;pointer-events:none;z-index:2;box-shadow:0 0 10px rgba(255,90,180,.35)}" +
     ".xm-hatwrap.xm-hasicon .xm-hat{display:none}" +
     "html.daylight .xm-limg{mix-blend-mode:normal;filter:none}" +
+    /* the snowy city skyline riding on top of the menu, and Santa's occasional fly-over (Midjourney art) */
+    "#xmCity{position:absolute;left:0;right:0;bottom:100%;height:64px;margin-bottom:-6px;pointer-events:none;z-index:0;background:center bottom/cover no-repeat;-webkit-mask-image:linear-gradient(180deg,transparent 0,#000 55%);mask-image:linear-gradient(180deg,transparent 0,#000 55%)}" +
+    "html.daylight #xmCity{opacity:.85}" +
+    "#xmSanta{position:fixed;left:0;top:20vh;width:min(64vw,320px);aspect-ratio:3/1;pointer-events:none;z-index:38;background:center/contain no-repeat;mix-blend-mode:screen;opacity:0;will-change:transform}" +
+    "html.daylight #xmSanta,html.calm #xmSanta,html.xm-nodecor #xmCity,html.xm-nodecor #xmSanta{display:none!important}" +
     /* off switches */
     "html.xm-nodecor .xm-lights,html.xm-nodecor .xm-bank,html.xm-nodecor #xmHarbor,html.xm-nodecor #xmSnow,html.xm-nodecor .xm-hat,html.xm-nodecor .xm-mjicon{display:none!important}" +
     "html.xm-nodecor #xmBg{background-image:none!important}" +
@@ -213,16 +218,34 @@
     var crest = document.querySelector(".hc-left .sc-ribbon") || document.querySelector(".hcrest");
     if (crest && !crest.querySelector(".xm-hat")) { crest.classList.add("xm-hatwrap"); crest.insertAdjacentHTML("beforeend", HAT); }
     if (crest && ART.crest && !crest.querySelector(".xm-mjicon")) { crest.classList.add("xm-hasicon"); crest.insertAdjacentHTML("beforeend", "<img class='xm-mjicon' alt='' src='" + ART.crest + "'>"); }
+    if (nav && ART.city) { var cy = el("xmCity", "", ""); cy.style.backgroundImage = "url(\"" + ART.city + "\")"; if (cy.parentNode !== nav) nav.insertBefore(cy, nav.firstChild); }
+    if (ART.santa && !document.getElementById("xmSanta")) { var sa = el("xmSanta", "", ""); sa.style.backgroundImage = "url(\"" + ART.santa + "\")"; document.body.appendChild(sa); santaLoop(); }
     // the app's still mode (theme_switch.js) stops every endless animation unless it sits under [data-keep-motion]: the lights may blink
     ["xmLightsTop", "xmLightsNav"].forEach(function (id) { var e = document.getElementById(id); if (e) e.setAttribute("data-keep-motion", ""); });
     built = true; lastW = w;
   }
   function wipe() {
-    ["xmLightsTop", "xmLightsNav", "xmBank", "xmHarbor", "xmSnow", "xmBg"].forEach(function (id) { var e = document.getElementById(id); if (e && e.parentNode) e.parentNode.removeChild(e); });
+    ["xmLightsTop", "xmLightsNav", "xmBank", "xmHarbor", "xmSnow", "xmBg", "xmCity", "xmSanta"].forEach(function (id) { var e = document.getElementById(id); if (e && e.parentNode) e.parentNode.removeChild(e); });
     document.querySelectorAll(".xm-hat,.xm-mjicon").forEach(function (e) { e.remove(); });
     document.querySelectorAll(".xm-hasicon").forEach(function (e) { e.classList.remove("xm-hasicon"); });
     built = false;
   }
+  // Santa crosses the sky now and then: a one-shot animation (the app's still mode only stops endless loops)
+  var santaT = 0;
+  function santa(force) {
+    var s = document.getElementById("xmSanta"); if (!s || !s.animate) return;
+    if (!force && (document.hidden || H.classList.contains("daylight") || H.classList.contains("calm") || document.querySelector(".sheet.on"))) return;
+    try { if (!force && window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches) return; } catch (e) {}
+    s.style.top = (12 + Math.random() * 22).toFixed(1) + "vh";
+    s.animate([
+      { transform: "translate(-75vw,2vh) rotate(-3deg)", opacity: 0 },
+      { opacity: 1, offset: 0.08 },
+      { transform: "translate(25vw,-3vh) rotate(-6deg)", offset: 0.5 },
+      { opacity: 1, offset: 0.9 },
+      { transform: "translate(125vw,-9vh) rotate(-9deg)", opacity: 0 }
+    ], { duration: 9500, easing: "linear" });
+  }
+  function santaLoop() { clearTimeout(santaT); santaT = setTimeout(function () { if (ON) { santa(); santaLoop(); } }, (window.SHK_XMAS_TEST ? 25 : 80) * 1000 + Math.random() * 40000); setTimeout(function () { if (ON) santa(); }, 6000); santaLoop = function () { clearTimeout(santaT); santaT = setTimeout(function () { if (ON) { santa(); santaLoop(); } }, (window.SHK_XMAS_TEST ? 25 : 80) * 1000 + Math.random() * 40000); }; }
   function setBg(url) {
     window.SHK_XMAS_BG = url;
     var bg = document.getElementById("xmBg"); if (bg) bg.style.backgroundImage = url ? "url(\"" + url + "\")" : "none";
@@ -245,5 +268,5 @@
   window.addEventListener("storage", function (e) { if (e.key === "shadowhook_decor") sync(); });
   function start() { sync(); setTimeout(sync, 1500); setTimeout(sync, 5000); }
   if (document.body) start(); else document.addEventListener("DOMContentLoaded", start);
-  window.xmasTheme = { setBg: setBg, sync: sync, rebuild: function () { wipe(); if (ON) build(); } };
+  window.xmasTheme = { santa: function () { santa(true); }, setBg: setBg, sync: sync, rebuild: function () { wipe(); if (ON) build(); } };
 })();
