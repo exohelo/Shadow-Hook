@@ -979,7 +979,8 @@
   window.SHK_XMAS_TEST = true;
   window.SHK_XMAS_BG = BGS[pick][1];
   window.SHK_XMAS_ART = {
-    lights: "https://cdn.midjourney.com/b7263e73-4eba-4a20-8615-a7b0075e6658/0_1.png",
+    lights: "https://cdn.midjourney.com/b7263e73-4eba-4a20-8615-a7b0075e6658/0_1.png", w: 2688, h: 448,
+    spots: [0.052, 0.181, 0.317, 0.444, 0.572, 0.694, 0.816, 0.953],
     header: "https://cdn.midjourney.com/bf779394-f627-46f1-9c4f-f62742636075/0_0.png",
     crest: "https://cdn.midjourney.com/7f840443-6fea-49b9-b0c5-e3aa551a7a42/0_3_640_N.webp"
   };
