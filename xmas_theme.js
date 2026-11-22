@@ -88,7 +88,7 @@
     /* the snowy city skyline riding on top of the menu, and Santa's occasional fly-over (Midjourney art) */
     "#xmCity{position:absolute;left:0;right:0;bottom:100%;height:132px;margin-bottom:-2px;pointer-events:none;z-index:0;background:center bottom/cover no-repeat;-webkit-mask-image:linear-gradient(180deg,transparent 0,#000 42%);mask-image:linear-gradient(180deg,transparent 0,#000 42%)}" +
     "html.daylight #xmCity{opacity:.85}" +
-    "#xmSanta{position:fixed;left:0;top:20vh;width:min(25vw,124px);aspect-ratio:3/1;pointer-events:none;z-index:38;background:center/contain no-repeat;mix-blend-mode:screen;filter:brightness(1.35) saturate(1.15);opacity:0;will-change:transform}" +
+    "#xmSanta{position:fixed;left:0;top:20vh;width:min(14vw,64px);aspect-ratio:3/1;pointer-events:none;z-index:41;background:center/contain no-repeat;mix-blend-mode:screen;filter:brightness(1.35) saturate(1.15);opacity:0;will-change:transform}" +
     "html.daylight #xmSanta,html.calm #xmSanta,html.xm-nodecor #xmCity,html.xm-nodecor #xmSanta{display:none!important}" +
     /* no lights over the menu (Nov 21): just the skyline and the snow bank down there */
     "#xmLightsNav{display:none!important}" +
@@ -253,16 +253,16 @@
     // just above the rooftops of the skyline that rides on the menu
     var nav = document.querySelector("nav.nav"), city = document.getElementById("xmCity"), sh = s.offsetHeight || 57;
     var roof = nav ? nav.getBoundingClientRect().top - (city ? city.offsetHeight - 6 : 0) : window.innerHeight * 0.75;
-    s.style.top = Math.max(60, Math.round(roof - sh * 0.55 + Math.random() * 14)) + "px";
+    s.style.top = Math.max(60, Math.round(roof + 16 - sh * 0.5 + Math.random() * 12)) + "px";      // far off, in the sky over the port
     s.animate([
-      { transform: "translate(105vw,6px) rotate(2deg)", opacity: 0 },
-      { opacity: 1, offset: 0.08 },
-      { transform: "translate(35vw,-6px) rotate(3deg)", offset: 0.5 },
-      { opacity: 1, offset: 0.9 },
-      { transform: "translate(-45vw,-18px) rotate(5deg)", opacity: 0 }
-    ], { duration: 9500, easing: "linear" });
+      { transform: "translate(102vw,4px) rotate(1deg)", opacity: 0 },
+      { opacity: 0.85, offset: 0.05 },
+      { transform: "translate(45vw,-3px) rotate(2deg)", offset: 0.5 },
+      { opacity: 0.85, offset: 0.95 },
+      { transform: "translate(-20vw,-10px) rotate(3deg)", opacity: 0 }
+    ], { duration: 34000, easing: "linear" });
   }
-  function santaLoop() { clearTimeout(santaT); santaT = setTimeout(function () { if (ON) { santa(); santaLoop(); } }, (window.SHK_XMAS_TEST ? 25 : 80) * 1000 + Math.random() * 40000); setTimeout(function () { if (ON) santa(); }, 6000); santaLoop = function () { clearTimeout(santaT); santaT = setTimeout(function () { if (ON) { santa(); santaLoop(); } }, (window.SHK_XMAS_TEST ? 25 : 80) * 1000 + Math.random() * 40000); }; }
+  function santaLoop() { clearTimeout(santaT); santaT = setTimeout(function () { if (ON) { santa(); santaLoop(); } }, (window.SHK_XMAS_TEST ? 45 : 100) * 1000 + Math.random() * 40000); setTimeout(function () { if (ON) santa(); }, 6000); santaLoop = function () { clearTimeout(santaT); santaT = setTimeout(function () { if (ON) { santa(); santaLoop(); } }, (window.SHK_XMAS_TEST ? 45 : 100) * 1000 + Math.random() * 40000); }; }
   // the hills art comes on a black sky: turn the black clear (by brightness) so the snow sits solid over the town,
   // then fade its foot into the menu's white
   var hillsURL = {};
