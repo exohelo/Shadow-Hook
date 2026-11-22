@@ -982,7 +982,9 @@
     lights: "https://cdn.midjourney.com/b7263e73-4eba-4a20-8615-a7b0075e6658/0_1.png", w: 2688, h: 448,
     spots: [0.052, 0.181, 0.317, 0.444, 0.572, 0.694, 0.816, 0.953],
     header: "https://cdn.midjourney.com/bf779394-f627-46f1-9c4f-f62742636075/0_0.png",
-    crest: "https://cdn.midjourney.com/7f840443-6fea-49b9-b0c5-e3aa551a7a42/0_3_640_N.webp"
+    crest: "https://cdn.midjourney.com/7f840443-6fea-49b9-b0c5-e3aa551a7a42/0_3_640_N.webp",
+    city: "https://cdn.midjourney.com/c5871713-b497-44df-b4d0-7eb9575d6c19/0_3.png",
+    santa: "https://cdn.midjourney.com/9916c620-fbbc-4b39-a484-08e99c73a4ac/0_1.png"
   };
   window.seasonNow = function () { return "xmas"; };
   window.greetMaybe = function () {};
@@ -997,9 +999,10 @@
     var w = document.createElement("div"); w.id = "xmTestBadge";
     w.style.cssText = "position:fixed;left:50%;transform:translateX(-50%);bottom:calc(74px + env(safe-area-inset-bottom));z-index:99999;display:flex;gap:2px;border:1px solid #7ce0a0;background:#0d2a1cee;border-radius:999px;box-shadow:0 0 12px rgba(124,224,160,.45);overflow:hidden";
     var bs = "border:0;background:none;color:#d9ffe8;font:700 12px/1 system-ui,sans-serif;letter-spacing:.06em;padding:8px 11px;white-space:nowrap";
-    w.innerHTML = "<span style='" + bs + "'>🎄 XMAS TEST</span><button type='button' data-x='bg' style='" + bs + ";background:#1f5a3c'>" + BGS[pick][0] + "</button><button type='button' data-x='off' style='" + bs + "'>✕</button>";
+    w.innerHTML = "<span style='" + bs + "'>🎄 XMAS TEST</span><button type='button' data-x='bg' style='" + bs + ";background:#1f5a3c'>" + BGS[pick][0] + "</button><button type='button' data-x='santa' style='" + bs + "'>🎅</button><button type='button' data-x='off' style='" + bs + "'>✕</button>";
     w.addEventListener("click", function (e) {
       var b = e.target.closest("button"); if (!b) return;
+      if (b.dataset.x === "santa") { try { window.xmasTheme && window.xmasTheme.santa(); } catch (x) {} return; }
       if (b.dataset.x === "off") { try { sessionStorage.removeItem("shk_xmas_test"); } catch (x) {} location.href = location.pathname; return; }
       pick = pick === "pine" ? "harbor" : "pine"; try { sessionStorage.setItem("shk_xmas_bg", pick); } catch (x) {}
       b.textContent = BGS[pick][0];
