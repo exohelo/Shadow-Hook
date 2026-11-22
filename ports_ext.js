@@ -940,3 +940,21 @@
     (document.head || document.documentElement).appendChild(sc);
   } catch (e) {}
 })();
+
+/* #dpgrace(nov21) — the live dispatch stays open 5 minutes past the cutoff: 9:35 AM day, 7:05 PM night.
+   index.html's dropWindowOpen() closed it right at 9:30 / 7:00; this swaps in the same check with the 5-minute grace. */
+(function () {
+  var n = 0, t = setInterval(function () {
+    try {
+      if (typeof window.dropWindowOpen === "function" && typeof window.cwMinsNow === "function") {
+        if (!window.dropWindowOpen.__grace) {
+          var f = function () { var m = window.cwMinsNow(); return (m >= 390 && m < 575) || (m >= 990 && m < 1145); };
+          f.__grace = 1; window.dropWindowOpen = f;
+          try { window.dpRefresh && window.dpRefresh(); } catch (e) {}
+        }
+        clearInterval(t);
+      }
+    } catch (e) {}
+    if (++n > 240) clearInterval(t);
+  }, 250);
+})();
