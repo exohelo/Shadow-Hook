@@ -173,7 +173,7 @@
     for (var g = 0; g < 4; g++) {
       var r = "";
       spots.forEach(function (c, i) { if (i % 4 === g) r += "<rect x='" + Math.round(c * iw - iw * 0.045) + "' y='0' width='" + Math.round(iw * 0.09) + "' height='" + ih + "' fill='#fff'/>"; });
-      var m = "url(\"data:image/svg+xml," + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='" + iw + "' height='" + ih + "'>" + r + "</svg>") + "\")";
+      var m = "url(\"data:image/svg+xml," + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='" + iw + "' height='" + ih + "'>" + r + "</svg>").replace(/'/g, "%27") + "\")";
       h += "<i class='xm-limg xm-on g" + g + "' style='" + bg + ";-webkit-mask-image:" + m + ";mask-image:" + m + "'></i>";
     }
     return h;
