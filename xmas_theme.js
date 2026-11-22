@@ -70,8 +70,17 @@
     "html.season-xmas.xm-on.daylight #xmBg:after{background:linear-gradient(180deg,rgba(244,248,244,.86),rgba(244,248,244,.72) 40%,rgba(244,248,244,.9))}" +
     "html.season-xmas.xm-on.daylight .topbar{background:rgba(252,252,250,.9)!important}html.season-xmas.xm-on.daylight .nav{background:rgba(252,252,250,.92)!important}" +
     "html.season-xmas.xm-on #boot{background:linear-gradient(180deg,rgba(4,10,8,.6),rgba(4,10,8,.35) 45%,rgba(4,10,8,.85)),#06100b var(--xmBoot,none) center/cover no-repeat!important}" +
+    /* Midjourney art (when SHK_XMAS_ART is set): photo string lights, the harbor panorama, the Santa-hat hook icon */
+    ".xm-lights.xm-img{height:46px}.xm-limg{display:block;height:46px;background-repeat:repeat-x;background-size:auto 46px;background-position:0 -2px;mix-blend-mode:screen;animation:xmGlow 3.2s ease-in-out infinite}" +
+    "@keyframes xmGlow{0%,100%{filter:brightness(1.05) saturate(1.1)}50%{filter:brightness(.78) saturate(1)}}" +
+    ".xm-nav.xm-img{margin-bottom:-14px}" +
+    "#xmHarbor.xm-img{background-position:center 70%;background-size:cover;opacity:.62}#xmHarbor.xm-img:after{content:\"\";position:absolute;inset:0;background:linear-gradient(180deg,rgba(6,10,14,.45),rgba(6,10,14,.15) 60%,rgba(6,10,14,.55))}" +
+    "html.daylight #xmHarbor.xm-img{opacity:.35}" +
+    ".xm-mjicon{position:absolute;inset:-2px;width:calc(100% + 4px);height:calc(100% + 4px);object-fit:cover;border-radius:24%;pointer-events:none;z-index:2;box-shadow:0 0 10px rgba(255,90,180,.35)}" +
+    ".xm-hatwrap.xm-hasicon .xm-hat{display:none}" +
+    "html.daylight .xm-limg{mix-blend-mode:normal;filter:none}" +
     /* off switches */
-    "html.xm-nodecor .xm-lights,html.xm-nodecor .xm-bank,html.xm-nodecor #xmHarbor,html.xm-nodecor #xmSnow,html.xm-nodecor .xm-hat{display:none!important}" +
+    "html.xm-nodecor .xm-lights,html.xm-nodecor .xm-bank,html.xm-nodecor #xmHarbor,html.xm-nodecor #xmSnow,html.xm-nodecor .xm-hat,html.xm-nodecor .xm-mjicon{display:none!important}" +
     "html.xm-nodecor #xmBg{background-image:none!important}" +
     "html.xm-nodecor.season-xmas.xm-on .card:before,html.xm-nodecor.season-xmas.xm-on .bpost:before,html.xm-nodecor.season-xmas.xm-on .hcard:before{display:none}" +
     "html.calm #xmSnow{display:none}" +
@@ -166,22 +175,30 @@
   function el(id, cls, html) { var e = document.getElementById(id); if (!e) { e = document.createElement("div"); e.id = id; } if (cls) e.className = cls; if (html != null) e.innerHTML = html; e.setAttribute("aria-hidden", "true"); return e; }
   function build() {
     var tb = document.querySelector(".topbar"), nav = document.querySelector("nav.nav"), w = window.innerWidth || 390;
-    if (tb) { var t = el("xmLightsTop", "xm-lights xm-top", lightsSVG(w, false)); if (t.parentNode !== tb) tb.appendChild(t); }
+    var ART = window.SHK_XMAS_ART || {};
+    var LH = ART.lights ? "<i class='xm-limg' style='background-image:url(\"" + ART.lights + "\")'></i>" : null;
+    if (tb) { var t = el("xmLightsTop", "xm-lights xm-top" + (LH ? " xm-img" : ""), LH || lightsSVG(w, false)); if (t.parentNode !== tb) tb.appendChild(t); }
     if (nav) {
       var nb = el("xmBank", "xm-bank", ""); if (nb.parentNode !== nav) nav.appendChild(nb);
-      var nl = el("xmLightsNav", "xm-lights xm-nav", lightsSVG(w, false)); if (nl.parentNode !== nav) nav.appendChild(nl);
+      var nl = el("xmLightsNav", "xm-lights xm-nav" + (LH ? " xm-img" : ""), LH || lightsSVG(w, false)); if (nl.parentNode !== nav) nav.appendChild(nl);
     }
-    if (tb) { var hb = el("xmHarbor", "", document.getElementById("xmHarbor") ? null : harborSVG()); if (hb.parentNode !== tb) tb.insertBefore(hb, tb.firstChild); }
+    if (tb) {
+      var hb = el("xmHarbor", ART.header ? "xm-img" : "", ART.header ? "" : (document.getElementById("xmHarbor") ? null : harborSVG()));
+      if (ART.header) hb.style.backgroundImage = "url(\"" + ART.header + "\")";
+      if (hb.parentNode !== tb) tb.insertBefore(hb, tb.firstChild);
+    }
     if (!document.getElementById("xmSnow")) document.body.appendChild(el("xmSnow", "", flakes()));
     var bg = document.getElementById("xmBg"); if (!bg) { bg = el("xmBg", "", ""); document.body.insertBefore(bg, document.body.firstChild); }
     setBg(window.SHK_XMAS_BG || "xmas-bg.jpg");
     var crest = document.querySelector(".hc-left .sc-ribbon") || document.querySelector(".hcrest");
     if (crest && !crest.querySelector(".xm-hat")) { crest.classList.add("xm-hatwrap"); crest.insertAdjacentHTML("beforeend", HAT); }
+    if (crest && ART.crest && !crest.querySelector(".xm-mjicon")) { crest.classList.add("xm-hasicon"); crest.insertAdjacentHTML("beforeend", "<img class='xm-mjicon' alt='' src='" + ART.crest + "'>"); }
     built = true; lastW = w;
   }
   function wipe() {
     ["xmLightsTop", "xmLightsNav", "xmBank", "xmHarbor", "xmSnow", "xmBg"].forEach(function (id) { var e = document.getElementById(id); if (e && e.parentNode) e.parentNode.removeChild(e); });
-    document.querySelectorAll(".xm-hat").forEach(function (e) { e.remove(); });
+    document.querySelectorAll(".xm-hat,.xm-mjicon").forEach(function (e) { e.remove(); });
+    document.querySelectorAll(".xm-hasicon").forEach(function (e) { e.classList.remove("xm-hasicon"); });
     built = false;
   }
   function setBg(url) {
