@@ -988,7 +988,8 @@
     hills: null,
     ornament: "https://cdn.midjourney.com/f061b0d9-b215-4b06-ba62-ee5bfc0c2b16/0_0.png",
     tree: "https://cdn.midjourney.com/20b82ce3-dfd8-4fc0-80c3-258329d6dccc/0_1.png",
-    garland: "https://cdn.midjourney.com/37d5ab41-9c3d-4eb4-ac25-d09b774b6c85/0_0.png"
+    garland: "https://cdn.midjourney.com/37d5ab41-9c3d-4eb4-ac25-d09b774b6c85/0_0.png",
+    camframe: "https://cdn.midjourney.com/4b3b3e64-1840-43ae-97df-d591b21ce1cd/0_1.png"
   };
   window.seasonNow = function () { return "xmas"; };
   window.greetMaybe = function () {};
