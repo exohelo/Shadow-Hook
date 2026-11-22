@@ -1033,3 +1033,12 @@
   off(); var n = 0, t = setInterval(function () { off(); if (++n > 60) clearInterval(t); }, 1000);
   document.addEventListener("visibilitychange", off);
 })();
+
+/* #scanbox(nov21) — the docket camera's scan box was a fixed 330px wide, leaving empty space above and below it on tall
+   screens. It now grows with the screen height (never smaller than before, so phones keep their size). The capture crops
+   to wherever the box is on screen, so a bigger box simply captures a bigger part of the camera image. */
+(function () {
+  var s = document.createElement("style"); s.id = "shkScanBox";
+  s.textContent = ".cg-frame.cg-docket{width:max(min(72vw,330px),min(86vw,calc((100vh - 300px)*.44)))!important}";
+  (document.head || document.documentElement).appendChild(s);
+})();
