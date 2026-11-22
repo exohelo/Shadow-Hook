@@ -98,8 +98,8 @@
     "html.season-xmas.xm-on.xm-snownav .nav button.on{color:#c3262e!important}html.season-xmas.xm-on.xm-snownav .nav button.on .ico{filter:drop-shadow(0 1px 2px rgba(195,38,46,.35))!important}" +
     "html.season-xmas.xm-on.xm-snownav .nav button[data-scr=mayday]{color:#d0342b!important}" +
     "html.season-xmas.xm-on.xm-snownav .xm-bank{display:none!important}" +
-    "#xmHills{position:absolute;left:0;right:0;bottom:100%;height:48px;margin-bottom:-3px;pointer-events:none;z-index:1;background:center bottom/cover no-repeat;mix-blend-mode:screen}" +
-    "#xmSled{position:absolute;left:0;bottom:calc(100% - 7px);width:62px;height:31px;pointer-events:none;z-index:3;background:center/contain no-repeat;mix-blend-mode:multiply;will-change:transform}" +
+    "#xmHills{position:absolute;left:0;right:0;bottom:100%;height:54px;margin-bottom:-2px;pointer-events:none;z-index:1;background-repeat:no-repeat;background-size:100% 100%,cover;background-position:0 0,center bottom}" +
+    "#xmSled{position:absolute;left:0;bottom:calc(100% - 4px);width:62px;height:31px;pointer-events:none;z-index:3;background:center/contain no-repeat;mix-blend-mode:multiply;will-change:transform}" +
     "html.xm-nodecor #xmHills,html.xm-nodecor #xmSled{display:none!important}" +
     /* off switches */
     "html.xm-nodecor .xm-lights,html.xm-nodecor .xm-bank,html.xm-nodecor #xmHarbor,html.xm-nodecor #xmSnow,html.xm-nodecor .xm-hat,html.xm-nodecor .xm-mjicon{display:none!important}" +
@@ -232,7 +232,7 @@
     if (nav && ART.city) { var cy = el("xmCity", "", ""); cy.style.backgroundImage = "url(\"" + ART.city + "\")"; if (cy.parentNode !== nav) nav.insertBefore(cy, nav.firstChild); }
     if (ART.santa && !document.getElementById("xmSanta")) { var sa = el("xmSanta", "", ""); sa.style.backgroundImage = "url(\"" + ART.santa + "\")"; document.body.appendChild(sa); santaLoop(); }
     H.classList.toggle("xm-snownav", !!ART.hills);
-    if (nav && ART.hills) { var hl = el("xmHills", "", ""); hl.style.backgroundImage = "url(\"" + ART.hills + "\")"; if (hl.parentNode !== nav) nav.insertBefore(hl, document.getElementById("xmCity") ? document.getElementById("xmCity").nextSibling : nav.firstChild); }
+    if (nav && ART.hills) { var hl = el("xmHills", "", ""); if (hl.parentNode !== nav) nav.insertBefore(hl, document.getElementById("xmCity") ? document.getElementById("xmCity").nextSibling : nav.firstChild); hillsArt(ART.hills, hl); }
     if (nav && ART.sled) { var sd = el("xmSled", "", ""); sd.style.backgroundImage = "url(\"" + ART.sled + "\")"; if (sd.parentNode !== nav) nav.appendChild(sd); sledStart(); }
     // the app's still mode (theme_switch.js) stops every endless animation unless it sits under [data-keep-motion]: the lights may blink
     ["xmLightsTop", "xmLightsNav"].forEach(function (id) { var e = document.getElementById(id); if (e) e.setAttribute("data-keep-motion", ""); });
@@ -263,6 +263,22 @@
     ], { duration: 9500, easing: "linear" });
   }
   function santaLoop() { clearTimeout(santaT); santaT = setTimeout(function () { if (ON) { santa(); santaLoop(); } }, (window.SHK_XMAS_TEST ? 25 : 80) * 1000 + Math.random() * 40000); setTimeout(function () { if (ON) santa(); }, 6000); santaLoop = function () { clearTimeout(santaT); santaT = setTimeout(function () { if (ON) { santa(); santaLoop(); } }, (window.SHK_XMAS_TEST ? 25 : 80) * 1000 + Math.random() * 40000); }; }
+  // the hills art comes on a black sky: turn the black clear (by brightness) so the snow sits solid over the town,
+  // then fade its foot into the menu's white
+  var hillsURL = {};
+  function hillsArt(src, hl) {
+    function put(u) { hl.style.backgroundImage = "linear-gradient(180deg,rgba(246,250,255,0) 62%,#f6faff 100%),url(\"" + u + "\")"; }
+    if (hillsURL[src]) return put(hillsURL[src]);
+    try {
+      fetch(src).then(function (r) { return r.blob(); }).then(createImageBitmap).then(function (bm) {
+        var W = 1600, Hh = Math.round(bm.height * W / bm.width), c = document.createElement("canvas"); c.width = W; c.height = Hh;
+        var g = c.getContext("2d"); g.drawImage(bm, 0, 0, W, Hh); var id = g.getImageData(0, 0, W, Hh), d = id.data;
+        for (var i = 0; i < d.length; i += 4) { var l = (0.3 * d[i] + 0.59 * d[i + 1] + 0.11 * d[i + 2]) / 255; d[i + 3] = Math.round(Math.max(0, Math.min(1, (l - 0.10) / 0.18)) * 255); }
+        g.putImageData(id, 0, 0);
+        c.toBlob(function (b) { if (!b) return; hillsURL[src] = URL.createObjectURL(b); var h2 = document.getElementById("xmHills"); if (h2) put(hillsURL[src]); }, "image/png");
+      }).catch(function () {});
+    } catch (e) {}
+  }
   // the sled: tilt the phone and it slides along the snow; with no tilt (computers, or motion not allowed) it drifts on its own
   var sl = { on: false, x: -1, v: 0, g: null, last: 0, raf: 0, asked: false };
   function sledTilt(e) { if (e && e.gamma != null) sl.g = e.gamma; }
