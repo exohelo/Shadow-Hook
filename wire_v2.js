@@ -94,7 +94,7 @@
       for(k=w0;k<=w1;k++){ cls='wire-cell'; inner=AZ[(base+k)%26];
         if(k>=bLo&&k<=bHi)cls+=' band'; if(k===0)cls+=' start'; if(k===med&&!cyc)cls+=' stop'; if(myDist===k)cls+=' youcell';
         if(k===0)inner+='<span class="tick">START</span>'; else if(k===med&&!cyc)inner+='<span class="tick">STOP</span>';
-        if(myDist===k&&myDist!==0)inner='<span class="you">'+(function(){var c=document.documentElement.classList;return c.contains('season-halloween')?'\uD83C\uDF83':c.contains('season-xmas')?'\uD83C\uDF84':'\uD83E\uDD83'})()+'</span>'+inner;/* nov14: the marker on your letter follows the season — turkey for November */
+        if(myDist===k&&myDist!==0)inner='<span class="you">'+(function(){var c=document.documentElement.classList;return c.contains('season-halloween')?'\uD83C\uDF83':c.contains('season-xmas')?'\uD83C\uDF81':'\uD83E\uDD83'})()+'</span>'+inner;/* nov14: the marker on your letter follows the season — turkey for November, a present for Christmas */
         cells+='<div class="'+cls+'">'+inner+'</div>'; }
       tr.innerHTML=cells; tr.classList.toggle('wide',(w1-w0)>16); }
     /* #bell(nov5) — no more "chance it moves": a bell curve over the letters shows how likely each stop is. Its width

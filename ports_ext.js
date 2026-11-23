@@ -1107,3 +1107,50 @@
     w.__loose = true; window[name] = w;
   });
 })();
+
+/* #frreq(nov22) — friend requests were hidden. The 🤝 header alert said one was waiting, but requests lived in the old
+   Friends card, which #frmerge keeps hidden. Rebuilt: the request list moves into Friends & Members, right above
+   "Your friends", with ✓ accept / ✕ on each row. The 🤝 alert jumps straight to it. */
+(function () {
+  var css = document.createElement("style"); css.id = "frReqCss";
+  css.textContent =
+    "#dmMembersCard #dmReqWrap{margin:2px 0 10px;padding:10px 12px 4px;border:1px solid rgba(240,170,60,.6);border-radius:14px;" +
+    "background:linear-gradient(180deg,rgba(255,210,122,.16),rgba(224,149,46,.08));box-shadow:0 0 14px rgba(240,170,60,.18)}" +
+    "#dmMembersCard #dmReqWrap>.alt{font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--copper-hi)}" +
+    "#dmMembersCard #dmReqList>div:last-child{border-bottom:0!important}" +
+    "#dmMembersCard #dmReqList .pill{font-size:12px;padding:6px 11px}" +
+    "#dmReqWrap.flash{animation:abFlash 1.4s ease-out}";
+  (document.head || document.documentElement).appendChild(css);
+  function place() {
+    try {
+      var r = document.getElementById("dmReqWrap"), card = document.getElementById("dmMembersCard"),
+          q = document.getElementById("dmMemberQ"), list = document.getElementById("dmMembers"), old = document.getElementById("dmFriendsCard");
+      if (!r || !card || !list) return false;
+      if (r.parentNode !== list.parentNode || r.nextElementSibling !== list) list.parentNode.insertBefore(r, list);
+      var lbl = r.querySelector(".alt"); if (lbl && !lbl.__fr) { lbl.__fr = true; lbl.firstChild && (lbl.firstChild.nodeValue = "\uD83E\uDD1D Friend requests "); }
+      if (old) old.style.display = "none";
+      return true;
+    } catch (e) { return false; }
+  }
+  function keepOldHidden() { var old = document.getElementById("dmFriendsCard"); if (old && old.style.display !== "none") old.style.display = "none"; }
+  function arm() {
+    if (!place()) return false;
+    var old = document.getElementById("dmFriendsCard");
+    try { if (old) new MutationObserver(keepOldHidden).observe(old, { attributes: true, attributeFilter: ["style"] }); } catch (e) {}
+    var b = document.getElementById("hcfr");
+    if (b && !b.__fr) {
+      b.__fr = true;
+      b.addEventListener("click", function (ev) {
+        ev.stopImmediatePropagation(); ev.preventDefault();
+        try { gotoTab("order"); } catch (e) {}
+        try { setHallView("msg"); } catch (e) {}
+        setTimeout(function () {
+          try { place(); var r = document.getElementById("dmReqWrap"); if (!r) return;
+            r.scrollIntoView({ behavior: "smooth", block: "center" }); r.classList.remove("flash"); void r.offsetWidth; r.classList.add("flash"); } catch (e) {}
+        }, 250);
+      }, true);
+    }
+    return true;
+  }
+  if (!arm()) { var n = 0, t = setInterval(function () { if (arm() || ++n > 60) clearInterval(t); }, 500); }
+})();
