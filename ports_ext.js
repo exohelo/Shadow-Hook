@@ -1154,3 +1154,26 @@
   }
   if (!arm()) { var n = 0, t = setInterval(function () { if (arm() || ++n > 60) clearInterval(t); }, 500); }
 })();
+
+/* #cardfloor(nov22) — Mark the Board's drums start each letter at its lowest card on file, and junk card numbers
+   (I0020 and the like, from a misread or mistyped ID) had slipped into that list, so the drums offered I 00 20.
+   No card number is below 4100: anything under it is dropped from the list and can't be added again. */
+(function () {
+  var MIN = 4100;
+  function prune() {
+    try { Object.keys(ACTIVE).forEach(function (L) { var a = ACTIVE[L]; for (var i = a.length - 1; i >= 0; i--) if (!(a[i] >= MIN)) a.splice(i, 1); }); } catch (e) {}
+    try {
+      var x = JSON.parse(localStorage.getItem("shadowhook_active_extra") || "[]");
+      var y = x.filter(function (id) { return /^[A-Z]\d{4,5}$/.test(id) && parseInt(id.slice(1), 10) >= MIN; });
+      if (y.length !== x.length) localStorage.setItem("shadowhook_active_extra", JSON.stringify(y));
+    } catch (e) {}
+  }
+  function wrap() {
+    if (typeof window.addActiveId !== "function" || window.addActiveId.__floor) return !!(window.addActiveId && window.addActiveId.__floor);
+    var orig = window.addActiveId;
+    var w = function (id) { try { if (parseInt(String(id).slice(1), 10) < MIN) return false; } catch (e) {} return orig.apply(this, arguments); };
+    w.__floor = true; window.addActiveId = w; return true;
+  }
+  prune(); wrap();
+  var n = 0, t = setInterval(function () { prune(); wrap(); if (++n > 12) { clearInterval(t); setInterval(prune, 30000); } }, 2500);
+})();
