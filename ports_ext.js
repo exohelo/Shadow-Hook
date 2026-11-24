@@ -1383,3 +1383,9 @@
     var s = document.createElement("script"); s.src = r[0]; s.defer = true; (document.head || document.documentElement).appendChild(s);
   });
 })();
+
+/* #messyav(nov24) — Messy on da Docks: members build their own look (messy_avatar.js); a date sees it in place of the letter. */
+(function () {
+  if (window.MESSY_AV || document.querySelector('script[src*="messy_avatar.js"]')) return;
+  var s = document.createElement("script"); s.src = "messy_avatar.js?v=nov24a"; s.defer = true; (document.head || document.documentElement).appendChild(s);
+})();
