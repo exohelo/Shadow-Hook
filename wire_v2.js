@@ -65,7 +65,8 @@
       return;
     }
     var inp=up.inputs||{}, locked=!!up.locked_at, L=locked?+up.locked_letters:+up.letters, stop=locked?(up.locked_stop||up.stop):up.stop;
-    /* #nov1(earlycall): before the hall gives its job count the server estimates it from PMA's total; say so */
+    /* #nov1(earlycall): before the hall gives its job count the server estimates it from PMA's total; say so.
+       #nov22(nopma): and before PMA's sheet lands it estimates PMA's total from the hall's count; say that too */
     var early=inp.early===true;
     /* nov19: a call that goes all the way around (26 letters) lands back on the start letter; say CYCLE, not the letter */
     var cyc=Math.round(L)>=26, sL=String(up.start_code||'').charAt(0).toUpperCase(), stopTx=cyc?'CYCLE':stop,
@@ -73,7 +74,7 @@
     ps.innerHTML='<span '+mark+'="1"'+(cyc?' style="font-size:.5em;letter-spacing:.06em"':'')+'>'+esc(stopTx)+'</span>';
     mv.innerHTML='<span '+mark+'="1"><span class="v2b">'+esc(up.lo)+'\u2013'+esc(hiTx)+' \u00B7 '+L.toFixed(0)+' letters from '+esc(up.start_code||'?')+' \u00B7 '+esc(lbl(up.k))+'</span>'+
       '<span class="v2i">'+(locked?'<span class="v2lock">\u{1F512} LOCKED '+when(up.locked_at)+'</span> \u00B7 the call doesn\u2019t move once dispatch starts':'locks '+when(flexOf(up.k))+' \u00B7 updated '+when(up.computed_at)+' \u00B7 moves only if the sheets change before then')+
-      '<br>'+(early?'<b>EARLY CALL</b> \u00B7 '+(inp.hall_src==='early-count'?'hall\u2019s early count '+esc(inp.hall_forecast)+' jobs':'hall count estimated at ~'+esc(inp.hall_forecast)+' from PMA')+' \u00B7 PMA '+(inp.pma_src==='estimated'?'~'+esc(inp.pma_total)+' (sheet not in yet)':esc(inp.pma_total))+' \u00B7 sharpens with the hall\u2019s final after 2:30':'hall says '+esc(inp.hall_forecast)+' jobs \u00B7 PMA '+esc(inp.pma_total))+' \u00B7 last board moved '+esc(inp.prev1)+'</span>'+g+'</span>';
+      '<br>'+(early?'<b>EARLY CALL</b> \u00B7 '+(inp.hall_src==='early-count'?'hall\u2019s early count '+esc(inp.hall_forecast)+' jobs':inp.hall_src==='pma-estimate'?'hall count estimated at ~'+esc(inp.hall_forecast)+' from PMA':'hall says '+esc(inp.hall_forecast)+' jobs')+' \u00B7 PMA '+(inp.pma_src==='estimated'?'~'+esc(inp.pma_total)+' (sheet not in yet)':esc(inp.pma_total))+(inp.pma_src==='estimated'?' \u00B7 sharpens when PMA\u2019s sheet lands':' \u00B7 sharpens with the hall\u2019s final after 2:30'):'hall says '+esc(inp.hall_forecast)+' jobs \u00B7 PMA '+esc(inp.pma_total))+' \u00B7 last board moved '+esc(inp.prev1)+'</span>'+g+'</span>';
     if(src){ src.className='wire-src '+(locked?'lock':'est'); src.textContent='\u26A1 WIRE v2 \u00B7 '+(locked?'LOCKED':early?'EARLY CALL':'LIVE CALL'); }
     share(up,L,stop,locked,early);
     ladder(up,L,stop,locked);
