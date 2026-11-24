@@ -1319,3 +1319,11 @@
   }
   if (!wrap()) { var n = 0, t = setInterval(function () { if (wrap() || ++n > 40) clearInterval(t); }, 500); }
 })();
+
+/* #councillogo(nov23) — the Shadow Council button (top-left) wears the Order's new logo (the purple hook from the app
+   icon) instead of the old silver crest. Same button, same place, still opens the Council. */
+(function () {
+  var s = document.createElement("style"); s.id = "councilLogoCss";
+  s.textContent = "#scRibbon .sc-crest{background:url(/icon-192.png) center/cover no-repeat!important}";
+  (document.head || document.documentElement).appendChild(s);
+})();
