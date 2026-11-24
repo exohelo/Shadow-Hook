@@ -1374,3 +1374,12 @@
     clearInterval(t); sync(); mo.observe(L, { childList: true });
   }, 1500);
 })();
+
+/* #flip(nov24) — THE FLIP (who goes on first: 2–12 names, 1–11 spots, the server draws) gets its card in the games row.
+   The Board Games card (board_games_hook.js, nov21) said it rode in from here but was never loaded; it rides in now too. */
+(function () {
+  [["board_games_hook.js?v=nov24a", "__bgHook"], ["flip_hook.js?v=nov24a", "__flipHook"]].forEach(function (r) {
+    if (window[r[1]] || document.querySelector('script[src*="' + r[0].split("?")[0] + '"]')) return;
+    var s = document.createElement("script"); s.src = r[0]; s.defer = true; (document.head || document.documentElement).appendChild(s);
+  });
+})();
