@@ -1264,3 +1264,58 @@
   document.addEventListener("click", function () { setTimeout(mount, 60); }, true);
   var n = 0, t = setInterval(function () { mount(); if (uid() && state === null) load(); if (++n > 40) clearInterval(t); }, 1500);
 })();
+
+/* #seasoncalm(nov23) — during Thanksgiving week #tgiving keeps the November skin on, but the app's season check (on every
+   focus, every visibility change and hourly) switched season-november back OFF because the season is "thanksgiving" —
+   and #tgiving switched it right back ON. Two class flips on <html> per return to the app = two full-page restyles
+   (3.8s on a mid Android, CAPTAIN_HOOK 11/23). While Thanksgiving is the season, the season check now leaves the
+   November class alone (its list entry is renamed for the week), so a return to the app changes nothing. */
+(function () {
+  try {
+    if (typeof window.seasonNow !== "function" || window.seasonNow() !== "thanksgiving") return;
+    var S = window.SEASONS || [];
+    for (var i = 0; i < S.length; i++) if (S[i] && S[i].id === "november") { S[i].id = "november-tg"; break; }
+    var H = document.documentElement;
+    if (H.classList.contains("season-thanksgiving") && !H.classList.contains("season-november")) H.classList.add("season-november");
+  } catch (e) {}
+})();
+
+/* #dkcalm(nov23) — big job logs froze the Dockets tab (RED_KIDD_50 144 jobs 2.9s, HALF-HITCH_DRAKE_41 6.0s on iPhone):
+   every save or sync from another phone rebuilt the whole list, even when no job had changed, and the phone drew every
+   row including the ones far off-screen. Now: (1) rows below the fold aren't drawn until you scroll near them
+   (content-visibility), and (2) a rebuild asked for within 15s of the last one, with the very same jobs, is skipped. */
+(function () {
+  var css = document.createElement("style"); css.id = "dkCalmCss";
+  css.textContent = "#docketList>.jobrow{content-visibility:auto;contain-intrinsic-size:auto 96px}#docketList>.detail{content-visibility:auto;contain-intrinsic-size:auto 0px}";
+  (document.head || document.documentElement).appendChild(css);
+  var last = "", lastAt = 0;
+  function fp() { try { return DOCKETS.length + "|" + JSON.stringify(DOCKETS); } catch (e) { return String(Math.random()); } }
+  function wrap() {
+    var o = window.renderDocketsNow;
+    if (typeof o !== "function" || o.__calm) return !!(o && o.__calm);
+    var w = function () {
+      var el = document.getElementById("docketList"), f = fp();
+      if (el && el.children.length && f === last && Date.now() - lastAt < 15000) return;   // same jobs, just rebuilt: nothing to redraw
+      var r = o.apply(this, arguments); last = f; lastAt = Date.now(); return r;
+    };
+    w.__calm = true; window.renderDocketsNow = w; return true;
+  }
+  if (!wrap()) { var n = 0, t = setInterval(function () { if (wrap() || ++n > 40) clearInterval(t); }, 500); }
+})();
+
+/* #audionoise(nov23) — "Failed to start the audio device" (the alert chime trying to play before the phone allows sound)
+   kept landing in the Keymaster's alarms — harmless, but it buried the real ones (IRON_MORGAN_12 alone: 4 on 11/23).
+   Sound-permission refusals are no longer reported as alarms; the chime still plays once the phone allows it. */
+(function () {
+  var RX = /Failed to start the audio device|NotAllowedError|play\(\) (failed|request was interrupted)|user didn't interact|AudioContext was not allowed|The play method is not allowed/i;
+  function wrap() {
+    var o = window.shkAlert;
+    if (typeof o !== "function" || o.__quiet) return !!(o && o.__quiet);
+    var w = function (where, err) {
+      try { var m = String(err && err.message || err || ""); if (RX.test(m)) return; } catch (e) {}
+      return o.apply(this, arguments);
+    };
+    w.__quiet = true; window.shkAlert = w; return true;
+  }
+  if (!wrap()) { var n = 0, t = setInterval(function () { if (wrap() || ++n > 40) clearInterval(t); }, 500); }
+})();
