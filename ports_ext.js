@@ -1224,3 +1224,43 @@
   }
   if (!wrap()) { var n = 0, t = setInterval(function () { if (wrap() || ++n > 40) clearInterval(t); }, 500); }
 })();
+
+/* #everyletter(nov23) — a member asked for a ping on his Apple Watch every time the live board reaches a new letter.
+   The server (board-near) now sends one per new letter to members who opt in (table letter_watch). This adds the switch:
+   "📳 Every letter" beside "🔊 Sound" in the 🔔 Notifications sheet. Off by default. iPhone alerts show on the watch. */
+(function () {
+  var state = null;   // null = not loaded, true/false = on/off
+  function uid() { return window.__shkUid || null; }
+  function label(el) { el.textContent = state ? "📳 Every letter: on" : "📳 Every letter: off"; el.style.color = state ? "var(--copper-hi,#f0b45a)" : "var(--steel,#999)"; }
+  async function load() {
+    if (!window.SB || !uid()) return;
+    try { var q = await window.SB.from("letter_watch").select("on").eq("uid", uid()).maybeSingle(); state = !!(q && q.data && q.data.on); } catch (e) { state = false; }
+    var el = document.getElementById("ntLetter"); if (el) label(el);
+  }
+  async function flip(el) {
+    if (!window.SB || !uid()) { try { toast("Sign in first to get letter pings"); } catch (e) {} return; }
+    var want = !state;
+    if (want) {
+      var alertsOn = false; try { alertsOn = (typeof notifyPrefOn === "function" && notifyPrefOn()) || /apns:|fcm:/.test(String(localStorage.getItem("shk_apns_device") || "")) || (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()); } catch (e) {}
+      if (!alertsOn) { try { toast("Turn on phone alerts first, then switch this on"); } catch (e) {} }
+    }
+    state = want; label(el);
+    try {
+      var r = await window.SB.from("letter_watch").upsert({ uid: uid(), on: want, updated_at: new Date().toISOString() }, { onConflict: "uid" });
+      if (r && r.error) throw r.error;
+      try { toast(want ? "📳 You'll get a ping each time the board reaches a new letter" : "Letter pings off"); } catch (e) {}
+    } catch (e) { state = !want; label(el); try { toast("Couldn't save — try again"); } catch (x) {} }
+  }
+  function mount() {
+    var snd = document.getElementById("ntSnd"); if (!snd || document.getElementById("ntLetter")) return;
+    var el = document.createElement("span");
+    el.id = "ntLetter"; el.setAttribute("role", "button"); el.tabIndex = 0; el.title = "A phone (and Apple Watch) alert each time the live board reaches a new letter";
+    el.style.cssText = snd.style.cssText; el.style.marginLeft = "6px";
+    snd.parentNode.insertBefore(el, snd.nextSibling);
+    label(el); if (state === null) load();
+    el.addEventListener("click", function (e) { e.stopPropagation(); flip(el); });
+  }
+  try { new MutationObserver(function () { mount(); }).observe(document.body, { childList: true, subtree: false }); } catch (e) {}
+  document.addEventListener("click", function () { setTimeout(mount, 60); }, true);
+  var n = 0, t = setInterval(function () { mount(); if (uid() && state === null) load(); if (++n > 40) clearInterval(t); }, 1500);
+})();
