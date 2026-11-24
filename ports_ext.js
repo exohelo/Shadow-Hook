@@ -1327,3 +1327,50 @@
   s.textContent = "#scRibbon .sc-crest{background:url(/icon-192.png) center/cover no-repeat!important}";
   (document.head || document.documentElement).appendChild(s);
 })();
+
+/* #ntclear(nov24) — a member asked for a way to clear his notifications. The 🔔 sheet gets a "🧹 Clear all" link under
+   its header: first tap arms it ("Tap again to clear all"), second tap deletes the member's own rows (notifs_del policy:
+   uid = auth.uid()) and the list empties. It disarms itself after 4s, and hides when there is nothing to clear. */
+(function () {
+  var armed = 0, tm = 0;
+  function rows() { try { return (window.SHK_NOTIFS && window.SHK_NOTIFS.rows) || []; } catch (e) { return []; } }
+  function css() {
+    if (document.getElementById("ntClearCss")) return;
+    var s = document.createElement("style"); s.id = "ntClearCss";
+    s.textContent = "#ntClear{display:flex;justify-content:flex-end;margin:-2px 0 6px}#ntClear[hidden]{display:none}" +
+      "#ntClear button{background:none;border:1px solid var(--line,#333);border-radius:999px;padding:4px 10px;font:600 12px Inter,system-ui,sans-serif;color:var(--steel,#999);cursor:pointer}" +
+      "#ntClear button.arm{border-color:#e0575b;color:#e0575b}";
+    (document.head || document.documentElement).appendChild(s);
+  }
+  function label(b) { b.textContent = armed ? "Tap again to clear all" : "🧹 Clear all"; b.classList.toggle("arm", !!armed); }
+  function sync() {
+    var L = document.getElementById("ntList"); if (!L) return;
+    var bar = document.getElementById("ntClear");
+    if (!bar) {
+      css(); bar = document.createElement("div"); bar.id = "ntClear";
+      bar.innerHTML = '<button type="button" aria-label="Clear all notifications"></button>';
+      L.parentNode.insertBefore(bar, L);
+      bar.firstChild.addEventListener("click", go);
+    }
+    bar.hidden = !rows().length; label(bar.firstChild);
+  }
+  async function go(e) {
+    e.stopPropagation();
+    var b = e.currentTarget;
+    if (!armed) { armed = 1; label(b); clearTimeout(tm); tm = setTimeout(function () { armed = 0; label(b); }, 4000); return; }
+    armed = 0; clearTimeout(tm); b.disabled = true; b.textContent = "Clearing…";
+    try {
+      var uid = window.__shkUid; if (!window.SB || !uid) throw 0;
+      var r = await window.SB.from("notifs").delete().eq("uid", uid);
+      if (r && r.error) throw r.error;
+      await window.SHK_NOTIFS.load();
+      try { typeof toast === "function" && toast("🧹 Notifications cleared"); } catch (x) {}
+    } catch (x) { try { typeof toast === "function" && toast("Couldn't clear — try again"); } catch (y) {} }
+    b.disabled = false; sync();
+  }
+  var mo = new MutationObserver(function () { sync(); });
+  var t = setInterval(function () {
+    var L = document.getElementById("ntList"); if (!L) return;
+    clearInterval(t); sync(); mo.observe(L, { childList: true });
+  }, 1500);
+})();
