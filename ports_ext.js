@@ -1389,3 +1389,30 @@
   if (window.MESSY_AV || document.querySelector('script[src*="messy_avatar.js"]')) return;
   var s = document.createElement("script"); s.src = "messy_avatar.js?v=nov24a"; s.defer = true; (document.head || document.documentElement).appendChild(s);
 })();
+
+/* #messy2(nov24) — Messy is rebuilt as its own page (messy.html: Swipe anytime · Matches with chat & games · the live
+   Party). The old 1-hour, 10-minute dates never put two people on the dock at once (117 searches, 0 dates), so the
+   arcade card now opens the new Messy and says what it is. */
+(function () {
+  function card() {
+    var cs = document.querySelectorAll('[data-hgame="dates"]');
+    for (var i = 0; i < cs.length; i++) {
+      var c = cs[i], n = c.querySelector(".hc-name"), st = c.querySelector(".hc-stat");
+      if (n && n.textContent !== "SWIPE · PARTY") n.textContent = "SWIPE · PARTY";
+      if (st && st.textContent !== "MATCH ANYTIME · NO NAMES") st.textContent = "MATCH ANYTIME · NO NAMES";
+    }
+  }
+  document.addEventListener("click", function (e) {
+    var t = e.target && e.target.closest && e.target.closest('[data-hgame="dates"]');
+    if (!t) return; e.preventDefault(); e.stopPropagation(); location.href = "/messy.html";
+  }, true);
+  var n = 0, w = setInterval(function () {
+    if (typeof window.gameOpen === "function" && !window.gameOpen.__msy2) {
+      var orig = window.gameOpen;
+      window.gameOpen = function (k) { if (k === "dates") { location.href = "/messy.html"; return; } return orig.apply(this, arguments); };
+      window.gameOpen.__msy2 = 1;
+    }
+    card();
+    if (++n > 40) { clearInterval(w); setInterval(card, 5000); }
+  }, 500);
+})();

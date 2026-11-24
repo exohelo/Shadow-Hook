@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#2a1846">
+<title>Messy · The Shadow Hook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Inter:wght@500;600;700&display=swap" rel="stylesheet">
+<!-- #messy2(nov24) — MESSY, rebuilt. The 1-hour, 1-on-1, 10-minute format never got two people on the dock at once
+     (117 searches, 0 dates). Now:
+       SWIPE   anytime: avatar cards with 3 fun answers. A mutual like = a match (msy_swipe). Whoever liked you shows first.
+       MATCHES chat that waits for you (msy_thread/msy_send, gone after 14 days), with 🎲 This-or-That / Would-you-rather.
+       PARTY   one live room on the pier (realtime presence + broadcast, nothing stored): party games run themselves —
+               Would You Rather, Most Likely To, Hot Seat — and 🍹 slide a drink to anyone; if they take it, you match.
+     Everything stays anonymous: Messy names + built looks (messy_avatar.js), cards are keyed by a random pkey, never the uid.
+     Art: Midjourney (sunset pier · playful cartoon). -->
+<style>
+:root{--sky1:#2a1846;--sky2:#5b2a6e;--sun:#ff8a5c;--pink:#ff4f8b;--gold:#ffc24b;--ink:#2b1638;--card:#fffaf5;--mut:#8a7a95;--line:#2b16381a;--ok:#22c55e}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;font-family:Inter,system-ui,sans-serif;color:#fff;-webkit-tap-highlight-color:transparent;background:var(--sky1)}
+body{background:linear-gradient(180deg,#2a1846 0%,#5b2a6e 45%,#c2486e 80%,#ff8a5c 100%) fixed}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer}
+.app{max-width:520px;margin:0 auto;min-height:100%;display:flex;flex-direction:column;padding-bottom:calc(env(safe-area-inset-bottom) + 76px)}
+.top{display:flex;align-items:center;gap:10px;padding:calc(env(safe-area-inset-top) + 10px) 16px 6px}
+.top a{color:#ffffffcc;text-decoration:none;font-weight:700;font-size:14px}
+.logo{font:700 28px/1 Fredoka,sans-serif;letter-spacing:.5px;background:linear-gradient(90deg,#ffd36b,#ff6f9a);-webkit-background-clip:text;background-clip:text;color:transparent;flex:1;text-align:center}
+.pill{font:600 12px/1 Inter,sans-serif;padding:6px 10px;border-radius:999px;background:#ffffff1f;color:#fff;white-space:nowrap}
+.view{flex:1;padding:6px 14px 0}
+.hero{position:relative;border-radius:24px;overflow:hidden;aspect-ratio:16/8;background:#c2486e center/cover no-repeat;box-shadow:0 10px 30px #0004;margin-bottom:14px}
+.hero .ht{position:absolute;left:16px;right:16px;bottom:12px;font:700 24px/1.05 Fredoka,sans-serif;text-shadow:0 2px 12px #0008}
+.hero .hs{font:600 13px/1.3 Inter,sans-serif;opacity:.92;margin-top:4px}
+/* tab bar */
+.tabs{position:fixed;left:0;right:0;bottom:0;z-index:20;display:flex;justify-content:center;padding:8px 10px calc(env(safe-area-inset-bottom) + 8px);background:#1d0f2ee6;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid #ffffff14}
+.tabs div{display:flex;gap:4px;width:100%;max-width:520px}
+.tabs button{flex:1;position:relative;background:none;border:0;padding:6px 2px;border-radius:14px;color:#ffffff99;font:600 11px/1.2 Inter,sans-serif;display:flex;flex-direction:column;align-items:center;gap:2px}
+.tabs button b{font-size:22px;line-height:1}
+.tabs button.on{color:#fff;background:#ffffff14}
+.tabs .dot{position:absolute;top:2px;right:calc(50% - 20px);min-width:18px;height:18px;border-radius:9px;background:var(--pink);color:#fff;font:700 11px/18px Inter,sans-serif;padding:0 5px}
+/* swipe */
+.deck{position:relative;height:min(64vh,560px);margin-top:4px}
+.sc{position:absolute;inset:0;background:var(--card);color:var(--ink);border-radius:28px;overflow:hidden;box-shadow:0 18px 40px #0005;display:flex;flex-direction:column;touch-action:pan-y;user-select:none;will-change:transform}
+.sc .art{height:44%;min-height:190px;background:#ff8a5c center/cover no-repeat;position:relative;display:flex;align-items:flex-end;justify-content:center}
+.sc .art .av{transform:translateY(42%);filter:drop-shadow(0 8px 16px #0005)}
+.sc .bd{flex:1;overflow:auto;padding:58px 18px 16px}
+.sc .nm{font:700 26px/1 Fredoka,sans-serif;text-align:center}
+.sc .chips{display:flex;justify-content:center;flex-wrap:wrap;gap:6px;margin:8px 0 12px}
+.chip{font:600 12px/1 Inter,sans-serif;padding:6px 10px;border-radius:999px;background:#2b163810;color:var(--ink)}
+.chip.hot{background:#ff4f8b1f;color:#d61f5f}.chip.on{background:#22c55e1f;color:#15803d}
+.pr{background:#fff;border:1px solid var(--line);border-radius:18px;padding:12px 14px;margin-bottom:10px}
+.pr .q{font:600 12px/1.3 Inter,sans-serif;color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
+.pr .a{font:600 19px/1.25 Fredoka,sans-serif;margin-top:4px}
+.stamp{position:absolute;top:22px;padding:6px 14px;border:4px solid;border-radius:12px;font:700 30px/1 Fredoka,sans-serif;opacity:0;transform:rotate(-12deg);z-index:3;background:#fff8}
+.stamp.like{left:18px;color:#16a34a;border-color:#16a34a}.stamp.nope{right:18px;color:#e11d48;border-color:#e11d48;transform:rotate(12deg)}
+.acts{display:flex;justify-content:center;gap:22px;margin:16px 0 4px}
+.acts button{width:66px;height:66px;border-radius:50%;border:0;background:#fff;color:#e11d48;font-weight:700;box-shadow:0 8px 20px #0004;font-size:30px;display:flex;align-items:center;justify-content:center;transition:transform .12s}
+.acts button:active{transform:scale(.9)}
+.acts .yes{width:76px;height:76px;color:#fff;background:linear-gradient(135deg,#ff6f9a,#ff4f8b);font-size:34px}
+.empty{background:#ffffff14;border:1px solid #ffffff22;border-radius:24px;padding:26px 18px;text-align:center}
+.empty b{display:block;font:700 22px/1.15 Fredoka,sans-serif;margin-bottom:6px}
+.empty p{margin:0 0 14px;opacity:.85;font-size:15px;line-height:1.4}
+.btn{display:inline-block;border:0;border-radius:16px;padding:14px 20px;background:linear-gradient(135deg,#ffc24b,#ff8a5c);color:#2b1638;font:700 17px/1 Fredoka,sans-serif;box-shadow:0 8px 20px #0003}
+.btn.pk{background:linear-gradient(135deg,#ff6f9a,#ff4f8b);color:#fff}
+.btn.gh{background:#ffffff1f;color:#fff;box-shadow:none}
+.btn.wide{display:block;width:100%}
+.btn:disabled{opacity:.5}
+/* panels */
+.panel{background:var(--card);color:var(--ink);border-radius:24px;padding:16px;margin-bottom:12px;box-shadow:0 10px 26px #0003}
+.panel h3{margin:0 0 10px;font:700 20px/1.1 Fredoka,sans-serif}
+.lbl{font:700 12px/1 Inter,sans-serif;color:var(--mut);letter-spacing:.06em;text-transform:uppercase;margin:14px 0 8px}
+.seg{display:flex;gap:6px;flex-wrap:wrap}
+.seg button{flex:1;min-width:70px;padding:11px 8px;border-radius:14px;border:2px solid var(--line);background:#fff;font:600 15px/1 Fredoka,sans-serif;color:var(--ink)}
+.seg button.on{border-color:var(--pink);background:#ff4f8b14;color:#d61f5f}
+.in{width:100%;padding:12px 14px;border-radius:14px;border:2px solid var(--line);background:#fff;color:var(--ink);font:600 17px/1.2 Fredoka,sans-serif;outline:none}
+.in:focus{border-color:var(--pink)}
+textarea.in{min-height:64px;resize:none;font:500 16px/1.3 Inter,sans-serif}
+.row2{display:flex;gap:8px;align-items:center}
+.prq{width:100%;padding:10px 12px;border-radius:12px;border:2px solid var(--line);background:#fff8f2;color:var(--ink);font:600 13px/1.2 Inter,sans-serif;margin-bottom:6px}
+.avbox{display:flex;align-items:center;gap:14px}
+/* matches */
+.mrow{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:20px;background:#ffffff14;margin-bottom:8px;border:1px solid #ffffff1a}
+.mrow .mt{flex:1;min-width:0}.mrow .mt b{display:block;font:600 18px/1.1 Fredoka,sans-serif}
+.mrow .mt span{display:block;font-size:13px;opacity:.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.ud{width:12px;height:12px;border-radius:50%;background:var(--pink);box-shadow:0 0 0 3px #ff4f8b44}
+.newm{display:flex;gap:10px;overflow-x:auto;padding:4px 2px 12px;scrollbar-width:none}.newm::-webkit-scrollbar{display:none}
+.newm .nb{flex:none;display:flex;flex-direction:column;align-items:center;gap:4px;background:none;border:0;color:#fff;font:600 12px/1 Inter,sans-serif;width:72px}.newm .nb span{max-width:72px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.drink{display:flex;align-items:center;gap:12px;padding:12px;border-radius:20px;background:linear-gradient(135deg,#ffc24b33,#ff4f8b33);border:1px solid #ffc24b66;margin-bottom:8px}
+.drink .mt{flex:1}.drink b{font:600 17px/1.1 Fredoka,sans-serif;display:block}.drink span{font-size:13px;opacity:.85}
+.sbtn{border:0;border-radius:12px;padding:9px 12px;font:700 14px/1 Fredoka,sans-serif;background:#fff;color:var(--ink)}
+.sbtn.pk{background:var(--pink);color:#fff}
+/* chat */
+.chat{position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;background:linear-gradient(180deg,#2a1846,#4a2463)}
+.chat .ch{display:flex;align-items:center;gap:10px;padding:calc(env(safe-area-inset-top) + 10px) 12px 10px;background:#1d0f2ecc;border-bottom:1px solid #ffffff14}
+.chat .ch button{background:none;border:0;color:#fff;font-size:22px;padding:4px 8px}
+.chat .ch b{font:600 19px/1 Fredoka,sans-serif;flex:1}
+.log{flex:1;overflow:auto;padding:14px 12px;display:flex;flex-direction:column;gap:8px}
+.bub{max-width:78%;padding:10px 13px;border-radius:20px;font-size:16px;line-height:1.35;word-wrap:break-word;background:#ffffff1f;align-self:flex-start;border-bottom-left-radius:6px}
+.bub.me{align-self:flex-end;background:linear-gradient(135deg,#ff6f9a,#ff4f8b);border-bottom-left-radius:20px;border-bottom-right-radius:6px}
+.sys{align-self:center;font:600 12px/1.3 Inter,sans-serif;opacity:.7;text-align:center;max-width:90%}
+.game{align-self:stretch;background:var(--card);color:var(--ink);border-radius:20px;padding:12px;box-shadow:0 6px 16px #0003}
+.game .gq{font:700 17px/1.2 Fredoka,sans-serif;text-align:center;margin-bottom:10px}
+.game .go{display:flex;gap:8px}
+.game .go button{flex:1;padding:12px 6px;border-radius:14px;border:2px solid var(--line);background:#fff;font:600 15px/1.15 Fredoka,sans-serif;color:var(--ink);position:relative}
+.game .go button.mine{border-color:var(--pink);background:#ff4f8b14}
+.game .go button.theirs::after{content:"👀";position:absolute;top:-10px;right:-6px;font-size:16px}
+.game .gr{text-align:center;font:600 13px/1.3 Inter,sans-serif;color:var(--mut);margin-top:8px}
+.cin{display:flex;gap:8px;padding:10px 10px calc(env(safe-area-inset-bottom) + 10px);background:#1d0f2ecc;border-top:1px solid #ffffff14}
+.cin input{flex:1;min-width:0;padding:12px 14px;border-radius:22px;border:0;background:#ffffff1f;color:#fff;font-size:16px;outline:none}
+.cin button{border:0;border-radius:22px;padding:0 14px;font-size:20px;background:#ffffff1f}
+.cin .send{background:var(--pink);font:700 15px/1 Fredoka,sans-serif;padding:0 16px}
+.rev{margin:10px 12px 0;padding:12px;border-radius:18px;background:#ffffff14;border:1px solid #ffffff26;display:flex;align-items:center;gap:12px}
+.rev .rt{flex:1;min-width:0;font-size:14px;line-height:1.3}.rev .rt b{display:block;font:600 16px/1.2 Fredoka,sans-serif}
+.rev .ph{width:62px;height:62px;border-radius:16px;background:#ffffff1f center/cover no-repeat;flex:none;position:relative;overflow:hidden;border:2px solid #ffd36b}
+.rev .ph.blur{filter:blur(10px) saturate(1.2)}
+.rev .btns{display:flex;flex-direction:column;gap:6px}
+.viewer{position:fixed;inset:0;z-index:50;background:#000e;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px}
+.viewer img{max-width:100%;max-height:72vh;border-radius:20px;box-shadow:0 20px 50px #0008}
+.viewer p{color:#fff;opacity:.8;font-size:13px;text-align:center;margin:12px 0}
+.myph{width:84px;height:84px;border-radius:20px;background:#2b163810 center/cover no-repeat;border:2px dashed #2b163833;display:flex;align-items:center;justify-content:center;font-size:28px;flex:none}
+/* party */
+.party{position:relative;border-radius:26px;overflow:hidden;min-height:calc(100vh - 170px);background:#3a1f55 center top/cover no-repeat;box-shadow:0 12px 30px #0005;display:flex;flex-direction:column}
+.party::before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,#0000 0%,#1d0f2e55 40%,#1d0f2ef2 70%)}
+.party>*{position:relative}
+.ph{padding:14px 14px 0;display:flex;align-items:center;gap:8px}
+.ph b{font:700 24px/1 Fredoka,sans-serif;text-shadow:0 2px 10px #0008;flex:1}
+.crowd{display:flex;gap:8px;overflow-x:auto;padding:10px 14px;scrollbar-width:none}.crowd::-webkit-scrollbar{display:none}
+.crowd button{flex:none;background:none;border:0;color:#fff;display:flex;flex-direction:column;align-items:center;gap:3px;font:600 11px/1 Inter,sans-serif;width:58px}
+.crowd button span{max-width:58px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stage{margin:auto 12px 10px;background:#fffaf5f2;color:var(--ink);border-radius:22px;padding:14px;box-shadow:0 10px 24px #0005;min-height:120px}
+.stage .gt{font:700 12px/1 Inter,sans-serif;letter-spacing:.08em;color:var(--pink);text-transform:uppercase}
+.stage .gq{font:700 21px/1.15 Fredoka,sans-serif;margin:6px 0 10px}
+.stage .opts{display:flex;flex-direction:column;gap:8px}
+.stage .opt{position:relative;overflow:hidden;text-align:left;padding:12px 14px;border-radius:14px;border:2px solid var(--line);background:#fff;font:600 16px/1.15 Fredoka,sans-serif;color:var(--ink)}
+.stage .opt .bar{position:absolute;left:0;top:0;bottom:0;background:#ff4f8b22;transition:width .5s}
+.stage .opt span{position:relative}
+.stage .opt em{position:relative;float:right;font-style:normal;color:var(--mut)}
+.stage .opt.mine{border-color:var(--pink)}
+.stage .tm{height:5px;border-radius:3px;background:#2b163814;margin-top:10px;overflow:hidden}.stage .tm i{display:block;height:100%;background:linear-gradient(90deg,#ffc24b,#ff4f8b);transition:width 1s linear}
+.feed{max-height:26vh;overflow:auto;padding:0 14px 8px;display:flex;flex-direction:column;gap:5px}
+.fl{font-size:14px;line-height:1.3;text-shadow:0 1px 6px #000a}.fl b{font-family:Fredoka,sans-serif;font-weight:600;color:#ffd36b}
+.fl.s{opacity:.75;font-style:italic}
+.pin{display:flex;gap:8px;padding:0 12px 12px}
+.pin input{flex:1;min-width:0;padding:12px 14px;border-radius:22px;border:0;background:#ffffff26;color:#fff;font-size:16px;outline:none}
+.pin input::placeholder{color:#ffffffaa}
+.pin button{border:0;border-radius:22px;padding:0 16px;background:var(--pink);color:#fff;font:700 15px/1 Fredoka,sans-serif}
+/* overlays */
+.ov{position:fixed;inset:0;z-index:40;background:#1d0f2ee6;display:flex;align-items:center;justify-content:center;padding:20px}
+.ovc{width:100%;max-width:420px;text-align:center}
+.match-art{width:100%;aspect-ratio:1;border-radius:28px;background:center/cover no-repeat;box-shadow:0 20px 50px #0007;position:relative;display:flex;align-items:flex-end;justify-content:center;gap:0;padding-bottom:18px}
+.match-art .avs{display:flex}.match-art .avs>div{margin:0 -8px;filter:drop-shadow(0 8px 14px #0006)}
+.ovc h2{font:700 38px/1 Fredoka,sans-serif;margin:18px 0 6px;background:linear-gradient(90deg,#ffd36b,#ff6f9a);-webkit-background-clip:text;background-clip:text;color:transparent}
+.ovc p{margin:0 0 16px;opacity:.9}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:45;display:flex;justify-content:center}
+.sheet>div{width:100%;max-width:520px;background:var(--card);color:var(--ink);border-radius:26px 26px 0 0;padding:16px 16px calc(env(safe-area-inset-bottom) + 16px);box-shadow:0 -10px 30px #0006}
+#toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top) + 14px);transform:translateX(-50%);background:#fffaf5;color:#2b1638;padding:10px 16px;border-radius:14px;font:600 14px/1.3 Inter,sans-serif;box-shadow:0 8px 20px #0005;opacity:0;transition:opacity .25s;pointer-events:none;z-index:60;max-width:90vw;text-align:center}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="top"><a href="/">← Hook</a><div class="logo">messy</div><span class="pill" id="online">· · ·</span></div>
+  <div class="view" id="view"></div>
+</div>
+<nav class="tabs"><div>
+  <button data-t="swipe" class="on"><b>🔥</b>Swipe</button>
+  <button data-t="matches"><b>💬</b>Matches<span class="dot" id="dotM" hidden></span></button>
+  <button data-t="party"><b>🎉</b>Party<span class="dot" id="dotP" hidden></span></button>
+  <button data-t="me"><b>🙂</b>Me</button>
+</div></nav>
+<div id="toast"></div>
+<script src="/messy_avatar.js?v=nov24b"></script>
+<script>
+var SB_URL='https://ehykqebzkbelwtkgjbml.supabase.co', SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVoeWtxZWJ6a2JlbHd0a2dqYm1sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzMDMwNTMsImV4cCI6MjA5OTg3OTA1M30.RgdTFy1HNE36lN3bM6ovjkmAJsTEps0GmgRuI6h6IpI';
+var ART={hero:'https://cdn.midjourney.com/de5d330f-ae7a-43ec-bb71-08ecc36c02ae/0_1.webp',party:'https://cdn.midjourney.com/7d9d831f-c25e-49bf-b8d2-58a716d3af62/0_2.webp',match:'https://cdn.midjourney.com/9a5dbf01-13a9-41b7-9812-51137c96df01/0_1.webp'};
+var sb=null, ME=null, INFO=null, TAB='swipe', DECK=[], MATCHES=[], DRINKS=[], CHAT=null, chatT=null, infoT=null;
+var PROMPTS=['My perfect day off looks like…','Best food on the waterfront…','Green flag I look for…','You\'ll win me over if…','Two truths and a lie…','My go-to karaoke song…','Day shift or night shift, and why…','The way to my heart is…','Worst pickup line I\'ve heard…','This weekend I\'m…','My most useless talent…','First date idea…'];
+var HERE={t:'Just talk',d:'A date',m:'Something messy',w:'Whatever'};
+var TOT=[['Tacos','Burgers'],['Beach day','Couch day'],['Day shift','Night shift'],['Text','Call'],['Dogs','Cats'],['Sunrise','Sunset'],['Karaoke','Bowling'],['Mountains','Ocean'],['Early bird','Night owl'],['Sweet','Savory'],['Concert','Comedy show'],['Road trip','Flight'],['Coffee','Energy drink'],['Rap','Oldies'],['Dance','Watch them dance']];
+var WYR=[['Win the lottery but work the dock forever','Never work again but stay broke-ish'],['Get every early go','Get every weekend off'],['Be famous on the docks','Be rich and unknown'],['Always be 10 minutes late','Always be 20 minutes early'],['Have a boat','Have a beach house'],['Only eat tacos forever','Never eat tacos again'],['Know what your date is thinking','Have them know what you\'re thinking'],['Go on a blind date','Get set up by your mom'],['Slow dance in the rain','Karaoke in front of everyone'],['Read their texts','Have them read yours']];
+var MLT=['Most likely to fall asleep on break','Most likely to start a dance floor','Most likely to have a secret crush here','Most likely to text back in 2 seconds','Most likely to win a karaoke battle','Most likely to cook on the first date','Most likely to get the early go','Most likely to slide into the DMs first'];
+function $(id){ return document.getElementById(id); }
+function esc(t){ return String(t==null?'':t).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+var toastT=0; function toast(t){ var el=$('toast'); el.textContent=t; el.style.opacity=1; clearTimeout(toastT); toastT=setTimeout(function(){ el.style.opacity=0; },2600); }
+function rpc(fn,args){ if(!sb) return Promise.reject(new Error('offline')); return sb.rpc(fn,args||{}).then(function(r){ if(r.error) throw new Error(r.error.message||'something went wrong'); return r.data; }); }
+function av(code,px){ return window.MESSY_AV?MESSY_AV.svg(code||'',px):''; }
+function buzz(p){ try{ navigator.vibrate&&navigator.vibrate(p); }catch(e){} }
+function ago(t){ var s=(Date.now()-new Date(t).getTime())/1000; if(s<60) return 'now'; if(s<3600) return Math.floor(s/60)+'m'; if(s<86400) return Math.floor(s/3600)+'h'; return Math.floor(s/86400)+'d'; }
+function pick(a){ return a[Math.floor(Math.random()*a.length)]; }
+
+/* ───────── boot ───────── */
+(function(){
+  document.querySelectorAll('.tabs button').forEach(function(b){ b.onclick=function(){ go(b.dataset.t); }; });
+  var s=document.createElement('script'); s.src='/supabase-js-2.112.2.js';
+  s.onload=function(){
+    try{ sb=window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:true}}); }catch(e){ sb=null; }
+    if(!sb) return signedOut();
+    sb.auth.getSession().then(function(r){ var se=r&&r.data&&r.data.session; if(!se) return signedOut();
+      window.SB=sb; window.__shkUid=se.user.id;
+      loadInfo().then(function(){ var q=new URLSearchParams(location.search); go(q.get('t')||(INFO.ready?'swipe':'me')); });
+      infoT=setInterval(function(){ if(!document.hidden) loadInfo(); },30000);
+    }).catch(signedOut);
+  };
+  s.onerror=signedOut; document.head.appendChild(s);
+  document.addEventListener('visibilitychange',function(){ if(!document.hidden&&sb){ loadInfo(); if(TAB==='matches'&&!CHAT) drawMatches(); } });
+})();
+function signedOut(){ $('view').innerHTML='<div class="empty"><b>Sign in first</b><p>Open The Shadow Hook, sign in, then come back.</p><a class="btn" href="/">Open The Hook</a></div>'; }
+function loadInfo(){ return rpc('msy_me').then(function(x){ INFO=x; ME=x.me; paintDots(); }).catch(function(e){ toast(e.message); INFO=INFO||{ready:false,me:{}}; }); }
+function paintDots(){
+  var n=(INFO.unread||0)+(INFO.new_matches||0); $('dotM').hidden=!n; $('dotM').textContent=n;
+  $('online').textContent=(INFO.online||0)+' online · '+(INFO.people||0)+' on Messy';
+}
+function go(t){
+  TAB=t; document.querySelectorAll('.tabs button').forEach(function(b){ b.classList.toggle('on',b.dataset.t===t); });
+  if(t!=='party') leaveParty();
+  if(!INFO||!INFO.ready){ if(t!=='me'&&t!=='party'){ TAB='me'; document.querySelectorAll('.tabs button').forEach(function(b){ b.classList.toggle('on',b.dataset.t==='me'); }); return drawSetup(true); } }
+  if(t==='swipe') drawSwipe(); else if(t==='matches') drawMatches(); else if(t==='party') drawParty(); else drawSetup(false);
+  window.scrollTo(0,0);
+}
+
+/* ───────── ME: set up / edit the card ───────── */
+var F=null;
+function drawSetup(first){
+  var me=ME||{}, pr=(me.prompts||[]).slice();
+  F=F||{sex:me.sex||'',into:INFO&&INFO.into||'',alias:me.alias&&me.alias!=='Someone'?me.alias:'',av:me.av||(window.MESSY_AV&&MESSY_AV.code())||'',here:me.here||'d',
+        prompts:[0,1,2].map(function(i){ return pr[i]?{q:pr[i].q,a:pr[i].a}:{q:PROMPTS[[0,2,7][i]],a:''}; }),swipe:INFO?INFO.swipe_on!==false:true};
+  var h='';
+  if(first) h+='<div class="hero" style="background-image:url('+ART.hero+')"><div class="ht">New Messy. Way more fun.<div class="hs">Swipe anytime, match, chat when you want — or jump in the Party. Anonymous, always.</div></div></div>';
+  h+='<div class="panel"><h3>'+(first?'Make your card':'Your card')+'</h3>'+
+    '<div class="avbox"><div id="fAv">'+av(F.av,84)+'</div><div style="flex:1"><div style="font:600 14px/1.3 Inter;color:var(--mut)">Your look is all anyone sees — no photos, no real names.</div><button class="sbtn pk" id="fAvB" style="margin-top:8px">'+(F.av?'✏️ Fix up my look':'🎨 Build my look')+'</button></div></div>'+
+    '<div class="lbl">Messy name</div><div class="row2"><input class="in" id="fAlias" maxlength="16" placeholder="e.g. SALTY_ROSE" value="'+esc(F.alias)+'"><button class="sbtn" id="fRoll" title="Random name">🎲</button></div>'+
+    '<div class="lbl">I\'m a</div><div class="seg" id="fSex">'+seg([['m','Man'],['w','Woman']],F.sex)+'</div>'+
+    '<div class="lbl">Show me</div><div class="seg" id="fInto">'+seg([['m','Men'],['w','Women'],['b','Both'],['*','Anyone · just friends']],F.into)+'</div>'+
+    '<div class="lbl">Here for</div><div class="seg" id="fHere">'+seg([['t','Just talk'],['d','A date'],['m','Something messy'],['w','Whatever']],F.here)+'</div>'+
+    '<div class="lbl">Your 3 answers (the fun part)</div>'+F.prompts.map(function(p,i){ return '<select class="prq" data-pq="'+i+'">'+PROMPTS.map(function(q){ return '<option'+(q===p.q?' selected':'')+'>'+esc(q)+'</option>'; }).join('')+'</select><textarea class="in" data-pa="'+i+'" maxlength="140" placeholder="Your answer…">'+esc(p.a)+'</textarea><div style="height:10px"></div>'; }).join('')+
+    (first?'':'<div class="lbl">Reveal photo (private)</div><div class="avbox"><div class="myph" id="fPh">📷</div><div style="flex:1;font:500 13px/1.35 Inter;color:var(--mut)">Never on your card. Only a match sees it, and only after you <b>both</b> tap “I\'m in” in your chat. Take it back any time.<div style="margin-top:8px;display:flex;gap:6px"><button class="sbtn pk" id="fPhU">'+(INFO&&INFO.photo?'Replace':'Add photo')+'</button>'+(INFO&&INFO.photo?'<button class="sbtn" id="fPhX">Remove</button>':'')+'</div></div></div>')+
+    (first?'':'<div class="lbl">Show my card in Swipe</div><div class="seg" id="fSw">'+seg([['1','Yes'],['0','Hide me for now']],F.swipe?'1':'0')+'</div>')+
+    '<div style="height:14px"></div><button class="btn pk wide" id="fSave">'+(first?'Let\'s go 🔥':'Save my card')+'</button></div>';
+  $('view').innerHTML=h;
+  function bindSeg(id,key,conv){ $(id).onclick=function(e){ var b=e.target.closest('[data-v]'); if(!b) return; F[key]=conv?conv(b.dataset.v):b.dataset.v; [].forEach.call(this.children,function(c){ c.classList.toggle('on',c===b); }); }; }
+  bindSeg('fSex','sex'); bindSeg('fInto','into'); bindSeg('fHere','here'); if($('fSw')) bindSeg('fSw','swipe',function(v){ return v==='1'; });
+  $('fAlias').oninput=function(){ F.alias=this.value.toUpperCase().replace(/[^A-Z0-9_ ]/g,''); };
+  $('fRoll').onclick=function(){ var A=['SALTY','LUCKY','NIGHT','HARBOR','SUNSET','RUSTY','SWEET','WILD','SMOOTH','CHERRY','BAY','DOCK'],B=['ROSE','HOOK','TIDE','GULL','ANCHOR','PEARL','CRANE','WAVE','KNOT','REEF','STORM','DIVA']; F.alias=pick(A)+'_'+pick(B); $('fAlias').value=F.alias; };
+  [].forEach.call(document.querySelectorAll('[data-pq]'),function(s){ s.onchange=function(){ F.prompts[+s.dataset.pq].q=s.value; }; });
+  [].forEach.call(document.querySelectorAll('[data-pa]'),function(t){ t.oninput=function(){ F.prompts[+t.dataset.pa].a=t.value; }; });
+  if($('fPh')&&INFO.photo) signed(INFO.photo).then(function(u){ var e=$('fPh'); if(e){ e.style.backgroundImage='url('+u+')'; e.textContent=''; e.style.borderStyle='solid'; } }).catch(function(){});
+  if($('fPhU')) $('fPhU').onclick=function(){ uploadPhoto().then(function(p){ if(p) drawSetup(false); }); };
+  if($('fPhX')) $('fPhX').onclick=function(){ if(!this.dataset.s){ this.dataset.s=1; this.textContent='Tap again'; return; } removePhoto().then(function(){ drawSetup(false); }); };
+  $('fAvB').onclick=function(){ window.MESSY_AV_ONSAVE=function(code){ F.av=code; $('fAv').innerHTML=av(code,84); $('fAvB').textContent='✏️ Fix up my look'; }; MESSY_AV.open(); };
+  $('fSave').onclick=function(){
+    if(!F.av) return toast('Build your look first 🎨');
+    if(!F.sex||!F.into) return toast('Pick who you are and who to show');
+    if((F.alias||'').trim().length<3) return toast('Pick a Messy name');
+    if(!F.prompts.some(function(p){ return p.a.trim(); })) return toast('Answer at least one — that\'s what people swipe on');
+    var b=this; b.disabled=true;
+    rpc('msy_save',{p_sex:F.sex,p_into:F.into,p_alias:F.alias,p_av:F.av,p_prompts:F.prompts,p_here:F.here,p_swipe:F.swipe}).then(function(x){ INFO=x; ME=x.me; F=null; paintDots(); toast('✓ Card saved'); go(first?'swipe':'me'); }).catch(function(e){ toast(e.message); b.disabled=false; });
+  };
+}
+function seg(opts,cur){ return opts.map(function(o){ return '<button data-v="'+o[0]+'"'+(o[0]===cur?' class="on"':'')+'>'+o[1]+'</button>'; }).join(''); }
+
+/* ───────── SWIPE ───────── */
+function drawSwipe(){
+  $('view').innerHTML='<div class="deck" id="deck"><div class="empty" style="margin-top:40px"><b>Finding people on the dock…</b></div></div><div class="acts" id="acts" hidden><button id="bNo" aria-label="Pass">✕</button><button class="yes" id="bYes" aria-label="Like">♥</button></div>';
+  rpc('msy_deck').then(function(d){ DECK=(d||[]).slice(); paintDeck(); }).catch(function(e){ toast(e.message); });
+}
+function cardHTML(c){
+  var ch='<div class="chips">'+(c.likes_you?'<span class="chip hot">👀 Likes you</span>':'')+(c.on?'<span class="chip on">● On now</span>':'')+(c.here&&HERE[c.here]?'<span class="chip">'+HERE[c.here]+'</span>':'')+'</div>';
+  return '<div class="stamp like">LIKE</div><div class="stamp nope">NOPE</div><div class="art" style="background-image:url('+ART.hero+')"><div class="av">'+av(c.av,132)+'</div></div>'+
+    '<div class="bd"><div class="nm">'+esc(c.alias)+'</div>'+ch+(c.prompts||[]).map(function(p){ return '<div class="pr"><div class="q">'+esc(p.q)+'</div><div class="a">'+esc(p.a)+'</div></div>'; }).join('')+'</div>';
+}
+function paintDeck(){
+  var D=$('deck'); if(!D) return;
+  if(!DECK.length){ $('acts').hidden=true;
+    D.innerHTML='<div class="empty" style="margin-top:20px"><b>You\'ve seen everyone for now 🌅</b><p>New people show up as they make cards. The Party is the fastest way to meet whoever\'s around.</p><button class="btn pk" onclick="go(\'party\')">🎉 Go to the Party</button></div>';
+    return; }
+  $('acts').hidden=false;
+  D.innerHTML=DECK.slice(0,2).reverse().map(function(c,i,arr){ return '<div class="sc" data-k="'+esc(c.key)+'" style="'+(i<arr.length-1?'transform:scale(.95) translateY(10px);opacity:.9':'')+'">'+cardHTML(c)+'</div>'; }).join('');
+  var top=D.lastElementChild; drag(top);
+  $('bNo').onclick=function(){ fling(top,-1); }; $('bYes').onclick=function(){ fling(top,1); };
+}
+function drag(el){
+  var sx=0,sy=0,dx=0,on=false;
+  el.addEventListener('pointerdown',function(e){ if(e.target.closest('.bd')&&e.pointerType==='mouse') return; on=true; sx=e.clientX; sy=e.clientY; dx=0; el.setPointerCapture(e.pointerId); el.style.transition='none'; });
+  el.addEventListener('pointermove',function(e){ if(!on) return; dx=e.clientX-sx; var dy=e.clientY-sy; if(Math.abs(dy)>Math.abs(dx)*1.4&&Math.abs(dx)<20) return; el.style.transform='translateX('+dx+'px) rotate('+(dx/18)+'deg)';
+    el.querySelector('.like').style.opacity=Math.max(0,Math.min(1,dx/90)); el.querySelector('.nope').style.opacity=Math.max(0,Math.min(1,-dx/90)); });
+  function end(){ if(!on) return; on=false; el.style.transition='transform .25s'; if(Math.abs(dx)>100) fling(el,dx>0?1:-1); else { el.style.transform=''; el.querySelector('.like').style.opacity=0; el.querySelector('.nope').style.opacity=0; } }
+  el.addEventListener('pointerup',end); el.addEventListener('pointercancel',end);
+}
+var busySwipe=false;
+function fling(el,dir){
+  if(!el||busySwipe) return; busySwipe=true;
+  var c=DECK[0]; el.style.transition='transform .3s ease-in'; el.querySelector(dir>0?'.like':'.nope').style.opacity=1;
+  el.style.transform='translateX('+(dir*520)+'px) rotate('+(dir*24)+'deg)'; buzz(dir>0?15:8);
+  rpc('msy_swipe',{p_key:c.key,p_like:dir>0}).then(function(r){ if(r&&r.match) showMatch(r.match,r.them||c); }).catch(function(e){ toast(e.message); });
+  setTimeout(function(){ DECK.shift(); busySwipe=false; paintDeck(); },280);
+}
+function showMatch(id,them){
+  buzz([40,40,120]); loadInfo();
+  var o=document.createElement('div'); o.className='ov';
+  o.innerHTML='<div class="ovc"><div class="match-art" style="background-image:url('+ART.match+')"><div class="avs"><div>'+av(ME.av,110)+'</div><div>'+av(them.av,110)+'</div></div></div>'+
+    '<h2>It\'s a match!</h2><p>You and <b>'+esc(them.alias)+'</b> liked each other.</p><button class="btn pk wide" id="mHi">Say hi 👋</button><div style="height:8px"></div><button class="btn gh wide" id="mLater">Keep swiping</button></div>';
+  document.body.appendChild(o);
+  $('mHi').onclick=function(){ o.remove(); openChat(id); }; $('mLater').onclick=function(){ o.remove(); };
+}
+
+/* ───────── MATCHES + CHAT ───────── */
+function drawMatches(){
+  $('view').innerHTML='<div class="empty" style="margin-top:30px"><b>Loading…</b></div>';
+  Promise.all([rpc('msy_matches'),rpc('msy_drinks')]).then(function(r){ MATCHES=r[0]||[]; DRINKS=r[1]||[]; paintMatches(); }).catch(function(e){ toast(e.message); });
+}
+function paintMatches(){
+  if(TAB!=='matches') return;
+  var h='';
+  if(INFO&&INFO.liked_me) h+='<div class="drink" style="background:#ffffff14;border-color:#ffffff33"><div style="font-size:30px">👀</div><div class="mt"><b>'+INFO.liked_me+' '+(INFO.liked_me===1?'person likes':'people like')+' you</b><span>They\'re at the front of your Swipe deck.</span></div><button class="sbtn pk" onclick="go(\'swipe\')">Swipe</button></div>';
+  DRINKS.forEach(function(d){ h+='<div class="drink">'+av(d.av,54)+'<div class="mt"><b>🍹 '+esc(d.alias)+'</b><span>slid you a drink at the Party</span></div><button class="sbtn pk" data-take="'+esc(d.key)+'">Take it</button><button class="sbtn" data-pass="'+esc(d.key)+'">Pass</button></div>'; });
+  var fresh=MATCHES.filter(function(m){ return !m.last; }), talking=MATCHES.filter(function(m){ return m.last; });
+  if(fresh.length) h+='<div class="lbl" style="color:#fff;opacity:.8">New matches</div><div class="newm">'+fresh.map(function(m){ return '<button class="nb" data-m="'+m.id+'">'+av(m.them.av,62)+'<span>'+esc(m.them.alias)+'</span></button>'; }).join('')+'</div>';
+  if(talking.length) h+='<div class="lbl" style="color:#fff;opacity:.8">Chats</div>'+talking.map(function(m){ var l=m.last, tx=l.kind==='msg'?l.body:l.kind==='game'?'🎲 sent a game':'🎲 answered';
+      return '<div class="mrow" data-m="'+m.id+'" role="button">'+av(m.them.av,54)+'<div class="mt"><b>'+esc(m.them.alias)+'</b><span>'+(l.mine?'You: ':'')+esc(tx)+'</span></div>'+(m.unread?'<span class="ud"></span>':'<span style="font-size:12px;opacity:.6">'+ago(m.last_at)+'</span>')+'</div>'; }).join('');
+  if(!MATCHES.length&&!DRINKS.length) h+='<div class="empty" style="margin-top:20px"><b>No matches yet</b><p>Swipe right on people you like. When they like you back, you\'ll chat here.</p><button class="btn pk" onclick="go(\'swipe\')">🔥 Start swiping</button></div>';
+  $('view').innerHTML=h;
+  [].forEach.call(document.querySelectorAll('[data-m]'),function(r){ r.onclick=function(){ openChat(+r.dataset.m); }; });
+  [].forEach.call(document.querySelectorAll('[data-take]'),function(b){ b.onclick=function(){ b.disabled=true; rpc('msy_swipe',{p_key:b.dataset.take,p_like:true,p_drink:true}).then(function(r){ if(r.match) showMatch(r.match,r.them); drawMatches(); }).catch(function(e){ toast(e.message); }); }; });
+  [].forEach.call(document.querySelectorAll('[data-pass]'),function(b){ b.onclick=function(){ b.disabled=true; rpc('msy_swipe',{p_key:b.dataset.pass,p_like:false,p_drink:true}).then(drawMatches).catch(function(e){ toast(e.message); }); }; });
+}
+function openChat(id){
+  closeChat();
+  var el=document.createElement('div'); el.className='chat'; el.id='chat';
+  el.innerHTML='<div class="ch"><button id="cBack" aria-label="Back">←</button><div id="cAv"></div><b id="cName">…</b><button id="cMore" aria-label="More">⋯</button></div><div id="cRev"></div><div class="log" id="cLog"></div>'+
+    '<div class="cin"><button id="cGame" aria-label="Play a game">🎲</button><input id="cIn" maxlength="500" placeholder="Say something…" autocomplete="off"><button class="send" id="cSend">Send</button></div>';
+  document.body.appendChild(el);
+  CHAT={id:id,last:0,msgs:[],them:null};
+  $('cBack').onclick=function(){ closeChat(); if(TAB==='matches') drawMatches(); loadInfo(); };
+  $('cSend').onclick=sendMsg; $('cIn').onkeydown=function(e){ if(e.key==='Enter') sendMsg(); };
+  $('cGame').onclick=gameMenu; $('cMore').onclick=chatMore;
+  pullChat(true); chatT=setInterval(function(){ if(!document.hidden) pullChat(false); },3000);
+}
+function closeChat(){ clearInterval(chatT); var c=$('chat'); if(c) c.remove(); CHAT=null; }
+function pullChat(first){
+  if(!CHAT) return; var id=CHAT.id;
+  rpc('msy_thread',{p_match:id,p_after:CHAT.last}).then(function(t){
+    if(!CHAT||CHAT.id!==id) return;
+    if(!CHAT.them){ CHAT.them=t.them; CHAT.via=t.via; $('cName').textContent=t.them.alias; $('cAv').innerHTML=av(t.them.av,38); }
+    if(JSON.stringify(t.reveal)!==JSON.stringify(CHAT.reveal)){ CHAT.reveal=t.reveal; paintReveal(); }
+    if(t.msgs.length){ CHAT.msgs=CHAT.msgs.concat(t.msgs); CHAT.last=t.msgs[t.msgs.length-1].id; paintChat(); if(!first&&!t.msgs[t.msgs.length-1].mine) buzz(10); }
+    else if(first) paintChat();
+  }).catch(function(e){ toast(e.message); closeChat(); });
+}
+function paintChat(){
+  var L=$('cLog'); if(!L) return; var T=CHAT.them||{}, h='';
+  h+='<div class="sys">You matched'+(CHAT.via==='drink'?' over a drink 🍹':'')+'. Be cool. Chats clear after 14 days.</div>';
+  if(T.prompts&&T.prompts.length) h+='<div class="sys" style="opacity:.9">'+esc(T.alias)+': “'+esc(T.prompts[0].a)+'”</div>';
+  var ans={}; CHAT.msgs.forEach(function(m){ if(m.kind==='ans'){ try{ var a=JSON.parse(m.body); (ans[a.g]=ans[a.g]||{})[m.mine?'me':'them']=a.p; }catch(e){} } });
+  CHAT.msgs.forEach(function(m){
+    if(m.kind==='msg') h+='<div class="bub'+(m.mine?' me':'')+'">'+esc(m.body)+'</div>';
+    else if(m.kind==='sys') h+='<div class="sys" style="opacity:.95;color:#ffd36b">'+esc(m.body)+'</div>';
+    else if(m.kind==='game'){ var g; try{ g=JSON.parse(m.body); }catch(e){ return; } var a=ans[m.id]||{};
+      h+='<div class="game"><div class="gq">'+(g.t==='wyr'?'Would you rather…':'This or that?')+'</div><div class="go">'+['a','b'].map(function(k){ var cls=(a.me===k?' mine':'')+(a.me&&a.them===k?' theirs':'');
+        return '<button data-g="'+m.id+'" data-p="'+k+'" class="'+cls+'"'+(a.me?' disabled':'')+'>'+esc(g[k])+'</button>'; }).join('')+'</div>'+
+        '<div class="gr">'+(a.me&&a.them?(a.me===a.them?'🎉 Same pick! You two get it.':'😅 Opposites. Defend your answer.'):a.me?'Waiting on '+esc(T.alias)+'…':a.them?esc(T.alias)+' picked. Your turn — no peeking.':(m.mine?'You sent this':'Pick one'))+'</div></div>'; }
+  });
+  L.innerHTML=h; L.scrollTop=L.scrollHeight;
+  [].forEach.call(L.querySelectorAll('[data-g]'),function(b){ b.onclick=function(){ b.disabled=true; send(JSON.stringify({g:+b.dataset.g,p:b.dataset.p}),'ans'); }; });
+}
+function send(body,kind){ if(!CHAT) return; var id=CHAT.id; return rpc('msy_send',{p_match:id,p_body:body,p_kind:kind||'msg'}).then(function(){ pullChat(false); }).catch(function(e){ toast(e.message); }); }
+function sendMsg(){ var i=$('cIn'), t=i.value.trim(); if(!t) return; i.value=''; send(t,'msg'); }
+function gameMenu(){
+  var s=document.createElement('div'); s.className='sheet'; s.innerHTML='<div><h3 style="margin:0 0 12px;font:700 20px Fredoka">Send a game 🎲</h3><button class="btn wide" id="gT">This or That</button><div style="height:8px"></div><button class="btn pk wide" id="gW">Would You Rather</button><div style="height:8px"></div><button class="btn gh wide" id="gX" style="background:#2b163814;color:var(--ink)">Cancel</button></div>';
+  document.body.appendChild(s);
+  $('gT').onclick=function(){ var p=pick(TOT); send(JSON.stringify({t:'tot',a:p[0],b:p[1]}),'game'); s.remove(); };
+  $('gW').onclick=function(){ var p=pick(WYR); send(JSON.stringify({t:'wyr',a:p[0],b:p[1]}),'game'); s.remove(); };
+  $('gX').onclick=function(){ s.remove(); };
+}
+function chatMore(){
+  var T=CHAT&&CHAT.them; if(!T) return;
+  var s=document.createElement('div'); s.className='sheet'; s.innerHTML='<div><div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">'+av(T.av,64)+'<div><b style="font:700 20px Fredoka">'+esc(T.alias)+'</b><div style="color:var(--mut);font-size:13px">'+(HERE[T.here]||'')+'</div></div></div>'+
+    (T.prompts||[]).map(function(p){ return '<div class="pr"><div class="q">'+esc(p.q)+'</div><div class="a">'+esc(p.a)+'</div></div>'; }).join('')+
+    '<button class="btn gh wide" id="uM" style="background:#2b163814;color:var(--ink)">Unmatch</button><div style="height:8px"></div><button class="btn gh wide" id="uR" style="background:#e11d4814;color:#be123c">Report & block</button><div style="height:8px"></div><button class="btn wide" id="uX">Close</button></div>';
+  document.body.appendChild(s);
+  $('uX').onclick=function(){ s.remove(); };
+  $('uM').onclick=function(){ if(!this.dataset.s){ this.dataset.s=1; this.textContent='Tap again to unmatch'; return; } rpc('msy_unmatch',{p_match:CHAT.id}).then(function(){ s.remove(); closeChat(); go('matches'); }).catch(function(e){ toast(e.message); }); };
+  $('uR').onclick=function(){ if(!this.dataset.s){ this.dataset.s=1; this.textContent='Tap again to report'; return; } rpc('msy_report',{p_key:T.key,p_where:'chat'}).then(function(){ s.remove(); closeChat(); toast('Reported. You won\'t see them again.'); go('matches'); }).catch(function(e){ toast(e.message); }); };
+}
+
+/* ───────── PHOTO REVEAL: both say yes, or nobody sees anything ───────── */
+var SIGNED={};
+function signed(path){ if(SIGNED[path]&&SIGNED[path].t>Date.now()) return Promise.resolve(SIGNED[path].u);
+  return sb.storage.from('msy-photos').createSignedUrl(path,900).then(function(r){ if(r.error) throw r.error; SIGNED[path]={u:r.data.signedUrl,t:Date.now()+800000}; return r.data.signedUrl; }); }
+function shrink(file){ return new Promise(function(res,rej){ var img=new Image(), u=URL.createObjectURL(file);
+  img.onload=function(){ var m=1000, w=img.naturalWidth, h=img.naturalHeight, k=Math.min(1,m/Math.max(w,h)), c=document.createElement('canvas'); c.width=Math.round(w*k); c.height=Math.round(h*k);
+    c.getContext('2d').drawImage(img,0,0,c.width,c.height); URL.revokeObjectURL(u); c.toBlob(function(b){ b?res(b):rej(new Error('could not read that photo')); },'image/jpeg',.84); };
+  img.onerror=function(){ rej(new Error('could not read that photo')); }; img.src=u; }); }
+function pickPhoto(){ return new Promise(function(res){ var i=document.createElement('input'); i.type='file'; i.accept='image/*'; i.onchange=function(){ res(i.files&&i.files[0]); }; i.click(); }); }
+function uploadPhoto(){
+  return pickPhoto().then(function(f){ if(!f) return null; toast('Uploading…');
+    return shrink(f).then(function(blob){ var path=ME.key+'/'+Math.random().toString(36).slice(2,10)+'.jpg', old=INFO.photo;
+      return sb.storage.from('msy-photos').upload(path,blob,{contentType:'image/jpeg',upsert:false}).then(function(r){ if(r.error) throw r.error;
+        return rpc('msy_photo_set',{p_path:path}); }).then(function(){ INFO.photo=path; if(old) sb.storage.from('msy-photos').remove([old]).then(function(){},function(){}); toast('✓ Photo saved — private until you both say yes'); return path; }); }); })
+    .catch(function(e){ toast(e.message||'upload failed'); return null; });
+}
+function removePhoto(){ var old=INFO.photo; return rpc('msy_photo_set',{p_path:null}).then(function(){ INFO.photo=null; if(old) sb.storage.from('msy-photos').remove([old]).then(function(){},function(){}); toast('Photo removed everywhere'); }); }
+function paintReveal(){
+  var R=$('cRev'); if(!R||!CHAT) return; var v=CHAT.reveal||{}, T=CHAT.them||{}, nm=esc(T.alias||'them'), h='';
+  if(v.me&&v.them&&v.their_photo){
+    h='<div class="rev"><div class="ph blur" id="rvPh"></div><div class="rt"><b>📸 Photos revealed</b>You both said yes. Tap to see '+nm+'.</div><div class="btns"><button class="sbtn" id="rvOff">Hide mine</button></div></div>';
+  } else if(v.me&&v.them){ h='<div class="rev"><div class="rt"><b>📸 Almost there</b>'+(v.my_photo?'Waiting on '+nm+'\'s photo…':'Add your photo to finish the reveal.')+'</div><div class="btns">'+(v.my_photo?'':'<button class="sbtn pk" id="rvAdd">Add photo</button>')+'<button class="sbtn" id="rvOff">Take back</button></div></div>';
+  } else if(v.me){ h='<div class="rev"><div class="rt"><b>📸 You\'re in</b>Waiting on '+nm+' to say yes. Nobody sees anything until you both do.</div><div class="btns"><button class="sbtn" id="rvOff">Take back</button></div></div>';
+  } else if(v.them){ h='<div class="rev" style="border-color:#ffd36b"><div class="rt"><b>📸 '+nm+' wants to reveal photos</b>Only if you say yes too. You can take it back any time.</div><div class="btns"><button class="sbtn pk" id="rvOn">I\'m in</button></div></div>';
+  } else { h='<div class="rev"><div class="rt"><b>📸 Photo reveal</b>Both of you say yes, then you both see each other. Not before.</div><div class="btns"><button class="sbtn pk" id="rvOn">I\'m in</button></div></div>'; }
+  R.innerHTML=h;
+  if($('rvOn')) $('rvOn').onclick=function(){ var b=this; b.disabled=true; (INFO.photo?Promise.resolve(INFO.photo):uploadPhoto()).then(function(p){ if(!p){ b.disabled=false; return; } return setReveal(true); }); };
+  if($('rvAdd')) $('rvAdd').onclick=function(){ uploadPhoto().then(function(p){ if(p) pullChat(false); }); };
+  if($('rvOff')) $('rvOff').onclick=function(){ if(!this.dataset.s){ this.dataset.s=1; this.textContent='Tap again'; return; } setReveal(false); };
+  if($('rvPh')) signed(v.their_photo).then(function(u){ var ph=$('rvPh'); if(!ph) return; ph.style.backgroundImage='url('+u+')'; ph.onclick=function(){ ph.classList.remove('blur'); viewPhoto(u,T.alias); }; }).catch(function(){ });
+}
+function setReveal(on){ if(!CHAT) return; return rpc('msy_reveal',{p_match:CHAT.id,p_on:on}).then(function(t){ CHAT.reveal=t.reveal; paintReveal(); pullChat(false); if(on&&t.reveal.them) buzz([40,40,120]); }).catch(function(e){ toast(e.message); paintReveal(); }); }
+function viewPhoto(u,who){ var v=document.createElement('div'); v.className='viewer'; v.innerHTML='<img alt=""><p>'+esc(who||'')+' · shared because you both said yes. Be decent — screenshots happen, respect goes further.</p><button class="btn">Close</button>'; v.querySelector('img').src=u; v.onclick=function(){ v.remove(); }; document.body.appendChild(v); }
+
+/* ───────── PARTY (live room, nothing stored) ───────── */
+var P=null;
+function drawParty(){
+  if(!INFO||!INFO.ready){ $('view').innerHTML='<div class="party" style="background-image:url('+ART.party+')"><div class="ph"><b>The Party 🎉</b></div><div class="stage"><div class="gq">Make your card first</div><p style="margin:0 0 12px;color:var(--mut)">You show up at the party as your Messy look and name.</p><button class="btn pk" onclick="go(\'me\')">Make my card</button></div></div>'; return; }
+  $('view').innerHTML='<div class="party" style="background-image:url('+ART.party+')"><div class="ph"><b>The Party 🎉</b><span class="pill" id="pCount">joining…</span></div>'+
+    '<div class="crowd" id="pCrowd"></div><div class="stage" id="pStage"></div><div class="feed" id="pFeed"></div>'+
+    '<div class="pin"><input id="pIn" maxlength="140" placeholder="Say something to the room…" autocomplete="off"><button id="pSend">Send</button></div></div>';
+  joinParty();
+}
+function joinParty(){
+  if(P&&P.ch) return paintParty();
+  P={ch:null,people:{},game:null,votes:{},asks:[],answers:{},feed:[],mine:{},timer:null,hostT:null,lastSay:0,rot:0};
+  var key=ME.key;
+  var ch=sb.channel('msy-party',{config:{presence:{key:key},broadcast:{self:false}}});
+  P.ch=ch;
+  ch.on('presence',{event:'sync'},function(){ var st=ch.presenceState(), ppl={}; Object.keys(st).forEach(function(k){ var m=st[k][0]; if(m) ppl[k]=m; }); P.people=ppl; paintParty(); hostTick(); });
+  ch.on('presence',{event:'join'},function(x){ var m=x.newPresences&&x.newPresences[0]; if(m&&x.key!==key) feedLine(null,(m.alias||'Someone')+' walked onto the pier 👋'); });
+  ch.on('broadcast',{event:'m'},function(x){ onParty(x.payload||{}); });
+  ch.subscribe(function(s){ if(s==='SUBSCRIBED'){ ch.track({alias:ME.alias,av:ME.av,at:Date.now()}); ch.send({type:'broadcast',event:'m',payload:{t:'hello'}}); } });
+  $('pSend').onclick=sayParty; $('pIn').onkeydown=function(e){ if(e.key==='Enter') sayParty(); };
+  P.hostT=setInterval(hostTick,1000);
+}
+function leaveParty(){ if(!P) return; try{ P.ch&&sb.removeChannel(P.ch); }catch(e){} clearInterval(P.hostT); P=null; }
+function bcast(p){ if(P&&P.ch) P.ch.send({type:'broadcast',event:'m',payload:p}); }
+function amHost(){ var ks=Object.keys(P.people); if(!ks.length) return false; ks.sort(function(a,b){ return (P.people[a].at||0)-(P.people[b].at||0)||(a<b?-1:1); }); return ks[0]===ME.key; }
+function feedLine(who,text){ P.feed.push({w:who,t:text}); if(P.feed.length>60) P.feed.shift(); var F=$('pFeed'); if(!F) return;
+  F.innerHTML=P.feed.map(function(l){ return '<div class="fl'+(l.w?'':' s')+'">'+(l.w?'<b>'+esc(l.w)+'</b> ':'')+esc(l.t)+'</div>'; }).join(''); F.scrollTop=F.scrollHeight; }
+function sayParty(){ var i=$('pIn'), t=i.value.trim(); if(!t) return; if(Date.now()-P.lastSay<1500) return toast('Easy — one at a time'); P.lastSay=Date.now(); i.value='';
+  if(P.answering&&P.game&&P.game.seat===ME.key){ var qid=P.answering; P.answering=null; i.placeholder='Say something to the room…'; P.answers[qid]=t.slice(0,120); bcast({t:'answer',g:P.game.id,q:qid,x:t.slice(0,120)}); paintStage(); return; }
+  if(P.game&&P.game.kind==='hot'&&P.game.seat!==ME.key&&!P.game.done){ var q={id:Math.random().toString(36).slice(2,8),text:t.slice(0,120),from:ME.alias}; P.asks.push(q); bcast({t:'ask',g:P.game.id,q:q}); paintStage(); feedLine(null,'You asked the hot seat a question'); return; }
+  bcast({t:'say',a:ME.alias,x:t.slice(0,140)}); feedLine(ME.alias,t.slice(0,140)); }
+function onParty(m){
+  if(!P) return;
+  if(m.t==='say') feedLine(m.a,String(m.x||'').slice(0,140));
+  else if(m.t==='hello'){ if(amHost()&&P.game&&!P.game.done) bcast({t:'game',g:P.game}); }
+  else if(m.t==='game'){ if(!P.game||P.game.id!==m.g.id){ P.game=m.g; P.votes={}; P.asks=[]; P.answers={}; P.mine={}; buzz(10); } paintStage(); }
+  else if(m.t==='vote'){ if(P.game&&m.g===P.game.id){ P.votes[m.k]=m.p; paintStage(); } }
+  else if(m.t==='reveal'){ if(P.game&&m.g===P.game.id){ P.game.done=true; if(m.votes) P.votes=m.votes; paintStage(); } }
+  else if(m.t==='ask'){ if(P.game&&m.g===P.game.id){ P.asks.push(m.q); paintStage(); } }
+  else if(m.t==='answer'){ if(P.game&&m.g===P.game.id){ P.answers[m.q]=m.x; paintStage(); var q=P.asks.filter(function(a){ return a.id===m.q; })[0]; feedLine(null,'🔥 '+P.game.alias+' answered: “'+(q?q.text:'')+'” → '+m.x); } }
+}
+/* the host (whoever's been here longest) runs the games: a new one every ~35s, a reveal at 20s */
+function hostTick(){
+  if(!P||!amHost()) return; var n=Object.keys(P.people).length, now=Date.now(), g=P.game;
+  if(n<2){ if(g&&!g.done){ g.done=true; bcast({t:'reveal',g:g.id,votes:P.votes}); paintStage(); } return; }
+  if(g&&!g.done&&now>=g.ends){ g.done=true; bcast({t:'reveal',g:g.id,votes:P.votes}); paintStage(); return; }
+  if(!g||(g.done&&now>=g.ends+12000)){
+    var kinds=n>=3?['wyr','mlt','hot']:['wyr','mlt'], kind=kinds[P.rot++%kinds.length], id=Math.random().toString(36).slice(2,9), ng={id:id,kind:kind,ends:now+(kind==='hot'?60000:20000)};
+    if(kind==='wyr'){ var w=pick(WYR); ng.q='Would you rather…'; ng.opts=[w[0],w[1]]; }
+    if(kind==='mlt'){ ng.q=pick(MLT)+'…'; var ks=Object.keys(P.people).sort(function(){ return Math.random()-.5; }).slice(0,6); ng.opts=ks.map(function(k){ return P.people[k].alias; }); ng.keys=ks; }
+    if(kind==='hot'){ var ks2=Object.keys(P.people), s=pick(ks2); ng.seat=s; ng.alias=P.people[s].alias; ng.av=P.people[s].av; ng.q=ng.alias+' is in the hot seat 🔥'; }
+    P.game=ng; P.votes={}; P.asks=[]; P.answers={}; P.mine={}; bcast({t:'game',g:ng}); paintStage();
+  }
+}
+function paintParty(){
+  if(!P||TAB!=='party') return; var ks=Object.keys(P.people);
+  if($('pCount')) $('pCount').textContent=ks.length+' here';
+  var C=$('pCrowd'); if(C){ C.innerHTML=ks.map(function(k){ var p=P.people[k]; return '<button data-pk="'+esc(k)+'">'+av(p.av,50)+'<span>'+(k===ME.key?'You':esc(p.alias))+'</span></button>'; }).join('');
+    [].forEach.call(C.querySelectorAll('[data-pk]'),function(b){ b.onclick=function(){ personSheet(b.dataset.pk); }; }); }
+  paintStage();
+}
+function paintStage(){
+  var S=$('pStage'); if(!S||!P) return; var g=P.game, n=Object.keys(P.people).length;
+  if(!g){ S.innerHTML='<div class="gt">Party games</div><div class="gq">'+(n<2?'Waiting for one more person…':'Starting a game…')+'</div><div style="color:var(--mut);font-size:14px">Games start on their own once 2 people are here: Would You Rather, Most Likely To, and the Hot Seat (3+). Tap anyone up top to slide them a drink 🍹</div>'; return; }
+  var left=Math.max(0,g.ends-Date.now()), pct=g.done?0:Math.min(100,left/(g.kind==='hot'?600:200));
+  var h='<div class="gt">'+({wyr:'Would you rather',mlt:'Most likely to',hot:'Hot seat'})[g.kind]+(g.done?' · results':'')+'</div><div class="gq">'+esc(g.kind==='wyr'?'Pick one':g.q)+'</div>';
+  if(g.kind==='wyr'||g.kind==='mlt'){
+    var tally=g.opts.map(function(){ return 0; }), tot=0; Object.keys(P.votes).forEach(function(k){ var v=P.votes[k]; if(v>=0&&v<tally.length){ tally[v]++; tot++; } });
+    var mine=P.votes[ME.key], best=Math.max.apply(null,tally);
+    h+='<div class="opts">'+g.opts.map(function(o,i){ var show=g.done||mine!=null, w=show&&tot?Math.round(tally[i]/tot*100):0;
+      return '<button class="opt'+(mine===i?' mine':'')+'" data-v="'+i+'"'+(mine!=null||g.done?' disabled':'')+'><i class="bar" style="width:'+w+'%"></i><span>'+(g.done&&tally[i]===best&&best>0?'👑 ':'')+esc(o)+'</span>'+(show?'<em>'+w+'%</em>':'')+'</button>'; }).join('')+'</div>';
+  }
+  if(g.kind==='hot'){
+    var meSeat=g.seat===ME.key;
+    h+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">'+av(g.av,48)+'<div style="font-size:14px;color:var(--mut)">'+(meSeat?'That\'s you! Questions show up below — tap one to answer.':'Type a question below — it goes to '+esc(g.alias)+' anonymously.')+'</div></div>';
+    h+=P.asks.slice(-5).map(function(q){ var a=P.answers[q.id]; return '<div class="pr" style="margin-bottom:6px;padding:9px 12px"><div class="q">'+esc(q.text)+'</div>'+(a?'<div class="a">'+esc(a)+'</div>':meSeat&&!g.done?'<button class="sbtn pk" data-ans="'+esc(q.id)+'" style="margin-top:6px">Answer</button>':'')+'</div>'; }).join('')||'<div style="font-size:14px;color:var(--mut)">No questions yet…</div>';
+  }
+  h+='<div class="tm"><i style="width:'+pct+'%"></i></div>';
+  S.innerHTML=h;
+  [].forEach.call(S.querySelectorAll('[data-v]'),function(b){ b.onclick=function(){ var v=+b.dataset.v; P.votes[ME.key]=v; bcast({t:'vote',g:g.id,k:ME.key,p:v}); buzz(8); paintStage(); }; });
+  [].forEach.call(S.querySelectorAll('[data-ans]'),function(b){ b.onclick=function(){ P.answering=b.dataset.ans; var i=$('pIn'); i.placeholder='Your answer…'; i.focus(); }; });
+  clearTimeout(P.stT); if(!g.done) P.stT=setTimeout(paintStage,1000);
+}
+function personSheet(k){
+  var p=P&&P.people[k]; if(!p) return;
+  var s=document.createElement('div'); s.className='sheet';
+  s.innerHTML='<div style="text-align:center">'+'<div style="display:flex;justify-content:center">'+av(p.av,110)+'</div><b style="display:block;font:700 24px Fredoka;margin:8px 0 14px">'+esc(k===ME.key?'You':p.alias)+'</b>'+
+    (k===ME.key?'<button class="btn wide" id="psX">Looking good 😎</button>':'<button class="btn pk wide" id="psD">🍹 Slide a drink</button><div style="height:8px"></div><button class="btn gh wide" id="psR" style="background:#e11d4814;color:#be123c">Report</button><div style="height:8px"></div><button class="btn wide" id="psX">Close</button>')+'</div>';
+  document.body.appendChild(s);
+  $('psX').onclick=function(){ s.remove(); };
+  if($('psD')) $('psD').onclick=function(){ var b=this; b.disabled=true; rpc('msy_swipe',{p_key:k,p_like:true,p_drink:true}).then(function(r){ s.remove(); if(r.match) showMatch(r.match,r.them); else { toast('🍹 Drink sent to '+p.alias+'. If they take it, you match.'); bcast({t:'say',a:'🍹',x:ME.alias+' slid '+p.alias+' a drink'}); feedLine('🍹',ME.alias+' slid '+p.alias+' a drink'); } }).catch(function(e){ toast(e.message); b.disabled=false; }); };
+  if($('psR')) $('psR').onclick=function(){ if(!this.dataset.s){ this.dataset.s=1; this.textContent='Tap again to report'; return; } rpc('msy_report',{p_key:k,p_where:'party'}).then(function(){ s.remove(); toast('Reported. Thanks for keeping it good.'); }).catch(function(e){ toast(e.message); }); };
+}
+</script>
+</body>
+</html>

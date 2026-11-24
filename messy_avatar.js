@@ -199,7 +199,7 @@
       if (t.hasAttribute("data-op")) { ED[CAT] = +t.getAttribute("data-op"); paintEd(); try { navigator.vibrate && navigator.vibrate(6); } catch (x) {} return; }
       var a = t.getAttribute("data-mav");
       if (a === "rand") { ED = rnd(); paintEd(); }
-      if (a === "save") { t.disabled = true; save(ED).then(function () { el.remove(); paintDoor(); paintRoom(); try { typeof toast === "function" && toast("✓ Look saved — your date sees it next time"); } catch (x) {} }, function () { t.disabled = false; }); }
+      if (a === "save") { t.disabled = true; save(ED).then(function () { el.remove(); paintDoor(); paintRoom(); try { window.MESSY_AV_ONSAVE && window.MESSY_AV_ONSAVE(enc(ED)); } catch (x) {} try { typeof toast === "function" && toast("✓ Look saved — your date sees it next time"); } catch (x) {} }, function () { t.disabled = false; }); }
     });
     paintEd();
   }
