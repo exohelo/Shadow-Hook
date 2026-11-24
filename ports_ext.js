@@ -1177,3 +1177,50 @@
   prune(); wrap();
   var n = 0, t = setInterval(function () { prune(); wrap(); if (++n > 12) { clearInterval(t); setInterval(prune, 30000); } }, 2500);
 })();
+
+/* #racedelta(nov23) — every time the app woke up it re-downloaded the whole Race book (~1,000 rows, ~6s on a weak signal)
+   and redrew the Race even when nothing had changed — a 3s freeze on Ports/Social for Android phones. Now: a full load
+   on open and every 30 min (that's also what catches deleted rows), and in between only the rows changed since the last
+   look (race_book.updated_at, stamped by a server trigger). No changes → no redraw. */
+(function () {
+  var since = null, fullAt = 0, busy = false, busyAt = 0, FULL_EVERY = 30 * 60 * 1000;
+  function stampNewest() {
+    return window.SB.from("race_book").select("updated_at").order("updated_at", { ascending: false }).limit(1)
+      .then(function (q) { if (q && !q.error && q.data && q.data[0]) since = q.data[0].updated_at; });
+  }
+  function wrap() {
+    var orig = window.sbLoadRaceLive;
+    if (typeof orig !== "function" || orig.__delta) return !!(orig && orig.__delta);
+    var w = async function () {
+      if (!window.SB || (busy && Date.now() - busyAt < 20000)) return;   // one at a time; a stuck request frees the slot after 20s
+      busy = true; busyAt = Date.now();
+      try {
+        var full = !since || !window.RACE_LIVE || Date.now() - fullAt > FULL_EVERY;
+        if (full) {
+          var mark = new Date(Date.now() - 2000).toISOString(), before = window.RACE_LIVE;
+          await orig.apply(this, arguments);
+          if (window.RACE_LIVE === before) return;   // the full load failed: stay in full mode and try again next time
+          fullAt = Date.now(); since = mark;
+          try { await stampNewest(); } catch (e) {}
+          return;
+        }
+        var from = new Date(new Date(since).getTime() - 120000).toISOString();   // 2-min overlap: nothing slips between looks
+        var q = await window.SB.from("race_book").select("card,hrs,thru,since,asof,updated_at").gt("updated_at", from).order("updated_at", { ascending: true }).limit(1000);
+        if (!q || q.error || !Array.isArray(q.data)) { await orig.apply(this, arguments); fullAt = Date.now(); return; }
+        if (q.data.length >= 1000) { await orig.apply(this, arguments); fullAt = Date.now(); try { await stampNewest(); } catch (e) {} return; }
+        var live = window.RACE_LIVE, changed = 0;
+        q.data.forEach(function (x) {
+          var c = String(x.card || "").toUpperCase().trim(); if (!/^[A-Z]\d{2,5}$/.test(c)) return;
+          if (x.updated_at && x.updated_at > since) since = x.updated_at;
+          if (!(+x.hrs > 0)) { if (live[c]) { delete live[c]; changed++; } return; }
+          var n = { hrs: +x.hrs, thru: x.thru || null, since: +x.since || 0, asof: x.asof || null }, o = live[c];
+          if (!o || o.hrs !== n.hrs || o.thru !== n.thru || o.since !== n.since || o.asof !== n.asof) { live[c] = n; changed++; }
+        });
+        try { DEVLOG.data("race_book", { ok: true, rows: q.data.length, latest: changed + " changed since last look (delta)" }); } catch (e) {}
+        if (changed) { try { raceLiveRebuild(); } catch (e) {} try { updateRace(); } catch (e) {} }
+      } catch (e) {} finally { busy = false; }
+    };
+    w.__delta = true; window.sbLoadRaceLive = w; return true;
+  }
+  if (!wrap()) { var n = 0, t = setInterval(function () { if (wrap() || ++n > 40) clearInterval(t); }, 500); }
+})();
