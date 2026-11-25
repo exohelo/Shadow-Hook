@@ -160,7 +160,7 @@
   function clear(){
     var D=document.documentElement;
     if(document.hidden||document.getElementById('boot')||D.classList.contains('at-gate'))return false;
-    if(document.querySelector('.sheet.on,.dlg.on,.roomscreen.on,#pmCasino.on,#vnPop.on,#scGate.on,[id$="View"].on'))return false;
+    if(document.querySelector('.sheet.on,.dlg.on,.roomscreen.on,#pmCasino.on,#shkGame.on,#vnPop.on,#scGate.on,[id$="View"].on'))return false;
     try{ if(typeof window.pmIsOpen==='function'&&window.pmIsOpen())return false; }catch(e){}
     var a=document.activeElement; if(a&&/INPUT|TEXTAREA|SELECT/.test(a.tagName))return false;
     return true;

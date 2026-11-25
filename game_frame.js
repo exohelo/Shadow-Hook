@@ -142,7 +142,7 @@
   /* a link straight to a game page comes back as /#game=/messy.html?t=matches */
   function fromHash() {
     var m = /[#&]game=([^&]+)/.exec(location.hash || ""); if (!m) return;
-    var u = decodeURIComponent(m[1]); if (!/^\/(messy|flip|board-games|corral-run)\.html/.test(u)) return;
+    var u = decodeURIComponent(m[1]); if (!/^\/(messy|flip|board-games|corral-run)(\.html)?([?#]|$)/.test(u)) return;
     try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
     var tries = 0, t = setInterval(function () {
       if (document.querySelector(".topbar") && document.body && (window.__shkUid || ++tries > 20)) { clearInterval(t); open(u); }
