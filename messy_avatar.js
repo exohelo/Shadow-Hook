@@ -172,7 +172,7 @@
     { k: "m", n: "MOUTH", c: [null, "cigar", "toothpick"], at: { cigar: [47, 47, 40], toothpick: [46, 51, 34] } },
     { k: "a", n: "EARS", c: [null, "earrings"], at: { earrings: [8, 36, 84] } },
     { k: "c", n: "CHEEK", c: [null, "tattoo"], at: { tattoo: [59, 41, 9] } },
-    { k: "n", n: "NECK", c: [null, "chain", "lei", "bandana", "scarf", "lights"], at: { chain: [18, 52, 64], lei: [10, 48, 80], bandana: [22, 56, 56], scarf: [16, 48, 68], lights: [8, 50, 84] } },
+    { k: "n", n: "NECK", c: [null, "chain", "lei", "bandana", "scarf", "lights"], at: { chain: [18, 52, 64], lei: [10, 48, 80], bandana: [22, 56, 56], scarf: [16, 55, 68], lights: [8, 50, 84] } },
     { k: "k", n: "STICKER", c: [null, "heart", "flame", "anchor", "rose", "candycane", "gift", "snowflake", "ornament"],
       at: { heart: [66, 62, 40], flame: [66, 58, 40], anchor: [66, 60, 40], rose: [64, 58, 42], candycane: [66, 56, 40], gift: [64, 60, 40], snowflake: [64, 60, 40], ornament: [66, 58, 38] } }
   ];
