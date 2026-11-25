@@ -1,10 +1,12 @@
-/* messy_avatar.js — #messyav(nov24). Build your own Messy look: skin, hair, face hair, eyes, mouth, hard hat or beanie,
-   hi-vis vest or hoodie, a chain or a teardrop tat, the neon ring. A member asked for it ("people like fixing them up").
-     · door page: a YOUR LOOK card under YOUR CARD, with EDIT → the builder (live preview, 🎲 random, SAVE)
-     · on a date: your look and theirs replace the two letter hexes at the top. It rides inside the sealed "hi"
-       (dates.js sends MESSY_AV.code()), so the relay never sees it either — same as the chat.
-   The look is a short code ("1.3.5.0.2…"), kept on the phone and in user_kv (shadowhook_messy_av) so it follows you to
-   a new phone. It's drawn here as SVG; nothing is uploaded and no photo is ever involved. Loaded by ports_ext.js. */
+/* messy_avatar.js — #messyav(nov24) · #mjlook(nov24). Your Messy look.
+   v2 — the looks are Midjourney art: 48 finished characters (man/woman × 4 skin tones × 6 hair-or-hat styles), all
+   one style. The builder feels like customizing — pick I'M A, SKIN, HAIR & HATS, GLOW — and each pick swaps in the
+   matching character, so it always looks right (no pasted-on pieces). A look is a short code: "p2.<g><s><h>.<glow>"
+   (e.g. p2.mb1.0). Looks saved with the old drawn builder (codes like "1.2.5.0…") still draw the old way.
+     · door page: a YOUR LOOK card under YOUR CARD, with EDIT → the builder
+     · on a date: your look and theirs replace the two letter hexes (it rides inside the sealed "hi" — MESSY_AV.code())
+     · messy.html uses MESSY_AV.svg(code, px), MESSY_AV.open() and MESSY_AV_ONSAVE(code)
+   Kept on the phone and in user_kv (shadowhook_messy_av). Loaded by ports_ext.js and messy.html. */
 (function () {
   "use strict";
   if (window.MESSY_AV) return;
@@ -136,21 +138,39 @@
     return s.join("");
   }
 
+
+  /* ───────── v2: the Midjourney set ───────── */
+  var ART = {"mf0": "2c156951-dc76-4dfc-88e3-e43d1a5517b6/0_1", "mf1": "f7859611-afb8-46da-b43f-e0a907db4e47/0_0", "mf2": "84c81b69-0d01-4d8b-add9-b33fc731f705/0_1", "mf3": "a274368a-162d-4634-a43c-20c9944821b3/0_1", "mf4": "fd1f7017-2a0d-4579-b997-5e846427f074/0_0", "mf5": "01854baf-b5e2-45eb-b11a-1048f7704d93/0_1", "mt0": "171cd64d-25c7-4098-8949-1e175ba343b0/0_1", "mt1": "9b3a236f-dc78-4dd0-ada2-374c901726d3/0_1", "mt2": "0a9f0ceb-1775-454d-991a-8e8489d3ebf7/0_0", "mt3": "75b6a743-db2f-4a62-ab89-d5784de8b58f/0_1", "mt4": "a1321688-358e-4298-a8db-35f1d69d5637/0_3", "mt5": "7481c336-cb5f-4082-8710-2cd088a764a2/0_2", "mb0": "8ebaea34-11b2-45f5-a751-0d0746157308/0_1", "mb1": "4259ce19-6da4-4408-808c-e30b68bff029/0_1", "mb2": "bf532de1-bdc7-45ad-8319-b9039741e394/0_1", "mb3": "a06943d0-7fe4-431e-a57e-b83cfeaf5a71/0_2", "mb4": "c70ffdbf-70fe-42f4-aadc-376c077d5323/0_1", "mb5": "1429cc17-1809-4ce5-a620-a75d56e529e8/0_2", "md0": "ded84256-4874-412f-8e05-ff07d5f71a06/0_1", "md1": "079ec70f-77a2-411d-bea9-a435f43ee44e/0_1", "md2": "17cbcdf4-5325-4c37-a666-587881a4241c/0_1", "md3": "fc2c2c11-1eae-4d48-9eb9-6cb5a0e1f01c/0_1", "md4": "7fc11c83-7d57-4708-894d-a15397e64128/0_1", "md5": "b4f7c15c-24de-4902-9faf-10e6bd7e9540/0_2", "wf0": "8de4dabf-3a7a-42f8-8d65-1fecaa26668f/0_1", "wf1": "cab6daf8-969e-412a-8295-9daabe58d259/0_1", "wf2": "728d0e19-1604-4280-a49d-dfe2cb088b88/0_1", "wf3": "2d957175-3a66-4c01-8cdf-b720a2991f74/0_1", "wf4": "28f2207f-5fc3-4db9-8917-2d39dd000aa8/0_1", "wf5": "beed6271-841a-46e3-9662-2ee0086ece77/0_1", "wt0": "060b13ec-8815-4090-87b8-aa2f71189b50/0_1", "wt1": "12fe06b8-1e70-45a0-810c-75dd61b15303/0_1", "wt2": "2459015c-8abf-464b-8bc0-9c88adc41de8/0_2", "wt3": "0618adba-12e8-41ec-80c9-4d75e73c6037/0_2", "wt4": "b5671846-795e-4e7d-9979-23c61cc446b9/0_2", "wt5": "6cd23a4d-bb4d-4827-a9f4-1ce6be9a8ff0/0_2", "wb0": "d34483fe-7965-4ab1-b808-b8ebd2c86656/0_1", "wb1": "a4943707-c738-4bb8-85bb-7d101d4ee840/0_1", "wb2": "1e85ae69-cc49-4ff0-b702-6d7b39313754/0_1", "wb3": "3e8e03b8-4429-468d-a5ce-c3b111e7fb2d/0_2", "wb4": "ad21115b-7639-48c5-9afb-2c3429852eb2/0_1", "wb5": "61ad1209-a2a9-4477-8286-c5ff19ee9fe6/0_1", "wd0": "dbb512e6-3b18-4083-93a8-5d8859361605/0_1", "wd1": "8e0a461c-3a24-405e-b884-0e37e60363fc/0_1", "wd2": "79ddee35-35b6-44d6-b34b-d05da7b21ffd/0_1", "wd3": "38d551c4-9d18-4c6d-b7f5-7e72cfee08f1/0_2", "wd4": "b900f0ba-686e-462a-b593-2a0983d028a7/0_1", "wd5": "00218583-873a-472b-bc3b-49d10f749c90/0_1"};
+  var GLOW = ["#ff3d9a", "#b56cff", "#ffe600", "#2ee6d6", "#ff7a1a", "#4f8cff", "#39ff88", "#ffffff"];
+  var SKINS = [["f", "#f3d2b6", "Fair"], ["t", "#d8a878", "Tan"], ["b", "#a8693f", "Brown"], ["d", "#6b3f22", "Deep"]];
+  var HEADS = { m: ["Buzz cut", "Curls + beard", "Slick + 'stache", "Man bun", "Hard hat", "Beanie"], w: ["Long & straight", "Big curls", "Ponytail", "Braids", "Hard hat", "Beanie"] };
+  function p2(code) { var m = /^p2\.([mw])([ftbd])([0-5])\.([0-7])$/.exec(String(code || "")); return m ? { g: m[1], s: m[2], h: +m[3], r: +m[4] } : null; }
+  function p2enc(o) { return "p2." + o.g + o.s + o.h + "." + o.r; }
+  function img(o, size) { var a = ART[o.g + o.s + o.h]; return a ? "https://cdn.midjourney.com/" + a + "_" + (size > 200 ? 640 : 384) + "_N.webp" : ""; }
+  function face(o, px) {
+    return '<div style="width:' + px + "px;height:" + px + "px;border-radius:50%;box-sizing:border-box;border:" + Math.max(2, Math.round(px / 28)) + "px solid " + GLOW[o.r] +
+      ";background:#f3b7c4 url(" + img(o, px * 2) + ") 50% 22%/150% no-repeat;box-shadow:0 0 " + Math.round(px / 8) + "px " + GLOW[o.r] + '66;flex:none"></div>';
+  }
+  function html(code, px) { var o = p2(code); if (o) return face(o, px); var old = parse(code); return old ? svg(old, px) : face({ g: "m", s: "b", h: 1, r: 0 }, px); }
+  function rnd2() { var g = Math.random() < 0.5 ? "m" : "w"; return { g: g, s: SKINS[Math.floor(Math.random() * 4)][0], h: Math.floor(Math.random() * 6), r: Math.floor(Math.random() * GLOW.length) }; }
+  var DEF2 = parse("0.2.2.0.0.0.0.0.0.0.0");
+  function preload() { try { Object.keys(ART).forEach(function (k, i) { setTimeout(function () { var im = new Image(); im.src = "https://cdn.midjourney.com/" + ART[k] + "_384_N.webp"; }, i * 40); }); } catch (e) {} }
+
   /* ───────── storage ───────── */
-  var DEF = parse("0.2.2.0.0.0.0.0.0.0.0");
-  var MINE = null;
-  try { MINE = parse(localStorage.getItem(LS)); } catch (e) {}
+  var MINE = null;   /* the saved code string (v2 or an old drawn one) */
+  function valid(c) { return !!(p2(c) || parse(c)); }
+  try { var ls = localStorage.getItem(LS); if (valid(ls)) MINE = ls; } catch (e) {}
   function sb() { return window.SB; }
   function pull() {
     try { var u = window.__shkUid; if (!sb() || !u) return;
       sb().from("user_kv").select("v").eq("owner", u).eq("k", KV).maybeSingle().then(function (r) {
-        var v = r && r.data && parse(r.data.v); if (v && enc(v) !== (MINE && enc(MINE))) { MINE = v; try { localStorage.setItem(LS, enc(v)); } catch (e) {} paintDoor(); }
+        var v = r && r.data && r.data.v; if (valid(v) && v !== MINE) { MINE = v; try { localStorage.setItem(LS, v); } catch (e) {} paintDoor(); }
       }, function () {});
     } catch (e) {}
   }
-  function save(o) {
-    MINE = o; var c = enc(o); try { localStorage.setItem(LS, c); } catch (e) {}
-    try { var u = window.__shkUid; if (sb() && u) return sb().from("user_kv").upsert({ owner: u, k: KV, v: c, updated_at: new Date().toISOString() }, { onConflict: "owner,k" }); } catch (e) {}
+  function save(code) {
+    MINE = code; try { localStorage.setItem(LS, code); } catch (e) {}
+    try { var u = window.__shkUid; if (sb() && u) return sb().from("user_kv").upsert({ owner: u, k: KV, v: code, updated_at: new Date().toISOString() }, { onConflict: "owner,k" }); } catch (e) {}
     return Promise.resolve();
   }
 
@@ -159,61 +179,66 @@
     if (document.getElementById("mavCss")) return;
     var st = document.createElement("style"); st.id = "mavCss";
     st.textContent =
-      ".hex.mav-on{background:none!important;width:46px!important;height:46px!important;clip-path:none!important;border-radius:50%;overflow:hidden;padding:0!important;font-size:0!important}" +
+      ".hex.mav-on{background:none!important;width:46px!important;height:46px!important;clip-path:none!important;border-radius:50%;overflow:visible;padding:0!important;font-size:0!important}" +
       "#mavDoor .mav-pv{width:56px;height:56px;flex:none}" +
       "#mavSheet{position:fixed;inset:0;z-index:2147483000;background:#000b;display:flex;align-items:flex-end;justify-content:center}" +
-      "#mavSheet .mav-p{width:100%;max-width:520px;max-height:92vh;overflow:auto;background:#0e0710;border:2px solid " + NEON + ";border-bottom:0;border-radius:22px 22px 0 0;box-shadow:0 0 30px #ff3d9a55;padding:14px 14px calc(env(safe-area-inset-bottom) + 16px);color:#f3e9ee;font-family:'Barlow Condensed',Inter,system-ui,sans-serif}" +
-      "#mavSheet .mav-hd{display:flex;align-items:center;gap:8px;font:400 20px/1 Anton,sans-serif;letter-spacing:.08em;color:" + NEON + ";text-shadow:0 0 8px #ff3d9a88}" +
+      "#mavSheet .mav-p{width:100%;max-width:520px;max-height:92vh;overflow:auto;background:#140b18;border:2px solid " + NEON + ";border-bottom:0;border-radius:24px 24px 0 0;box-shadow:0 0 30px #ff3d9a55;padding:12px 16px calc(env(safe-area-inset-bottom) + 16px);color:#f3e9ee;font-family:Inter,system-ui,sans-serif}" +
+      "#mavSheet .mav-grab{width:44px;height:5px;border-radius:3px;background:#ffffff40;margin:0 auto 10px}" +
+      "#mavSheet .mav-hd{display:flex;align-items:center;gap:8px;font:700 19px/1 Fredoka,Inter,sans-serif;letter-spacing:.02em;color:#fff}" +
       "#mavSheet .mav-hd button{margin-left:auto;background:none;border:0;color:#8f979e;font-size:22px;cursor:pointer}" +
-      "#mavSheet .mav-big{display:flex;justify-content:center;margin:10px 0 8px}" +
-      "#mavSheet .mav-cats{display:flex;gap:6px;overflow-x:auto;padding:4px 0 10px;scrollbar-width:none}#mavSheet .mav-cats::-webkit-scrollbar{display:none}" +
-      "#mavSheet .mav-cats button{flex:none;padding:7px 11px;border-radius:999px;border:2px solid #ffffff22;background:#1a0f17;color:#d7c6cf;font:600 13px/1 Inter,system-ui,sans-serif;letter-spacing:.06em;cursor:pointer}" +
-      "#mavSheet .mav-cats button.on{border-color:" + NEON + ";color:#fff;box-shadow:0 0 10px #ff3d9a66}" +
-      "#mavSheet .mav-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:8px}" +
-      "#mavSheet .mav-op{display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 2px;border-radius:14px;border:2px solid transparent;background:#1a0f17;color:#cbb8c3;font:600 11px/1.1 Inter,system-ui,sans-serif;cursor:pointer}" +
-      "#mavSheet .mav-op.on{border-color:" + NEON + ";color:#fff}" +
-      "#mavSheet .mav-sw{width:44px;height:44px;border-radius:50%;border:2px solid #ffffff33}" +
-      "#mavSheet .mav-act{display:flex;gap:8px;margin-top:14px}" +
-      "#mavSheet .mav-act button{flex:1;padding:13px;border-radius:14px;font:400 17px/1 Anton,sans-serif;letter-spacing:.1em;cursor:pointer}" +
-      "#mavSheet .mav-rand{background:#1a0f17;border:2px solid " + VIOLET + ";color:" + VIOLET + "}" +
-      "#mavSheet .mav-save{background:" + NEON + ";border:0;color:#fff;box-shadow:0 0 16px #ff3d9a88}";
+      "#mavSheet .mav-big{display:flex;justify-content:center;margin:12px 0 4px;position:relative;height:172px}" +
+      "#mavSheet .mav-big>div{position:absolute;transition:opacity .25s,transform .25s}" +
+      "#mavSheet .mav-big>div.out{opacity:0;transform:scale(.94)}" +
+      "#mavSheet .mav-lbl{font:700 11px/1 Inter,sans-serif;letter-spacing:.12em;color:#b9a9c4;margin:14px 0 8px}" +
+      "#mavSheet .mav-seg{display:flex;gap:8px}#mavSheet .mav-seg button{flex:1;padding:11px;border-radius:14px;border:2px solid #ffffff1f;background:#1f1424;color:#e9dcef;font:600 15px/1 Fredoka,Inter,sans-serif;cursor:pointer}" +
+      "#mavSheet .mav-seg button.on{border-color:" + NEON + ";color:#fff;background:#ff3d9a1f}" +
+      "#mavSheet .mav-sk{display:flex;gap:10px}#mavSheet .mav-sk button{width:46px;height:46px;border-radius:50%;border:3px solid transparent;cursor:pointer;box-shadow:0 0 0 2px #ffffff22}" +
+      "#mavSheet .mav-sk button.on{border-color:#fff;box-shadow:0 0 0 2px " + NEON + "}" +
+      "#mavSheet .mav-hs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}" +
+      "#mavSheet .mav-hs button{display:flex;flex-direction:column;align-items:center;gap:5px;padding:8px 4px;border-radius:16px;border:2px solid transparent;background:#1f1424;color:#cbb8c3;font:600 12px/1.1 Inter,sans-serif;cursor:pointer}" +
+      "#mavSheet .mav-hs button.on{border-color:" + NEON + ";color:#fff;background:#ff3d9a14}" +
+      "#mavSheet .mav-gl{display:flex;gap:9px;flex-wrap:wrap}#mavSheet .mav-gl button{width:30px;height:30px;border-radius:50%;border:3px solid #140b18;cursor:pointer;box-shadow:0 0 0 2px #ffffff22}" +
+      "#mavSheet .mav-gl button.on{box-shadow:0 0 0 3px #fff}" +
+      "#mavSheet .mav-act{display:flex;gap:8px;margin-top:16px}" +
+      "#mavSheet .mav-act button{flex:1;padding:14px;border-radius:16px;font:700 17px/1 Fredoka,Inter,sans-serif;letter-spacing:.04em;cursor:pointer}" +
+      "#mavSheet .mav-rand{background:#1f1424;border:2px solid " + VIOLET + ";color:#d8b8ff}" +
+      "#mavSheet .mav-save{background:linear-gradient(135deg,#ff6f9a,#ff3d9a);border:0;color:#fff;box-shadow:0 0 16px #ff3d9a88}";
     (document.head || document.documentElement).appendChild(st);
   }
 
-  /* ───────── the builder ───────── */
-  var ED = null, CAT = "hair";
+  /* ───────── the builder (v2) ───────── */
+  var ED = null;
   function openEditor() {
-    css(); ED = JSON.parse(JSON.stringify(MINE || DEF));
+    css(); preload();
+    ED = p2(MINE) || { g: "m", s: "b", h: 1, r: 0 };
     var el = document.getElementById("mavSheet"); if (el) el.remove();
     el = document.createElement("div"); el.id = "mavSheet"; el.setAttribute("role", "dialog"); el.setAttribute("aria-label", "Build your Messy look");
-    el.innerHTML = '<div class="mav-p"><div class="mav-hd">YOUR MESSY LOOK<button type="button" data-mav="x" aria-label="Close">✕</button></div>' +
-      '<div class="mav-big" id="mavBig"></div><div class="mav-cats" id="mavCats"></div><div class="mav-grid" id="mavGrid"></div>' +
-      '<div class="mav-act"><button type="button" class="mav-rand" data-mav="rand">🎲 RANDOM</button><button type="button" class="mav-save" data-mav="save">SAVE</button></div>' +
-      '<div style="margin-top:10px;font:500 12px/1.35 Inter,system-ui,sans-serif;color:#8f979e;text-align:center">Your date sees this look instead of a letter. It travels sealed with the chat — no photos, no names.</div></div>';
+    el.innerHTML = '<div class="mav-p"><div class="mav-grab"></div><div class="mav-hd">Your Messy look<button type="button" data-mav="x" aria-label="Close">✕</button></div>' +
+      '<div class="mav-big" id="mavBig"></div><div id="mavOpts"></div>' +
+      '<div class="mav-act"><button type="button" class="mav-rand" data-mav="rand">🎲 Surprise me</button><button type="button" class="mav-save" data-mav="save">Save</button></div>' +
+      '<div style="margin-top:10px;font:500 12px/1.35 Inter,system-ui,sans-serif;color:#8f979e;text-align:center">Your look is all anyone sees on Messy. No photos, no names.</div></div>';
     document.body.appendChild(el);
     el.addEventListener("click", function (e) {
-      var t = e.target.closest("[data-mav],[data-cat],[data-op]");
+      var t = e.target.closest("[data-mav],[data-k]");
       if (e.target === el || (t && t.getAttribute("data-mav") === "x")) { el.remove(); return; }
       if (!t) return;
-      if (t.hasAttribute("data-cat")) { CAT = t.getAttribute("data-cat"); paintEd(); return; }
-      if (t.hasAttribute("data-op")) { ED[CAT] = +t.getAttribute("data-op"); paintEd(); try { navigator.vibrate && navigator.vibrate(6); } catch (x) {} return; }
+      if (t.hasAttribute("data-k")) { ED[t.getAttribute("data-k")] = t.getAttribute("data-k") === "h" || t.getAttribute("data-k") === "r" ? +t.getAttribute("data-v") : t.getAttribute("data-v"); paintEd(true); try { navigator.vibrate && navigator.vibrate(6); } catch (x) {} return; }
       var a = t.getAttribute("data-mav");
-      if (a === "rand") { ED = rnd(); paintEd(); }
-      if (a === "save") { t.disabled = true; save(ED).then(function () { el.remove(); paintDoor(); paintRoom(); try { window.MESSY_AV_ONSAVE && window.MESSY_AV_ONSAVE(enc(ED)); } catch (x) {} try { typeof toast === "function" && toast("✓ Look saved — your date sees it next time"); } catch (x) {} }, function () { t.disabled = false; }); }
+      if (a === "rand") { ED = rnd2(); paintEd(true); }
+      if (a === "save") { t.disabled = true; var c = p2enc(ED); save(c).then(function () { el.remove(); paintDoor(); paintRoom(); try { window.MESSY_AV_ONSAVE && window.MESSY_AV_ONSAVE(c); } catch (x) {} try { typeof toast === "function" && toast("✓ Look saved"); } catch (x) {} }, function () { t.disabled = false; }); }
     });
-    paintEd();
+    paintEd(false);
   }
-  function paintEd() {
+  function paintEd(anim) {
     var big = document.getElementById("mavBig"); if (!big) return;
-    big.innerHTML = svg(ED, 150);
-    document.getElementById("mavCats").innerHTML = F.map(function (f) { return '<button type="button" data-cat="' + f[0] + '"' + (f[0] === CAT ? ' class="on"' : "") + ">" + f[1] + "</button>"; }).join("");
-    var f = F.filter(function (x) { return x[0] === CAT; })[0], pal = { ring: RING, skin: SKIN, hairc: HAIRC, topc: TOPC }[CAT], h = "";
-    for (var i = 0; i < f[2]; i++) {
-      var on = ED[CAT] === i ? " on" : "";
-      if (f[3] === "c") h += '<button type="button" class="mav-op' + on + '" data-op="' + i + '" aria-label="Color ' + (i + 1) + '"><span class="mav-sw" style="background:' + pal[i] + '"></span></button>';
-      else { var o = JSON.parse(JSON.stringify(ED)); o[CAT] = i; if (CAT === "hair") o.hat = 0; h += '<button type="button" class="mav-op' + on + '" data-op="' + i + '">' + svg(o, 56) + "<span>" + NAMES[CAT][i] + "</span></button>"; }
-    }
-    document.getElementById("mavGrid").innerHTML = h;
+    var nw = document.createElement("div"); nw.innerHTML = face(ED, 168);
+    if (anim) { nw.classList.add("out"); [].forEach.call(big.children, function (c) { c.classList.add("out"); setTimeout(function () { c.remove(); }, 260); }); big.appendChild(nw); requestAnimationFrame(function () { requestAnimationFrame(function () { nw.classList.remove("out"); }); }); }
+    else { big.innerHTML = ""; big.appendChild(nw); }
+    var h = '<div class="mav-lbl">I’M A</div><div class="mav-seg"><button data-k="g" data-v="m"' + (ED.g === "m" ? ' class="on"' : "") + '>Man</button><button data-k="g" data-v="w"' + (ED.g === "w" ? ' class="on"' : "") + ">Woman</button></div>";
+    h += '<div class="mav-lbl">SKIN</div><div class="mav-sk">' + SKINS.map(function (s) { return '<button data-k="s" data-v="' + s[0] + '" aria-label="' + s[2] + '" style="background:' + s[1] + '"' + (ED.s === s[0] ? ' class="on"' : "") + "></button>"; }).join("") + "</div>";
+    h += '<div class="mav-lbl">HAIR & HATS</div><div class="mav-hs">' + HEADS[ED.g].map(function (n, i) { var o = { g: ED.g, s: ED.s, h: i, r: ED.r }; return '<button data-k="h" data-v="' + i + '"' + (ED.h === i ? ' class="on"' : "") + ">" + face(o, 64) + "<span>" + n + "</span></button>"; }).join("") + "</div>";
+    h += '<div class="mav-lbl">GLOW</div><div class="mav-gl">' + GLOW.map(function (c, i) { return '<button data-k="r" data-v="' + i + '" aria-label="Glow ' + (i + 1) + '" style="background:' + c + '"' + (ED.r === i ? ' class="on"' : "") + "></button>"; }).join("") + "</div>";
+    document.getElementById("mavOpts").innerHTML = h;
   }
 
   /* ───────── where it shows ───────── */
@@ -229,8 +254,8 @@
       anchor.parentNode.insertBefore(box, anchor.nextSibling);
       box.addEventListener("click", function (e) { if (e.target.closest("[data-mav-edit]")) { e.stopPropagation(); openEditor(); } });
     }
-    var h = '<div class="mav-pv">' + svg(MINE || DEF, 56) + '</div><div style="flex:1;min-width:0"><div class="msy-h" style="color:' + VIOLET + '">YOUR LOOK · YOUR DATE SEES IT</div>' +
-      '<div style="font-size:13px;font-weight:600;color:#d7c6cf">' + (MINE ? "Looking good. Fix it up any time." : "Build your look — hair, hat, vest, the works.") + "</div></div>" +
+    var h = '<div class="mav-pv">' + html(MINE, 56) + '</div><div style="flex:1;min-width:0"><div class="msy-h" style="color:' + VIOLET + '">YOUR LOOK · YOUR DATE SEES IT</div>' +
+      '<div style="font-size:13px;font-weight:600;color:#d7c6cf">' + (MINE ? "Looking good. Change it any time." : "Pick your look: hair, hat, the works.") + "</div></div>" +
       '<button type="button" class="msy-ghost v" data-mav-edit>' + (MINE ? "EDIT" : "BUILD") + "</button>";
     if (box.__h !== h) { box.innerHTML = h; box.__h = h; }
   }
@@ -241,9 +266,8 @@
     if (themCode != null) them.__mav = 1;
     css();
     var row = them.parentNode && them.parentNode.parentNode, mine = row && row.querySelector(".hex:not(#msyThemHex)");
-    if (mine && MINE) { mine.classList.add("mav-on"); mine.innerHTML = svg(MINE, 46); }
-    var t = parse(THEM);
-    if (t) { them.classList.add("mav-on"); them.innerHTML = svg(t, 46); }
+    if (mine && MINE) { mine.classList.add("mav-on"); mine.innerHTML = html(MINE, 46); }
+    if (valid(THEM)) { them.classList.add("mav-on"); them.innerHTML = html(THEM, 46); }
   }
 
   var pending = 0;
@@ -256,5 +280,5 @@
   function start() { mo.observe(document.body, { childList: true, subtree: true }); setTimeout(pull, 4000); }
   if (document.body) start(); else document.addEventListener("DOMContentLoaded", start);
 
-  window.MESSY_AV = { code: function () { return MINE ? enc(MINE) : ""; }, room: paintRoom, svg: function (c, px) { return svg(parse(c) || DEF, px || 64); }, open: openEditor };
+  window.MESSY_AV = { code: function () { return MINE || ""; }, room: paintRoom, svg: function (c, px) { return html(c, px || 64); }, open: openEditor };
 })();
