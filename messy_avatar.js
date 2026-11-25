@@ -176,6 +176,23 @@
     { k: "k", n: "STICKER", c: [null, "heart", "flame", "anchor", "rose", "candycane", "gift", "snowflake", "ornament"],
       at: { heart: [66, 62, 40], flame: [66, 58, 40], anchor: [66, 60, 40], rose: [64, 58, 42], candycane: [66, 56, 40], gift: [64, 60, 40], snowflake: [64, 60, 40], ornament: [66, 58, 38] } }
   ];
+  /* #nov24c: every face sits a little differently in its picture: [eyes center x, eye line y, eye-to-eye distance, mouth y] in % of the round look */
+  var LM = {"mf0":[50.5,32,21,50],"mf1":[52,36,21,48],"mf2":[51,37,22,55],"mf3":[53,38,20,54],"mf4":[58,36,17,53],"mf5":[50,37,18,53],"mt0":[51,27.5,19.5,41],"mt1":[50,36,20,53],"mt2":[52.5,29.7,15,47],"mt3":[55,36.4,15.5,50.5],"mt4":[55.5,35.5,15,47.8],"mt5":[50,34.4,19.5,52.5],"mb0":[52,29,20,43],"mb1":[50,37,16.5,48.5],"mb2":[50,37,20,52],"mb3":[48,33,16,49],"mb4":[53,38.6,20.5,54],"mb5":[47.5,29.7,15,42.8],"md0":[54.5,35,19,49.7],"md1":[52,43.6,17.5,57.5],"md2":[51.5,42,20,56.7],"md3":[54.5,33,17,48],"md4":[51,40,22,53],"md5":[49,26.7,19.5,42],"wf0":[50,29,20,42],"wf1":[50,41.4,19.5,54.5],"wf2":[51.5,40,21,53],"wf3":[48,37,24.5,51],"wf4":[52,46,26.4,62.8],"wf5":[51.7,35,19.4,49],"wt0":[50,35,20.3,52],"wt1":[49.7,39.7,19,53],"wt2":[49.7,41.4,20.6,56.7],"wt3":[50.7,32.2,21.4,47],"wt4":[50,42.2,20.8,57.5],"wt5":[50,35.3,22,49.7],"wb0":[50.4,33.6,18,47.5],"wb1":[49.6,47.5,18,61.4],"wb2":[51.2,38.3,23,57.2],"wb3":[50.8,28,19.5,43.3],"wb4":[51.5,40.5,20.3,54],"wb5":[51,36.4,23.6,53.3],"wd0":[50,29.7,20.8,42.8],"wd1":[48.6,47,19.4,61.7],"wd2":[51.8,36.4,20.8,48.9],"wd3":[51.7,36.4,22.3,48.9],"wd4":[54.3,46,20.8,60],"wd5":[50.6,45.3,22.3,60.5]};
+  /* where the art actually is inside each extra's picture (fractions: left, top, right, bottom) — the pictures have big empty margins */
+  var BB = { shades: [.147, .363, .85, .631], cigar: [.191, .309, .809, .625], toothpick: [.178, .303, .819, .703], tattoo: [.40, .334, .597, .663] };
+  function lm(o) { return LM[o.g + o.s + o.h] || [50, 35, 20, 50]; }
+  /* put the art (not its picture) centered on cx,cy at width w */
+  function fit(name, cx, cy, w) { var b = BB[name], W = w / (b[2] - b[0]); return [cx - W * (b[0] + b[2]) / 2, cy - W * (b[1] + b[3]) / 2, W]; }
+  function place(name, sl, o) {
+    var L = lm(o), cx = L[0], ey = L[1], d = L[2], my = L[3], s = d / 20;
+    if (name === "shades") return fit(name, cx, ey + 0.6, d * 2.15);
+    if (name === "cigar") return fit(name, cx + d * 0.75, my + d * 0.18, d * 1.6);
+    if (name === "toothpick") return fit(name, cx + d * 0.7, my + d * 0.12, d * 1.45);
+    if (name === "tattoo") return fit(name, cx + d * 0.78, ey + d * 0.62, d * 0.42);
+    var a = sl.at[name];
+    if (sl.k === "t") return [cx + (a[0] - 50) * s, ey + (a[1] - 35) * s, a[2] * s];   /* hats ride the head: move and size with the face */
+    return a;
+  }
   var CUT = { scarf: [[27, 12], [73, 12], [73, 23], [66, 27.5], [58, 31.5], [50, 33], [42, 31.5], [35, 28.5], [27, 23]] };
   var KEYED = {}, KEYING = {}, BLANK = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
   function keyOut(name) {
@@ -217,10 +234,10 @@
   function extras(o) {
     var h = "";
     SLOTS.forEach(function (sl) { var name = sl.c[o[sl.k] | 0]; if (!name) return;
-      if (name === "earrings") { keyOut(name); var bgi = KEYED[name] ? "background-image:url(" + KEYED[name] + ");" : "";   /* one hoop per ear: each half of the pair, at its own ear */
-        h += '<div data-xkbg="earrings" style="position:absolute;left:12%;top:33%;width:17%;height:34%;background:no-repeat 0 50%/200% auto;' + bgi + 'pointer-events:none;filter:drop-shadow(0 1px 1px #0006)"></div>' +
-             '<div data-xkbg="earrings" style="position:absolute;left:71%;top:33%;width:17%;height:34%;background:no-repeat 100% 50%/200% auto;' + bgi + 'pointer-events:none;filter:drop-shadow(0 1px 1px #0006)"></div>'; return; }
-      h += xImg(name, sl.at[name], sl.k === "k" || sl.k === "n" ? "filter:drop-shadow(0 2px 3px #0005)" : "filter:drop-shadow(0 1px 1px #0006)"); });
+      if (name === "earrings") { keyOut(name); var E = lm(o), es = E[2] / 20, ew = 17 * es, eh = 34 * es, et = E[1] - 0.15 * E[2], el = E[0] - 1.475 * E[2] - ew / 2, er = E[0] + 1.475 * E[2] - ew / 2; var bgi = KEYED[name] ? "background-image:url(" + KEYED[name] + ");" : "";   /* one hoop per ear: each half of the pair, at its own ear */
+        h += '<div data-xkbg="earrings" style="position:absolute;left:' + el + '%;top:' + et + '%;width:' + ew + '%;height:' + eh + '%;background:no-repeat 0 50%/200% auto;' + bgi + 'pointer-events:none;filter:drop-shadow(0 1px 1px #0006)"></div>' +
+             '<div data-xkbg="earrings" style="position:absolute;left:' + er + '%;top:' + et + '%;width:' + ew + '%;height:' + eh + '%;background:no-repeat 100% 50%/200% auto;' + bgi + 'pointer-events:none;filter:drop-shadow(0 1px 1px #0006)"></div>'; return; }
+      h += xImg(name, place(name, sl, o), sl.k === "k" || sl.k === "n" ? "filter:drop-shadow(0 2px 3px #0005)" : "filter:drop-shadow(0 1px 1px #0006)"); });
     return h;
   }
   function img(o, size) { var a = ART[o.g + o.s + o.h]; return a ? "https://cdn.midjourney.com/" + a + "_" + (size > 200 ? 640 : 384) + "_N.webp" : ""; }
