@@ -37,12 +37,12 @@
   // taps: our own listener (the app wires clicks only on cards it drew) plus a gameOpen wrapper for any other caller
   document.addEventListener("click", function (e) {
     var t = e.target && e.target.closest && e.target.closest('[data-hgame="boards"]');
-    if (!t) return; e.preventDefault(); e.stopPropagation(); location.href = "/board-games.html";
+    if (!t) return; e.preventDefault(); e.stopPropagation(); (window.shkOpenGame ? window.shkOpenGame("/board-games.html") : (location.href = "/board-games.html"));
   }, true);
   var wrapN = 0, wrapT = setInterval(function () {
     if (typeof window.gameOpen === "function" && !window.gameOpen.__bg) {
       var orig = window.gameOpen;
-      window.gameOpen = function (k) { if (k === "boards") { location.href = "/board-games.html"; return; } return orig.apply(this, arguments); };
+      window.gameOpen = function (k) { if (k === "boards") { (window.shkOpenGame ? window.shkOpenGame("/board-games.html") : (location.href = "/board-games.html")); return; } return orig.apply(this, arguments); };
       window.gameOpen.__bg = 1;
     }
     if (++wrapN > 40) clearInterval(wrapT);

@@ -11,14 +11,14 @@
 (function(){
   'use strict';
   if(window.__swipeTut)return; window.__swipeTut=true;
-  var TIP='swipe_v1', KEY='shk_tip_'+TIP+':';
+  var TIP='swipe_v2', KEY='shk_tip_'+TIP+':';
   var hum=function(p){ try{ buzz(p||[15]); }catch(e){} };
   var RM=false; try{ RM=matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(e){}
   var el=null, step=0, shownFor=null, waiting=null;
 
   var STEPS=[
-    { k:'pull', t:'Pull down to close', s:'Games, the casino, profiles, member cards, a post on the board. Grab the bar at the top, or anywhere while you\u2019re at the top, and pull down.', try:'Try it: pull this screen down', ok:'That\u2019s it.' },
-    { k:'side', t:'Swipe sideways to go back', s:'Messages, DMs and chat rooms. Swipe across the screen from anywhere, not just the edge.', try:'Try it: swipe this chat to the right', ok:'Back you go.' },
+    { k:'pull', t:'Pull down to close', s:'Every game (Messy, The Flip, Board Games, Corral Run, Trivia, the Casino), profiles, member cards, a post on the board. Grab the bar at the top, or anywhere while you\u2019re at the top, and pull down. In a game, swiping in from the left edge works too. The header stays up top the whole time.', try:'Try it: pull this screen down', ok:'That\u2019s it.' },
+    { k:'side', t:'Swipe sideways to go back', s:'Messages, DMs and chat rooms. Swipe across the screen from anywhere, not just the edge. Inside a game, a swipe from the left edge goes back one step (a chat back to your matches, a table back to the lobby).', try:'Try it: swipe this chat to the right', ok:'Back you go.' },
     { k:'days', t:'Swipe to change boards', s:'On a board\u2019s post, swipe left or right to move between days. Same as the \u2039 \u203a arrows up top.', try:'Try it: swipe left or right', ok:'You\u2019ve got it.' }
   ];
 

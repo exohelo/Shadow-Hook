@@ -36,12 +36,12 @@
   }
   document.addEventListener("click", function (e) {
     var t = e.target && e.target.closest && e.target.closest('[data-hgame="flip"]');
-    if (!t) return; e.preventDefault(); e.stopPropagation(); location.href = "/flip.html";
+    if (!t) return; e.preventDefault(); e.stopPropagation(); (window.shkOpenGame ? window.shkOpenGame("/flip.html") : (location.href = "/flip.html"));
   }, true);
   var wrapN = 0, wrapT = setInterval(function () {
     if (typeof window.gameOpen === "function" && !window.gameOpen.__flip) {
       var orig = window.gameOpen;
-      window.gameOpen = function (k) { if (k === "flip") { location.href = "/flip.html"; return; } return orig.apply(this, arguments); };
+      window.gameOpen = function (k) { if (k === "flip") { (window.shkOpenGame ? window.shkOpenGame("/flip.html") : (location.href = "/flip.html")); return; } return orig.apply(this, arguments); };
       window.gameOpen.__flip = 1;
     }
     if (++wrapN > 40) clearInterval(wrapT);

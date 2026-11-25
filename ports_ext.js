@@ -1378,7 +1378,7 @@
 /* #flip(nov24) — THE FLIP (who goes on first: 2–12 names, 1–11 spots, the server draws) gets its card in the games row.
    The Board Games card (board_games_hook.js, nov21) said it rode in from here but was never loaded; it rides in now too. */
 (function () {
-  [["board_games_hook.js?v=nov24a", "__bgHook"], ["flip_hook.js?v=nov24a", "__flipHook"]].forEach(function (r) {
+  [["game_frame.js?v=nov24a", "shkOpenGame"], ["board_games_hook.js?v=nov24b", "__bgHook"], ["flip_hook.js?v=nov24b", "__flipHook"]].forEach(function (r) {
     if (window[r[1]] || document.querySelector('script[src*="' + r[0].split("?")[0] + '"]')) return;
     var s = document.createElement("script"); s.src = r[0]; s.defer = true; (document.head || document.documentElement).appendChild(s);
   });
@@ -1404,12 +1404,12 @@
   }
   document.addEventListener("click", function (e) {
     var t = e.target && e.target.closest && e.target.closest('[data-hgame="dates"]');
-    if (!t) return; e.preventDefault(); e.stopPropagation(); location.href = "/messy.html";
+    if (!t) return; e.preventDefault(); e.stopPropagation(); (window.shkOpenGame ? window.shkOpenGame("/messy.html") : (location.href = "/messy.html"));
   }, true);
   var n = 0, w = setInterval(function () {
     if (typeof window.gameOpen === "function" && !window.gameOpen.__msy2) {
       var orig = window.gameOpen;
-      window.gameOpen = function (k) { if (k === "dates") { location.href = "/messy.html"; return; } return orig.apply(this, arguments); };
+      window.gameOpen = function (k) { if (k === "dates") { (window.shkOpenGame ? window.shkOpenGame("/messy.html") : (location.href = "/messy.html")); return; } return orig.apply(this, arguments); };
       window.gameOpen.__msy2 = 1;
     }
     card();
@@ -1456,7 +1456,7 @@
     } catch (e) {}
   }
   document.addEventListener("click", function (e) { var b = e.target.closest && e.target.closest("[data-promo-go]"); if (!b) return; e.preventDefault(); e.stopPropagation();
-    var to = b.getAttribute("data-promo-go"), went = false, go = function () { if (!went) { went = true; location.href = to; } };
+    var to = b.getAttribute("data-promo-go"), went = false, go = function () { if (!went) { went = true; if (window.shkOpenGame) window.shkOpenGame(to); else location.href = to; } };
     try { window.SB && window.SB.rpc("msy_log", { p_kind: "flyer" }).then(go, go); } catch (x) {} setTimeout(go, 700); }, true);
   var n = 0, w = setInterval(function () {
     if (typeof window.dmDrawThread === "function" && !window.dmDrawThread.__promo) {
