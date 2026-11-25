@@ -1394,12 +1394,16 @@
    Party). The old 1-hour, 10-minute dates never put two people on the dock at once (117 searches, 0 dates), so the
    arcade card now opens the new Messy and says what it is. */
 (function () {
+  /* #messy247(nov24): the old "OPENS AT 10 PM" countdown (messy_hour.js) is gone from the card — the new Messy never closes */
+  try { var st0 = document.createElement("style"); st0.textContent = '[data-hgame="dates"] .mh-when{display:none!important}'; (document.head || document.documentElement).appendChild(st0); } catch (e) {}
+  function set(el, t) { if (el && el.textContent !== t) el.textContent = t; }
   function card() {
     var cs = document.querySelectorAll('[data-hgame="dates"]');
     for (var i = 0; i < cs.length; i++) {
-      var c = cs[i], n = c.querySelector(".hc-name"), st = c.querySelector(".hc-stat");
-      if (n && n.textContent !== "SWIPE · PARTY") n.textContent = "SWIPE · PARTY";
-      if (st && st.textContent !== "MATCH ANYTIME · NO NAMES") st.textContent = "MATCH ANYTIME · NO NAMES";
+      var c = cs[i];
+      set(c.querySelector(".hc-name") || c.querySelector(".gm-m3"), "SWIPE · PARTY");
+      set(c.querySelector(".hc-stat") || c.querySelector(".gm-m4"), "MATCH ANYTIME · NO NAMES");
+      set(c.querySelector(".ah-tx span"), "Swipe anytime, match, chat and play games, reveal photos only if you both say yes, or jump in the live Party. Open 24/7. Anonymous, always.");
     }
   }
   document.addEventListener("click", function (e) {
