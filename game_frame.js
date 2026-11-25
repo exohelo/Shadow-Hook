@@ -104,6 +104,9 @@
   function open(url) {
     if (!el) build();
     var u = String(url || ""); if (!/^\//.test(u)) return;
+    /* a game opened from a message (the Messy flyer) or a card: close what sits over the header first */
+    try { var dv = document.getElementById("dmView"); if (dv && dv.style.display !== "none") { if (typeof window.closeDmThread === "function") window.closeDmThread(); else dv.style.display = "none"; } } catch (e) {}
+    try { ["dmCardSheet", "floorSheet"].forEach(function (id) { var s = document.getElementById(id); if (s) s.classList.remove("on"); }); } catch (e) {}
     var src = u + (u.indexOf("?") >= 0 ? "&" : "?") + "inapp=1";
     if (cur !== src) { frame.src = src; cur = src; }
     place(); el.style.transform = ""; el.classList.remove("snap", "drag");
