@@ -202,6 +202,7 @@
       } catch (e) { KEYED[name] = BLANK; }
       KEYING[name] = 0;
       var els = document.querySelectorAll('img[data-xk="' + name + '"]'); for (var j = 0; j < els.length; j++) els[j].src = KEYED[name];
+      var bgs = document.querySelectorAll('[data-xkbg="' + name + '"]'); for (var q = 0; q < bgs.length; q++) bgs[q].style.backgroundImage = "url(" + KEYED[name] + ")";
     };
     im.onerror = function () { KEYING[name] = 0; };
     im.src = "https://cdn.midjourney.com/" + XART[name] + "_384_N.webp?k=1";
@@ -212,7 +213,11 @@
   }
   function extras(o) {
     var h = "";
-    SLOTS.forEach(function (sl) { var name = sl.c[o[sl.k] | 0]; if (name) h += xImg(name, sl.at[name], sl.k === "k" || sl.k === "n" ? "filter:drop-shadow(0 2px 3px #0005)" : "filter:drop-shadow(0 1px 1px #0006)"); });
+    SLOTS.forEach(function (sl) { var name = sl.c[o[sl.k] | 0]; if (!name) return;
+      if (name === "earrings") { keyOut(name); var bgi = KEYED[name] ? "background-image:url(" + KEYED[name] + ");" : "";   /* one hoop per ear: each half of the pair, at its own ear */
+        h += '<div data-xkbg="earrings" style="position:absolute;left:12%;top:33%;width:17%;height:34%;background:no-repeat 0 50%/200% auto;' + bgi + 'pointer-events:none;filter:drop-shadow(0 1px 1px #0006)"></div>' +
+             '<div data-xkbg="earrings" style="position:absolute;left:71%;top:33%;width:17%;height:34%;background:no-repeat 100% 50%/200% auto;' + bgi + 'pointer-events:none;filter:drop-shadow(0 1px 1px #0006)"></div>'; return; }
+      h += xImg(name, sl.at[name], sl.k === "k" || sl.k === "n" ? "filter:drop-shadow(0 2px 3px #0005)" : "filter:drop-shadow(0 1px 1px #0006)"); });
     return h;
   }
   function img(o, size) { var a = ART[o.g + o.s + o.h]; return a ? "https://cdn.midjourney.com/" + a + "_" + (size > 200 ? 640 : 384) + "_N.webp" : ""; }
@@ -327,7 +332,7 @@
     h += '<div class="mav-lbl">EXTRAS <span style="letter-spacing:0;font-weight:600;color:#8f7d9a">· ' + (SHOP ? SHOP.bucks + " ⬡" : "") + '</span></div>' + SLOTS.map(function (sl) {
       return '<div class="mav-xr"><span>' + sl.n + '</span><div>' + sl.c.map(function (name, i) {
         var it = name && SHOP && SHOP.map[name], lock = name && !avail(name), badge = "";
-        if (it && lock) badge = it.unlock ? '<b class="mav-b lk">🔒</b>' : '<b class="mav-b">' + it.price + "⬡</b>";
+        if (it && lock) badge = it.unlock ? '<b class="mav-b lk">🔒</b>' : '<b class="mav-b">⬡' + it.price + "</b>";
         if (it && it.set === "xmas") badge += '<b class="mav-b xm">🎄</b>';
         return '<button data-k="' + sl.k + '" data-v="' + i + '" title="' + (it ? it.label : name || "None") + '" class="' + ((ED[sl.k] | 0) === i ? "on" : "") + (lock ? " lockd" : "") + '">' + (name ? '<img alt="" data-xk="' + name + '" src="' + (KEYED[name] || BLANK) + '">' : "<i>✕</i>") + badge + "</button>";
       }).join("") + "</div></div>";
