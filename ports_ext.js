@@ -1455,7 +1455,9 @@
       });
     } catch (e) {}
   }
-  document.addEventListener("click", function (e) { var b = e.target.closest && e.target.closest("[data-promo-go]"); if (b) { e.preventDefault(); e.stopPropagation(); location.href = b.getAttribute("data-promo-go"); } }, true);
+  document.addEventListener("click", function (e) { var b = e.target.closest && e.target.closest("[data-promo-go]"); if (!b) return; e.preventDefault(); e.stopPropagation();
+    var to = b.getAttribute("data-promo-go"), went = false, go = function () { if (!went) { went = true; location.href = to; } };
+    try { window.SB && window.SB.rpc("msy_log", { p_kind: "flyer" }).then(go, go); } catch (x) {} setTimeout(go, 700); }, true);
   var n = 0, w = setInterval(function () {
     if (typeof window.dmDrawThread === "function" && !window.dmDrawThread.__promo) {
       var o = window.dmDrawThread;
@@ -1466,4 +1468,56 @@
   }, 500);
   var mo = new MutationObserver(function () { paint(); });
   var tt = setInterval(function () { var f = document.getElementById("dmFeed"); if (f) { clearInterval(tt); mo.observe(f, { childList: true }); paint(); } }, 2000);
+})();
+
+/* #messypulse(nov24) — Command Center: 💘 Messy Pulse, how the new Messy is doing since the flyer went out (msy_stats, Keymaster only).
+   The funnel (flyer → opened → card → swiped → matched → real chat), today, the photo reveal, the Party, reports, and the last 7 days. */
+(function () {
+  function row(k, v) { return '<div style="display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid var(--line-soft);padding:4px 0"><span style="color:var(--steel)">' + k + '</span><b style="color:var(--bone)">' + v + "</b></div>"; }
+  function hd(t) { return '<div style="font-size:10px;letter-spacing:.14em;color:var(--copper-hi);margin:12px 0 4px">' + t + "</div>"; }
+  function pct(a, b) { return b ? Math.round(a / b * 100) + "%" : "—"; }
+  function bar(label, n, top, note) {
+    var w = top ? Math.max(2, Math.round(n / top * 100)) : 0;
+    return '<div style="margin:5px 0"><div style="display:flex;justify-content:space-between;font-size:12px"><span style="color:var(--steel)">' + label + '</span><b style="color:var(--bone)">' + n + (note ? ' <span style="color:var(--steel);font-weight:500">· ' + note + "</span>" : "") + "</b></div>" +
+      '<div style="height:7px;border-radius:4px;background:var(--line-soft);overflow:hidden;margin-top:3px"><i style="display:block;height:100%;width:' + w + '%;background:linear-gradient(90deg,#ffc24b,#ff4f8b)"></i></div></div>';
+  }
+  function paint(p) {
+    var el = document.getElementById("kmMessy"); if (!el) return;
+    var N = { m: "Men", w: "Women", b: "Both", "*": "Anyone" }, into = p.into ? Object.keys(p.into).map(function (k) { var q = k.split(">"); return (N[q[0]] || q[0]) + " → " + (N[q[1]] || q[1]) + " " + p.into[k]; }).join(" · ") : "—";
+    var top = p.flyer_sent || 1, h = "";
+    h += hd("THE FUNNEL · SINCE THE FLYER");
+    h += bar("Flyer sent", p.flyer_sent, top) + bar("Tapped OPEN MESSY", p.flyer_taps, top, pct(p.flyer_taps, p.flyer_sent)) + bar("Opened Messy", p.visitors, top, pct(p.visitors, p.flyer_sent)) +
+      bar("Made a card", p.cards, top, pct(p.cards, p.visitors) + " of visitors") + bar("Swiped", p.swipers, top, pct(p.swipers, p.cards) + " of cards") +
+      bar("Matches", p.matches, top) + bar("Real chats (both talked)", p.chats_real, top, pct(p.chats_real, p.matches) + " of matches");
+    h += hd("RIGHT NOW · TODAY");
+    h += row("On Messy now (15 min)", p.online_now) + row("Visitors today", p.visitors_today) + row("New cards today", p.cards_today) + row("Swipes today", p.swipes_today) + row("Matches today", p.matches_today) + row("Messages today", p.messages_today);
+    h += hd("CARDS");
+    h += row("Cards made", p.cards + " · " + p.men + " men / " + p.women + " women") + row("Who’s looking for who", into) + row("Have a reveal photo", p.with_photo);
+    h += hd("SWIPES · MATCHES · CHAT");
+    h += row("Swipes", p.swipes + " · " + pct(p.likes, p.swipes) + " likes") + row("Matches", p.matches + (p.matches_drink ? " · " + p.matches_drink + " from a drink" : "")) +
+      row("Chats started", p.chats_started) + row("Messages", p.messages) + row("Games sent / answered", p.games + " / " + p.games_answered) + row("Unmatched", p.unmatched);
+    h += hd("PHOTO REVEAL · PARTY");
+    h += row("One said yes (waiting)", p.reveal_one) + row("Both said yes", p.reveal_both) + row("Went to the Party", p.party_people + " · " + p.party_today + " today") + row("🍹 Drinks slid", p.drinks);
+    h += hd("SAFETY");
+    h += row("Reports", p.reports);
+    if (p.days && p.days.length) {
+      h += hd("LAST 7 DAYS");
+      h += '<div style="display:grid;grid-template-columns:1.3fr repeat(4,1fr);gap:2px 6px;font-size:11px"><span style="color:var(--steel)">Day</span><span style="color:var(--steel)">Visit</span><span style="color:var(--steel)">Swipe</span><span style="color:var(--steel)">Match</span><span style="color:var(--steel)">Msgs</span>' +
+        p.days.map(function (d) { return "<span>" + d.day + "</span><b>" + d.visitors + "</b><b>" + d.swipes + "</b><b>" + d.matches + "</b><b>" + d.messages + "</b>"; }).join("") + "</div>";
+    }
+    h += '<div style="margin-top:10px"><button class="btn-ghost" type="button" id="kmMessyGo" style="width:100%;padding:6px 0;font-size:11px">↻ refresh</button><div style="font-size:10px;color:var(--steel);margin-top:4px;text-align:center">Party chat isn’t stored — this counts who joined. Chats clear after 14 days.</div></div>';
+    el.innerHTML = h;
+  }
+  function load() { var el = document.getElementById("kmMessy"); if (!el || !window.SB) return; el.textContent = "counting…";
+    window.SB.rpc("msy_stats").then(function (r) { if (r.error) { el.textContent = r.error.message; return; } paint(r.data || {}); }); }
+  function mount() {
+    var g = document.getElementById("kmGamesCard"); if (!g || document.getElementById("kmMessyCard")) return !!g;
+    var c = document.createElement("details"); c.className = "card"; c.id = "kmMessyCard";
+    c.innerHTML = '<summary class="card-h">💘 Messy Pulse <span style="font-size:11px;color:var(--steel);font-weight:500">· the new Messy</span></summary><div id="kmMessy" class="sub" style="line-height:1.6;margin-bottom:14px">—</div>';
+    g.parentNode.insertBefore(c, g.nextSibling);
+    c.addEventListener("toggle", function () { c.open && load(); });
+    c.addEventListener("click", function (e) { if (e.target && e.target.id === "kmMessyGo") load(); });
+    return true;
+  }
+  var n = 0, t = setInterval(function () { if (mount() || ++n > 40) clearInterval(t); }, 1500);
 })();
