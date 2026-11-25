@@ -180,6 +180,8 @@
   var LM = {"mf0":[50.5,32,21,50],"mf1":[52,36,21,48],"mf2":[51,37,22,55],"mf3":[53,38,20,54],"mf4":[58,36,17,53],"mf5":[50,37,18,53],"mt0":[51,27.5,19.5,41],"mt1":[50,36,20,53],"mt2":[52.5,29.7,15,47],"mt3":[55,36.4,15.5,50.5],"mt4":[55.5,35.5,15,47.8],"mt5":[50,34.4,19.5,52.5],"mb0":[52,29,20,43],"mb1":[50,37,16.5,48.5],"mb2":[50,37,20,52],"mb3":[48,33,16,49],"mb4":[53,38.6,20.5,54],"mb5":[47.5,29.7,15,42.8],"md0":[54.5,35,19,49.7],"md1":[52,43.6,17.5,57.5],"md2":[51.5,42,20,56.7],"md3":[54.5,33,17,48],"md4":[51,40,22,53],"md5":[49,26.7,19.5,42],"wf0":[50,29,20,42],"wf1":[50,41.4,19.5,54.5],"wf2":[51.5,40,21,53],"wf3":[48,37,24.5,51],"wf4":[52,46,26.4,62.8],"wf5":[51.7,35,19.4,49],"wt0":[50,35,20.3,52],"wt1":[49.7,39.7,19,53],"wt2":[49.7,41.4,20.6,56.7],"wt3":[50.7,32.2,21.4,47],"wt4":[50,42.2,20.8,57.5],"wt5":[50,35.3,22,49.7],"wb0":[50.4,33.6,18,47.5],"wb1":[49.6,47.5,18,61.4],"wb2":[51.2,38.3,23,57.2],"wb3":[50.8,28,19.5,43.3],"wb4":[51.5,40.5,20.3,54],"wb5":[51,36.4,23.6,53.3],"wd0":[50,29.7,20.8,42.8],"wd1":[48.6,47,19.4,61.7],"wd2":[51.8,36.4,20.8,48.9],"wd3":[51.7,36.4,22.3,48.9],"wd4":[54.3,46,20.8,60],"wd5":[50.6,45.3,22.3,60.5]};
   /* where the art actually is inside each extra's picture (fractions: left, top, right, bottom) — the pictures have big empty margins */
   var BB = { shades: [.147, .363, .85, .631], cigar: [.191, .309, .809, .625], toothpick: [.178, .303, .819, .703], tattoo: [.40, .334, .597, .663] };
+  /* hand tweaks for the cigar on faces whose mouth sits off the measure: [right, down] in % */
+  var CIG = { wf4: [-1.5, -4.5], wd4: [0, -2] };
   function lm(o) { return LM[o.g + o.s + o.h] || [50, 35, 20, 50]; }
   /* put the art (not its picture) centered on cx,cy at width w */
   function fit(name, cx, cy, w) { var b = BB[name], W = w / (b[2] - b[0]); return [cx - W * (b[0] + b[2]) / 2, cy - W * (b[1] + b[3]) / 2, W]; }
@@ -187,7 +189,8 @@
     var L = lm(o), cx = L[0], ey = L[1], d = L[2], my = L[3], s = d / 20;
     if (name === "shades") return fit(name, cx, ey + 0.6, d * 2.15);
     if (name === "cigar") { var cb = BB.cigar, cw = d * 1.35, CW = cw / (cb[2] - cb[0]), cy0 = (cb[1] + cb[3]) / 2;   /* its butt end in the corner of the lips, hanging down a little */
-      return [cx + d * 0.28 - CW * cb[0], my - d * 0.08 - CW * cy0, CW, "transform:rotate(16deg);transform-origin:" + (cb[0] * 100) + "% " + (cy0 * 100) + "%;"]; }
+      var ct = CIG[o.g + o.s + o.h] || [0, 0], wy = o.g === "w" ? d * 0.05 : 0, wx = o.g === "w" ? d * 0.02 : 0;
+      return [cx + d * 0.28 - wx + ct[0] - CW * cb[0], my - d * 0.08 - wy + ct[1] - CW * cy0, CW, "transform:rotate(16deg);transform-origin:" + (cb[0] * 100) + "% " + (cy0 * 100) + "%;"]; }
     if (name === "toothpick") return fit(name, cx + d * 0.72, my - d * 0.2, d * 1.3);   /* its low left end sits in the mouth */
     if (name === "tattoo") return fit(name, cx + d * 0.74, ey + d * 0.5, d * 0.17);
     var a = sl.at[name];
