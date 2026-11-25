@@ -1442,7 +1442,7 @@
   function esc(t) { return String(t == null ? "" : t).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   function paint() {
     try {
-      var f = document.getElementById("dmFeed"); if (!f || !window.DM || !DM.openPeer) return;
+      var f = document.getElementById("dmFeed"); if (!f || typeof DM === "undefined" || !DM.openPeer) return;
       var t = DM.threads[DM.openPeer]; if (!t) return;
       t.msgs.forEach(function (m) {
         var u = String(m.url || ""), mm = /#promo=([a-z]+)/.exec(u); if (m.kind !== "promo" && !mm) return;
