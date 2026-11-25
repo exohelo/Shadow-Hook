@@ -160,7 +160,7 @@
     heart: "b9bc37a6-c747-40b8-b4a3-9a3c40a8595f/0_2", flame: "ba66ab01-8eae-46cc-8c83-4c079776ba4b/0_1", anchor: "4565b539-d3d4-47c1-92f4-a7a79ef0bbe2/0_0", rose: "7ba3c9a3-014f-4daf-ba35-5c214d66679e/0_0",
     cap: "2617ca64-d6a1-4f3b-a963-b77ba0eecc17/0_1", cowboy: "34463e76-8f0f-4624-bc18-37a3806b6488/0_2", cigar: "994648bd-5e8a-40b8-bae0-67936ac6b6b6/0_2", toothpick: "c0fafb3e-790e-413d-99ea-bc65a5e9d092/0_2",
     earrings: "5965ba88-ad08-451c-976d-ce184e35afcf/0_1", bandana: "d50d4817-36be-45a5-9275-ca1f8691b2fa/0_0", tattoo: "62dc95e0-d9ed-40df-a4ea-30d22aa1c078/0_1",
-    santa: "8a01ad54-06d4-4688-8653-bbf9a6e5a65b/0_1", antlers: "a648157f-7751-4756-8c51-99ce0d22a105/0_3", elf: "881dd106-7305-4d17-9c7b-49287e9aaf80/0_1", scarf: "9a40b2e8-71ae-4741-9a28-ada8a683e2f0/0_1",
+    santa: "8a01ad54-06d4-4688-8653-bbf9a6e5a65b/0_1", antlers: "a648157f-7751-4756-8c51-99ce0d22a105/0_3", elf: "881dd106-7305-4d17-9c7b-49287e9aaf80/0_1", scarf: "90e1c78a-6675-4e25-9548-d17f8a63b28a/0_2",
     lights: "3a1db1ac-a006-4334-b24b-f78a1a9ea6ce/0_1", candycane: "41849fb3-b1e8-4c25-940b-08736d0f0363/0_2", gift: "b7ac196c-1d31-46ae-9b47-a7dd4ad6abe3/0_1", snowflake: "ed588f35-bdde-44df-9a35-b93b4c718620/0_2",
     ornament: "4e86d050-cc4a-4d90-881a-a54aaa19d61d/0_1" };
   /* slot: its choices (index 0 = none; the order is the look code — append only, same order as msy_av_items on the server)
@@ -172,7 +172,7 @@
     { k: "m", n: "MOUTH", c: [null, "cigar", "toothpick"], at: { cigar: [47, 47, 40], toothpick: [46, 51, 34] } },
     { k: "a", n: "EARS", c: [null, "earrings"], at: { earrings: [8, 36, 84] } },
     { k: "c", n: "CHEEK", c: [null, "tattoo"], at: { tattoo: [59, 41, 9] } },
-    { k: "n", n: "NECK", c: [null, "chain", "lei", "bandana", "scarf", "lights"], at: { chain: [18, 52, 64], lei: [10, 48, 80], bandana: [22, 56, 56], scarf: [16, 55, 68], lights: [8, 50, 84] } },
+    { k: "n", n: "NECK", c: [null, "chain", "lei", "bandana", "scarf", "lights"], at: { chain: [18, 52, 64], lei: [10, 48, 80], bandana: [22, 56, 56], scarf: [4, 63, 92], lights: [8, 50, 84] } },
     { k: "k", n: "STICKER", c: [null, "heart", "flame", "anchor", "rose", "candycane", "gift", "snowflake", "ornament"],
       at: { heart: [66, 62, 40], flame: [66, 58, 40], anchor: [66, 60, 40], rose: [64, 58, 42], candycane: [66, 56, 40], gift: [64, 60, 40], snowflake: [64, 60, 40], ornament: [66, 58, 38] } }
   ];
@@ -183,12 +183,12 @@
     var im = new Image(); im.crossOrigin = "anonymous";
     im.onload = function () {
       try {
-        var W = 320, c = document.createElement("canvas"); c.width = W; c.height = W;
-        var g = c.getContext("2d"); g.drawImage(im, 0, 0, W, W);
-        var d = g.getImageData(0, 0, W, W), p = d.data;
+        var W = 320, H = Math.max(1, Math.round(W * (im.naturalHeight || 1) / (im.naturalWidth || 1))), c = document.createElement("canvas"); c.width = W; c.height = H;
+        var g = c.getContext("2d"); g.drawImage(im, 0, 0, W, H);
+        var d = g.getImageData(0, 0, W, H), p = d.data;
         /* the screen's own green, from the four corners */
         var br = 0, bg = 0, bb = 0, n = 0;
-        [[2, 2], [W - 3, 2], [2, W - 3], [W - 3, W - 3]].forEach(function (q) { var i = (q[1] * W + q[0]) * 4; br += p[i]; bg += p[i + 1]; bb += p[i + 2]; n++; });
+        [[2, 2], [W - 3, 2], [2, H - 3], [W - 3, H - 3]].forEach(function (q) { var i = (q[1] * W + q[0]) * 4; br += p[i]; bg += p[i + 1]; bb += p[i + 2]; n++; });
         br /= n; bg /= n; bb /= n;
         var bgd = Math.max(30, bg - Math.max(br, bb));
         for (var i = 0; i < p.length; i += 4) {
