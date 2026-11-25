@@ -144,15 +144,67 @@
   var GLOW = ["#ff3d9a", "#b56cff", "#ffe600", "#2ee6d6", "#ff7a1a", "#4f8cff", "#39ff88", "#ffffff"];
   var SKINS = [["f", "#f3d2b6", "Fair"], ["t", "#d8a878", "Tan"], ["b", "#a8693f", "Brown"], ["d", "#6b3f22", "Deep"]];
   var HEADS = { m: ["Buzz cut", "Curls + beard", "Slick + 'stache", "Man bun", "Hard hat", "Beanie"], w: ["Long & straight", "Big curls", "Ponytail", "Braids", "Hard hat", "Beanie"] };
-  function p2(code) { var m = /^p2\.([mw])([ftbd])([0-5])\.([0-7])$/.exec(String(code || "")); return m ? { g: m[1], s: m[2], h: +m[3], r: +m[4] } : null; }
-  function p2enc(o) { return "p2." + o.g + o.s + o.h + "." + o.r; }
+  function p2(code) { var m = /^p2\.([mw])([ftbd])([0-5])\.([0-7])(?:\.([0-3])([0-1])([0-2])([0-4]))?$/.exec(String(code || "")); return m ? { g: m[1], s: m[2], h: +m[3], r: +m[4], t: +(m[5] || 0), f: +(m[6] || 0), n: +(m[7] || 0), k: +(m[8] || 0) } : null; }
+  function p2enc(o) { var x = "" + (o.t | 0) + (o.f | 0) + (o.n | 0) + (o.k | 0); return "p2." + o.g + o.s + o.h + "." + o.r + (x === "0000" ? "" : "." + x); }
+
+  /* ───────── extras: Midjourney art on a green screen, the green cut out right here in the browser ───────── */
+  var XART = { crown: "4483c561-e458-4f69-8a91-632ea8894389/0_1", halo: "824ab1b5-09f9-45f7-8340-9944ca493c82/0_2", horns: "6247e7ff-ee72-441f-9de6-004c52297345/0_2",
+    shades: "cbaf37f9-a9f6-413d-b249-da46694394d5/0_1", chain: "6564c8b3-33b0-4d3f-be36-c0324d9b78d2/0_2", lei: "a8581195-8d73-4305-aa14-0cc0d0cf2fdd/0_0",
+    heart: "b9bc37a6-c747-40b8-b4a3-9a3c40a8595f/0_2", flame: "ba66ab01-8eae-46cc-8c83-4c079776ba4b/0_1", anchor: "4565b539-d3d4-47c1-92f4-a7a79ef0bbe2/0_0", rose: "7ba3c9a3-014f-4daf-ba35-5c214d66679e/0_0" };
+  /* slot: [choices], and where each sits on the round look (percent of its size: left, top, width) */
+  var SLOTS = [
+    { k: "t", n: "TOP", c: [null, "crown", "halo", "horns"], l: ["None", "Crown", "Halo", "Horns"], at: { crown: [27, -14, 46], halo: [25, -10, 50], horns: [22, -6, 56] } },
+    { k: "f", n: "FACE", c: [null, "shades"], l: ["None", "Shades"], at: { shades: [21, 24, 58] } },
+    { k: "n", n: "NECK", c: [null, "chain", "lei"], l: ["None", "Gold chain", "Flower lei"], at: { chain: [18, 52, 64], lei: [10, 48, 80] } },
+    { k: "k", n: "STICKER", c: [null, "heart", "flame", "anchor", "rose"], l: ["None", "Heart", "Fire", "Anchor", "Rose"], at: { heart: [66, 62, 40], flame: [66, 58, 40], anchor: [66, 60, 40], rose: [64, 58, 42] } }
+  ];
+  var KEYED = {}, KEYING = {}, BLANK = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+  function keyOut(name) {
+    if (KEYED[name] || KEYING[name] || !XART[name]) return;
+    KEYING[name] = 1;
+    var im = new Image(); im.crossOrigin = "anonymous";
+    im.onload = function () {
+      try {
+        var W = 320, c = document.createElement("canvas"); c.width = W; c.height = W;
+        var g = c.getContext("2d"); g.drawImage(im, 0, 0, W, W);
+        var d = g.getImageData(0, 0, W, W), p = d.data;
+        /* the screen's own green, from the four corners */
+        var br = 0, bg = 0, bb = 0, n = 0;
+        [[2, 2], [W - 3, 2], [2, W - 3], [W - 3, W - 3]].forEach(function (q) { var i = (q[1] * W + q[0]) * 4; br += p[i]; bg += p[i + 1]; bb += p[i + 2]; n++; });
+        br /= n; bg /= n; bb /= n;
+        var bgd = Math.max(30, bg - Math.max(br, bb));
+        for (var i = 0; i < p.length; i += 4) {
+          var r = p[i], gg = p[i + 1], b = p[i + 2], gd = gg - Math.max(r, b);
+          var a = (bgd * 0.8 - gd) / (bgd * 0.45); a = a < 0 ? 0 : a > 1 ? 1 : a;
+          if (gd > 0) p[i + 1] = Math.max(r, b) + gd * (1 - a) * 0.3;   /* take the green glow off the edges */
+          p[i + 3] = Math.round(p[i + 3] * a);
+        }
+        g.putImageData(d, 0, 0);
+        KEYED[name] = c.toDataURL("image/png");
+      } catch (e) { KEYED[name] = BLANK; }
+      KEYING[name] = 0;
+      var els = document.querySelectorAll('img[data-xk="' + name + '"]'); for (var j = 0; j < els.length; j++) els[j].src = KEYED[name];
+    };
+    im.onerror = function () { KEYING[name] = 0; };
+    im.src = "https://cdn.midjourney.com/" + XART[name] + "_384_N.webp?k=1";
+  }
+  function xImg(name, at, extra) {
+    keyOut(name);
+    return '<img alt="" data-xk="' + name + '" src="' + (KEYED[name] || BLANK) + '" style="position:absolute;left:' + at[0] + "%;top:" + at[1] + "%;width:" + at[2] + "%;height:auto;pointer-events:none;" + (extra || "") + '">';
+  }
+  function extras(o) {
+    var h = "";
+    SLOTS.forEach(function (sl) { var name = sl.c[o[sl.k] | 0]; if (name) h += xImg(name, sl.at[name], name === "shades" || sl.k === "t" ? "filter:drop-shadow(0 1px 1px #0006)" : "filter:drop-shadow(0 2px 3px #0005)"); });
+    return h;
+  }
   function img(o, size) { var a = ART[o.g + o.s + o.h]; return a ? "https://cdn.midjourney.com/" + a + "_" + (size > 200 ? 640 : 384) + "_N.webp" : ""; }
   function face(o, px) {
-    return '<div style="width:' + px + "px;height:" + px + "px;border-radius:50%;box-sizing:border-box;border:" + Math.max(2, Math.round(px / 28)) + "px solid " + GLOW[o.r] +
-      ";background:#f3b7c4 url(" + img(o, px * 2) + ") 50% 22%/150% no-repeat;box-shadow:0 0 " + Math.round(px / 8) + "px " + GLOW[o.r] + '66;flex:none"></div>';
+    return '<div style="position:relative;width:' + px + "px;height:" + px + 'px;flex:none"><div style="position:absolute;inset:0;border-radius:50%;box-sizing:border-box;border:' + Math.max(2, Math.round(px / 28)) + "px solid " + GLOW[o.r] +
+      ";background:#f3b7c4 url(" + img(o, px * 2) + ") 50% 22%/150% no-repeat;box-shadow:0 0 " + Math.round(px / 8) + "px " + GLOW[o.r] + '66"></div>' + extras(o) + "</div>";
   }
   function html(code, px) { var o = p2(code); if (o) return face(o, px); var old = parse(code); return old ? svg(old, px) : face({ g: "m", s: "b", h: 1, r: 0 }, px); }
-  function rnd2() { var g = Math.random() < 0.5 ? "m" : "w"; return { g: g, s: SKINS[Math.floor(Math.random() * 4)][0], h: Math.floor(Math.random() * 6), r: Math.floor(Math.random() * GLOW.length) }; }
+  function rnd2() { var g = Math.random() < 0.5 ? "m" : "w", R = function (n, p) { return Math.random() < p ? 1 + Math.floor(Math.random() * (n - 1)) : 0; };
+    return { g: g, s: SKINS[Math.floor(Math.random() * 4)][0], h: Math.floor(Math.random() * 6), r: Math.floor(Math.random() * GLOW.length), t: R(4, 0.3), f: R(2, 0.3), n: R(3, 0.35), k: R(5, 0.35) }; }
   var DEF2 = parse("0.2.2.0.0.0.0.0.0.0.0");
   function preload() { try { Object.keys(ART).forEach(function (k, i) { setTimeout(function () { var im = new Image(); im.src = "https://cdn.midjourney.com/" + ART[k] + "_384_N.webp"; }, i * 40); }); } catch (e) {} }
 
@@ -186,7 +238,7 @@
       "#mavSheet .mav-grab{width:44px;height:5px;border-radius:3px;background:#ffffff40;margin:0 auto 10px}" +
       "#mavSheet .mav-hd{display:flex;align-items:center;gap:8px;font:700 19px/1 Fredoka,Inter,sans-serif;letter-spacing:.02em;color:#fff}" +
       "#mavSheet .mav-hd button{margin-left:auto;background:none;border:0;color:#8f979e;font-size:22px;cursor:pointer}" +
-      "#mavSheet .mav-big{display:flex;justify-content:center;margin:12px 0 4px;position:relative;height:172px}" +
+      "#mavSheet .mav-big{display:flex;justify-content:center;margin:22px 0 10px;position:relative;height:172px}" +
       "#mavSheet .mav-big>div{position:absolute;transition:opacity .25s,transform .25s}" +
       "#mavSheet .mav-big>div.out{opacity:0;transform:scale(.94)}" +
       "#mavSheet .mav-lbl{font:700 11px/1 Inter,sans-serif;letter-spacing:.12em;color:#b9a9c4;margin:14px 0 8px}" +
@@ -199,6 +251,9 @@
       "#mavSheet .mav-hs button.on{border-color:" + NEON + ";color:#fff;background:#ff3d9a14}" +
       "#mavSheet .mav-gl{display:flex;gap:9px;flex-wrap:wrap}#mavSheet .mav-gl button{width:30px;height:30px;border-radius:50%;border:3px solid #140b18;cursor:pointer;box-shadow:0 0 0 2px #ffffff22}" +
       "#mavSheet .mav-gl button.on{box-shadow:0 0 0 3px #fff}" +
+      "#mavSheet .mav-xr{display:flex;align-items:center;gap:10px;margin-bottom:8px}#mavSheet .mav-xr>span{width:62px;flex:none;font:700 10px/1 Inter,sans-serif;letter-spacing:.1em;color:#8f7d9a}" +
+      "#mavSheet .mav-xr>div{display:flex;gap:7px;flex-wrap:wrap}#mavSheet .mav-xr button{width:48px;height:48px;border-radius:14px;border:2px solid transparent;background:#1f1424;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:3px}" +
+      "#mavSheet .mav-xr button.on{border-color:" + NEON + ";background:#ff3d9a1f}#mavSheet .mav-xr img{width:100%;height:100%;object-fit:contain}#mavSheet .mav-xr i{font-style:normal;color:#8f7d9a;font-size:15px}" +
       "#mavSheet .mav-act{display:flex;gap:8px;margin-top:16px}" +
       "#mavSheet .mav-act button{flex:1;padding:14px;border-radius:16px;font:700 17px/1 Fredoka,Inter,sans-serif;letter-spacing:.04em;cursor:pointer}" +
       "#mavSheet .mav-rand{background:#1f1424;border:2px solid " + VIOLET + ";color:#d8b8ff}" +
@@ -210,7 +265,8 @@
   var ED = null;
   function openEditor() {
     css(); preload();
-    ED = p2(MINE) || { g: "m", s: "b", h: 1, r: 0 };
+    ED = p2(MINE) || { g: "m", s: "b", h: 1, r: 0, t: 0, f: 0, n: 0, k: 0 };
+    Object.keys(XART).forEach(keyOut);
     var el = document.getElementById("mavSheet"); if (el) el.remove();
     el = document.createElement("div"); el.id = "mavSheet"; el.setAttribute("role", "dialog"); el.setAttribute("aria-label", "Build your Messy look");
     el.innerHTML = '<div class="mav-p"><div class="mav-grab"></div><div class="mav-hd">Your Messy look<button type="button" data-mav="x" aria-label="Close">✕</button></div>' +
@@ -222,7 +278,7 @@
       var t = e.target.closest("[data-mav],[data-k]");
       if (e.target === el || (t && t.getAttribute("data-mav") === "x")) { el.remove(); return; }
       if (!t) return;
-      if (t.hasAttribute("data-k")) { ED[t.getAttribute("data-k")] = t.getAttribute("data-k") === "h" || t.getAttribute("data-k") === "r" ? +t.getAttribute("data-v") : t.getAttribute("data-v"); paintEd(true); try { navigator.vibrate && navigator.vibrate(6); } catch (x) {} return; }
+      if (t.hasAttribute("data-k")) { var kk = t.getAttribute("data-k"); ED[kk] = kk === "g" || kk === "s" ? t.getAttribute("data-v") : +t.getAttribute("data-v"); paintEd(true); try { navigator.vibrate && navigator.vibrate(6); } catch (x) {} return; }
       var a = t.getAttribute("data-mav");
       if (a === "rand") { ED = rnd2(); paintEd(true); }
       if (a === "save") { t.disabled = true; var c = p2enc(ED); save(c).then(function () { el.remove(); paintDoor(); paintRoom(); try { window.MESSY_AV_ONSAVE && window.MESSY_AV_ONSAVE(c); } catch (x) {} try { typeof toast === "function" && toast("✓ Look saved"); } catch (x) {} }, function () { t.disabled = false; }); }
@@ -238,6 +294,11 @@
     h += '<div class="mav-lbl">SKIN</div><div class="mav-sk">' + SKINS.map(function (s) { return '<button data-k="s" data-v="' + s[0] + '" aria-label="' + s[2] + '" style="background:' + s[1] + '"' + (ED.s === s[0] ? ' class="on"' : "") + "></button>"; }).join("") + "</div>";
     h += '<div class="mav-lbl">HAIR & HATS</div><div class="mav-hs">' + HEADS[ED.g].map(function (n, i) { var o = { g: ED.g, s: ED.s, h: i, r: ED.r }; return '<button data-k="h" data-v="' + i + '"' + (ED.h === i ? ' class="on"' : "") + ">" + face(o, 64) + "<span>" + n + "</span></button>"; }).join("") + "</div>";
     h += '<div class="mav-lbl">GLOW</div><div class="mav-gl">' + GLOW.map(function (c, i) { return '<button data-k="r" data-v="' + i + '" aria-label="Glow ' + (i + 1) + '" style="background:' + c + '"' + (ED.r === i ? ' class="on"' : "") + "></button>"; }).join("") + "</div>";
+    h += '<div class="mav-lbl">EXTRAS</div>' + SLOTS.map(function (sl) {
+      return '<div class="mav-xr"><span>' + sl.n + '</span><div>' + sl.c.map(function (name, i) {
+        return '<button data-k="' + sl.k + '" data-v="' + i + '" title="' + sl.l[i] + '"' + ((ED[sl.k] | 0) === i ? ' class="on"' : "") + ">" + (name ? '<img alt="" data-xk="' + name + '" src="' + (KEYED[name] || BLANK) + '">' : "<i>✕</i>") + "</button>";
+      }).join("") + "</div></div>";
+    }).join("");
     document.getElementById("mavOpts").innerHTML = h;
   }
 
