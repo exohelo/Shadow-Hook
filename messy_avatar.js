@@ -186,9 +186,9 @@
   function place(name, sl, o) {
     var L = lm(o), cx = L[0], ey = L[1], d = L[2], my = L[3], s = d / 20;
     if (name === "shades") return fit(name, cx, ey + 0.6, d * 2.15);
-    if (name === "cigar") return fit(name, cx + d * 0.75, my + d * 0.18, d * 1.6);
-    if (name === "toothpick") return fit(name, cx + d * 0.7, my + d * 0.12, d * 1.45);
-    if (name === "tattoo") return fit(name, cx + d * 0.78, ey + d * 0.62, d * 0.42);
+    if (name === "cigar") return fit(name, cx + d * 0.75, my + d * 0.08, d * 1.6);
+    if (name === "toothpick") return fit(name, cx + d * 0.72, my - d * 0.32, d * 1.3);   /* its low left end sits in the mouth */
+    if (name === "tattoo") return fit(name, cx + d * 0.74, ey + d * 0.5, d * 0.17);
     var a = sl.at[name];
     if (sl.k === "t") return [cx + (a[0] - 50) * s, ey + (a[1] - 35) * s, a[2] * s];   /* hats ride the head: move and size with the face */
     return a;
