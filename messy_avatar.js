@@ -144,19 +144,37 @@
   var GLOW = ["#ff3d9a", "#b56cff", "#ffe600", "#2ee6d6", "#ff7a1a", "#4f8cff", "#39ff88", "#ffffff"];
   var SKINS = [["f", "#f3d2b6", "Fair"], ["t", "#d8a878", "Tan"], ["b", "#a8693f", "Brown"], ["d", "#6b3f22", "Deep"]];
   var HEADS = { m: ["Buzz cut", "Curls + beard", "Slick + 'stache", "Man bun", "Hard hat", "Beanie"], w: ["Long & straight", "Big curls", "Ponytail", "Braids", "Hard hat", "Beanie"] };
-  function p2(code) { var m = /^p2\.([mw])([ftbd])([0-5])\.([0-7])(?:\.([0-3])([0-1])([0-2])([0-4]))?$/.exec(String(code || "")); return m ? { g: m[1], s: m[2], h: +m[3], r: +m[4], t: +(m[5] || 0), f: +(m[6] || 0), n: +(m[7] || 0), k: +(m[8] || 0) } : null; }
-  function p2enc(o) { var x = "" + (o.t | 0) + (o.f | 0) + (o.n | 0) + (o.k | 0); return "p2." + o.g + o.s + o.h + "." + o.r + (x === "0000" ? "" : "." + x); }
+  var SK7 = ["t", "e", "m", "a", "c", "n", "k"], B36 = "0123456789abcdefghijklmnopqrstuvwxyz";
+  function p2(code) {
+    var m = /^p2\.([mw])([ftbd])([0-5])\.([0-7])(?:\.(\d{4}|x[0-9a-z]{7}))?$/.exec(String(code || "")); if (!m) return null;
+    var o = { g: m[1], s: m[2], h: +m[3], r: +m[4] }, x = m[5] || "";
+    if (/^\d{4}$/.test(x)) x = "x" + x[0] + x[1] + "000" + x[2] + x[3];
+    SK7.forEach(function (k, i) { o[k] = x ? B36.indexOf(x[i + 1]) : 0; if (o[k] < 0) o[k] = 0; });
+    return o;
+  }
+  function p2enc(o) { var x = SK7.map(function (k) { return B36[o[k] | 0]; }).join(""); return "p2." + o.g + o.s + o.h + "." + o.r + (/^0+$/.test(x) ? "" : ".x" + x); }
 
   /* ───────── extras: Midjourney art on a green screen, the green cut out right here in the browser ───────── */
   var XART = { crown: "4483c561-e458-4f69-8a91-632ea8894389/0_1", halo: "824ab1b5-09f9-45f7-8340-9944ca493c82/0_2", horns: "6247e7ff-ee72-441f-9de6-004c52297345/0_2",
     shades: "cbaf37f9-a9f6-413d-b249-da46694394d5/0_1", chain: "6564c8b3-33b0-4d3f-be36-c0324d9b78d2/0_2", lei: "a8581195-8d73-4305-aa14-0cc0d0cf2fdd/0_0",
-    heart: "b9bc37a6-c747-40b8-b4a3-9a3c40a8595f/0_2", flame: "ba66ab01-8eae-46cc-8c83-4c079776ba4b/0_1", anchor: "4565b539-d3d4-47c1-92f4-a7a79ef0bbe2/0_0", rose: "7ba3c9a3-014f-4daf-ba35-5c214d66679e/0_0" };
-  /* slot: [choices], and where each sits on the round look (percent of its size: left, top, width) */
+    heart: "b9bc37a6-c747-40b8-b4a3-9a3c40a8595f/0_2", flame: "ba66ab01-8eae-46cc-8c83-4c079776ba4b/0_1", anchor: "4565b539-d3d4-47c1-92f4-a7a79ef0bbe2/0_0", rose: "7ba3c9a3-014f-4daf-ba35-5c214d66679e/0_0",
+    cap: "2617ca64-d6a1-4f3b-a963-b77ba0eecc17/0_1", cowboy: "34463e76-8f0f-4624-bc18-37a3806b6488/0_2", cigar: "994648bd-5e8a-40b8-bae0-67936ac6b6b6/0_2", toothpick: "c0fafb3e-790e-413d-99ea-bc65a5e9d092/0_2",
+    earrings: "5965ba88-ad08-451c-976d-ce184e35afcf/0_1", bandana: "d50d4817-36be-45a5-9275-ca1f8691b2fa/0_0", tattoo: "62dc95e0-d9ed-40df-a4ea-30d22aa1c078/0_1",
+    santa: "8a01ad54-06d4-4688-8653-bbf9a6e5a65b/0_1", antlers: "a648157f-7751-4756-8c51-99ce0d22a105/0_3", elf: "881dd106-7305-4d17-9c7b-49287e9aaf80/0_1", scarf: "9a40b2e8-71ae-4741-9a28-ada8a683e2f0/0_1",
+    lights: "3a1db1ac-a006-4334-b24b-f78a1a9ea6ce/0_1", candycane: "41849fb3-b1e8-4c25-940b-08736d0f0363/0_2", gift: "b7ac196c-1d31-46ae-9b47-a7dd4ad6abe3/0_1", snowflake: "ed588f35-bdde-44df-9a35-b93b4c718620/0_2",
+    ornament: "4e86d050-cc4a-4d90-881a-a54aaa19d61d/0_1" };
+  /* slot: its choices (index 0 = none; the order is the look code — append only, same order as msy_av_items on the server)
+     and where each sits on the round look (percent of its size: left, top, width) */
   var SLOTS = [
-    { k: "t", n: "TOP", c: [null, "crown", "halo", "horns"], l: ["None", "Crown", "Halo", "Horns"], at: { crown: [27, -14, 46], halo: [25, -10, 50], horns: [22, -6, 56] } },
-    { k: "f", n: "FACE", c: [null, "shades"], l: ["None", "Shades"], at: { shades: [21, 24, 58] } },
-    { k: "n", n: "NECK", c: [null, "chain", "lei"], l: ["None", "Gold chain", "Flower lei"], at: { chain: [18, 52, 64], lei: [10, 48, 80] } },
-    { k: "k", n: "STICKER", c: [null, "heart", "flame", "anchor", "rose"], l: ["None", "Heart", "Fire", "Anchor", "Rose"], at: { heart: [66, 62, 40], flame: [66, 58, 40], anchor: [66, 60, 40], rose: [64, 58, 42] } }
+    { k: "t", n: "TOP", c: [null, "crown", "halo", "horns", "cap", "cowboy", "santa", "antlers", "elf"],
+      at: { crown: [27, -14, 46], halo: [25, -10, 50], horns: [22, -6, 56], cap: [18, -17, 64], cowboy: [6, -22, 88], santa: [16, -24, 68], antlers: [10, -24, 80], elf: [16, -27, 68] } },
+    { k: "e", n: "EYES", c: [null, "shades"], at: { shades: [21, 24, 58] } },
+    { k: "m", n: "MOUTH", c: [null, "cigar", "toothpick"], at: { cigar: [47, 47, 40], toothpick: [46, 51, 34] } },
+    { k: "a", n: "EARS", c: [null, "earrings"], at: { earrings: [8, 36, 84] } },
+    { k: "c", n: "CHEEK", c: [null, "tattoo"], at: { tattoo: [59, 41, 9] } },
+    { k: "n", n: "NECK", c: [null, "chain", "lei", "bandana", "scarf", "lights"], at: { chain: [18, 52, 64], lei: [10, 48, 80], bandana: [22, 56, 56], scarf: [16, 48, 68], lights: [8, 50, 84] } },
+    { k: "k", n: "STICKER", c: [null, "heart", "flame", "anchor", "rose", "candycane", "gift", "snowflake", "ornament"],
+      at: { heart: [66, 62, 40], flame: [66, 58, 40], anchor: [66, 60, 40], rose: [64, 58, 42], candycane: [66, 56, 40], gift: [64, 60, 40], snowflake: [64, 60, 40], ornament: [66, 58, 38] } }
   ];
   var KEYED = {}, KEYING = {}, BLANK = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
   function keyOut(name) {
@@ -194,7 +212,7 @@
   }
   function extras(o) {
     var h = "";
-    SLOTS.forEach(function (sl) { var name = sl.c[o[sl.k] | 0]; if (name) h += xImg(name, sl.at[name], name === "shades" || sl.k === "t" ? "filter:drop-shadow(0 1px 1px #0006)" : "filter:drop-shadow(0 2px 3px #0005)"); });
+    SLOTS.forEach(function (sl) { var name = sl.c[o[sl.k] | 0]; if (name) h += xImg(name, sl.at[name], sl.k === "k" || sl.k === "n" ? "filter:drop-shadow(0 2px 3px #0005)" : "filter:drop-shadow(0 1px 1px #0006)"); });
     return h;
   }
   function img(o, size) { var a = ART[o.g + o.s + o.h]; return a ? "https://cdn.midjourney.com/" + a + "_" + (size > 200 ? 640 : 384) + "_N.webp" : ""; }
@@ -204,7 +222,10 @@
   }
   function html(code, px) { var o = p2(code); if (o) return face(o, px); var old = parse(code); return old ? svg(old, px) : face({ g: "m", s: "b", h: 1, r: 0 }, px); }
   function rnd2() { var g = Math.random() < 0.5 ? "m" : "w", R = function (n, p) { return Math.random() < p ? 1 + Math.floor(Math.random() * (n - 1)) : 0; };
-    return { g: g, s: SKINS[Math.floor(Math.random() * 4)][0], h: Math.floor(Math.random() * 6), r: Math.floor(Math.random() * GLOW.length), t: R(4, 0.3), f: R(2, 0.3), n: R(3, 0.35), k: R(5, 0.35) }; }
+    var o = { g: g, s: SKINS[Math.floor(Math.random() * 4)][0], h: Math.floor(Math.random() * 6), r: Math.floor(Math.random() * GLOW.length) };
+    var P = { t: 0.3, e: 0.3, m: 0.15, a: 0.2, c: 0.1, n: 0.35, k: 0.35 };
+    SLOTS.forEach(function (sl) { var ok = sl.c.map(function (n, i) { return i && avail(n) ? i : 0; }).filter(Boolean); o[sl.k] = ok.length && Math.random() < P[sl.k] ? ok[Math.floor(Math.random() * ok.length)] : 0; });
+    return o; }
   var DEF2 = parse("0.2.2.0.0.0.0.0.0.0.0");
   function preload() { try { Object.keys(ART).forEach(function (k, i) { setTimeout(function () { var im = new Image(); im.src = "https://cdn.midjourney.com/" + ART[k] + "_384_N.webp"; }, i * 40); }); } catch (e) {} }
 
@@ -254,6 +275,13 @@
       "#mavSheet .mav-xr{display:flex;align-items:center;gap:10px;margin-bottom:8px}#mavSheet .mav-xr>span{width:62px;flex:none;font:700 10px/1 Inter,sans-serif;letter-spacing:.1em;color:#8f7d9a}" +
       "#mavSheet .mav-xr>div{display:flex;gap:7px;flex-wrap:wrap}#mavSheet .mav-xr button{width:48px;height:48px;border-radius:14px;border:2px solid transparent;background:#1f1424;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:3px}" +
       "#mavSheet .mav-xr button.on{border-color:" + NEON + ";background:#ff3d9a1f}#mavSheet .mav-xr img{width:100%;height:100%;object-fit:contain}#mavSheet .mav-xr i{font-style:normal;color:#8f7d9a;font-size:15px}" +
+      "#mavSheet .mav-xr button{position:relative}#mavSheet .mav-xr button.lockd img{opacity:.55}" +
+      "#mavSheet .mav-b{position:absolute;right:-4px;top:-6px;padding:2px 5px;border-radius:999px;background:#ffc24b;color:#2b1638;font:800 10px/1.2 Inter,sans-serif}" +
+      "#mavSheet .mav-b.lk{background:#2b1638;color:#fff;border:1px solid #ffffff33}#mavSheet .mav-b.xm{right:auto;left:-4px;background:none;padding:0;font-size:12px}" +
+      "#mavBuy{display:none;align-items:center;gap:10px;margin-top:12px;padding:10px 12px;border-radius:14px;background:#2a1838;border:1px solid #ffc24b66}" +
+      "#mavBuy b{display:block;font:700 14px/1.2 Fredoka,Inter,sans-serif;color:#fff}#mavBuy span{display:block;font:500 12px/1.3 Inter,sans-serif;color:#cbb8c3;margin-top:2px}" +
+      "#mavBuy button{border:0;border-radius:12px;padding:10px 14px;background:linear-gradient(135deg,#ffc24b,#ff8a5c);color:#2b1638;font:700 14px/1 Fredoka,Inter,sans-serif;cursor:pointer}" +
+      "@keyframes mavShake{0%,100%{transform:none}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}" +
       "#mavSheet .mav-act{display:flex;gap:8px;margin-top:16px}" +
       "#mavSheet .mav-act button{flex:1;padding:14px;border-radius:16px;font:700 17px/1 Fredoka,Inter,sans-serif;letter-spacing:.04em;cursor:pointer}" +
       "#mavSheet .mav-rand{background:#1f1424;border:2px solid " + VIOLET + ";color:#d8b8ff}" +
@@ -265,22 +293,24 @@
   var ED = null;
   function openEditor() {
     css(); preload();
-    ED = p2(MINE) || { g: "m", s: "b", h: 1, r: 0, t: 0, f: 0, n: 0, k: 0 };
-    Object.keys(XART).forEach(keyOut);
+    ED = p2(MINE) || p2("p2.mb1.0");
+    Object.keys(XART).forEach(keyOut); loadShop();
     var el = document.getElementById("mavSheet"); if (el) el.remove();
     el = document.createElement("div"); el.id = "mavSheet"; el.setAttribute("role", "dialog"); el.setAttribute("aria-label", "Build your Messy look");
     el.innerHTML = '<div class="mav-p"><div class="mav-grab"></div><div class="mav-hd">Your Messy look<button type="button" data-mav="x" aria-label="Close">✕</button></div>' +
-      '<div class="mav-big" id="mavBig"></div><div id="mavOpts"></div>' +
+      '<div class="mav-big" id="mavBig"></div><div id="mavOpts"></div><div id="mavBuy"></div>' +
       '<div class="mav-act"><button type="button" class="mav-rand" data-mav="rand">🎲 Surprise me</button><button type="button" class="mav-save" data-mav="save">Save</button></div>' +
       '<div style="margin-top:10px;font:500 12px/1.35 Inter,system-ui,sans-serif;color:#8f979e;text-align:center">Your look is all anyone sees on Messy. No photos, no names.</div></div>';
     document.body.appendChild(el);
     el.addEventListener("click", function (e) {
+      var bb = e.target.closest("[data-buy]"); if (bb) { buy(bb.getAttribute("data-buy"), bb); return; }
       var t = e.target.closest("[data-mav],[data-k]");
       if (e.target === el || (t && t.getAttribute("data-mav") === "x")) { el.remove(); return; }
       if (!t) return;
       if (t.hasAttribute("data-k")) { var kk = t.getAttribute("data-k"); ED[kk] = kk === "g" || kk === "s" ? t.getAttribute("data-v") : +t.getAttribute("data-v"); paintEd(true); try { navigator.vibrate && navigator.vibrate(6); } catch (x) {} return; }
       var a = t.getAttribute("data-mav");
       if (a === "rand") { ED = rnd2(); paintEd(true); }
+      if (a === "save" && locked().length) { var lk = SHOP && SHOP.map[locked()[0]]; try { toast(lk ? (lk.unlock ? "🔒 " + lk.label + ": " + lk.hint : "Unlock the " + lk.label + " first — or pick another") : "One moment…"); } catch (x) {} var b2 = document.getElementById("mavBuy"); if (b2) { b2.style.animation = "none"; b2.offsetWidth; b2.style.animation = "mavShake .4s"; } return; }
       if (a === "save") { t.disabled = true; var c = p2enc(ED); save(c).then(function () { el.remove(); paintDoor(); paintRoom(); try { window.MESSY_AV_ONSAVE && window.MESSY_AV_ONSAVE(c); } catch (x) {} try { typeof toast === "function" && toast("✓ Look saved"); } catch (x) {} }, function () { t.disabled = false; }); }
     });
     paintEd(false);
@@ -294,12 +324,39 @@
     h += '<div class="mav-lbl">SKIN</div><div class="mav-sk">' + SKINS.map(function (s) { return '<button data-k="s" data-v="' + s[0] + '" aria-label="' + s[2] + '" style="background:' + s[1] + '"' + (ED.s === s[0] ? ' class="on"' : "") + "></button>"; }).join("") + "</div>";
     h += '<div class="mav-lbl">HAIR & HATS</div><div class="mav-hs">' + HEADS[ED.g].map(function (n, i) { var o = { g: ED.g, s: ED.s, h: i, r: ED.r }; return '<button data-k="h" data-v="' + i + '"' + (ED.h === i ? ' class="on"' : "") + ">" + face(o, 64) + "<span>" + n + "</span></button>"; }).join("") + "</div>";
     h += '<div class="mav-lbl">GLOW</div><div class="mav-gl">' + GLOW.map(function (c, i) { return '<button data-k="r" data-v="' + i + '" aria-label="Glow ' + (i + 1) + '" style="background:' + c + '"' + (ED.r === i ? ' class="on"' : "") + "></button>"; }).join("") + "</div>";
-    h += '<div class="mav-lbl">EXTRAS</div>' + SLOTS.map(function (sl) {
+    h += '<div class="mav-lbl">EXTRAS <span style="letter-spacing:0;font-weight:600;color:#8f7d9a">· ' + (SHOP ? SHOP.bucks + " ⬡" : "") + '</span></div>' + SLOTS.map(function (sl) {
       return '<div class="mav-xr"><span>' + sl.n + '</span><div>' + sl.c.map(function (name, i) {
-        return '<button data-k="' + sl.k + '" data-v="' + i + '" title="' + sl.l[i] + '"' + ((ED[sl.k] | 0) === i ? ' class="on"' : "") + ">" + (name ? '<img alt="" data-xk="' + name + '" src="' + (KEYED[name] || BLANK) + '">' : "<i>✕</i>") + "</button>";
+        var it = name && SHOP && SHOP.map[name], lock = name && !avail(name), badge = "";
+        if (it && lock) badge = it.unlock ? '<b class="mav-b lk">🔒</b>' : '<b class="mav-b">' + it.price + "⬡</b>";
+        if (it && it.set === "xmas") badge += '<b class="mav-b xm">🎄</b>';
+        return '<button data-k="' + sl.k + '" data-v="' + i + '" title="' + (it ? it.label : name || "None") + '" class="' + ((ED[sl.k] | 0) === i ? "on" : "") + (lock ? " lockd" : "") + '">' + (name ? '<img alt="" data-xk="' + name + '" src="' + (KEYED[name] || BLANK) + '">' : "<i>✕</i>") + badge + "</button>";
       }).join("") + "</div></div>";
     }).join("");
     document.getElementById("mavOpts").innerHTML = h;
+    buyBar();
+  }
+
+  /* ───────── the extras shop: free, 1 ⬡, or earned in the app (msy_shop / msy_buy) ───────── */
+  var SHOP = null;
+  function avail(name) { if (!name) return true; if (!SHOP) return false; var it = SHOP.map[name]; return !!(it && it.owned); }
+  function loadShop() {
+    try { if (!sb()) return; sb().rpc("msy_shop").then(function (r) { if (r.error || !r.data) return; var m = {}; (r.data.items || []).forEach(function (it) { m[it.id] = it; }); SHOP = { bucks: r.data.bucks, map: m }; if (document.getElementById("mavOpts")) paintEd(false); }, function () {}); } catch (e) {}
+  }
+  function locked() { var out = []; SLOTS.forEach(function (sl) { var n = sl.c[ED[sl.k] | 0]; if (n && !avail(n)) out.push(n); }); return out; }
+  function buyBar() {
+    var bar = document.getElementById("mavBuy"); if (!bar) return;
+    var L = locked(); if (!L.length || !SHOP) { bar.innerHTML = ""; bar.style.display = "none"; return; }
+    var it = SHOP.map[L[0]]; bar.style.display = "flex";
+    bar.innerHTML = it.unlock ? '<div style="flex:1"><b>🔒 ' + it.label + "</b><span>Earn it: " + it.hint + "</span></div>"
+      : '<div style="flex:1"><b>' + it.label + " · " + it.price + ' ⬡</b><span>You have ' + SHOP.bucks + ' ⬡. Yours to keep.</span></div><button type="button" data-buy="' + it.id + '">Unlock</button>';
+  }
+  function buy(id, btn) {
+    btn.disabled = true; btn.textContent = "…";
+    sb().rpc("msy_buy", { p_item: id }).then(function (r) {
+      if (r.error) { try { toast(r.error.message); } catch (e) {} btn.disabled = false; btn.textContent = "Unlock"; return; }
+      var m = {}; (r.data.items || []).forEach(function (it) { m[it.id] = it; }); SHOP = { bucks: r.data.bucks, map: m }; paintEd(false);
+      try { toast("✓ Unlocked — it's yours"); } catch (e) {}
+    }, function () { btn.disabled = false; btn.textContent = "Unlock"; });
   }
 
   /* ───────── where it shows ───────── */
