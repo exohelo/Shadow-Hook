@@ -186,7 +186,8 @@
   function place(name, sl, o) {
     var L = lm(o), cx = L[0], ey = L[1], d = L[2], my = L[3], s = d / 20;
     if (name === "shades") return fit(name, cx, ey + 0.6, d * 2.15);
-    if (name === "cigar") return fit(name, cx + d * 0.75, my + d * 0.08, d * 1.6);
+    if (name === "cigar") { var cb = BB.cigar, cw = d * 1.35, CW = cw / (cb[2] - cb[0]), cy0 = (cb[1] + cb[3]) / 2;   /* its butt end in the corner of the lips, hanging down a little */
+      return [cx + d * 0.28 - CW * cb[0], my - d * 0.08 - CW * cy0, CW, "transform:rotate(16deg);transform-origin:" + (cb[0] * 100) + "% " + (cy0 * 100) + "%;"]; }
     if (name === "toothpick") return fit(name, cx + d * 0.72, my - d * 0.2, d * 1.3);   /* its low left end sits in the mouth */
     if (name === "tattoo") return fit(name, cx + d * 0.74, ey + d * 0.5, d * 0.17);
     var a = sl.at[name];
@@ -237,7 +238,7 @@
       if (name === "earrings") { keyOut(name); var E = lm(o), es = E[2] / 20, ew = 17 * es, eh = 34 * es, et = E[1] - 0.15 * E[2], el = E[0] - 1.475 * E[2] - ew / 2, er = E[0] + 1.475 * E[2] - ew / 2; var bgi = KEYED[name] ? "background-image:url(" + KEYED[name] + ");" : "";   /* one hoop per ear: each half of the pair, at its own ear */
         h += '<div data-xkbg="earrings" style="position:absolute;left:' + el + '%;top:' + et + '%;width:' + ew + '%;height:' + eh + '%;background:no-repeat 0 50%/200% auto;' + bgi + 'pointer-events:none;filter:drop-shadow(0 1px 1px #0006)"></div>' +
              '<div data-xkbg="earrings" style="position:absolute;left:' + er + '%;top:' + et + '%;width:' + ew + '%;height:' + eh + '%;background:no-repeat 100% 50%/200% auto;' + bgi + 'pointer-events:none;filter:drop-shadow(0 1px 1px #0006)"></div>'; return; }
-      h += xImg(name, place(name, sl, o), sl.k === "k" || sl.k === "n" ? "filter:drop-shadow(0 2px 3px #0005)" : "filter:drop-shadow(0 1px 1px #0006)"); });
+      var at = place(name, sl, o); h += xImg(name, at, (at[3] || "") + (sl.k === "k" || sl.k === "n" ? "filter:drop-shadow(0 2px 3px #0005)" : "filter:drop-shadow(0 1px 1px #0006)")); });
     return h;
   }
   function img(o, size) { var a = ART[o.g + o.s + o.h]; return a ? "https://cdn.midjourney.com/" + a + "_" + (size > 200 ? 640 : 384) + "_N.webp" : ""; }
