@@ -1416,3 +1416,54 @@
     if (++n > 40) { clearInterval(w); setInterval(card, 5000); }
   }, 500);
 })();
+
+/* #promo(nov24) — flyer messages in private messages: a dm_messages row of kind "promo" (url = the flyer art + "#promo=<where>")
+   draws as a flyer card with a button that opens that part of the app. First one: the new Messy, sent from MESSY_ON_DA_DOCKS.
+   Phones on an older build just see the flyer picture. */
+(function () {
+  var GO = { messy: { to: "/messy.html", cta: "💘 OPEN MESSY", kick: "THE NEW", title: "MESSY", sub: "ON DA DOCKS" } };
+  function css() {
+    if (document.getElementById("promoCss")) return;
+    var s = document.createElement("style"); s.id = "promoCss";
+    s.textContent =
+      ".dm-b.promo{padding:0!important;background:none!important;border:0!important;max-width:min(330px,86%)!important;box-shadow:none!important}" +
+      ".dm-promo{position:relative;border-radius:22px;overflow:hidden;box-shadow:0 10px 28px #0006;background:#2a1846}" +
+      ".dm-promo img{display:block;width:100%;aspect-ratio:4/5;object-fit:cover}" +
+      ".dm-promo .pt{position:absolute;left:0;right:0;top:0;padding:16px 14px 40px;text-align:center;background:linear-gradient(180deg,#2a1846cc,#2a184600)}" +
+      ".dm-promo .pk{font:700 13px/1 Fredoka,'Barlow Condensed',sans-serif;letter-spacing:.3em;color:#ffe3b0}" +
+      ".dm-promo .ph{font:700 54px/.95 Fredoka,Anton,sans-serif;letter-spacing:.02em;background:linear-gradient(90deg,#ffd36b,#ff6f9a);-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 3px 8px #0007)}" +
+      ".dm-promo .ps{font:700 15px/1 Fredoka,'Barlow Condensed',sans-serif;letter-spacing:.26em;color:#fff;margin-top:2px;text-shadow:0 2px 8px #0008}" +
+      ".dm-promo .pb{padding:12px 14px 14px;background:#fffaf5;color:#2b1638;font:500 14px/1.38 Inter,system-ui,sans-serif}" +
+      ".dm-promo .pb button{display:block;width:100%;margin-top:10px;border:0;border-radius:14px;padding:13px;background:linear-gradient(135deg,#ff6f9a,#ff4f8b);color:#fff;font:700 17px/1 Fredoka,'Barlow Condensed',sans-serif;letter-spacing:.06em;box-shadow:0 6px 16px #ff4f8b66;cursor:pointer}" +
+      ".dm-promo .pf{font-size:11px;color:#8a7a95;margin-top:6px;text-align:right}";
+    (document.head || document.documentElement).appendChild(s);
+    if (!document.querySelector('link[href*="family=Fredoka"]')) { var l = document.createElement("link"); l.rel = "stylesheet"; l.href = "https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&display=swap"; document.head.appendChild(l); }
+  }
+  function esc(t) { return String(t == null ? "" : t).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function paint() {
+    try {
+      var f = document.getElementById("dmFeed"); if (!f || !window.DM || !DM.openPeer) return;
+      var t = DM.threads[DM.openPeer]; if (!t) return;
+      t.msgs.forEach(function (m) {
+        var u = String(m.url || ""), mm = /#promo=([a-z]+)/.exec(u); if (m.kind !== "promo" && !mm) return;
+        var g = GO[mm ? mm[1] : "messy"] || GO.messy, el = f.querySelector('[data-dmid="' + String(m.id).replace(/"/g, "") + '"]');
+        if (!el || el.__promo) return; el.__promo = 1; css();
+        var tm = el.querySelector(".dm-t");
+        el.classList.add("promo"); el.classList.remove("media");
+        el.innerHTML = '<div class="dm-promo"><img src="' + esc(u.split("#")[0]) + '" alt="" loading="lazy"><div class="pt"><div class="pk">' + g.kick + '</div><div class="ph">' + g.title + '</div><div class="ps">' + g.sub + "</div></div>" +
+          '<div class="pb">' + esc(m.tx || "") + '<button type="button" data-promo-go="' + esc(g.to) + '">' + g.cta + "</button>" + (tm ? '<div class="pf">' + tm.textContent + "</div>" : "") + "</div></div>";
+      });
+    } catch (e) {}
+  }
+  document.addEventListener("click", function (e) { var b = e.target.closest && e.target.closest("[data-promo-go]"); if (b) { e.preventDefault(); e.stopPropagation(); location.href = b.getAttribute("data-promo-go"); } }, true);
+  var n = 0, w = setInterval(function () {
+    if (typeof window.dmDrawThread === "function" && !window.dmDrawThread.__promo) {
+      var o = window.dmDrawThread;
+      window.dmDrawThread = function () { var r = o.apply(this, arguments); paint(); return r; };
+      window.dmDrawThread.__promo = 1;
+    }
+    if (++n > 60) clearInterval(w);
+  }, 500);
+  var mo = new MutationObserver(function () { paint(); });
+  var tt = setInterval(function () { var f = document.getElementById("dmFeed"); if (f) { clearInterval(tt); mo.observe(f, { childList: true }); paint(); } }, 2000);
+})();
