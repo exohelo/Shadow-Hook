@@ -176,6 +176,7 @@
     { k: "k", n: "STICKER", c: [null, "heart", "flame", "anchor", "rose", "candycane", "gift", "snowflake", "ornament"],
       at: { heart: [66, 62, 40], flame: [66, 58, 40], anchor: [66, 60, 40], rose: [64, 58, 42], candycane: [66, 56, 40], gift: [64, 60, 40], snowflake: [64, 60, 40], ornament: [66, 58, 38] } }
   ];
+  var CUT = { scarf: [[27, 12], [73, 12], [73, 23], [66, 27.5], [58, 31.5], [50, 33], [42, 31.5], [35, 28.5], [27, 23]] };
   var KEYED = {}, KEYING = {}, BLANK = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
   function keyOut(name) {
     if (KEYED[name] || KEYING[name] || !XART[name]) return;
@@ -198,6 +199,8 @@
           p[i + 3] = Math.round(p[i + 3] * a);
         }
         g.putImageData(d, 0, 0);
+        /* the scarf: cut away the back of the band (behind the neck) so the front looks wrapped around the neck */
+        if (CUT[name]) { g.globalCompositeOperation = "destination-out"; g.beginPath(); CUT[name].forEach(function (q, i) { var x = q[0] / 100 * W, y = q[1] / 100 * H; i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.closePath(); g.fill(); g.globalCompositeOperation = "source-over"; }
         KEYED[name] = c.toDataURL("image/png");
       } catch (e) { KEYED[name] = BLANK; }
       KEYING[name] = 0;
