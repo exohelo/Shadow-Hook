@@ -110,6 +110,8 @@
     el.classList.add("on"); document.documentElement.classList.add("gf-lock");
     try { if (!(history.state && history.state.shkGame)) { history.pushState({ shkGame: 1 }, ""); pushed = true; } } catch (e) {}
     tip();
+    /* the header can still be settling (splash, gate) when a game opens from a link: keep the sheet under it */
+    clearInterval(el.__pt); el.__pt = setInterval(function () { if (!isOpen()) { clearInterval(el.__pt); return; } place(); }, 800);
     setTimeout(function () { try { frame.focus(); } catch (e) {} }, 300);
   }
   function close(fromPop) {
