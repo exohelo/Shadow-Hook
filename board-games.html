@@ -117,7 +117,7 @@ table.lb tr.me td{color:var(--gold)}
 <script>
 var SB_URL='https://ehykqebzkbelwtkgjbml.supabase.co', SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVoeWtxZWJ6a2JlbHd0a2dqYm1sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzMDMwNTMsImV4cCI6MjA5OTg3OTA1M30.RgdTFy1HNE36lN3bM6ovjkmAJsTEps0GmgRuI6h6IpI';
 var sb=null, ME=null, L=null, G=null, TAB='games', NEWG='c4', BOARDG='all', pollT=null, busy=false;
-var GAMES={c4:{n:'Connect 4',i:'🔴',d:'Drop discs. Four in a row wins.'},ship:{n:'Sink the Ship',i:'🚢',d:'Hide your fleet. Call your shots.'},hang:{n:'Dock Words',i:'🪝',d:'Same dock word for both. Fewer misses wins.'},checkers:{n:'Checkers',i:'⛀',d:'Classic. Jumps are a must.'}};
+var GAMES={c4:{n:'Connect 4',i:'🔴',d:'Drop discs. Four in a row wins.'},ship:{n:'Sink the Ship',i:'🚢',d:'Hide your fleet. Call your shots.'},hang:{n:'Dock Words',i:'🪝',d:'Same dock word for both. Fewer misses wins.'},checkers:{n:'Checkers',i:'⛀',d:'Classic. Jump if you want to — it\'s your call.'}};
 function $(id){ return document.getElementById(id); }
 function esc(t){ return String(t==null?'':t).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 var toastT=0; function toast(t){ var el=$('toast'); el.textContent=t; el.style.opacity=1; clearTimeout(toastT); toastT=setTimeout(function(){ el.style.opacity=0; },2800); }
@@ -265,9 +265,10 @@ function stepsFrom(b,i,s){ var p=b[i], out=[]; if(!own(p,s)) return out; var rc=
   dirs(p,s).forEach(function(dr){ [-1,1].forEach(function(dc){ var t=ckIdx(rc[0]+dr,rc[1]+dc); if(t>=0&&b[t]===0) out.push(t); }); }); return out; }
 function anyJump(b,s){ for(var i=0;i<32;i++) if(jumpsFrom(b,i,s).length) return true; return false; }
 function drawCK(g){
-  var s=g.seat, b=UI.tb||g.state.b.slice(), can=g.status==='live'&&g.my_turn, flip=s===2, must=can&&anyJump(g.state.b,s);
+  /* #nov25: jumps are optional (EXO) — a step is always allowed, and a double jump can stop after any hop */
+  var s=g.seat, b=UI.tb||g.state.b.slice(), can=g.status==='live'&&g.my_turn, flip=s===2;
   var tg=[];
-  if(can&&UI.sel!=null){ tg=UI.path&&UI.path.length>1?jumpsFrom(b,UI.sel,s):(must?jumpsFrom(b,UI.sel,s):stepsFrom(b,UI.sel,s).concat(jumpsFrom(b,UI.sel,s))); }
+  if(can&&UI.sel!=null){ tg=UI.path&&UI.path.length>1?jumpsFrom(b,UI.sel,s):stepsFrom(b,UI.sel,s).concat(jumpsFrom(b,UI.sel,s)); }
   var lastSet={}; if(g.state.last&&g.state.last.path) g.state.last.path.forEach(function(i){ lastSet[i]=1; });
   var h='<div class="ck">';
   for(var vr=0;vr<8;vr++) for(var vc=0;vc<8;vc++){
@@ -275,13 +276,14 @@ function drawCK(g){
     h+='<div class="sq '+(dark?'d':'l')+(i>=0&&tg.indexOf(i)>=0?' tgt':'')+(i>=0&&lastSet[i]?' last':'')+'"'+(i>=0?' data-i="'+i+'"':'')+'>'+
       (p?'<div class="pc s'+(((p-1)%2)+1)+(UI.sel===i?' sel':'')+'">'+(p>2?'👑':'')+'</div>':'')+'</div>';
   }
-  $('gBoard').innerHTML=h+'</div>'+(can&&must&&!UI.path?'<p class="note" style="text-align:center">You have a jump — you must take it.</p>':'')+(UI.path&&UI.path.length>1?'<p class="note" style="text-align:center">Keep jumping. <a href="#" id="ckUndo" style="color:var(--gold)">Undo</a></p>':'');
+  $('gBoard').innerHTML=h+'</div>'+(UI.path&&UI.path.length>1?'<p class="note" style="text-align:center">Another jump is open — take it, or <a href="#" id="ckStop" style="color:var(--gold);font-weight:700">Stop here</a> · <a href="#" id="ckUndo" style="color:var(--gold)">Undo</a></p>':'');
+  if($('ckStop')) $('ckStop').onclick=function(e){ e.preventDefault(); if(UI.path&&UI.path.length>1) send({path:UI.path}); };
   if($('ckUndo')) $('ckUndo').onclick=function(e){ e.preventDefault(); UI.sel=null; UI.path=null; UI.tb=null; drawCK(G); };
   if(!can) return;
   $('gBoard').querySelectorAll('[data-i]').forEach(function(x){ x.onclick=function(){
     var i=+x.dataset.i;
     if(UI.path&&UI.path.length>1){ if(tg.indexOf(i)>=0) ckStep(i); return; }
-    if(own(b[i],s)){ if(must&&!jumpsFrom(b,i,s).length) return toast('Take the jump'); UI.sel=i; UI.path=[i]; drawCK(G); return; }
+    if(own(b[i],s)){ UI.sel=i; UI.path=[i]; drawCK(G); return; }
     if(UI.sel!=null&&tg.indexOf(i)>=0) ckStep(i);
   }; });
 }
