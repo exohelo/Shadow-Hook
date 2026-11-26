@@ -7,9 +7,10 @@
   var css = document.createElement("style");
   css.textContent =
     /* #lobbyfun(nov25): Midjourney "game night on the dock" behind the card */
-    ".hcard.gm-boards{background:linear-gradient(180deg,#0b0a1455 0,#0b0a1410 30%,#0b0a14cc 78%,#0b0a14f0 100%),url('https://cdn.midjourney.com/c77f98a7-3381-434a-bd53-c2654cff85e7/0_1_384_N.webp') center 58%/cover no-repeat,linear-gradient(135deg,#2b1d52,#3a1020);border:2px solid #a78bfa;box-shadow:0 0 8px #a78bfa,0 0 18px #a78bfa55,inset 0 0 14px #a78bfa33;position:relative;overflow:visible}" +
+    ".hcard.gm-boards{background:radial-gradient(ellipse 80% 55% at 50% 52%,#0b0a14cc 0,#0b0a1466 60%,transparent 100%),linear-gradient(180deg,#0b0a1433 0,#0b0a1422 30%,#0b0a14bb 80%,#0b0a14ee 100%),url('https://cdn.midjourney.com/c77f98a7-3381-434a-bd53-c2654cff85e7/0_1_384_N.webp') center 58%/cover no-repeat,linear-gradient(135deg,#2b1d52,#3a1020);border:2px solid #a78bfa;box-shadow:0 0 8px #a78bfa,0 0 18px #a78bfa55,inset 0 0 14px #a78bfa33;position:relative;overflow:visible}" +
     ".hcard.gm-boards .hc-kind,.hcard.gm-boards .hc-ico,.hcard.gm-boards .hc-name,.hcard.gm-boards .hc-stat{text-shadow:0 2px 4px #000,0 0 10px #000c}" +
-    ".hcard.gm-boards .hc-ico{background:linear-gradient(180deg,#fff7d6,#fbbf24 60%,#f59e0b);-webkit-background-clip:text;background-clip:text;color:transparent!important;filter:drop-shadow(0 2px 0 #7c2d12)}" +
+    ".hcard.gm-boards .hc-ico{color:#fde047!important;-webkit-text-fill-color:#fde047!important;background:none!important;filter:none!important;text-shadow:0 3px 0 #92400e,0 0 12px #000,0 0 22px #fbbf2499!important}" +
+    ".hcard.gm-boards .hc-name{color:#fff!important;text-shadow:0 2px 0 #4c1d95,0 0 10px #000!important}" +
     ".hcard.gm-boards.is-hot{animation:bgHot 1.8s ease-in-out infinite}" +
     "@keyframes bgHot{0%,100%{box-shadow:0 0 8px #a78bfa,0 0 18px #a78bfa55}50%{box-shadow:0 0 14px #fbbf24,0 0 30px #fbbf2488}}" +
     ".hcard.gm-boards .hc-ico{font-family:Anton,Impact,sans-serif;color:#fde68a;letter-spacing:1px}" +
