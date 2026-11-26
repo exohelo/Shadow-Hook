@@ -111,6 +111,8 @@
       if (el.scrollWidth <= el.clientWidth + 6 || el.clientWidth < 120 || !el.children.length) continue;
       var cs = getComputedStyle(el);
       if (cs.textOverflow === "ellipsis" || cs.position === "fixed" || cs.display.indexOf("inline") === 0 || !clipped(el, cs)) continue;
+      if (/marq|ticker|crawl/i.test(el.className || "")) continue; /* tickers scroll themselves */
+      var kid = el.firstElementChild; if (kid && getComputedStyle(kid).animationName !== "none") continue;
       if (cs.columnCount !== "auto" || cs.columnWidth !== "auto") continue; /* multi-column pages are laid out, not overflowing */
       if (el.tagName === "TABLE") { var w = document.createElement("div"); w.className = "fold-x"; el.parentNode.insertBefore(w, el); w.appendChild(el); el = w; }
       else el.classList.add("fold-x");
