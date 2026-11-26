@@ -2,7 +2,10 @@
    Inside the app's game sheet (game_frame.js) it turns the page's pulls into the same close the rest of the app uses:
      · pull down while the page is at the top → the sheet follows your finger; let go past the line and the game closes
        (if a pop-up or chat is open inside the game, the pull closes that first)
-     · swipe in from the left edge → back one step (the page's own SHK_SHELL_BACK), and at the front door it closes the game
+     · swipe right → back one step (the page's own SHK_SHELL_BACK), and at the front door it closes the game.
+       #swipe(nov25): the swipe used to have to start within 26px of the left edge — on an iPhone that strip belongs to
+       the system's own back-swipe, so it rarely reached the game. Now a clearly sideways swipe to the right that starts
+       anywhere on the left half counts (not on Messy's swipe cards, a row that scrolls sideways, or [data-noswipe])
    A page sets window.SHK_SHELL_BACK = function(){ return true if it went back a step } and, if it has its own popups,
    window.SHK_SHELL_LAYER = function(){ return true while one is open }. <html data-shell="edge"> (Corral Run) keeps
    only the edge swipe, because the game itself uses drags.
@@ -29,6 +32,12 @@
   function closeGame() { if (inapp) post({ shk: "close" }); else location.href = "/"; }
   function buzz(p) { try { navigator.vibrate && navigator.vibrate(p); } catch (e) {} }
 
+  function hScroll(el) {
+    for (var n = el; n && n !== document.body && n !== root; n = n.parentElement) {
+      if (n.scrollWidth > n.clientWidth + 2) { var ox = getComputedStyle(n).overflowX; if (ox === "auto" || ox === "scroll") return true; }
+    }
+    return false;
+  }
   function atTop(el) {
     if ((window.scrollY || document.documentElement.scrollTop || 0) > 0) return false;
     for (var n = el; n && n !== document.body && n !== root; n = n.parentElement) {
@@ -42,13 +51,15 @@
     var t = e.touches[0], tg = e.target;
     if (tg.closest && tg.closest("input,textarea,select,[contenteditable],[data-nopull]")) return;
     var edgeOnly = root.getAttribute("data-shell") === "edge";
-    P = { x: t.clientX, y: t.clientY, t: Date.now(), edge: t.clientX < 26, pull: !edgeOnly && atTop(tg), mode: null, d: 0 };
+    var side = !edgeOnly && t.clientX < (window.innerWidth || 400) * 0.5 && !(tg.closest && tg.closest("[data-noswipe],.sc")) && !hScroll(tg);
+    P = { x: t.clientX, y: t.clientY, t: Date.now(), edge: t.clientX < 34, side: side, pull: !edgeOnly && atTop(tg), mode: null, d: 0 };
   }, { passive: true });
   document.addEventListener("touchmove", function (e) {
     if (!P || P.mode === "dead") return;
     var t = e.touches[0], dx = t.clientX - P.x, dy = t.clientY - P.y;
     if (!P.mode) {
       if (P.edge && dx > 10 && dx > Math.abs(dy)) P.mode = "edge";
+      else if (P.side && dx > 14 && dx > Math.abs(dy) * 1.6) P.mode = "edge";
       else if (P.pull && dy > 10 && dy > Math.abs(dx) * 1.2) P.mode = layer() ? "lpull" : "pull";
       else if (Math.abs(dx) > 10 || Math.abs(dy) > 10) { P.mode = "dead"; return; }
       else return;
