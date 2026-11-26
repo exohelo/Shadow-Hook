@@ -499,8 +499,8 @@ function reset(){
   if(MODE==='paid'){ var sc=SLOTCOL[clamp(mySlot(),0,SLOTCOL.length-1)]; slots=[sc]; }
   var ai=0;
   slots.forEach(function(c,k){ var x=(c+.5)*T, y=(SR+.6)*T; if(MODE==='paid'||k===MAP.playerSlot){ player=makeRacer(x,y,false,0); racers.push(player); } else { var r=makeRacer(x,y,true,ai++); r.seed=1+r.i*3.1+R()*5; r.path=planPath(x,y,r.stall,r.seed); racers.push(r); } });
-  trucks=MAP.trucks.map(function(t){ var pts=t.pts.map(function(p){ return [p[0]*T,p[1]*T]; }); var segs=[], tot=0; for(var i=0;i<pts.length;i++){ var a=pts[i], b=pts[(i+1)%pts.length], l=Math.hypot(b[0]-a[0],b[1]-a[1]); segs.push({a:a,b:b,l:l,s:tot,ang:Math.atan2(b[1]-a[1],b[0]-a[0])}); tot+=l; }
-    var tr={segs:segs,tot:tot,s:t.s%tot,v:t.v,cab:t.cab,box:t.box,pause:0,x:0,y:0,a:0,da:null,circ:[]}; truckPlace(tr); tr.da=tr.a; return tr; });
+  trucks=MAP.trucks.map(function(t){ var pts=roundLoop(t.pts.map(function(p){ return [p[0]*T,p[1]*T]; }),T*1.7); var segs=[], tot=0; for(var i=0;i<pts.length;i++){ var a=pts[i], b=pts[(i+1)%pts.length], l=Math.hypot(b[0]-a[0],b[1]-a[1]); segs.push({a:a,b:b,l:l,s:tot,ang:Math.atan2(b[1]-a[1],b[0]-a[0])}); tot+=l; }
+    var tr={segs:segs,tot:tot,s:t.s%tot,v:t.v,cab:t.cab,box:t.box,pause:0,x:0,y:0,a:0,da:null,ta:0,kx:0,ky:0,circ:[]}; truckPlace(tr); rigPose(tr,0); tr.ta=tr.da; rigPose(tr,0); return tr; });
   handlers=MAP.handlers.map(function(h){ var a=[h.a[0]*T,h.a[1]*T], b=[h.b[0]*T,h.b[1]*T]; return {a:a,b:b,face:Math.atan2(b[1]-a[1],b[0]-a[0]),p:0,ph:'go',t:0,pause:0,x:a[0],y:a[1],circ:[]}; });
   rtgs=MAP.rtgs.map(function(g,i){ return {x:g.x*T,y0:g.y0*T,y1:g.y1*T,y:(i?g.y1:g.y0)*T,dir:i?-1:1,ph:'move',t:2+i*1.5}; });
   train={st:'idle',t:6+R()*2.5,x:0,dir:1,L:13*100,spd:540};
@@ -520,6 +520,22 @@ function reset(){
 function mkCone(x,y,st){ return {x:x,y:y,ox:x,oy:y,vx:0,vy:0,sp:0,a:0,st:'up',t:0,fixed:st}; }
 
 /* ───────────── traffic ───────────── */
+/* #rig(nov26): an outside truck is a tractor and a trailer, not one stiff block. The route's corners are rounded,
+   the cab steers along the curve, and the trailer hangs off the fifth wheel and trails it — so in a turn the box
+   lags behind and cuts the inside of the corner the way a real rig does. */
+var RIG={cab:26, king:18, trail:86};
+function roundLoop(pts,R){ var out=[], n=pts.length;
+  for(var i=0;i<n;i++){ var p0=pts[(i-1+n)%n], p1=pts[i], p2=pts[(i+1)%n];
+    var l1=Math.hypot(p1[0]-p0[0],p1[1]-p0[1]), l2=Math.hypot(p2[0]-p1[0],p2[1]-p1[1]); if(l1<1||l2<1){ out.push(p1); continue; }
+    var r=Math.min(R,l1/2,l2/2), a=[p1[0]-(p1[0]-p0[0])/l1*r, p1[1]-(p1[1]-p0[1])/l1*r], b=[p1[0]+(p2[0]-p1[0])/l2*r, p1[1]+(p2[1]-p1[1])/l2*r];
+    for(var k=0;k<=10;k++){ var t=k/10, u=1-t; out.push([u*u*a[0]+2*u*t*p1[0]+t*t*b[0], u*u*a[1]+2*u*t*p1[1]+t*t*b[1]]); } }
+  return out; }
+function pathAt(tr,s){ s=((s%tr.tot)+tr.tot)%tr.tot; for(var i=0;i<tr.segs.length;i++){ var g=tr.segs[i]; if(s<=g.s+g.l||i===tr.segs.length-1){ var t=g.l?(s-g.s)/g.l:0; return [g.a[0]+(g.b[0]-g.a[0])*t, g.a[1]+(g.b[1]-g.a[1])*t]; } } return [tr.x,tr.y]; }
+function rigPose(tr,ds){
+  var rear=pathAt(tr,tr.s-RIG.cab); tr.da=Math.atan2(tr.y-rear[1],tr.x-rear[0]);          /* the cab points from its rear wheels to its front */
+  tr.kx=tr.x-Math.cos(tr.da)*RIG.king; tr.ky=tr.y-Math.sin(tr.da)*RIG.king;               /* the fifth wheel */
+  tr.ta+=(ds/RIG.trail)*Math.sin(angDiff(tr.ta,tr.da));                                     /* the trailer follows the hitch */
+}
 function truckPlace(tr){ var s=tr.s; for(var i=0;i<tr.segs.length;i++){ var g=tr.segs[i]; if(s<=g.s+g.l||i===tr.segs.length-1){ var t=(s-g.s)/g.l; tr.x=g.a[0]+(g.b[0]-g.a[0])*t; tr.y=g.a[1]+(g.b[1]-g.a[1])*t; tr.a=g.ang; return; } } }
 function blockedAhead(x,y,a,dist,half){ var fx=Math.cos(a), fy=Math.sin(a);
   for(var i=0;i<racers.length;i++){ var r=racers[i], dx=r.x-x, dy=r.y-y, f=dx*fx+dy*fy, l=-dx*fy+dy*fx; if(f>0&&f<dist&&Math.abs(l)<half) return r; } return null; }
@@ -529,11 +545,11 @@ function updTrucks(dt){
     else{
       var who=blockedAhead(tr.x,tr.y,tr.da,62,30);
       if(who&&(tr.wait||0)<1.6){ tr.wait=(tr.wait||0)+.25; tr.pause=.25; if(who===player&&clock-lastHonk>2.5&&state==='race'){ lastHonk=clock; SFX.honk(); } }
-      else { if(!who) tr.wait=0; tr.s=(tr.s+tr.v*(who?.45:1)*dt)%tr.tot; truckPlace(tr); }
+      else { if(!who) tr.wait=0; var ds=tr.v*(who?.45:1)*dt; tr.s=(tr.s+ds)%tr.tot; truckPlace(tr); rigPose(tr,ds); }
     }
-    tr.da+=angDiff(tr.da,tr.a)*Math.min(1,dt*3.2);
-    var fx=Math.cos(tr.da), fy=Math.sin(tr.da); tr.circ=[];
-    for(var k=0;k<6;k++){ var o=-12-k*20; tr.circ.push({x:tr.x+fx*o,y:tr.y+fy*o,r:13}); }
+    var fx=Math.cos(tr.da), fy=Math.sin(tr.da), bx=Math.cos(tr.ta), by=Math.sin(tr.ta); tr.circ=[];
+    tr.circ.push({x:tr.x-fx*8,y:tr.y-fy*8,r:13});
+    for(var k=0;k<5;k++){ var o=-k*21; tr.circ.push({x:tr.kx+bx*o,y:tr.ky+by*o,r:13}); }
   });
   handlers.forEach(function(h){
     if(h.pause>0) h.pause-=dt;
@@ -817,8 +833,28 @@ function drawUTR(g,r){
   g.restore();
 }
 function drawTruck(g,t){
+  var S=ART&&ART.truck?ART.tint('truck',t.box):null;
+  if(S){ var sc=128/S.width, h=S.height*sc, cut=Math.round(S.width*.8);
+    /* trailer: the container part of the sprite, pivoting on the fifth wheel */
+    g.save(); g.translate(t.kx,t.ky); g.rotate(t.ta);
+    g.fillStyle='rgba(0,0,0,.3)'; g.fillRect(-96+5,-h/2+6,102,h-4);
+    g.drawImage(S,0,0,cut,S.height,-96,-h/2,cut*sc,h); g.restore();
+    /* cab: the tractor part, on its own heading */
+    g.save(); g.translate(t.x,t.y); g.rotate(t.da);
+    g.fillStyle='rgba(0,0,0,.3)'; g.fillRect(-26+4,-h/2+5,26,h-4);
+    g.drawImage(S,cut,0,S.width-cut,S.height,-(S.width-cut)*sc+1,-h/2,(S.width-cut)*sc,h); g.restore();
+    return; }
+  g.save(); g.translate(t.kx,t.ky); g.rotate(t.ta);
+  g.fillStyle='rgba(0,0,0,.35)'; g.fillRect(-96,-8,104,26);
+  g.fillStyle='#111'; [-90,-76].forEach(function(x){ g.fillRect(x,-14,10,4); g.fillRect(x,10,10,4); });
+  g.fillStyle=t.box; g.fillRect(-98,-12,104,24); g.fillStyle='rgba(0,0,0,.22)'; for(var x2=-95;x2<4;x2+=5) g.fillRect(x2,-10,2,20);
+  g.strokeStyle='rgba(0,0,0,.6)'; g.lineWidth=1.5; g.strokeRect(-98,-12,104,24); g.restore();
   g.save(); g.translate(t.x,t.y); g.rotate(t.da);
-  if(ART&&ART.truck){ g.fillStyle='rgba(0,0,0,.32)'; g.fillRect(-118,-8,126,24); g.translate(-58,0); ART.draw(g,'truck',128,t.box); g.restore(); return; }
+  g.fillStyle='#111'; g.fillRect(-12,-14,8,4); g.fillRect(-12,10,8,4);
+  g.fillStyle=t.cab; rr(g,-26,-12,26,24,4); g.fill(); g.strokeStyle='rgba(0,0,0,.6)'; g.lineWidth=1.5; g.stroke();
+  g.fillStyle='rgba(180,220,255,.7)'; g.fillRect(-7,-10,4,20);
+  g.fillStyle='#fde68a'; g.fillRect(-1,-11,2,4); g.fillRect(-1,7,2,4);
+  g.restore(); return;
   g.fillStyle='rgba(0,0,0,.35)'; g.fillRect(-120,-8,130,26);
   g.fillStyle='#111'; [-110,-96,-34].forEach(function(x){ g.fillRect(x,-14,10,4); g.fillRect(x,10,10,4); }); g.fillRect(-12,-14,8,4); g.fillRect(-12,10,8,4);
   g.fillStyle=t.box; g.fillRect(-120,-12,88,24); g.fillStyle='rgba(0,0,0,.22)'; for(var x=-117;x<-34;x+=5) g.fillRect(x,-10,2,20);
