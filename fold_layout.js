@@ -43,7 +43,7 @@
     }).join("");
   }
 
-  var SCR = "#scr-ledger,#scr-board,#scr-dockets,#scr-mayday,#orderView,#msgView,#portList,#scr-ports";
+  var SCR = "#scr-ledger,#scr-board,#scr-dockets,#scr-mayday,#orderView,#msgView,#scr-ports";
   function each(pre, list, rest) { return list.split(",").map(function (s) { return pre + s; }).join(",") + rest; }
 
   var css =
@@ -54,7 +54,7 @@
     A + "#app{padding-left:0!important}" +
     A + ".stage," + A + ".headrow," + A + ".livebar-in," + A + ".hdr-console{max-width:var(--col)!important;margin-left:auto!important;margin-right:auto!important;left:0!important}" +
     each(A, SCR, "{column-count:2!important;column-width:auto!important;column-gap:var(--cg)!important;column-fill:balance}") +
-    A + "#scr-ports>#portList{column-count:2!important}" +
+    A + "#scr-ports>#portList{columns:auto!important;column-count:auto!important}" +
     A + "#bankStrip{right:calc(var(--rail) + 47px)!important}" + A + ".dayBtn{right:calc(var(--rail) + 10px)!important}" +
     A + "#rflTag{left:calc(var(--rail) + 12px)!important}" + "html.fold-wide #hwMusicBtn{right:calc(var(--rail) + 14px)!important}" +
     A + "body{background:var(--void) url('" + MJ + PANO + "_640_N.webp') center/cover fixed no-repeat}" +
@@ -111,6 +111,7 @@
       if (el.scrollWidth <= el.clientWidth + 6 || el.clientWidth < 120 || !el.children.length) continue;
       var cs = getComputedStyle(el);
       if (cs.textOverflow === "ellipsis" || cs.position === "fixed" || cs.display.indexOf("inline") === 0 || !clipped(el, cs)) continue;
+      if (cs.columnCount !== "auto" || cs.columnWidth !== "auto") continue; /* multi-column pages are laid out, not overflowing */
       if (el.tagName === "TABLE") { var w = document.createElement("div"); w.className = "fold-x"; el.parentNode.insertBefore(w, el); w.appendChild(el); el = w; }
       else el.classList.add("fold-x");
       el.setAttribute("data-noswipe", ""); /* the tab-swipe gesture leaves sideways scrollers alone */
