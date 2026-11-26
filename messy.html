@@ -88,6 +88,9 @@ textarea.in{min-height:64px;resize:none;font:500 16px/1.3 Inter,sans-serif}
 .ud{width:12px;height:12px;border-radius:50%;background:var(--pink);box-shadow:0 0 0 3px #ff4f8b44}
 .newm{display:flex;gap:10px;overflow-x:auto;padding:4px 2px 12px;scrollbar-width:none}.newm::-webkit-scrollbar{display:none}
 .newm .nb{flex:none;display:flex;flex-direction:column;align-items:center;gap:4px;background:none;border:0;color:#fff;font:600 12px/1 Inter,sans-serif;width:72px}.newm .nb span{max-width:72px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sp{margin:8px 0 4px;padding:11px 13px;border-radius:16px;font:500 13.5px/1.4 Inter,sans-serif;color:#fff}.sp b{display:block;font:600 16px/1.2 Fredoka,sans-serif;margin-bottom:3px}
+.sp-w{background:linear-gradient(135deg,#ff4f8b40,#a855f740);border:1px solid #ff8fb588}.sp-m{background:#ffffff12;border:1px solid #ffffff2e}
+.spbar{margin:0 0 10px;padding:9px 13px;border-radius:999px;text-align:center;font:600 13px/1.3 Inter,sans-serif;color:#ffe4ef;background:linear-gradient(90deg,#ff4f8b33,#a855f733);border:1px solid #ff8fb566}
 .drink{display:flex;align-items:center;gap:12px;padding:12px;border-radius:20px;background:linear-gradient(135deg,#ffc24b33,#ff4f8b33);border:1px solid #ffc24b66;margin-bottom:8px}
 .drink .mt{flex:1}.drink b{font:600 17px/1.1 Fredoka,sans-serif;display:block}.drink span{font-size:13px;opacity:.85}
 .sbtn{border:0;border-radius:12px;padding:9px 12px;font:700 14px/1 Fredoka,sans-serif;background:#fff;color:var(--ink)}
@@ -235,7 +238,7 @@ function drawSetup(first){
   h+='<div class="panel"><h3>'+(first?'Make your card':'Your card')+'</h3>'+
     '<div class="avbox"><div id="fAv">'+av(F.av,84)+'</div><div style="flex:1"><div style="font:600 14px/1.3 Inter;color:var(--mut)">Your look is all anyone sees — no photos, no real names.</div><button class="sbtn pk" id="fAvB" style="margin-top:8px">'+(F.av?'✏️ Fix up my look':'🎨 Build my look')+'</button></div></div>'+
     '<div class="lbl">Messy name</div><div class="row2"><input class="in" id="fAlias" maxlength="16" placeholder="e.g. SALTY_ROSE" value="'+esc(F.alias)+'"><button class="sbtn" id="fRoll" title="Random name">🎲</button></div>'+
-    '<div class="lbl">I\'m a</div><div class="seg" id="fSex">'+seg([['m','Man'],['w','Woman']],F.sex)+'</div>'+
+    '<div class="lbl">I\'m a</div><div class="seg" id="fSex">'+seg([['m','Man'],['w','Woman']],F.sex)+'</div><div id="fSP">'+spNote(F.sex)+'</div>'+
     '<div class="lbl">Show me</div><div class="seg" id="fInto">'+seg([['m','Men'],['w','Women'],['b','Both'],['*','Anyone · just friends']],F.into)+'</div>'+
     '<div class="lbl">Here for</div><div class="seg" id="fHere">'+seg([['t','Just talk'],['d','A date'],['m','Something messy'],['w','Whatever']],F.here)+'</div>'+
     '<div class="lbl">Your 3 answers (the fun part)</div>'+F.prompts.map(function(p,i){ return '<select class="prq" data-pq="'+i+'">'+PROMPTS.map(function(q){ return '<option'+(q===p.q?' selected':'')+'>'+esc(q)+'</option>'; }).join('')+'</select><textarea class="in" data-pa="'+i+'" maxlength="140" placeholder="Your answer…">'+esc(p.a)+'</textarea><div style="height:10px"></div>'; }).join('')+
@@ -244,7 +247,7 @@ function drawSetup(first){
     '<div style="height:14px"></div><button class="btn pk wide" id="fSave">'+(first?'Let\'s go 🔥':'Save my card')+'</button></div>';
   $('view').innerHTML=h;
   function bindSeg(id,key,conv){ $(id).onclick=function(e){ var b=e.target.closest('[data-v]'); if(!b) return; F[key]=conv?conv(b.dataset.v):b.dataset.v; [].forEach.call(this.children,function(c){ c.classList.toggle('on',c===b); }); }; }
-  bindSeg('fSex','sex'); bindSeg('fInto','into'); bindSeg('fHere','here'); if($('fSw')) bindSeg('fSw','swipe',function(v){ return v==='1'; });
+  bindSeg('fSex','sex'); $('fSex').addEventListener('click',function(){ $('fSP').innerHTML=spNote(F.sex); }); bindSeg('fInto','into'); bindSeg('fHere','here'); if($('fSw')) bindSeg('fSw','swipe',function(v){ return v==='1'; });
   $('fAlias').oninput=function(){ F.alias=this.value.toUpperCase().replace(/[^A-Z0-9_ ]/g,''); };
   $('fRoll').onclick=function(){ var A=['SALTY','LUCKY','NIGHT','HARBOR','SUNSET','RUSTY','SWEET','WILD','SMOOTH','CHERRY','BAY','DOCK'],B=['ROSE','HOOK','TIDE','GULL','ANCHOR','PEARL','CRANE','WAVE','KNOT','REEF','STORM','DIVA']; F.alias=pick(A)+'_'+pick(B); $('fAlias').value=F.alias; };
   [].forEach.call(document.querySelectorAll('[data-pq]'),function(s){ s.onchange=function(){ F.prompts[+s.dataset.pq].q=s.value; }; });
@@ -262,22 +265,31 @@ function drawSetup(first){
     rpc('msy_save',{p_sex:F.sex,p_into:F.into,p_alias:F.alias,p_av:F.av,p_prompts:F.prompts,p_here:F.here,p_swipe:F.swipe}).then(function(x){ INFO=x; ME=x.me; F=null; paintDots(); toast('✓ Card saved'); go(first?'swipe':'me'); }).catch(function(e){ toast(e.message); b.disabled=false; });
   };
 }
+/* #shepicks(nov26): women make the first move. The server hides a woman's card from men until she swipes right on him. */
+function spNote(sex){
+  if(sex==='w') return '<div class="sp sp-w"><b>💅 You pick. Always.</b>You\'re invisible to men. No man sees your card, or even knows you\'re on Messy, until <b>you</b> swipe right on him. No messages unless you match. Photos stay hidden until you both say yes.</div>';
+  if(sex==='m') return '<div class="sp sp-m"><b>💅 She picks</b>Women make the first move here. They can see your card, but you only see theirs once they swipe right on you. Make your card worth picking.</div>';
+  return '';
+}
 function seg(opts,cur){ return opts.map(function(o){ return '<button data-v="'+o[0]+'"'+(o[0]===cur?' class="on"':'')+'>'+o[1]+'</button>'; }).join(''); }
 
 /* ───────── SWIPE ───────── */
 function drawSwipe(){
-  $('view').innerHTML='<div class="deck" id="deck"><div class="empty" style="margin-top:40px"><b>Finding people on the dock…</b></div></div><div class="acts" id="acts" hidden><button id="bNo" aria-label="Pass">✕</button><button class="yes" id="bYes" aria-label="Like">♥</button></div>';
+  $('view').innerHTML=(ME&&ME.sex==='w'?'<div class="spbar">🔒 You\'re invisible to men. Only the ones you swipe right on can see you.</div>':'')+'<div class="deck" id="deck"><div class="empty" style="margin-top:40px"><b>Finding people on the dock…</b></div></div><div class="acts" id="acts" hidden><button id="bNo" aria-label="Pass">✕</button><button class="yes" id="bYes" aria-label="Like">♥</button></div>';
   rpc('msy_deck').then(function(d){ DECK=(d||[]).slice(); paintDeck(); }).catch(function(e){ toast(e.message); });
 }
 function cardHTML(c){
-  var ch='<div class="chips">'+(c.likes_you?'<span class="chip hot">👀 Likes you</span>':'')+(c.on?'<span class="chip on">● On now</span>':'')+(c.here&&HERE[c.here]?'<span class="chip">'+HERE[c.here]+'</span>':'')+'</div>';
+  var ch='<div class="chips">'+(c.she_picked?'<span class="chip hot">💅 She picked you</span>':c.likes_you?'<span class="chip hot">👀 Likes you</span>':'')+(c.on?'<span class="chip on">● On now</span>':'')+(c.here&&HERE[c.here]?'<span class="chip">'+HERE[c.here]+'</span>':'')+'</div>';
   return '<div class="stamp like">LIKE</div><div class="stamp nope">NOPE</div><div class="art" style="background-image:url('+ART.hero+')"><div class="av">'+av(c.av,132)+'</div></div>'+
     '<div class="bd"><div class="nm">'+esc(c.alias)+'</div>'+ch+(c.prompts||[]).map(function(p){ return '<div class="pr"><div class="q">'+esc(p.q)+'</div><div class="a">'+esc(p.a)+'</div></div>'; }).join('')+'</div>';
 }
 function paintDeck(){
   var D=$('deck'); if(!D) return;
+  var sx=ME&&ME.sex, intoW=INFO&&(INFO.into==='w'||INFO.into==='b');
   if(!DECK.length){ $('acts').hidden=true;
-    D.innerHTML='<div class="empty" style="margin-top:20px"><b>You\'ve seen everyone for now 🌅</b><p>New people show up as they make cards. The Party is the fastest way to meet whoever\'s around.</p><button class="btn pk" onclick="go(\'party\')">🎉 Go to the Party</button></div>';
+    D.innerHTML=(sx==='m'&&intoW)
+      ?'<div class="empty" style="margin-top:20px"><b>💅 She picks</b><p>Women on Messy are invisible until one of them swipes right on you. When she does, she lands right here.</p><p>Best move: a great look and three answers that make her laugh.</p><button class="btn pk" onclick="go(\'me\')">✏️ Polish my card</button><div style="height:8px"></div><button class="btn gh" onclick="go(\'party\')">🎉 Go to the Party</button></div>'
+      :'<div class="empty" style="margin-top:20px"><b>You\'ve seen everyone for now 🌅</b><p>New people show up as they make cards. The Party is the fastest way to meet whoever\'s around.</p><button class="btn pk" onclick="go(\'party\')">🎉 Go to the Party</button></div>';
     return; }
   $('acts').hidden=false;
   D.innerHTML=DECK.slice(0,2).reverse().map(function(c,i,arr){ return '<div class="sc" data-k="'+esc(c.key)+'" style="'+(i<arr.length-1?'transform:scale(.95) translateY(10px);opacity:.9':'')+'">'+cardHTML(c)+'</div>'; }).join('');
@@ -317,7 +329,7 @@ function drawMatches(){
 function paintMatches(){
   if(TAB!=='matches') return;
   var h='';
-  if(INFO&&INFO.liked_me) h+='<div class="drink" style="background:#ffffff14;border-color:#ffffff33"><div style="font-size:30px">👀</div><div class="mt"><b>'+INFO.liked_me+' '+(INFO.liked_me===1?'person likes':'people like')+' you</b><span>They\'re at the front of your Swipe deck.</span></div><button class="sbtn pk" onclick="go(\'swipe\')">Swipe</button></div>';
+  if(INFO&&INFO.liked_me) h+='<div class="drink" style="background:#ffffff14;border-color:#ffffff33"><div style="font-size:30px">👀</div><div class="mt"><b>'+INFO.liked_me+' '+(ME&&ME.sex==='m'&&INFO.into==='w'?(INFO.liked_me===1?'woman picked':'women picked'):(INFO.liked_me===1?'person likes':'people like'))+' you</b><span>They\'re at the front of your Swipe deck.</span></div><button class="sbtn pk" onclick="go(\'swipe\')">Swipe</button></div>';
   DRINKS.forEach(function(d){ h+='<div class="drink">'+av(d.av,54)+'<div class="mt"><b>🍹 '+esc(d.alias)+'</b><span>slid you a drink at the Party</span></div><button class="sbtn pk" data-take="'+esc(d.key)+'">Take it</button><button class="sbtn" data-pass="'+esc(d.key)+'">Pass</button></div>'; });
   var fresh=MATCHES.filter(function(m){ return !m.last; }), talking=MATCHES.filter(function(m){ return m.last; });
   if(fresh.length) h+='<div class="lbl" style="color:#fff;opacity:.8">New matches</div><div class="newm">'+fresh.map(function(m){ return '<button class="nb" data-m="'+m.id+'">'+av(m.them.av,62)+'<span>'+esc(m.them.alias)+'</span></button>'; }).join('')+'</div>';
