@@ -79,6 +79,25 @@ table.lb tr.me td{color:var(--gold)}
 .pc{width:78%;height:78%;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 3px 0 #0007, inset 0 -3px 0 #0003}
 .pc.s1{background:radial-gradient(circle at 35% 35%,#fff3c4,#e0b84a)}.pc.s2{background:radial-gradient(circle at 35% 35%,#ff8a80,#b71c1c)}
 .pc.sel{outline:3px solid #22c55e;outline-offset:2px}
+/* chess */
+.chb{display:grid;grid-template-columns:repeat(8,1fr);max-width:440px;margin:0 auto;border:6px solid #5b3a1e;border-radius:10px;overflow:hidden;position:relative;background-size:cover}
+.chb .sq{aspect-ratio:1;display:flex;align-items:center;justify-content:center;position:relative;user-select:none;-webkit-user-select:none}
+.chb .sq.l{background:#e8d3a6}.chb .sq.d{background:#a06a3c}
+.chb .sq.last{box-shadow:inset 0 0 0 100px #fbbf2440}
+.chb .sq.sel{box-shadow:inset 0 0 0 100px #22c55e55}
+.chb .sq.chk{background:radial-gradient(circle,#ef4444 0,#ef444488 45%,transparent 75%)}
+.chb .sq.tgt::after{content:"";position:absolute;width:30%;height:30%;border-radius:50%;background:#14532dcc;pointer-events:none}
+.chb .sq.tgt.cap::after{width:86%;height:86%;background:none;border:4px solid #14532dcc;box-sizing:border-box}
+.chb .co{position:absolute;font:700 9px/1 "Barlow Condensed",sans-serif;opacity:.65;pointer-events:none}
+.chb .co.f{right:3px;bottom:2px}.chb .co.r{left:3px;top:2px}
+.chb .sq.l .co{color:#7a4b26}.chb .sq.d .co{color:#f3e2bf}
+.cp{font-size:clamp(26px,8.6vw,44px);line-height:1;pointer-events:none;font-family:"Segoe UI Symbol","Noto Sans Symbols 2","DejaVu Sans",serif;width:92%;height:92%;display:flex;align-items:center;justify-content:center}
+.cp.w{color:#fff8e6;text-shadow:0 0 1px #2a1a0c,0 0 1px #2a1a0c,1px 1px 0 #2a1a0c,-1px -1px 0 #2a1a0c,1px -1px 0 #2a1a0c,-1px 1px 0 #2a1a0c,0 2px 3px #0008}
+.cp.b{color:#1a120c;text-shadow:0 0 1px #f3e2bf,0 1px 2px #0006}
+.cp img{width:100%;height:100%;object-fit:contain;display:block;filter:drop-shadow(0 2px 2px #0007)}
+.chpro{display:flex;gap:8px;justify-content:center;margin:10px 0 0}
+.chpro button{width:58px;height:58px;border-radius:12px;border:2px solid var(--gold);background:var(--card);display:flex;align-items:center;justify-content:center}
+.capt{font-size:15px;letter-spacing:-2px;min-height:18px}
 /* sink the ship */
 .grid{display:grid;grid-template-columns:repeat(10,1fr);gap:2px;max-width:400px;margin:0 auto;padding:4px;border-radius:10px;background:#0c3a5c}
 .grid .g{aspect-ratio:1;background:#14507d;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700}
@@ -117,7 +136,7 @@ table.lb tr.me td{color:var(--gold)}
 <script>
 var SB_URL='https://ehykqebzkbelwtkgjbml.supabase.co', SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVoeWtxZWJ6a2JlbHd0a2dqYm1sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzMDMwNTMsImV4cCI6MjA5OTg3OTA1M30.RgdTFy1HNE36lN3bM6ovjkmAJsTEps0GmgRuI6h6IpI';
 var sb=null, ME=null, L=null, G=null, TAB='games', NEWG='c4', BOARDG='all', pollT=null, busy=false;
-var GAMES={c4:{n:'Connect 4',i:'🔴',d:'Drop discs. Four in a row wins.'},ship:{n:'Sink the Ship',i:'🚢',d:'Hide your fleet. Call your shots.'},hang:{n:'Dock Words',i:'🪝',d:'Same dock word for both. Fewer misses wins.'},checkers:{n:'Checkers',i:'⛀',d:'Classic. Jump if you want to — it\'s your call.'}};
+var GAMES={c4:{n:'Connect 4',i:'🔴',d:'Drop discs. Four in a row wins.'},ship:{n:'Sink the Ship',i:'🚢',d:'Hide your fleet. Call your shots.'},hang:{n:'Dock Words',i:'🪝',d:'Same dock word for both. Fewer misses wins.'},checkers:{n:'Checkers',i:'⛀',d:'Classic. Jump if you want to — it\'s your call.'},chess:{n:'Chess',i:'♞',d:'The king of board games. Checkmate wins.'}};
 function $(id){ return document.getElementById(id); }
 function esc(t){ return String(t==null?'':t).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 var toastT=0; function toast(t){ var el=$('toast'); el.textContent=t; el.style.opacity=1; clearTimeout(toastT); toastT=setTimeout(function(){ el.style.opacity=0; },2800); }
@@ -214,6 +233,7 @@ function showGame(g,keep){
   var me=g.seat, p1on=g.status==='live'&&(g.turn===1||(g.turn===0&&!(g.game==='hang'?g.state.p1.done:g.state.fleetset&&g.state.fleetset['1'])));
   var p2on=g.status==='live'&&(g.turn===2||(g.turn===0&&!(g.game==='hang'?g.state.p2.done:g.state.fleetset&&g.state.fleetset['2'])));
   var col1=g.game==='c4'?'🟡 ':g.game==='checkers'?'⚪ ':'', col2=g.game==='c4'?'🔴 ':g.game==='checkers'?'🔴 ':'';
+  if(g.game==='chess'&&g.state&&g.state.w){ col1=g.state.w===1?'⚪ ':'⚫ '; col2=g.state.w===2?'⚪ ':'⚫ '; }
   var h='<div class="top"><a href="#" id="gBack">← My games</a><span style="flex:1"></span><span style="color:var(--mut);font-weight:700">'+GAMES[g.game].i+' '+esc(g.name)+'</span></div>';
   h+='<div class="ghead"><div class="pl'+(p1on?' on':'')+'"><b>'+col1+esc(g.p1)+(me===1?' (you)':'')+'</b><span>'+playerSub(g,1)+'</span></div><div class="vs">VS</div><div class="pl'+(p2on?' on':'')+'"><b>'+col2+esc(g.p2||'—')+(me===2?' (you)':'')+'</b><span>'+playerSub(g,2)+'</span></div></div>';
   h+='<div class="status" id="gStatus">'+statusLine(g)+'</div><div id="gBoard"></div>';
@@ -222,13 +242,14 @@ function showGame(g,keep){
   $('gBack').onclick=function(e){ e.preventDefault(); backToLobby(); }; $('gBack2').onclick=backToLobby;
   if($('gResign')) $('gResign').onclick=function(){ if(this.dataset.sure){ rpc('bg_resign',{p_id:g.id}).then(function(x){ showGame(x,true); }).catch(function(e){ toast(e.message); }); } else { this.dataset.sure=1; this.textContent='TAP AGAIN TO RESIGN'; } };
   if($('gRematch')) $('gRematch').onclick=function(){ var b=this; b.disabled=true; rpc('bg_new',{p_game:g.game,p_to:oppName(g)}).then(function(){ toast('Rematch sent to '+oppName(g)); backToLobby(); }).catch(function(e){ toast(e.message); b.disabled=false; }); };
-  ({c4:drawC4,checkers:drawCK,ship:drawShip,hang:drawHang})[g.game](g);
+  ({c4:drawC4,checkers:drawCK,ship:drawShip,hang:drawHang,chess:drawCH})[g.game](g);
   startPoll();
 }
 function playerSub(g,s){
   if(g.game==='hang'&&g.status!=='open'){ var p=g.state['p'+s]; return p.done?(p.won?'solved · '+p.miss+' miss':'out of tries'):p.miss+'/'+g.state.max+' misses'; }
   if(g.game==='ship'&&g.status==='live'){ var sunk=(g.state['sunk'+(3-s)]||[]).length; return sunk+'/5 sunk'; }
   if(g.status==='done') return g.winner===s?'🏆 winner':g.winner===0?'draw':'';
+  if(g.game==='chess'&&g.state&&g.state.b) return '<span class="capt">'+chTaken(g,s)+'</span>';
   return '';
 }
 function statusLine(g){
@@ -237,6 +258,7 @@ function statusLine(g){
   if(g.status!=='live') return esc(g.status.toUpperCase());
   if(g.game==='ship'&&g.turn===0) return (g.my_turn?'SET YOUR FLEET':'WAITING ON '+esc(oppName(g))+' TO SET THEIR FLEET')+'<small>'+left(g)+'</small>';
   if(g.game==='hang') return (g.my_turn?'GUESS THE WORD':'WAITING ON '+esc(oppName(g)))+'<small>'+left(g)+'</small>';
+  if(g.game==='chess'&&g.state.check) return (g.my_turn?'CHECK! YOUR MOVE':'CHECK · WAITING ON '+esc(oppName(g)))+'<small>'+left(g)+'</small>';
   return (g.my_turn?'YOUR MOVE':'WAITING ON '+esc(oppName(g)))+'<small>'+left(g)+'</small>';
 }
 function send(move){ if(busy) return; busy=true;
@@ -295,6 +317,83 @@ function ckStep(i){
   var crowned=b[i]<=2&&((s===1&&z[0]===0)||(s===2&&z[0]===7)); if(crowned) b[i]+=2;
   if(!crowned&&jumpsFrom(b,i,s).length){ UI.tb=b; UI.sel=i; drawCK(G); return; }
   send({path:UI.path});
+}
+
+/* ───────────── chess ─────────────
+   Board: 64 chars, 0 = a8 … 63 = h1, uppercase white. Same rules as the server (bg_ch_moves) — the screen only
+   offers what's legal; the server has the last word. CH_ART (white/black piece pictures) swaps in for the glyphs. */
+var CH_G={K:'♚',Q:'♛',R:'♜',B:'♝',N:'♞',P:'♟'}, CH_ART=null;
+var CH_KN=[-2,-1,-2,1,-1,-2,-1,2,1,-2,1,2,2,-1,2,1], CH_KG=[-1,-1,-1,0,-1,1,0,-1,0,1,1,-1,1,0,1,1], CH_D=[-1,0,1,0,0,-1,0,1,-1,-1,-1,1,1,-1,1,1];
+function chW(p){ return p!=='.'&&p===p.toUpperCase(); }
+function chIn(r,c){ return r>=0&&r<8&&c>=0&&c<8; }
+function chAttacked(b,sq,byW){ if(sq<0) return false; var r=sq>>3,c=sq&7,k,rr,cc,p,P=byW?'P':'p',N=byW?'N':'n',B=byW?'B':'b',R=byW?'R':'r',Q=byW?'Q':'q',K=byW?'K':'k';
+  rr=byW?r+1:r-1; if(rr>=0&&rr<8){ if(c>0&&b[rr*8+c-1]===P) return true; if(c<7&&b[rr*8+c+1]===P) return true; }
+  for(k=0;k<8;k++){ rr=r+CH_KN[2*k]; cc=c+CH_KN[2*k+1]; if(chIn(rr,cc)&&b[rr*8+cc]===N) return true; rr=r+CH_KG[2*k]; cc=c+CH_KG[2*k+1]; if(chIn(rr,cc)&&b[rr*8+cc]===K) return true; }
+  for(k=0;k<8;k++){ var d0=CH_D[2*k],d1=CH_D[2*k+1]; rr=r+d0; cc=c+d1;
+    while(chIn(rr,cc)){ p=b[rr*8+cc]; if(p!=='.'){ if(p===Q||(k<4?p===R:p===B)) return true; break; } rr+=d0; cc+=d1; } }
+  return false; }
+function chApply(b,cs,ep,f,t,pr){ var a=b.split(''), p=a[f], w=chW(p), fr=f>>3, fc=f&7, tr=t>>3, tc=t&7, nep=-1, cap=a[t]!=='.';
+  a[f]='.';
+  if(p.toUpperCase()==='P'&&t===ep&&a[t]==='.'&&fc!==tc){ a[fr*8+tc]='.'; cap=true; }
+  if(p.toUpperCase()==='P'&&Math.abs(tr-fr)===2) nep=((fr+tr)>>1)*8+fc;
+  var np=p; if(p.toUpperCase()==='P'&&(tr===0||tr===7)){ np='QNBRQ'.charAt(pr||4); if(!w) np=np.toLowerCase(); }
+  a[t]=np;
+  if(p.toUpperCase()==='K'&&Math.abs(tc-fc)===2){ if(tc===6){ a[fr*8+7]='.'; a[fr*8+5]=w?'R':'r'; } else { a[fr*8]='.'; a[fr*8+3]=w?'R':'r'; } }
+  var nc=cs||''; if(p==='K') nc=nc.replace(/[KQ]/g,''); if(p==='k') nc=nc.replace(/[kq]/g,'');
+  if(f===63||t===63) nc=nc.replace('K',''); if(f===56||t===56) nc=nc.replace('Q',''); if(f===7||t===7) nc=nc.replace('k',''); if(f===0||t===0) nc=nc.replace('q','');
+  return {b:a.join(''),c:nc,ep:nep,cap:cap}; }
+function chMoves(b,cs,ep,w){ var ps=[],i,p,u,r,c,rr,cc,k,tp; cs=cs||''; if(ep==null) ep=-1;
+  for(i=0;i<64;i++){ p=b[i]; if(p==='.'||chW(p)!==w) continue; u=p.toUpperCase(); r=i>>3; c=i&7;
+    if(u==='P'){ var dir=w?-1:1; rr=r+dir; if(rr<0||rr>7) continue;
+      if(b[rr*8+c]==='.'){ ps.push([i,rr*8+c]); if(((w&&r===6)||(!w&&r===1))&&b[(rr+dir)*8+c]==='.') ps.push([i,(rr+dir)*8+c]); }
+      for(cc=c-1;cc<=c+1;cc+=2){ if(cc<0||cc>7) continue; var t=rr*8+cc; tp=b[t]; if((tp!=='.'&&chW(tp)!==w)||t===ep) ps.push([i,t]); } }
+    else if(u==='N'||u==='K'){ var T=u==='N'?CH_KN:CH_KG; for(k=0;k<8;k++){ rr=r+T[2*k]; cc=c+T[2*k+1]; if(!chIn(rr,cc)) continue; tp=b[rr*8+cc]; if(tp==='.'||chW(tp)!==w) ps.push([i,rr*8+cc]); } }
+    else { for(k=0;k<8;k++){ if(u==='R'&&k>=4) continue; if(u==='B'&&k<4) continue; var d0=CH_D[2*k],d1=CH_D[2*k+1]; rr=r+d0; cc=c+d1;
+      while(chIn(rr,cc)){ tp=b[rr*8+cc]; if(tp==='.') ps.push([i,rr*8+cc]); else { if(chW(tp)!==w) ps.push([i,rr*8+cc]); break; } rr+=d0; cc+=d1; } } } }
+  if(w&&b[60]==='K'&&!chAttacked(b,60,false)){
+    if(cs.indexOf('K')>=0&&b[61]==='.'&&b[62]==='.'&&b[63]==='R'&&!chAttacked(b,61,false)&&!chAttacked(b,62,false)) ps.push([60,62]);
+    if(cs.indexOf('Q')>=0&&b[59]==='.'&&b[58]==='.'&&b[57]==='.'&&b[56]==='R'&&!chAttacked(b,59,false)&&!chAttacked(b,58,false)) ps.push([60,58]); }
+  if(!w&&b[4]==='k'&&!chAttacked(b,4,true)){
+    if(cs.indexOf('k')>=0&&b[5]==='.'&&b[6]==='.'&&b[7]==='r'&&!chAttacked(b,5,true)&&!chAttacked(b,6,true)) ps.push([4,6]);
+    if(cs.indexOf('q')>=0&&b[3]==='.'&&b[2]==='.'&&b[1]==='.'&&b[0]==='r'&&!chAttacked(b,3,true)&&!chAttacked(b,2,true)) ps.push([4,2]); }
+  return ps.filter(function(m){ var a=chApply(b,cs,ep,m[0],m[1],4); return !chAttacked(a.b,a.b.indexOf(w?'K':'k'),!w); }); }
+function chPiece(p){ var w=chW(p), u=p.toUpperCase(), art=CH_ART&&CH_ART[(w?'w':'b')+u];
+  return '<span class="cp '+(w?'w':'b')+'">'+(art?'<img alt="" src="'+art+'">':CH_G[u]+'︎')+'</span>'; }
+function chTaken(g,s){ var b=g.state.b, w=g.state.w===s, start={P:8,N:2,B:2,R:2,Q:1}, out='';
+  ['Q','R','B','N','P'].forEach(function(u){ var mine=w?u.toLowerCase():u, n=Math.max(0,start[u]-(b.split(mine).length-1)); for(var k=0;k<n;k++) out+=CH_G[u]+'︎'; });
+  return out; }
+function drawCH(g){
+  var st=g.state, b=st.b, w=st.w===g.seat, can=g.status==='live'&&g.my_turn, flip=g.seat&&!w;
+  var legal=can?chMoves(b,st.c,st.ep,w):[], tg=[];
+  if(can&&UI.sel!=null) tg=legal.filter(function(m){ return m[0]===UI.sel; }).map(function(m){ return m[1]; });
+  var toMoveW=g.turn===st.w, ks=st.check&&g.status==='live'?b.indexOf(toMoveW?'K':'k'):-1, last=st.last||{};
+  var h='<div class="chb">';
+  for(var vr=0;vr<8;vr++) for(var vc=0;vc<8;vc++){
+    var r=flip?7-vr:vr, c=flip?7-vc:vc, i=r*8+c, p=b[i], cls='sq '+((r+c)%2?'d':'l');
+    if(i===last.f||i===last.t) cls+=' last'; if(i===UI.sel) cls+=' sel'; if(i===ks) cls+=' chk';
+    if(tg.indexOf(i)>=0) cls+=' tgt'+(p!=='.'||(b[UI.sel]&&b[UI.sel].toUpperCase()==='P'&&(i&7)!==(UI.sel&7))?' cap':'');
+    h+='<div class="'+cls+'" data-i="'+i+'">'+(vc===0?'<span class="co r">'+(8-r)+'</span>':'')+(vr===7?'<span class="co f">'+'abcdefgh'[c]+'</span>':'')+(p!=='.'?chPiece(p):'')+'</div>';
+  }
+  h+='</div>';
+  if(UI.promo) h+='<div class="chpro">'+[['Q',4],['R',3],['B',2],['N',1]].map(function(x){ return '<button data-pr="'+x[1]+'">'+chPiece(w?x[0]:x[0].toLowerCase())+'</button>'; }).join('')+'</div><p class="note" style="text-align:center">Pick what your pawn becomes · <a href="#" id="chNo" style="color:var(--gold)">Undo</a></p>';
+  else if(can&&!legal.length) h+='<p class="note" style="text-align:center">No legal moves.</p>';
+  $('gBoard').innerHTML=h;
+  if(UI.promo){
+    $('gBoard').querySelectorAll('[data-pr]').forEach(function(x){ x.onclick=function(){ var m=UI.promo; UI.promo=null; send({f:m[0],t:m[1],p:+x.dataset.pr}); }; });
+    $('chNo').onclick=function(e){ e.preventDefault(); UI.promo=null; UI.sel=null; drawCH(G); };
+    return;
+  }
+  if(!can) return;
+  $('gBoard').querySelectorAll('[data-i]').forEach(function(x){ x.onclick=function(){
+    var i=+x.dataset.i, p=b[i];
+    if(UI.sel!=null&&tg.indexOf(i)>=0){
+      var f=UI.sel, mp=b[f];
+      if(mp.toUpperCase()==='P'&&((i>>3)===0||(i>>3)===7)){ UI.promo=[f,i]; drawCH(G); return; }
+      send({f:f,t:i}); return;
+    }
+    if(p!=='.'&&chW(p)===w){ UI.sel=(UI.sel===i?null:i); drawCH(G); return; }
+    if(UI.sel!=null){ UI.sel=null; drawCH(G); }
+  }; });
 }
 
 /* ───────────── sink the ship ───────────── */
