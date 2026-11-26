@@ -323,6 +323,35 @@ function ckStep(i){
    Board: 64 chars, 0 = a8 … 63 = h1, uppercase white. Same rules as the server (bg_ch_moves) — the screen only
    offers what's legal; the server has the last word. CH_ART (white/black piece pictures) swaps in for the glyphs. */
 var CH_G={K:'♚',Q:'♛',R:'♜',B:'♝',N:'♞',P:'♟'}, CH_ART=null;
+/* #chessart(nov25): the dock set — Midjourney art on a green screen (anchor kings, ship's-wheel queens, lighthouse rooks,
+   buoy bishops, seahorse knights, hard-hat pawns). The green is cut out here in the browser, each piece trimmed to its
+   own outline and stood on the square at its own height. Until they're ready (or if the art won't load) the glyphs show. */
+var CH_PICK={wK:'a2083941-08f1-4e1c-920a-f1564e537efa/0_2',wQ:'da78d273-c5ae-42de-84e1-4aee72c6ab82/0_2',wR:'d06656f3-4b72-48c6-8eae-78570de16ff2/0_3',
+  wB:'ad16d360-0111-45dd-9a78-e87a79c1af10/0_2',wN:'ae597811-937b-4859-ad77-216e032fe9c2/0_1',wP:'798384e7-e4f5-473e-bdd8-9eceda490056/0_1',
+  bK:'e423b5d8-f3d8-4cb1-bb5b-8c67dd6234b0/0_1',bQ:'432eacea-bdf4-4fb7-9069-72078e0b474f/0_2',bR:'036123ba-9317-40f4-a515-ba6c0b0ac5a8/0_3',
+  bB:'d209b0a9-4383-4f9c-81b4-6903327d911c/0_3',bN:'5a327820-b036-427f-9403-2ebe05bc870a/0_1',bP:'1d781eac-fe61-40d5-b989-9ce445cc0ffa/0_1'};
+var CH_TALL={K:.95,Q:.9,R:.76,B:.86,N:.82,P:.68};
+function chKey(k,url){ return new Promise(function(res){ var im=new Image(); im.crossOrigin='anonymous';
+  im.onload=function(){ try{
+    var W=256,H=256,c=document.createElement('canvas'); c.width=W; c.height=H; var g=c.getContext('2d'); g.drawImage(im,0,0,W,H);
+    var d=g.getImageData(0,0,W,H),p=d.data,br=0,bg=0,bb=0,n=0;
+    [[2,2],[W-3,2],[2,H-3],[W-3,H-3],[W>>1,2]].forEach(function(q){ var i=(q[1]*W+q[0])*4; br+=p[i]; bg+=p[i+1]; bb+=p[i+2]; n++; }); br/=n; bg/=n; bb/=n;
+    var bgd=Math.max(18,bg-Math.max(br,bb)), x0=W,y0=H,x1=0,y1=0;
+    for(var i=0;i<p.length;i+=4){ var r=p[i],gg=p[i+1],b=p[i+2],gd=gg-Math.max(r,b),dist=Math.sqrt((r-br)*(r-br)+(gg-bg)*(gg-bg)+(b-bb)*(b-bb));
+      var a=Math.min((bgd*0.8-gd)/(bgd*0.45),dist/60); a=a<0?0:a>1?1:a; if(gd>0) p[i+1]=Math.max(r,b)+gd*(1-a)*0.3; p[i+3]=Math.round(p[i+3]*a);
+      if(p[i+3]>60){ var px=(i>>2)%W, py=(i>>2)/W|0; if(px<x0)x0=px; if(px>x1)x1=px; if(py<y0)y0=py; if(py>y1)y1=py; } }
+    g.putImageData(d,0,0);
+    if(x1<=x0||y1<=y0) return res(null);
+    var O=160,o=document.createElement('canvas'); o.width=O; o.height=O; var og=o.getContext('2d'); og.imageSmoothingQuality='high';
+    var bw=x1-x0+1,bh=y1-y0+1,sc=Math.min(O*CH_TALL[k[1]]/bh,O*.92/bw),dw=bw*sc,dh=bh*sc;
+    og.drawImage(c,x0,y0,bw,bh,(O-dw)/2,O*.97-dh,dw,dh);
+    res(o.toDataURL('image/png'));
+  }catch(e){ res(null); } };
+  im.onerror=function(){ res(null); }; im.src=url; }); }
+function chArtLoad(){ if(chArtLoad.on) return; chArtLoad.on=1;
+  var keys=Object.keys(CH_PICK), got={};
+  Promise.all(keys.map(function(k){ return chKey(k,'https://cdn.midjourney.com/'+CH_PICK[k]+'_384_N.webp').then(function(u){ if(u) got[k]=u; }); }))
+    .then(function(){ if(Object.keys(got).length===keys.length){ CH_ART=got; if(G&&G.game==='chess') drawCH(G); } }); }
 var CH_KN=[-2,-1,-2,1,-1,-2,-1,2,1,-2,1,2,2,-1,2,1], CH_KG=[-1,-1,-1,0,-1,1,0,-1,0,1,1,-1,1,0,1,1], CH_D=[-1,0,1,0,0,-1,0,1,-1,-1,-1,1,1,-1,1,1];
 function chW(p){ return p!=='.'&&p===p.toUpperCase(); }
 function chIn(r,c){ return r>=0&&r<8&&c>=0&&c<8; }
@@ -363,6 +392,7 @@ function chTaken(g,s){ var b=g.state.b, w=g.state.w===s, start={P:8,N:2,B:2,R:2,
   ['Q','R','B','N','P'].forEach(function(u){ var mine=w?u.toLowerCase():u, n=Math.max(0,start[u]-(b.split(mine).length-1)); for(var k=0;k<n;k++) out+=CH_G[u]+'︎'; });
   return out; }
 function drawCH(g){
+  chArtLoad();
   var st=g.state, b=st.b, w=st.w===g.seat, can=g.status==='live'&&g.my_turn, flip=g.seat&&!w;
   var legal=can?chMoves(b,st.c,st.ep,w):[], tg=[];
   if(can&&UI.sel!=null) tg=legal.filter(function(m){ return m[0]===UI.sel; }).map(function(m){ return m[1]; });
