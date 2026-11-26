@@ -52,7 +52,8 @@
     R + ".trv-ring #trvT{font-family:Bungee,sans-serif!important;color:#ffe600!important;text-shadow:0 0 12px #ff3d9a}" +
     /* the question board */
     R + ".trv-q{position:relative;padding:20px 16px!important;border-radius:20px!important;background:linear-gradient(180deg,#1c1450,#0d0a2c)!important;border:2px solid #ffe600!important;box-shadow:0 0 0 5px rgba(255,230,0,.12),0 0 26px rgba(255,61,154,.35),inset 0 0 30px rgba(77,216,255,.15)!important;flex-direction:column;justify-content:center;color:#fff!important;text-align:center;animation:taQin .45s cubic-bezier(.2,1.4,.4,1)}" +
-    R + ".trv-q i{display:block;margin-bottom:6px;font:400 13px/1 Bungee,sans-serif!important;color:#ff3d9a!important;letter-spacing:.1em;font-style:normal}" +
+    R + ".trv-q i{position:static!important;display:block;margin:0 0 8px;padding:0!important;background:none!important;box-shadow:none!important;font:400 13px/1 Bungee,sans-serif!important;color:#ff3d9a!important;letter-spacing:.1em;font-style:normal}" +
+    R + ".trv-opt .t{font-size:19px!important}" +
     "@keyframes taQin{from{transform:scale(.85) rotateX(30deg);opacity:0}}" +
     /* A/B/C/D: four glossy game-show buttons */
     R + ".trv-grid{gap:10px!important}" +
@@ -61,7 +62,7 @@
     R + ".trv-opt:nth-child(3){--c1:#ff8fc8;--c2:#e0287f;--ink:#3a001c;animation-delay:.1s}" +
     R + ".trv-opt:nth-child(4){--c1:#d4ff7a;--c2:#7ccf16;--ink:#142600;animation-delay:.15s}" +
     "@keyframes taPop{from{transform:scale(.6);opacity:0}}" +
-    R + ".trv-opt .t{color:var(--ink)!important;font-size:17px!important}" +
+    R + ".trv-opt .t{color:var(--ink)!important}" +
     R + ".trv-opt .l>span:first-child{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;background:rgba(0,0,0,.78);color:var(--c1)!important;font-family:Bungee,sans-serif;font-size:14px}" +
     R + ".trv-opt:not(:disabled):active{transform:translateY(4px);box-shadow:0 1px 0 rgba(0,0,0,.4),inset 0 2px 0 rgba(255,255,255,.55)!important}" +
     R + ".trv-opt:disabled{filter:saturate(.35) brightness(.7)}" +
@@ -76,7 +77,7 @@
     R + ".trv-count{font-family:Bungee,sans-serif!important;color:#ffe600!important;text-shadow:0 6px 0 #b3006b,0 0 30px #ff3d9a!important;animation:taCount 1s ease-out infinite}" +
     "@keyframes taCount{0%{transform:scale(1.6);opacity:0}25%{transform:scale(1);opacity:1}100%{transform:scale(.9);opacity:.6}}" +
     /* result: the scene above the banner */
-    R + ".ta-scene{width:100%;height:190px;border-radius:20px;background-size:cover;background-position:center 45%;box-shadow:0 10px 28px #000a;animation:taScene .6s cubic-bezier(.2,1.4,.4,1);position:relative}" +
+    R + ".ta-scene{width:100%;max-width:520px;aspect-ratio:3/2;max-height:300px;border-radius:20px;background-size:cover;background-position:center 55%;box-shadow:0 10px 28px #000a;animation:taScene .6s cubic-bezier(.2,1.4,.4,1);position:relative}" +
     R + ".ta-scene:after{content:'';position:absolute;inset:0;border-radius:20px;background:linear-gradient(180deg,rgba(8,6,20,0) 55%,rgba(8,6,20,.7))}" +
     "@keyframes taScene{from{transform:scale(.8);opacity:0}}" +
     R + ".trv-res .w{font-family:Bungee,sans-serif!important;animation:taWin .7s cubic-bezier(.2,1.7,.4,1)}" +
@@ -139,7 +140,7 @@
     if (res && ban && !w.querySelector(".ta-scene")) {
       var won = !/\b[tl]\b/.test(ban.className), lost = /\bl\b/.test(ban.className), tie = /\bt\b/.test(ban.className) && !/RUN/.test(ban.textContent);
       var art = won ? WIN : lost ? LOSE : tie ? STAGE : null;
-      if (art) { var sc = document.createElement("div"); sc.className = "ta-scene"; sc.setAttribute("aria-hidden", "true"); sc.style.backgroundImage = "url('" + MJ + art + "_640_N.webp')"; res.parentNode.insertBefore(sc, res); }
+      if (art) { var sc = document.createElement("div"); sc.className = "ta-scene"; sc.setAttribute("aria-hidden", "true"); sc.style.backgroundImage = "url('" + MJ + art + "_640_N.webp')"; if (lost) sc.style.backgroundPosition = "center 78%"; res.parentNode.insertBefore(sc, res); }
     }
   }
   var mo = new MutationObserver(function () { dress(); });
