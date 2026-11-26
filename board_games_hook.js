@@ -18,8 +18,8 @@
     ".hcard.gm-boards .hc-stat{color:#fde68a}" +
     ".hcard.gm-boards .bg-badge{position:absolute;top:-7px;right:-7px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;background:#ef4444;color:#fff;font:700 12px/20px system-ui,sans-serif;text-align:center;box-shadow:0 0 0 2px #0b0a14}" +
     "html.ios-store .gm-boards{display:none!important}" +
-    /* #crart(nov25): the Corral Run card gets its Midjourney art too — an SSA yard truck racing through the stacks */
-    "html .hcard.gm-corral,html #afterView .ah-sign.gm-corral{background:radial-gradient(ellipse 80% 55% at 50% 52%,#0b0a14b3 0,#0b0a1455 60%,transparent 100%),linear-gradient(180deg,#0b0a1422 0,#0b0a1411 30%,#0b0a14aa 78%,#0b0a14ee 100%),url('https://cdn.midjourney.com/eb777e63-6167-4f3b-9f6e-6c773ddb4ff7/0_2_384_N.webp') center 45%/cover no-repeat,linear-gradient(180deg,#1d4f7a,#3d1309)!important;border:2px solid #fbbf24!important}" +
+    /* #crart(nov25): the Corral Run card gets its Midjourney art too — a Kalmar yard truck under the trophy */
+    "html .hcard.gm-corral,html #afterView .ah-sign.gm-corral,html.daylight #afterView .ah-sign.gm-corral{background:linear-gradient(180deg,#0b0a1455 0,#0b0a1400 30%,#0b0a1400 45%,#0b0a14aa 70%,#0b0a14f2 100%),url('https://cdn.midjourney.com/1703eacf-2ba1-4956-8b91-acf76d112798/0_2_384_N.webp') 48% 78%/175% auto no-repeat,linear-gradient(180deg,#1d4f7a,#3d1309)!important;border:2px solid #fbbf24!important}" +
     "html .hcard.gm-corral .hc-kind,html .hcard.gm-corral .hc-ico,html .hcard.gm-corral .hc-name,html .hcard.gm-corral .hc-stat{text-shadow:0 2px 4px #000,0 0 10px #000c}" +
     "html .hcard.gm-corral .hc-ico{font-family:Anton,Impact,sans-serif;color:#fde047!important;-webkit-text-fill-color:#fde047!important;background:none!important;filter:none!important;letter-spacing:1px;text-shadow:0 3px 0 #92400e,0 0 12px #000,0 0 22px #fbbf2499!important}" +
     "html .hcard.gm-corral .hc-name{font-family:Anton,Impact,sans-serif;color:#fff!important;-webkit-text-fill-color:#fff!important;letter-spacing:1px;text-shadow:0 2px 0 #7c2d12,0 0 10px #000!important}" +
