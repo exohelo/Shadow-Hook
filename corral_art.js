@@ -11,13 +11,13 @@
   var MJ = "https://cdn.midjourney.com/";
   /* key → [job/0_n, turn (radians, so the sprite faces +x like the game's vehicles)] */
   var PICK = {
-    utr:     ["e84079ef-890f-4dba-ad3a-baa487857b71/0_3", Math.PI],
+    utr:     ["3b4638cb-8894-4d9e-a983-23ff1e0be77a/0_0", Math.PI],   /* a real Kalmar/Ottawa-style terminal tractor, overhead */
     truck:   ["5acf6fc2-08ab-448e-9a73-8f21c6172cd0/0_2", 0],
     handler: ["01a1d81c-4fad-4071-95c9-aef69928cea8/0_2", 0],
     box:     ["b3050fcc-7b4a-40d1-b32d-007a84f7c1c7/0_3", 0],
     can:     ["81119914-0c99-4c5c-83ae-9090c1c5bf46/0_0", 0]
   };
-  var HERO = "f4fd939e-b58d-4fac-92d0-c36dc603bd5d/0_1", WIN = "204bebb8-8cce-4605-9aa8-0a1886580955/0_2";
+  var HERO = "eb777e63-6167-4f3b-9f6e-6c773ddb4ff7/0_0", WIN = "1703eacf-2ba1-4956-8b91-acf76d112798/0_2";
   var A = window.CRART = { ready: {} };
 
   function key(job, turn) {
