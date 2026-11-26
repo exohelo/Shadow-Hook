@@ -1387,7 +1387,7 @@
 /* #messyav(nov24) — Messy on da Docks: members build their own look (messy_avatar.js); a date sees it in place of the letter. */
 (function () {
   if (window.MESSY_AV || document.querySelector('script[src*="messy_avatar.js"]')) return;
-  var s = document.createElement("script"); s.src = "messy_avatar.js?v=nov24m"; s.defer = true; (document.head || document.documentElement).appendChild(s);
+  var s = document.createElement("script"); s.src = "messy_avatar.js?v=nov25a"; s.defer = true; (document.head || document.documentElement).appendChild(s);
 })();
 
 /* #pvideo(nov25) — a video for your picture or banner; tap any profile picture → that member's card; on the card, picture or banner → full screen (profile_video.js). */

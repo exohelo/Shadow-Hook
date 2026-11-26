@@ -194,7 +194,11 @@
     if (name === "toothpick") return fit(name, cx + d * 0.72, my - d * 0.2, d * 1.3);   /* its low left end sits in the mouth */
     if (name === "tattoo") return fit(name, cx + d * 0.74, ey + d * 0.5, d * 0.17);
     var a = sl.at[name];
-    if (sl.k === "t") return [cx + (a[0] - 50) * s, ey + (a[1] - 35) * s, a[2] * s];   /* hats ride the head: move and size with the face */
+    if (sl.k === "t") { var top = ey + (a[1] - 35) * s;
+      /* #nov25: on a buzz cut (and the faces drawn high in the picture) the crown rode above the circle and got cut off
+         wherever the look is cropped round — it never sits more than 9% over the top edge */
+      if (name === "crown") top = Math.max(top, -9);
+      return [cx + (a[0] - 50) * s, top, a[2] * s]; }   /* hats ride the head: move and size with the face */
     return a;
   }
   var CUT = { scarf: [[27, 12], [73, 12], [73, 23], [66, 27.5], [58, 31.5], [50, 33], [42, 31.5], [35, 28.5], [27, 23]] };
@@ -235,9 +239,11 @@
     keyOut(name);
     return '<img alt="" data-xk="' + name + '" src="' + (KEYED[name] || BLANK) + '" style="position:absolute;left:' + at[0] + "%;top:" + at[1] + "%;width:" + at[2] + "%;height:auto;pointer-events:none;" + (extra || "") + '">';
   }
+  /* #nov25: the hard hat and the beanie are drawn into the face — a second hat on top just stacks. Over them only the halo shows. */
+  function capOff(o, sl, name) { return sl.k === "t" && (o.h === 4 || o.h === 5) && !!name && name !== "halo"; }
   function extras(o) {
     var h = "";
-    SLOTS.forEach(function (sl) { var name = sl.c[o[sl.k] | 0]; if (!name) return;
+    SLOTS.forEach(function (sl) { var name = sl.c[o[sl.k] | 0]; if (!name || capOff(o, sl, name)) return;
       if (name === "earrings") { keyOut(name); var E = lm(o), es = E[2] / 20, ew = 17 * es, eh = 34 * es, et = E[1] - 0.15 * E[2], el = E[0] - 1.475 * E[2] - ew / 2, er = E[0] + 1.475 * E[2] - ew / 2; var bgi = KEYED[name] ? "background-image:url(" + KEYED[name] + ");" : "";   /* one hoop per ear: each half of the pair, at its own ear */
         h += '<div data-xkbg="earrings" style="position:absolute;left:' + el + '%;top:' + et + '%;width:' + ew + '%;height:' + eh + '%;background:no-repeat 0 50%/200% auto;' + bgi + 'pointer-events:none;filter:drop-shadow(0 1px 1px #0006)"></div>' +
              '<div data-xkbg="earrings" style="position:absolute;left:' + er + '%;top:' + et + '%;width:' + ew + '%;height:' + eh + '%;background:no-repeat 100% 50%/200% auto;' + bgi + 'pointer-events:none;filter:drop-shadow(0 1px 1px #0006)"></div>'; return; }
@@ -358,8 +364,9 @@
         var it = name && SHOP && SHOP.map[name], lock = name && !avail(name), badge = "";
         if (it && lock) badge = it.unlock ? '<b class="mav-b lk">🔒</b>' : '<b class="mav-b">⬡' + it.price + "</b>";
         if (it && it.set === "xmas") badge += '<b class="mav-b xm">🎄</b>';
-        return '<button data-k="' + sl.k + '" data-v="' + i + '" title="' + (it ? it.label : name || "None") + '" class="' + ((ED[sl.k] | 0) === i ? "on" : "") + (lock ? " lockd" : "") + '">' + (name ? '<img alt="" data-xk="' + name + '" src="' + (KEYED[name] || BLANK) + '">' : "<i>✕</i>") + badge + "</button>";
-      }).join("") + "</div></div>";
+        var off = capOff(ED, sl, name);
+        return '<button data-k="' + sl.k + '" data-v="' + i + '" title="' + (it ? it.label : name || "None") + (off ? " — not over the " + (ED.h === 4 ? "hard hat" : "beanie") : "") + '" class="' + ((ED[sl.k] | 0) === i ? "on" : "") + (lock ? " lockd" : "") + '"' + (off ? ' style="opacity:.35"' : "") + '>' + (name ? '<img alt="" data-xk="' + name + '" src="' + (KEYED[name] || BLANK) + '">' : "<i>✕</i>") + badge + "</button>";
+      }).join("") + "</div></div>" + (capOff(ED, sl, sl.c[ED[sl.k] | 0]) ? '<div style="font:600 11px/1.35 Inter,system-ui,sans-serif;color:#c9a9d6;margin:-2px 0 8px">That one doesn’t go over the ' + (ED.h === 4 ? "hard hat" : "beanie") + ' — only the halo does. Pick another hair to wear it.</div>' : "");
     }).join("");
     document.getElementById("mavOpts").innerHTML = h;
     buyBar();
