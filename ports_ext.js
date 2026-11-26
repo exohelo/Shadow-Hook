@@ -1390,6 +1390,12 @@
   var s = document.createElement("script"); s.src = "messy_avatar.js?v=nov24m"; s.defer = true; (document.head || document.documentElement).appendChild(s);
 })();
 
+/* #pvideo(nov25) — a video for your picture or banner; tap any profile picture → that member's card; on the card, picture or banner → full screen (profile_video.js). */
+(function () {
+  if (window.__pvideo || document.querySelector('script[src*="profile_video.js"]')) return;
+  var s = document.createElement("script"); s.src = "profile_video.js?v=nov25a"; s.defer = true; (document.head || document.documentElement).appendChild(s);
+})();
+
 /* #messy2(nov24) — Messy is rebuilt as its own page (messy.html: Swipe anytime · Matches with chat & games · the live
    Party). The old 1-hour, 10-minute dates never put two people on the dock at once (117 searches, 0 dates), so the
    arcade card now opens the new Messy and says what it is. */
