@@ -1,4 +1,4 @@
-/* The Shadow Hook · appts.js (nov27a) — your trainings and appointments (GST first).
+/* The Shadow Hook · appts.js (nov27b) — your trainings and appointments (GST first).
    Kept on the server in public.my_appts (each member sees only their own). The phone gets a push the day before and
    90 minutes before (cron my-appts-tick → push-council). In the app: a COMING UP card on Dockets with directions, add to
    the phone's calendar, and LOG YOUR GST once it's done; and SEAL IT IN THE LOG asks first when the job you're sealing
@@ -119,6 +119,7 @@
         '<button type="button" data-ap="del" data-id="' + a.id + '">Remove</button></div></div>';
     });
     if (card.__h !== h) { card.innerHTML = h; card.__h = h; }
+    try { markCal(); } catch (e) {}
   }
 
   function byId(id) { return rows.filter(function (a) { return String(a.id) === String(id); })[0]; }
@@ -182,6 +183,53 @@
     var k = b.getAttribute("data-ap"), a = byId(b.getAttribute("data-id"));
     if (k === "add") addSheet(); else if (k === "ics" && a) ics(a); else if (k === "log" && a) logIt(a); else if (k === "del" && a) del(a);
   });
+
+
+  /* ── #nov27b: the training day on the Job Log calendar ── */
+  function markCal() {
+    var c = document.getElementById("jlCal"); if (!c) return;
+    var by = {};
+    rows.forEach(function (a) { by[parts(a.starts_at).date] = a; });
+    c.querySelectorAll("button.jc-d[data-d]").forEach(function (b) {
+      var a = by[b.getAttribute("data-d")], had = b.classList.contains("ap-day");
+      if (a && !had) {
+        b.classList.add("ap-day"); var tag = document.createElement("b"); tag.className = "ap-tag"; tag.textContent = String(a.kind).toUpperCase().slice(0, 4);
+        b.appendChild(tag); b.setAttribute("aria-label", b.getAttribute("aria-label") + " · " + a.kind + " " + fmtTime(a.starts_at));
+      } else if (!a && had) { b.classList.remove("ap-day"); var t = b.querySelector(".ap-tag"); t && t.remove(); }
+    });
+    var key = c.querySelector(".jc-key");
+    if (key && rows.length && !key.querySelector(".ap-k")) { var k = document.createElement("span"); k.className = "ap-k"; k.innerHTML = '<b class="ap-kb"></b>training'; key.appendChild(k); }
+  }
+  (function () {
+    var s = document.createElement("style");
+    s.textContent = "#jlCal .jc-d.ap-day{position:relative;box-shadow:inset 0 0 0 2px #1f9d74;border-radius:10px}" +
+      "#jlCal .jc-d .ap-tag{position:absolute;left:50%;bottom:1px;transform:translateX(-50%);font:800 8px/1 var(--mono,monospace);letter-spacing:.06em;padding:2px 4px;border-radius:4px;background:#1f9d74;color:#fff;pointer-events:none}" +
+      "#jlCal .ap-kb{display:inline-block;width:10px;height:10px;border-radius:3px;box-shadow:inset 0 0 0 2px #1f9d74;margin-right:4px;vertical-align:-1px}";
+    document.head.appendChild(s);
+    var mo = new MutationObserver(function () { clearTimeout(mo.t); mo.t = setTimeout(markCal, 30); });
+    var hook = setInterval(function () { var c = document.getElementById("jlCal"); if (c) { clearInterval(hook); mo.observe(c, { childList: true, subtree: true }); markCal(); } }, 1000);
+  })();
+
+  /* ── #nov27b: a logged GST is a class, not a board. It doesn't count for "one job a day" or the rest rule,
+     so you can still take a night job the same day (or the night before). ── */
+  (function () {
+    function isTraining(j) { return !!j && /^GST$/i.test(String(j.category || "").trim()); }
+    var tries = 0, t = setInterval(function () {
+      if (typeof window.restViolation !== "function" || window.restViolation.__ap) { if (++tries > 60) clearInterval(t); return; }
+      clearInterval(t);
+      var orig = window.restViolation;
+      var wrap = function (j, ignoreId) {
+        if (isTraining(j)) return null;
+        var list = window.DOCKETS || (typeof DOCKETS !== "undefined" ? DOCKETS : null);
+        if (!Array.isArray(list)) return orig(j, ignoreId);
+        var keep = list.slice(), pulled = list.filter(isTraining);
+        if (!pulled.length) return orig(j, ignoreId);
+        try { list.splice(0, list.length); keep.forEach(function (x) { if (!isTraining(x)) list.push(x); }); return orig(j, ignoreId); }
+        finally { list.splice(0, list.length); keep.forEach(function (x) { list.push(x); }); }
+      };
+      wrap.__ap = true; window.restViolation = wrap;
+    }, 1000);
+  })();
 
   function boot() {
     paint();
