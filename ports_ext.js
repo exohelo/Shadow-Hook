@@ -1040,7 +1040,7 @@
       garland: "https://cdn.midjourney.com/37d5ab41-9c3d-4eb4-ac25-d09b774b6c85/0_0.png",
       camframe: "https://cdn.midjourney.com/4b3b3e64-1840-43ae-97df-d591b21ce1cd/0_1.png"
     };
-    var sc = document.createElement("script"); sc.id = "xmThemeJS"; sc.src = "xmas_theme.js?v=nov27a"; sc.defer = true;
+    var sc = document.createElement("script"); sc.id = "xmThemeJS"; sc.src = "xmas_theme.js?v=nov27b"; sc.defer = true;
     (document.head || document.documentElement).appendChild(sc);
   }
   if (H.classList.contains("season-xmas")) { load(); return; }

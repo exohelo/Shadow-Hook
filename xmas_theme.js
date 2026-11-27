@@ -85,6 +85,10 @@
     ".xm-mjicon{position:absolute;inset:-2px;width:calc(100% + 4px);height:calc(100% + 4px);object-fit:cover;border-radius:24%;pointer-events:none;z-index:2;box-shadow:0 0 10px rgba(255,90,180,.35)}" +
     ".xm-hatwrap.xm-hasicon .xm-hat{display:none}" +
     "html.daylight .xm-limg{mix-blend-mode:normal;filter:none}" +
+    /* #nov27(daylights): the lights are only on at night. In the daytime look the bulbs hang unlit: no blink, no glow. */
+    "html.daylight .xm-limg.xm-on{display:none!important}" +
+    "html.daylight .xm-limg.xm-off{animation:none!important;filter:brightness(.68) saturate(.45) contrast(.95)!important}" +
+    "html.daylight .xm-b{animation:none!important;opacity:.55;filter:saturate(.35) brightness(.85)}" +
     /* the snowy city skyline riding on top of the menu, and Santa's occasional fly-over (Midjourney art) */
     "#xmCity{position:absolute;left:0;right:0;bottom:100%;height:132px;margin-bottom:-2px;pointer-events:none;z-index:0;background:center bottom/cover no-repeat;-webkit-mask-image:linear-gradient(180deg,transparent 0,#000 42%);mask-image:linear-gradient(180deg,transparent 0,#000 42%)}" +
     "html.daylight #xmCity{opacity:.85}" +
