@@ -1,4 +1,4 @@
-/* The Shadow Hook · snow_globe.js (nov27a) — the whole app is a snow globe.
+/* The Shadow Hook · snow_globe.js (nov27b) — the whole app is a snow globe.
    Hold the phone still: no snow. Shake it hard: a flurry fills the screen inside a glass globe, swirls the way you
    shook it, drifts the way you tilt the phone, and settles. Shake again and it stirs back up.
    Only in the Christmas skin, only on phones (anything with a motion sensor and a touch screen); computers keep the
@@ -22,10 +22,9 @@
     "html.xm-globe #xmSnow{display:none!important}" +
     "#sgCanvas{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:41}" +
     "#sgGlass{position:fixed;inset:0;pointer-events:none;z-index:41;opacity:0;transition:opacity .9s ease;" +
-      "background:radial-gradient(circle at 50% 46%,rgba(255,255,255,0) 0,rgba(255,255,255,0) 58%,rgba(190,215,245,.10) 66%,rgba(120,160,210,.28) 74%,rgba(30,50,80,.55) 84%,rgba(10,18,30,.78) 100%)}" +
-    "#sgGlass:before{content:'';position:absolute;left:12%;top:9%;width:34%;height:20%;border-radius:50%;transform:rotate(-24deg);background:radial-gradient(ellipse at 50% 50%,rgba(255,255,255,.42),rgba(255,255,255,0) 70%);filter:blur(2px)}" +
-    "#sgGlass:after{content:'';position:absolute;right:10%;bottom:16%;width:12%;height:30%;border-radius:50%;transform:rotate(18deg);background:radial-gradient(ellipse at 50% 50%,rgba(255,255,255,.22),rgba(255,255,255,0) 70%)}" +
-    "html.daylight #sgGlass{background:radial-gradient(circle at 50% 46%,rgba(255,255,255,0) 0,rgba(255,255,255,0) 60%,rgba(170,200,235,.16) 68%,rgba(110,150,200,.32) 78%,rgba(60,90,130,.5) 100%)}" +
+      "background:radial-gradient(circle closest-side at 50% 50%,rgba(255,255,255,0) 0,rgba(255,255,255,0) 80%,rgba(190,215,245,.14) 88%,rgba(225,240,255,.55) 94.5%,rgba(255,255,255,.75) 95.5%,rgba(40,60,90,.55) 97%,rgba(8,14,24,.72) 100%)}" +
+    "#sgGlass:before{content:'';position:absolute;left:50%;top:50%;width:min(100vw,100vh);height:min(100vw,100vh);transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(ellipse 30% 16% at 30% 20%,rgba(255,255,255,.45),rgba(255,255,255,0) 70%),radial-gradient(ellipse 10% 22% at 84% 70%,rgba(255,255,255,.22),rgba(255,255,255,0) 70%);box-shadow:inset 0 -18px 40px rgba(120,170,230,.18),inset 0 10px 30px rgba(255,255,255,.12)}" +
+    "html.daylight #sgGlass{background:radial-gradient(circle closest-side at 50% 50%,rgba(255,255,255,0) 0,rgba(255,255,255,0) 80%,rgba(150,185,225,.16) 88%,rgba(120,160,210,.55) 94.5%,rgba(255,255,255,.9) 95.5%,rgba(200,215,235,.75) 97%,rgba(226,235,246,.86) 100%)}" +
     "#sgAsk{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 92px);transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:10px;padding:10px 12px 10px 14px;border-radius:16px;background:rgba(10,20,32,.92);color:#fff;font:600 13px/1.3 Inter,system-ui,sans-serif;box-shadow:0 8px 26px rgba(0,0,0,.35);max-width:92vw}" +
     "#sgAsk button{border:0;border-radius:10px;padding:8px 12px;font:800 12px/1 inherit;letter-spacing:.04em}#sgAsk .y{background:#2fae6c;color:#fff}#sgAsk .n{background:transparent;color:#9fb3c8}";
   document.head.appendChild(st);
@@ -126,7 +125,7 @@
 
   /* iPhone: motion needs a yes, given from a tap */
   var LS = "shk_sg_motion";
-  if (typeof DeviceMotionEvent.requestPermission === "function") {
+  if (!test && typeof DeviceMotionEvent.requestPermission === "function") {
     var asked = null; try { asked = localStorage.getItem(LS); } catch (e) {}
     var ask = function () {
       return DeviceMotionEvent.requestPermission().then(function (r) { try { localStorage.setItem(LS, r); } catch (e) {} if (r === "granted") start(); }).catch(function () {});
