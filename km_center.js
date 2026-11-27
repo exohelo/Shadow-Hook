@@ -1,4 +1,4 @@
-/* The Shadow Hook · km_center.js (nov27a) — the Command Center, rebuilt for the Keymaster.
+/* The Shadow Hook · km_center.js (nov27b) — the Command Center, rebuilt for the Keymaster.
    Nothing is re-coded: the existing sections are MOVED (so every button keeps its wiring) into a new order:
      1. UPDATE THE SYSTEM, always on top: tonight's / today's boards with PMA · ILWU · prediction status, and the
         four levers: add the PMA PDF, enter or fix an ILWU sheet, re-read the union PDF, run the prediction.
@@ -46,7 +46,7 @@
       "#kmSheet .kmc-ed{display:none;grid-column:1/-1;gap:6px;align-items:center;flex-wrap:wrap}#kmSheet .kmc-ed.on{display:flex}" +
       "#kmSheet .kmc-ed select{flex:1 1 140px;padding:9px;border-radius:9px;border:1px solid var(--line,#555);background:transparent;color:inherit;font-size:13px}" +
       "#kmSheet .kmc-msg{font-size:11.5px;line-height:1.5;color:var(--steel,#9aa);margin-top:8px;min-height:1em}" +
-      "#kmSheet #kmWireRun{margin:8px 0 0!important;border-color:var(--line,rgba(122,130,138,.35))!important}#kmSheet #kmWireRun>div:first-child{display:none}#kmSheet #kmWireRun{padding:8px 10px!important}" +
+      "#kmSheet #kmWireRun{margin:8px 0 0!important;border-color:var(--line,rgba(122,130,138,.35))!important}#kmSheet #kmWireRun>*:not(#kmWireRunOut){display:none!important}#kmSheet #kmWireRun{border:0!important;padding:0!important;margin:8px 0 0!important}#kmSheet #kmWireRunOut{margin:0!important;font-size:11.5px}#kmSheet #kmWireRun{padding:8px 10px!important}" +
       "#kmSheet details.kmgrp{margin:0 0 10px;border-radius:14px;border:1px solid var(--line,rgba(122,130,138,.35));background:rgba(0,0,0,.04)}" +
       "#kmSheet details.kmgrp>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;padding:12px 14px;font:800 14px/1 'Barlow Condensed',sans-serif;letter-spacing:.12em;color:var(--bone,#fff)}" +
       "#kmSheet details.kmgrp>summary::-webkit-details-marker{display:none}" +
@@ -185,7 +185,7 @@
     var body = el.querySelector(".kmgrp-b");
     if (g.secs) g.secs.forEach(function (id) { var s = $(id); if (s && s.parentNode !== body) body.appendChild(s); });
     if (g.tabs) g.tabs.forEach(function (t, i) { var p = body.querySelector('.kmc-pane[data-p="' + i + '"]'); t[1].forEach(function (id) { var s = $(id); if (s && s.parentNode !== p) p.appendChild(s); }); });
-    var n = el.querySelector("summary .n"), c = sumCount(body); n.textContent = c > 0 ? String(c) : "";
+    var n = el.querySelector("summary .n"), c = g.tabs ? 0 : sumCount(body); n.textContent = c > 0 ? String(c) : "";
     return el;
   }
   function openAll(p) { if (!p) return; p.querySelectorAll(":scope > details").forEach(function (d) { if (!d.open) d.open = true; }); }
@@ -208,6 +208,13 @@
         if (el.tagName === "DETAILS" && !el.classList.contains("kmgrp") && !KNOWN[el.id] && el.id) { var b = $("kmGrpSys").querySelector(".kmgrp-b"); b.appendChild(el); }
       });
       var th = card.querySelector(".km-tools-h"); if (th) { var tools = th.nextElementSibling; card.appendChild(th); tools && card.appendChild(tools); }
+      // The Pulse repeats the Roster's member count and money in circulation; keep only its top stacks
+      var pu = $("kmPulse");
+      if (pu && /claimed accounts/.test(pu.textContent || "") && pu.firstChild && pu.firstChild.nodeType === 1 && pu.firstChild.style.display !== "none") {
+        var kids = [].slice.call(pu.childNodes), cut = -1;
+        for (var i = 0; i < kids.length; i++) { if (kids[i].nodeName === "BR") { cut = i; break; } }
+        if (cut > 0) { for (var j = 0; j <= cut; j++) { var k = kids[j]; if (k.nodeType === 3) k.textContent = ""; else k.style.display = "none"; } }
+      }
       // the Bots keep their own controls, minus the PDF button that now sits on top
       var bp = $("kmBotPdf"); if (bp) bp.style.display = "none";
       var dl = $("kmDevLog"); if (dl) dl.style.display = "none";
