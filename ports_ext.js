@@ -1018,6 +1018,36 @@
   if (document.body) badge(); else document.addEventListener("DOMContentLoaded", badge);
 })();
 
+/* #xmaslive(nov27) — the real Christmas season loads the full Christmas skin (xmas_theme.js) with the same Midjourney art
+   as the ?xmas=test preview: pine background, string lights, header, crest, harbor city, Santa, tree, garland, camera frame.
+   Before this, the season switch only changed the colors. Waits for html.season-xmas (the dates or the Keymaster's switch). */
+(function () {
+  if (window.SHK_XMAS_TEST) return;
+  var H = document.documentElement;
+  function load() {
+    if (document.getElementById("xmThemeJS")) return;
+    window.SHK_XMAS_BG = window.SHK_XMAS_BG || "https://cdn.midjourney.com/adcf3378-bfa0-49a5-8eb7-9c28d6368511/0_0.png";
+    window.SHK_XMAS_ART = window.SHK_XMAS_ART || {
+      lights: "https://cdn.midjourney.com/b7263e73-4eba-4a20-8615-a7b0075e6658/0_1.png", w: 2688, h: 448,
+      spots: [0.052, 0.181, 0.317, 0.444, 0.572, 0.694, 0.816, 0.953],
+      header: "https://cdn.midjourney.com/bf779394-f627-46f1-9c4f-f62742636075/0_0.png",
+      crest: "https://cdn.midjourney.com/7f840443-6fea-49b9-b0c5-e3aa551a7a42/0_3_640_N.webp",
+      city: "https://cdn.midjourney.com/0079f088-a269-46f3-a21d-5d206184c462/0_1.png", snownav: true,
+      santa: "https://cdn.midjourney.com/620109df-f216-4b06-9e42-5c926fe976ae/0_0.png",
+      hills: null,
+      ornament: "https://cdn.midjourney.com/f061b0d9-b215-4b06-ba62-ee5bfc0c2b16/0_0.png",
+      tree: "https://cdn.midjourney.com/20b82ce3-dfd8-4fc0-80c3-258329d6dccc/0_1.png",
+      garland: "https://cdn.midjourney.com/37d5ab41-9c3d-4eb4-ac25-d09b774b6c85/0_0.png",
+      camframe: "https://cdn.midjourney.com/4b3b3e64-1840-43ae-97df-d591b21ce1cd/0_1.png"
+    };
+    var sc = document.createElement("script"); sc.id = "xmThemeJS"; sc.src = "xmas_theme.js?v=nov27a"; sc.defer = true;
+    (document.head || document.documentElement).appendChild(sc);
+  }
+  if (H.classList.contains("season-xmas")) { load(); return; }
+  var mo = new MutationObserver(function () { if (H.classList.contains("season-xmas")) { mo.disconnect(); load(); } });
+  mo.observe(H, { attributes: true, attributeFilter: ["class"] });
+})();
+
 /* #musicoff(nov21) — the Veterans week music kept starting on the first tap after the week was over
    (its first-tap handler loads the player without checking the season). Outside Veterans week: mark it muted on this
    phone, stop it, and take the hidden player out. */
@@ -1378,7 +1408,7 @@
 /* #flip(nov24) — THE FLIP (who goes on first: 2–12 names, 1–11 spots, the server draws) gets its card in the games row.
    The Board Games card (board_games_hook.js, nov21) said it rode in from here but was never loaded; it rides in now too. */
 (function () {
-  [["game_frame.js?v=nov24c", "shkOpenGame"], ["board_games_hook.js?v=nov25d", "__bgHook"], ["flip_hook.js?v=nov24b", "__flipHook"], ["trivia_art.js?v=nov26b", "__trvArt"], ["mayday_art.js?v=nov26a", "__mdArt"], ["fold_layout.js?v=nov26b", "__foldLay"]].forEach(function (r) {
+  [["game_frame.js?v=nov24c", "shkOpenGame"], ["board_games_hook.js?v=nov25d", "__bgHook"], ["flip_hook.js?v=nov24b", "__flipHook"], ["trivia_art.js?v=nov26b", "__trvArt"], ["mayday_art.js?v=nov26a", "__mdArt"], ["fold_layout.js?v=nov26b", "__foldLay"], ["loadline_card.js?v=nov26a", "__llCard"]].forEach(function (r) {
     if (window[r[1]] || document.querySelector('script[src*="' + r[0].split("?")[0] + '"]')) return;
     var s = document.createElement("script"); s.src = r[0]; s.defer = true; (document.head || document.documentElement).appendChild(s);
   });
