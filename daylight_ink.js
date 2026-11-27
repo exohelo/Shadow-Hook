@@ -36,9 +36,12 @@
 
   function pass() {
     if (!H.classList.contains("daylight")) return undo();
+    /* the screen you're on, plus everything outside the screens (header, nav, sheets, pop-ups) */
     var all = document.body ? document.body.getElementsByTagName("*") : [], n = 0;
-    for (var i = 0; i < all.length && n < 6000; i++) {
-      var e = all[i]; n++;
+    for (var i = 0; i < all.length && n < 9000; i++) {
+      var e = all[i];
+      if (e.classList && e.classList.contains("screen") && !e.classList.contains("on")) { i += e.getElementsByTagName("*").length; continue; }
+      n++;
       if (e.__dyk || !e.getClientRects().length) continue;
       if (e.closest && e.closest(SKIP)) continue;
       var cs = getComputedStyle(e), hit = false;
@@ -64,6 +67,7 @@
       for (var i = 0; i < recs.length; i++) {
         var r = recs[i];
         if (r.type === "attributes" && r.target === H) { if (!H.classList.contains("daylight")) undo(); soon(); return; }
+        if (r.type === "attributes" && r.target.classList && r.target.classList.contains("screen")) { soon(); return; }
         if (r.type === "childList" && r.addedNodes.length) { soon(); return; }
       }
     }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
