@@ -1048,6 +1048,21 @@
   mo.observe(H, { attributes: true, attributeFilter: ["class"] });
 })();
 
+/* #xmasdates(nov27) — Christmas runs the day after Thanksgiving through Dec 29, every year: Thanksgiving and November end
+   on the 26th, Xmas starts the 27th. Patches window.SEASONS here (index.html is too big to re-upload) and re-applies. */
+(function () {
+  function fix() {
+    var S = window.SEASONS; if (!S || !S.length) return false;
+    S.forEach(function (x) {
+      if (x.id === "thanksgiving" || x.id === "november") x.to = [11, 26];
+      if (x.id === "xmas") { x.from = [11, 27]; x.to = [12, 29]; }
+    });
+    try { window.applySeason && window.applySeason(); } catch (e) {}
+    return true;
+  }
+  if (!fix()) { var n = 0, t = setInterval(function () { if (fix() || ++n > 40) clearInterval(t); }, 250); }
+})();
+
 /* #musicoff(nov21) — the Veterans week music kept starting on the first tap after the week was over
    (its first-tap handler loads the player without checking the season). Outside Veterans week: mark it muted on this
    phone, stop it, and take the hidden player out. */
