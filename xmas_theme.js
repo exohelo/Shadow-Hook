@@ -88,6 +88,7 @@
     /* #nov27(daylights): the lights are only on at night. In the daytime look the bulbs hang unlit: no blink, no glow. */
     "html.daylight .xm-limg.xm-on{display:none!important}" +
     "html.daylight .xm-limg.xm-off{animation:none!important;filter:brightness(.68) saturate(.45) contrast(.95)!important}" +
+    "html.daylight.xm-dayok .xm-limg.xm-off{background-image:var(--xmDayLights)!important}" +
     "html.daylight .xm-b{animation:none!important;opacity:.55;filter:saturate(.35) brightness(.85)}" +
     /* the snowy city skyline riding on top of the menu, and Santa's occasional fly-over (Midjourney art) */
     "#xmCity{position:absolute;left:0;right:0;bottom:100%;height:132px;margin-bottom:-2px;pointer-events:none;z-index:0;background:center bottom/cover no-repeat;-webkit-mask-image:linear-gradient(180deg,transparent 0,#000 42%);mask-image:linear-gradient(180deg,transparent 0,#000 42%)}" +
@@ -204,6 +205,38 @@
   // the photo lights come on black: turn the black clear so no dark band shows under the header (blending can't reach
   // past the header's own layer), and un-darken the glow so the colors stay bright
   var lightsURL = {};
+  /* #nov27(dayglow): the daytime lights. The night photo has a glow baked around the red and amber bulbs; by day the
+     bulbs hang unlit, so each bulb is cut out along its glass (A.bulbs: x, y, rx, ry as fractions of the picture) and
+     anything warm and dim that isn't touching the cord or a bulb goes too. */
+  var dayURL = {};
+  function lightsDay(A) {
+    var src = A.lights, E = A.bulbs || [];
+    function put(u) { document.documentElement.style.setProperty("--xmDayLights", "url(\"" + u + "\")"); document.documentElement.classList.add("xm-dayok"); }
+    if (!src || !E.length) return;
+    if (dayURL[src]) return put(dayURL[src]);
+    try {
+      fetch(src).then(function (r) { return r.blob(); }).then(createImageBitmap).then(function (bm) {
+        var W = Math.min(1344, bm.width), H = Math.round(bm.height * W / bm.width), c = document.createElement("canvas"); c.width = W; c.height = H;
+        var g = c.getContext("2d"); g.drawImage(bm, 0, 0, W, H); var id = g.getImageData(0, 0, W, H), d = id.data, N = W * H;
+        var M = new Float32Array(N), S = new Float32Array(N), HU = new Float32Array(N), bright = new Uint8Array(N), cord = new Uint8Array(N), p, i;
+        for (p = 0; p < N; p++) {
+          i = p * 4; var r = d[i], gg = d[i + 1], b = d[i + 2], mx = Math.max(r, gg, b), mn = Math.min(r, gg, b), h = 0;
+          if (mx !== mn) { h = mx === r ? ((gg - b) / (mx - mn)) % 6 : mx === gg ? (b - r) / (mx - mn) + 2 : (r - gg) / (mx - mn) + 4; h *= 60; if (h < 0) h += 360; }
+          M[p] = mx; S[p] = mx ? (mx - mn) / mx : 0; HU[p] = h; if (mx >= 170) bright[p] = 1; if (S[p] < 0.3 && mx > 30) cord[p] = 1;
+        }
+        var near = function (arr, x, y, R) { for (var dy = -R; dy <= R; dy++) { var yy = y + dy; if (yy < 0 || yy >= H) continue; for (var dx = -R; dx <= R; dx++) { var xx = x + dx; if (xx >= 0 && xx < W && arr[yy * W + xx]) return true; } } return false; };
+        var Ep = E.map(function (e) { return [e[0] * W, e[1] * H, e[2] * W, e[3] * H]; }), band = W * 0.048;
+        for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) {
+          p = y * W + x; var a = Math.max(0, Math.min(1, (M[p] - 16) / 22)), hu = HU[p];
+          for (var k = 0; k < Ep.length; k++) { var e = Ep[k]; if (Math.abs(x - e[0]) < band && y > e[1] - e[3] * 0.72) { var q = Math.pow((x - e[0]) / (e[2] + 3), 2) + Math.pow((y - e[1]) / (e[3] + 3), 2); if (q > 1) a = 0; break; } }
+          if (a > 0 && (hu < 50 || hu > 330) && S[p] > 0.3 && M[p] < 170 && M[p] > 14 && !near(bright, x, y, 4) && !near(cord, x, y, 2)) a = 0;
+          d[p * 4 + 3] = Math.round(a * 255);
+        }
+        g.putImageData(id, 0, 0);
+        c.toBlob(function (b) { if (!b) return; dayURL[src] = URL.createObjectURL(b); put(dayURL[src]); }, "image/png");
+      }).catch(function () {});
+    } catch (e) {}
+  }
   function lightsAlpha(src) {
     function put(u) { document.querySelectorAll(".xm-limg").forEach(function (e) { e.style.backgroundImage = "url(\"" + u + "\")"; e.classList.add("xm-alpha"); }); }
     if (lightsURL[src]) return put(lightsURL[src]);
@@ -265,7 +298,7 @@
     var tb = document.querySelector(".topbar"), nav = document.querySelector("nav.nav"), w = window.innerWidth || 390;
     var ART = window.SHK_XMAS_ART || {};
     var LH = ART.lights ? lightsImg(ART) : null;
-    if (ART.lights) setTimeout(function () { lightsAlpha(ART.lights); }, 0);
+    if (ART.lights) setTimeout(function () { lightsAlpha(ART.lights); lightsDay(ART); }, 0);
     if (tb) { var t = el("xmLightsTop", "xm-lights xm-top" + (LH ? " xm-img" : ""), LH || lightsSVG(w, false)); if (t.parentNode !== tb) tb.appendChild(t); }
     if (nav) {
       var nb = el("xmBank", "xm-bank", ""); if (nb.parentNode !== nav) nav.appendChild(nb);
