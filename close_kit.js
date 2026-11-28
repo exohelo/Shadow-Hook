@@ -1,4 +1,4 @@
-/* The Shadow Hook · close_kit.js (nov27b) — one obvious way out of every screen.
+/* The Shadow Hook · close_kit.js (nov27c) — one obvious way out of every screen.
    Members said the app "froze" when they couldn't find how to close a page. The gestures were already there (pull down
    or swipe sideways on any pop-up, the phone's back gesture), but nothing on screen said so. Now whatever is open on top
    (a pop-up sheet, a full page, a game, Messy, a photo, the survey…) gets the same round ✕ in its top-right corner,
@@ -62,6 +62,19 @@
     if ((function () { var b = $("boot"); return b && vis(b); })()) return null;
     var L = layers(); if (!L.length) return null;
     L.sort(function (a, b) { return a.z - b.z; });
+    /* #nov27b: trust what's actually on screen, not the z-index: whichever open layer owns the pixels in the middle
+       and near the top-right is the one on top (a page opened from a pop-up can sit over it with a lower z-index) */
+    try {
+      var pts = [[innerWidth / 2, innerHeight * 0.4], [innerWidth - 40, 90], [innerWidth / 2, innerHeight * 0.75]];
+      for (var p = 0; p < pts.length; p++) {
+        var hits = document.elementsFromPoint(pts[p][0], pts[p][1]);
+        for (var h = 0; h < hits.length; h++) {
+          var el = hits[h]; if (el.id === "ckX" || el.id === "ckTip") continue;
+          for (var k = L.length - 1; k >= 0; k--) { if (L[k].box === el || L[k].box.contains(el) || L[k].el.contains(el)) return L[k]; }
+          break;
+        }
+      }
+    } catch (e) {}
     return L[L.length - 1];
   }
 
@@ -102,8 +115,19 @@
     return stDiv.getBoundingClientRect().height || 0;
   }
   function shut() {
-    var L = cur || top(); if (!L) return;
-    try { L.close(); } catch (e) { try { window.shkCloseTop && window.shkCloseTop(); } catch (x) {} }
+    var L = top() || cur; if (!L) return;
+    try { L.close(); } catch (e) {}
+    /* make sure it really went: the layer's own close, then the app's back, then close it outright */
+    setTimeout(function () {
+      if (!vis(L.el)) return;
+      try { window.shkCloseTop && window.shkCloseTop(); } catch (x) {}
+      setTimeout(function () {
+        if (!vis(L.el)) return;
+        var b = L.box; if (!b || b === document.body || b === document.documentElement) return;
+        try { b.classList.remove("on"); if (vis(L.el) && b.style) b.style.display = "none"; } catch (x) {}
+        place();
+      }, 160);
+    }, 160);
     try { if (!document.querySelector(".sheet.on,#roomView.on,.yiw.on") && !(window.shkGameIsOpen && window.shkGameIsOpen())) document.body.style.overflow = ""; } catch (e) {}
     setTimeout(place, 60); setTimeout(place, 300);
   }
