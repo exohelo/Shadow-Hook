@@ -1,4 +1,4 @@
-/* The Shadow Hook · survey.js (nov27a) — the app survey.
+/* The Shadow Hook · survey.js (nov27c) — the app survey.
    Arrives as a flyer in private messages (from THE_SHADOW_HOOK, kind "promo", url "...#promo=survey"); the flyer's button
    opens this sheet. Ten questions, one per screen, tap to answer; the last one is typed: the feature they wish the app had.
    Finishing it puts one free ticket in the open raffle (survey_submit). The Keymaster reads the answers in the Command
@@ -11,6 +11,9 @@
     { k: "ease", t: "How easy is the app to use?", o: ["Very easy", "Easy", "OK", "Hard", "Very hard"] },
     { k: "most", t: "What do you use the most?", sub: "Pick all that fit", multi: true, o: ["The Wire / the call", "Dockets / my pay", "Social / the Board", "Ports & yard maps", "Take: drops & marks", "Games & Messy", "Mayday"] },
     { k: "hardest", t: "What's the hardest part to figure out?", o: ["Nothing, it's all easy", "The Wire / the call", "Dockets / logging jobs", "Social / the Board", "Ports & maps", "Take: drops & marks", "The menus / finding things"] },
+    { k: "stuck", t: "Ever thought the app froze because you couldn't find how to close a screen?", o: ["Never", "Once or twice", "A few times", "All the time"] },
+    { k: "stuckwhere", t: "Which screens were hard to close or get out of?", sub: "Pick all that fit", multi: true, when: function (A) { return A.stuck && A.stuck !== "Never"; },
+      o: ["Pop-up windows / sheets", "Games", "Messy on da Docks", "Ports & yard maps", "Photos / picture viewer", "Messages / chats", "Profile / settings", "The raffle", "Not sure, it just felt stuck"] },
     { k: "themes", t: "The holiday themes (Christmas, Halloween…)", o: ["Love them", "They're fine", "Too much, tone it down", "Turn them off for me"] },
     { k: "look", t: "How does the app look to you?", o: ["Just right", "A little too cartoony", "Too childish, it needs a grown-up redesign", "Too plain"] },
     { k: "read", t: "Is everything easy to read?", o: ["Yes", "Text is too small", "Text is too big", "Hard to read in the sun"] },
@@ -41,17 +44,21 @@
     document.head.appendChild(s);
   }
   var A = {}, i = 0, busy = false;
+  function shown(j) { var q = Q[j]; return !q.when || q.when(A); }
+  function nextI(j) { for (var k = j + 1; k < Q.length; k++) if (shown(k)) return k; return -1; }
+  function prevI(j) { for (var k = j - 1; k >= 0; k--) if (shown(k)) return k; return -1; }
+  function pos() { var n = 0, at = 0; for (var k = 0; k < Q.length; k++) if (shown(k)) { n++; if (k === i) at = n; } return { at: at, n: n }; }
   function close() { var s = $("svSheet"); if (s) s.remove(); }
   function draw() {
     var s = $("svSheet"); if (!s) return;
-    var q = Q[i], pct = Math.round((i / Q.length) * 100), v = A[q.k];
-    var body = '<div class="svq-top"><span class="svq-n">' + (i + 1) + ' / ' + Q.length + '</span><span class="svq-bar"><i style="width:' + pct + '%"></i></span><button class="svq-x" data-sv="x" aria-label="Close">✕</button></div>' +
+    var q = Q[i], P = pos(), pct = Math.round(((P.at - 1) / P.n) * 100), v = A[q.k];
+    var body = '<div class="svq-top"><span class="svq-n">' + P.at + ' / ' + P.n + '</span><span class="svq-bar"><i style="width:' + pct + '%"></i></span><button class="svq-x" data-sv="x" aria-label="Close">✕</button></div>' +
       '<h3>' + esc(q.t) + '</h3>' + (q.sub ? '<div class="svq-sub">' + esc(q.sub) + '</div>' : '<div class="svq-sub">&nbsp;</div>');
     if (q.text) body += '<textarea id="svWish" maxlength="1500" placeholder="I wish the app had…">' + esc(v || "") + '</textarea>';
     else body += q.o.map(function (o, j) { var on = q.multi ? (Array.isArray(v) && v.indexOf(o) > -1) : v === o; return '<button class="svq-o' + (on ? " on" : "") + '" data-sv="o" data-j="' + j + '">' + esc(o) + '</button>'; }).join("");
     var ok = q.text || (q.multi ? Array.isArray(v) && v.length : !!v);
     body += '<div class="svq-nav">' + (i ? '<button class="svq-back" data-sv="back">Back</button>' : "") +
-      '<button class="svq-next" data-sv="next"' + (ok ? "" : " disabled") + '>' + (i === Q.length - 1 ? "SEND IT · 🎟 +1 TICKET" : "NEXT") + '</button></div>';
+      '<button class="svq-next" data-sv="next"' + (ok ? "" : " disabled") + '>' + (nextI(i) < 0 ? "SEND IT · 🎟 +1 TICKET" : "NEXT") + '</button></div>';
     s.querySelector(".sv").innerHTML = body;
   }
   function done(msg, sub) {
@@ -61,7 +68,7 @@
   async function submit() {
     if (busy) return; busy = true;
     var w = $("svWish"); A.wish = w ? w.value : (A.wish || "");
-    var ans = {}; Q.forEach(function (q) { if (!q.text) ans[q.k] = A[q.k]; });
+    var ans = {}; Q.forEach(function (q, j) { if (!q.text && shown(j) && A[q.k] != null) ans[q.k] = A[q.k]; });
     try {
       var r = await window.SB.rpc("survey_submit", { p_survey: SURVEY, p_answers: ans, p_wish: A.wish || "" });
       var d = r && r.data || {};
@@ -89,11 +96,11 @@
     if (k === "o") {
       var o = q.o[+b.getAttribute("data-j")];
       if (q.multi) { var a = Array.isArray(A[q.k]) ? A[q.k] : []; var at = a.indexOf(o); at > -1 ? a.splice(at, 1) : a.push(o); A[q.k] = a; draw(); }
-      else { A[q.k] = o; draw(); setTimeout(function () { if (Q[i] === q && i < Q.length - 1) { i++; draw(); } }, 220); }
+      else { A[q.k] = o; draw(); setTimeout(function () { var n = nextI(i); if (Q[i] === q && n > -1) { i = n; draw(); } }, 220); }
       return;
     }
-    if (k === "back") { if (q.text) { var w = $("svWish"); if (w) A.wish = w.value; } if (i > 0) { i--; draw(); } return; }
-    if (k === "next") { if (i < Q.length - 1) { i++; draw(); } else submit(); }
+    if (k === "back") { if (q.text) { var w = $("svWish"); if (w) A.wish = w.value; } var pv = prevI(i); if (pv > -1) { i = pv; draw(); } return; }
+    if (k === "next") { var nx = nextI(i); if (nx > -1) { i = nx; draw(); } else submit(); }
   });
   if (/[?&]survey\b/.test(location.search)) setTimeout(open, 2500);
 
