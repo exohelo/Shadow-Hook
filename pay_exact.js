@@ -36,7 +36,7 @@
   function armForm() {
     var ot = document.getElementById("njOT"); if (ot) ot.remove();
     var h = document.getElementById("njHours");
-    if (h && !h.__px) { h.__px = 1; h.setAttribute("step", "any"); h.setAttribute("placeholder", "8 — type it, OT included"); }
+    if (h && !h.__px) { h.__px = 1; h.setAttribute("step", "any"); h.setAttribute("placeholder", "8"); }
   }
 
   /* ---------- 3) LOG OVERTIME on a docket ---------- */
