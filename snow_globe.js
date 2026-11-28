@@ -1,4 +1,4 @@
-/* The Shadow Hook · snow_globe.js (nov27b) — the whole app is a snow globe.
+/* The Shadow Hook · snow_globe.js (nov27c) — no glass ball, just the snow — the whole app is a snow globe.
    Hold the phone still: no snow. Shake it hard: a flurry fills the screen inside a glass globe, swirls the way you
    shook it, drifts the way you tilt the phone, and settles. Shake again and it stirs back up.
    Only in the Christmas skin, only on phones (anything with a motion sensor and a touch screen); computers keep the
@@ -19,7 +19,7 @@
   /* no snow while the globe sits still */
   var st = document.createElement("style");
   st.textContent =
-    "html.xm-globe #xmSnow{display:none!important}" +
+    "html.xm-globe #xmSnow{display:none!important}#sgGlass{display:none!important}" +
     "#sgCanvas{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:41}" +
     "#sgGlass{position:fixed;inset:0;pointer-events:none;z-index:41;opacity:0;transition:opacity .9s ease;" +
       "background:radial-gradient(circle closest-side at 50% 50%,rgba(255,255,255,0) 0,rgba(255,255,255,0) 80%,rgba(190,215,245,.14) 88%,rgba(225,240,255,.55) 94.5%,rgba(255,255,255,.75) 95.5%,rgba(40,60,90,.55) 97%,rgba(8,14,24,.72) 100%)}" +

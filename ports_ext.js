@@ -1425,7 +1425,7 @@
 /* #flip(nov24) — THE FLIP (who goes on first: 2–12 names, 1–11 spots, the server draws) gets its card in the games row.
    The Board Games card (board_games_hook.js, nov21) said it rode in from here but was never loaded; it rides in now too. */
 (function () {
-  [["game_frame.js?v=nov24c", "shkOpenGame"], ["board_games_hook.js?v=nov25d", "__bgHook"], ["flip_hook.js?v=nov24b", "__flipHook"], ["trivia_art.js?v=nov26b", "__trvArt"], ["mayday_art.js?v=nov26a", "__mdArt"], ["fold_layout.js?v=nov26b", "__foldLay"], ["daylight_ink.js?v=nov27b", "__dayInk"], ["appts.js?v=nov27b", "__shkAppts"], ["km_center.js?v=nov27b", "__kmCenter"], ["snow_globe.js?v=nov27b", "__snowGlobe"]].forEach(function (r) {
+  [["game_frame.js?v=nov24c", "shkOpenGame"], ["board_games_hook.js?v=nov25d", "__bgHook"], ["flip_hook.js?v=nov24b", "__flipHook"], ["trivia_art.js?v=nov26b", "__trvArt"], ["mayday_art.js?v=nov26a", "__mdArt"], ["fold_layout.js?v=nov26b", "__foldLay"], ["daylight_ink.js?v=nov27b", "__dayInk"], ["appts.js?v=nov27b", "__shkAppts"], ["km_center.js?v=nov27b", "__kmCenter"], ["snow_globe.js?v=nov27c", "__snowGlobe"]].forEach(function (r) {
     if (window[r[1]] || document.querySelector('script[src*="' + r[0].split("?")[0] + '"]')) return;
     var s = document.createElement("script"); s.src = r[0]; s.defer = true; (document.head || document.documentElement).appendChild(s);
   });
