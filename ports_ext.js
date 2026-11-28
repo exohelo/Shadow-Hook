@@ -197,11 +197,8 @@
     return q;
   }
   /* rooms: a room with a port belongs to that hall; a room with no port is the Order's. Members only see their own hall's. */
-  function wrapRooms(q) {
-    var oSel = q.select;
-    q.select = function () { var b = oSel.apply(q, arguments); try { b = b.or("port.is.null,port.eq." + S.home); } catch (e) {} return b; };
-    return q;
-  }
+  /* #nov27(one-order): every member sees every public room, whatever their hall; the social life is one Order */
+  function wrapRooms(q) { return q; }
   function patchSB() {
     var sb = window.SB;
     if (!sb || sb.__shkPortScoped) return !!sb;
