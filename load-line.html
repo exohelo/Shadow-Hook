@@ -60,6 +60,24 @@ button{font:inherit;color:inherit;cursor:pointer}
 #skip:active{transform:translateY(2px)}
 #skip[disabled]{opacity:.35}
 #quit{position:fixed;display:none;top:calc(10px + env(safe-area-inset-top));right:10px;width:38px;height:38px;border-radius:12px;border:1.5px solid #2b4a74;background:#0c1a2ecc;font:700 18px Inter;color:#93a7c4}
+/* #llch(nov27) challenges */
+#chBan{display:none;margin:0 0 14px;padding:14px;border-radius:18px;border:1.5px solid #b91c1c;background:linear-gradient(180deg,#3b0d12,#1c0a10);box-shadow:0 8px 22px #0008}
+#chBan.on{display:block}
+#chBan .k{font:700 12px/1 'Barlow Condensed',sans-serif;letter-spacing:.2em;color:#fca5a5}
+#chBan .h{font:400 26px/1.05 Anton,Impact,sans-serif;letter-spacing:.02em;margin:6px 0 4px}
+#chBan .h b{color:var(--gold);font-weight:400}
+#chBan .t{font:600 14px/1.4 'Barlow Condensed',sans-serif;letter-spacing:.04em;color:#e9d5d8}
+#chBan .tries{margin-top:8px}
+.chl{display:flex;gap:8px;padding:4px 0;font:600 14px 'Barlow Condensed',sans-serif;letter-spacing:.03em;border-top:1px solid #ffffff14}
+.chl span:last-child{margin-left:auto}
+.chl.won{color:#86efac}.chl.fired{color:#fca5a5}
+.chres{margin:12px 0 0;padding:10px;border-radius:12px;font:400 20px/1.15 Anton,Impact,sans-serif;letter-spacing:.03em}
+.chres.won{background:#14532d;color:#bbf7d0}.chres.lost{background:#3b0d12;color:#fecaca}
+#chBox{display:none;margin-top:12px;text-align:left}
+#chBox.on{display:block}
+#chBox input{width:100%;padding:12px;border-radius:12px;border:1.5px solid #2b4a74;background:#07111f;color:#fff;font:600 16px Inter,sans-serif;text-transform:uppercase}
+#chBox .row{margin-top:8px}
+#chMsg{font:600 14px/1.4 'Barlow Condensed',sans-serif;letter-spacing:.04em;color:var(--dim);margin-top:8px;min-height:1em}
 </style>
 </head>
 <body>
@@ -70,6 +88,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 <section id="menu" class="scr on">
   <div class="ttl">LOAD<br><b>LINE</b></div>
   <p class="sub">LOAD THE SHIP AGAINST THE CLOCK · KEEP HER UPRIGHT · DON'T GET FIRED</p>
+  <div id="chBan"></div>
   <div id="lvls"></div>
   <div class="how">
     Tap a <b>column</b> and the crane drops the box in it. Every box has a weight: <b>10t</b>, <b>20t</b> or <b>30t HEAVY</b>.<br>
@@ -289,6 +308,7 @@ function showFired(){
   $('end').classList.add('on'); $('quit').style.display='none';
   $('again').onclick=function(){start(L.n);}; $('ships').onclick=toMenu;
   if(NET.firedN!=null)$('firedN').textContent='Fired '+NET.firedN+(NET.firedN===1?' time':' times')+' so far.';
+  var fr=document.createElement('div');fr.id='chRes';$('endCard').insertBefore(fr,$('endCard').querySelector('.row'));chShowRes();
 }
 function showWin(){
   if(scr!=='game')return; scr='end'; var L=S.L,m=medal(L,S.total);
@@ -297,11 +317,15 @@ function showWin(){
     (m?'<div class="medal">'+m+'</div>':'')+'<div class="big">'+S.total.toFixed(2)+'s</div>'+
     '<div class="brk">clock '+S.clock.toFixed(2)+'s'+(S.pen?' · shut-outs +'+S.pen+'s':'')+(S.listPen?' · '+Math.abs(S.ph.heel).toFixed(1)+'° list +'+S.listPen+'s':'')+'</div>'+
     '<div class="brk" style="color:'+(S.pb?'#fbbf24':'#93a7c4')+'">'+(S.pb?'NEW PERSONAL BEST':'Your best '+(PB[L.n]||0).toFixed(2)+'s')+'</div>'+
+    '<div id="chRes"></div>'+
     '<div class="lb" id="lb"><h3>THE BOARD · '+L.name+'</h3><div class="brk">'+(NET.sb?'Loading…':'Sign in to the app to get on the board.')+'</div></div>'+
+    (NET.uid?'<div class="row"><button class="btn alt" id="chGo" style="border-color:#b91c1c;color:#fecaca">⚔ CHALLENGE SOMEONE</button></div>'+
+      '<div id="chBox"><input id="chTo" placeholder="THEIR HANDLE" autocomplete="off" autocapitalize="characters"><div class="row"><button class="btn" id="chSend">SEND IT</button><button class="btn alt" id="chLink">COPY LINK</button></div><div id="chMsg"></div></div>':'')+
     '<div class="row"><button class="btn" id="again">RUN IT BACK</button><button class="btn alt" id="ships">'+(L.n<3?'NEXT SHIP':'SHIPS')+'</button></div>';
   $('end').classList.add('on'); $('quit').style.display='none';
   $('again').onclick=function(){start(L.n);}; $('ships').onclick=function(){if(L.n<3)start(L.n+1);else toMenu();};
   if(NET.lastBoard)drawBoard(NET.lastBoard,L);
+  chWire(); chShowRes();
 }
 function drawBoard(b,L){var el=$('lb');if(!el||!b)return;
   var h='<h3>THE BOARD · '+L.name+'</h3>';
@@ -309,6 +333,33 @@ function drawBoard(b,L){var el=$('lb');if(!el||!b)return;
   if(!(b.top||[]).length)h+='<div class="brk">Nobody on this ship yet. Be the first.</div>';
   if(b.mine&&!(b.top||[]).some(function(r){return r.me;}))h+='<div class="me"><span>#'+b.mine.rank+'</span><span>You</span><span>'+(+b.mine.total).toFixed(2)+'s</span></div>';
   el.innerHTML=h;}
+/* ---------- challenges (#llch) ---------- */
+var CHRES=null;
+function fmt(t){return (+t).toFixed(2)+'s';}
+function chLoad(){NET.rpc('ll_ch_get',{p_code:CHCODE}).then(function(c){if(!c||!c.ok){return;}CH=c;chBanner();});}
+function chBanner(){var b=$('chBan');if(!b||!CH)return;var L=LV[CH.level-1];
+  var tries=(CH.tries||[]).map(function(t){return '<div class="chl '+t.result+'"><span>'+esc(t.h||'?')+'</span><span>'+(t.result==='fired'?'FIRED':fmt(t.total)+(t.result==='won'?' · BEAT IT':''))+'</span></div>';}).join('');
+  if(CH.mine)b.innerHTML='<div class="k">⚔ YOUR CHALLENGE · '+L.name+'</div><div class="h">YOUR TIME <b>'+fmt(CH.total)+'</b></div><div class="t">'+((CH.tries||[]).length?(CH.tries.length+' tried so far'):'Nobody has tried it yet')+(CH.live?' · open until midnight':' · closed at midnight')+'</div><div class="tries">'+tries+'</div>';
+  else if(!CH.live)b.innerHTML='<div class="k">⚔ CHALLENGE FROM '+esc(CH.from||'?')+'</div><div class="h">THIS ONE CLOSED</div><div class="t">The boxes changed at midnight. Load today\'s ships and send them one back.</div><div class="tries">'+tries+'</div>';
+  else b.innerHTML='<div class="k">⚔ '+esc(CH.from||'A casual')+' CHALLENGED YOU</div><div class="h">BEAT <b>'+fmt(CH.total)+'</b> ON '+L.name+'</div><div class="t">Same boxes they had. Good until midnight. Don\'t get fired.</div><div class="row"><button class="btn" id="chPlay">TAKE IT</button></div><div class="tries">'+tries+'</div>';
+  b.classList.add('on');var p=$('chPlay');if(p)p.onclick=function(){ac();start(CH.level);};
+  if(!CH.mine&&CH.live&&CH.level>UNL){UNL=CH.level;}}
+function chTry(runId,L){if(!CH||CH.mine||!CH.live||!runId||L.n!==CH.level)return;
+  NET.rpc('ll_ch_try',{p_code:CH.code,p_run_id:runId}).then(function(x){if(!x||!x.ok||x.dup)return;CHRES=x;chShowRes();chLoad();});}
+function chShowRes(){var el=$('chRes');if(!el||!CHRES)return;var x=CHRES,who=esc(CH&&CH.from||'them');
+  el.innerHTML=x.result==='won'?'<div class="chres won">⚔ YOU BEAT '+who+' BY '+(Math.round((x.theirs-x.mine)*100)/100).toFixed(2)+'s</div>':
+    x.result==='lost'?'<div class="chres lost">⚔ '+who+' STILL HOLDS IT · YOU NEEDED '+(Math.round((x.mine-x.theirs)*100)/100).toFixed(2)+'s MORE</div>':
+    '<div class="chres lost" style="font-size:16px">⚔ '+who+' WILL HEAR ABOUT THIS</div>';}
+function chWire(){var go=$('chGo');if(!go)return;var box=$('chBox'),msg=function(t){$('chMsg').textContent=t;};
+  go.onclick=function(){box.classList.toggle('on');if(box.classList.contains('on'))setTimeout(function(){$('chTo').focus();},50);};
+  var make=function(to){var id=NET.lastRun;if(!id){msg('Hang on, your time is still saving…');return Promise.resolve(null);}
+    return NET.rpc('ll_ch_make',{p_run_id:id,p_to:to||null}).then(function(x){if(!x){msg('Couldn\'t make it. Try again.');return null;}if(!x.ok){msg(x.why||'Couldn\'t make it.');return null;}return x;});};
+  $('chSend').onclick=function(){var to=$('chTo').value.trim();if(!to){msg('Type their handle first.');return;}msg('Sending…');
+    make(to).then(function(x){if(x)msg('⚔ Sent to '+x.sent_to+'. You\'ll get a ping when they try.');});};
+  $('chLink').onclick=function(){msg('Making a link…');make(null).then(function(x){if(!x)return;var u=location.origin+'/#game=/load-line.html%3Fch%3D'+x.code;
+    var done=function(){msg('Link copied. Paste it anywhere: it opens this challenge.');};
+    try{if(navigator.share){navigator.share({title:'Load Line',text:'⚔ Beat my time on Load Line',url:u}).then(done,function(){});return;}}catch(e){}
+    try{navigator.clipboard.writeText(u).then(done,function(){msg(u);});}catch(e){msg(u);}});};}
 function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
 function toMenu(){scr='menu';S=null;$('end').classList.remove('on');$('menu').classList.add('on');$('skip').style.display='none';$('quit').style.display='none';renderMenu();}
 window.SHK_SHELL_BACK=function(){if(scr==='menu')return false;if(S&&!S.over)NET.fired('quit');toMenu();return true;};
@@ -459,15 +510,16 @@ function loop(ts){var t=ts/1000,dt=Math.min(.05,t-(last||t));last=t;if(scr==='ga
 
 /* ---------- online: the board ---------- */
 var SB_URL='https://ehykqebzkbelwtkgjbml.supabase.co', SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVoeWtxZWJ6a2JlbHd0a2dqYm1sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzMDMwNTMsImV4cCI6MjA5OTg3OTA1M30.RgdTFy1HNE36lN3bM6ovjkmAJsTEps0GmgRuI6h6IpI';
-var NET={sb:null,uid:null,runId:null,firedN:null,lastBoard:null,
+var CH=null, CHCODE=(function(){var m=/[?&]ch=([A-Za-z0-9]{4,10})/.exec(location.search);return m?m[1].toUpperCase():null;})();
+var NET={sb:null,uid:null,runId:null,lastRun:null,firedN:null,lastBoard:null,
   rpc:function(f,a){if(!NET.sb||!NET.uid)return Promise.resolve(null);return NET.sb.rpc(f,a).then(function(r){return r.error?null:r.data;},function(){return null;});},
   start:function(n){NET.runId=null;NET.lastBoard=null;NET.rpc('ll_start',{p_level:n}).then(function(id){NET.runId=id;});},
-  finish:function(s){var id=NET.runId;NET.runId=null;if(!id){NET.rpc('ll_board',{p_level:s.L.n}).then(function(b){NET.lastBoard=b;drawBoard(b,s.L);});return;}
-    NET.rpc('ll_finish',{p_id:id,p_clock:+s.clock.toFixed(2),p_pen:+(s.pen+(s.listPen||0)).toFixed(2),p_boxes:s.placed}).then(function(x){if(!x)return;NET.lastBoard=x.board;drawBoard(x.board,s.L);});},
-  fired:function(why){var id=NET.runId;NET.runId=null;if(!id)return;NET.rpc('ll_fired',{p_id:id,p_reason:why}).then(function(x){if(x){NET.firedN=x.fired;var el=$('firedN');if(el)el.textContent='Fired '+x.fired+(x.fired===1?' time':' times')+' so far.';}});}
+  finish:function(s){var id=NET.runId;NET.runId=null;NET.lastRun=id;if(!id){NET.rpc('ll_board',{p_level:s.L.n}).then(function(b){NET.lastBoard=b;drawBoard(b,s.L);});return;}
+    NET.rpc('ll_finish',{p_id:id,p_clock:+s.clock.toFixed(2),p_pen:+(s.pen+(s.listPen||0)).toFixed(2),p_boxes:s.placed}).then(function(x){if(!x)return;NET.lastBoard=x.board;drawBoard(x.board,s.L);chTry(id,s.L);});},
+  fired:function(why){var id=NET.runId;NET.runId=null;if(!id)return;var LL=S&&S.L;NET.rpc('ll_fired',{p_id:id,p_reason:why}).then(function(x){if(why!=='quit'&&LL)chTry(id,LL);if(x){NET.firedN=x.fired;var el=$('firedN');if(el)el.textContent='Fired '+x.fired+(x.fired===1?' time':' times')+' so far.';}});}
 };
 (function(){var s=document.createElement('script');s.src='/supabase-js-2.112.2.js';s.onload=function(){try{NET.sb=window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:true}});}catch(e){NET.sb=null;}
-  if(NET.sb)NET.sb.auth.getSession().then(function(r){var se=r&&r.data&&r.data.session;if(se){NET.uid=se.user.id;$('who').textContent='Same boxes for everyone today, so the board is fair. You\'re signed in, so your times count.';}});};
+  if(NET.sb)NET.sb.auth.getSession().then(function(r){var se=r&&r.data&&r.data.session;if(se){NET.uid=se.user.id;$('who').textContent='Same boxes for everyone today, so the board is fair. You\'re signed in, so your times count.';if(CHCODE)chLoad();}});};
   s.onerror=function(){};document.head.appendChild(s);})();
 
 addEventListener('resize',function(){layout();});

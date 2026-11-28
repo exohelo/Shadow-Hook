@@ -1476,7 +1476,8 @@
    Phones on an older build just see the flyer picture. */
 (function () {
   var GO = { messy: { to: "/messy.html", cta: "💘 OPEN MESSY", kick: "THE NEW", title: "MESSY", sub: "ON DA DOCKS" },
-    survey: { to: "#survey", cta: "📝 TAKE THE SURVEY · 🎟 +1 TICKET", kick: "HELP US BUILD", title: "THE APP", sub: "A FEW QUICK QUESTIONS" } };
+    survey: { to: "#survey", cta: "📝 TAKE THE SURVEY · 🎟 +1 TICKET", kick: "HELP US BUILD", title: "THE APP", sub: "A FEW QUICK QUESTIONS" },
+    llch: { to: "/load-line.html", cta: "⚔ TAKE THE CHALLENGE", kick: "LOAD LINE", title: "BEAT", sub: "MY TIME" } };
   function css() {
     if (document.getElementById("promoCss")) return;
     var s = document.createElement("style"); s.id = "promoCss";
@@ -1501,7 +1502,9 @@
       var t = DM.threads[DM.openPeer]; if (!t) return;
       t.msgs.forEach(function (m) {
         var u = String(m.url || ""), mm = /#promo=([a-z]+)/.exec(u); if (m.kind !== "promo" && !mm) return;
-        var g = GO[mm ? mm[1] : "messy"] || GO.messy, el = f.querySelector('[data-dmid="' + String(m.id).replace(/"/g, "") + '"]');
+        var g = GO[mm ? mm[1] : "messy"] || GO.messy;
+        if (mm && mm[1] === "llch") { var cm = /[&?]ch=([A-Za-z0-9]+)/.exec(u); g = Object.assign({}, GO.llch, { to: "/load-line.html" + (cm ? "?ch=" + cm[1] : "") }); }
+        var el = f.querySelector('[data-dmid="' + String(m.id).replace(/"/g, "") + '"]');
         if (!el || el.__promo) return; el.__promo = 1; css();
         var tm = el.querySelector(".dm-t");
         el.classList.add("promo"); el.classList.remove("media");
@@ -1513,6 +1516,7 @@
   document.addEventListener("click", function (e) { var b = e.target.closest && e.target.closest("[data-promo-go]"); if (!b) return; e.preventDefault(); e.stopPropagation();
     var to = b.getAttribute("data-promo-go");
     if (to === "#survey") { try { window.shkSurvey ? window.shkSurvey() : toast("Update the app to take the survey"); } catch (x) {} return; }
+    if (to.indexOf("/messy") !== 0) { try { window.shkOpenGame ? window.shkOpenGame(to) : (location.href = to); } catch (x) {} return; }
     var went = false, go = function () { if (!went) { went = true; if (window.shkOpenGame) window.shkOpenGame(to); else location.href = to; } };
     try { window.SB && window.SB.rpc("msy_log", { p_kind: "flyer" }).then(go, go); } catch (x) {} setTimeout(go, 700); }, true);
   var n = 0, w = setInterval(function () {
