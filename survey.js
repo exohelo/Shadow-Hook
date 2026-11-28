@@ -1,4 +1,4 @@
-/* The Shadow Hook · survey.js (nov27c) — the app survey.
+/* The Shadow Hook · survey.js (nov27d) — the app survey.
    Arrives as a flyer in private messages (from THE_SHADOW_HOOK, kind "promo", url "...#promo=survey"); the flyer's button
    opens this sheet. Ten questions, one per screen, tap to answer; the last one is typed: the feature they wish the app had.
    Finishing it puts one free ticket in the open raffle (survey_submit). The Keymaster reads the answers in the Command
@@ -74,6 +74,7 @@
       var d = r && r.data || {};
       if (r.error || !d.ok) { busy = false; try { toast("Couldn't send it: " + ((r.error && r.error.message) || d.why || "try again")); } catch (e) {} return; }
       if (d.already) done("You already answered", "Thank you. Your ticket is in.");
+      else if (d.redo) done("Answers updated", "Thanks. Your raffle ticket from the first time still counts.");
       else if (d.ticket) done("Thank you!", "One free ticket is in the " + (d.raffle || "raffle") + ". We read every answer.");
       else done("Thank you!", "We read every answer.");
       try { localStorage.setItem("shk_survey_" + SURVEY, "1"); } catch (e) {}
@@ -84,8 +85,16 @@
     if (!window.SB || !window.__shkUid) { try { toast("Sign in to take the survey."); } catch (e) {} return; }
     css(); close();
     var s = document.createElement("div"); s.id = "svSheet"; s.innerHTML = '<div class="sv"></div>'; document.body.appendChild(s);
-    try { var m = await window.SB.rpc("survey_mine", { p_survey: SURVEY }); if (m && m.data && m.data.done) { done("You already answered", "Thank you. Your ticket is in."); return; } } catch (e) {}
-    A = {}; i = 0; draw();
+    A = {}; i = 0;
+    try {
+      var m = await window.SB.rpc("survey_mine", { p_survey: SURVEY });
+      if (m && m.data && m.data.done) {
+        s.querySelector(".sv").innerHTML = '<div class="svq-done"><div class="big">\uD83C\uDF9F</div><h3>You already answered</h3><div class="svq-sub">Your ticket is in. Changed your mind? Answer again: your new answers replace the old ones (one ticket per member).</div>' +
+          '<div class="svq-nav"><button class="svq-back" data-sv="x">CLOSE</button><button class="svq-next" data-sv="redo">ANSWER AGAIN</button></div></div>';
+        return;
+      }
+    } catch (e) {}
+    draw();
   }
   window.shkSurvey = open;
   document.addEventListener("click", function (e) {
@@ -93,6 +102,7 @@
     if (!b) { if (e.target && e.target.id === "svSheet") close(); return; }
     var k = b.getAttribute("data-sv"), q = Q[i];
     if (k === "x") return close();
+    if (k === "redo") { A = {}; i = 0; draw(); return; }
     if (k === "o") {
       var o = q.o[+b.getAttribute("data-j")];
       if (q.multi) { var a = Array.isArray(A[q.k]) ? A[q.k] : []; var at = a.indexOf(o); at > -1 ? a.splice(at, 1) : a.push(o); A[q.k] = a; draw(); }
