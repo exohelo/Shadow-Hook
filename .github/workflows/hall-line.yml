@@ -159,6 +159,11 @@ jobs:
           VAPID_PRIVATE:        ${{ secrets.VAPID_PRIVATE }}
           VAPID_SUBJECT:        ${{ vars.VAPID_SUBJECT || 'mailto:keymaster@theshadowhook.com' }}
           PUSH_AHEAD:           ${{ vars.PUSH_AHEAD || '3' }}
+        # #nov27(lookout-timeout): this step hung on the web-push install with no output, so every run sat until the
+        # 12-minute kill and the queue cancelled the runs behind it (the app's RUN button included). Now it has 3
+        # minutes, its own command timeouts, and never fails the job: a stuck push can't block the hotline read again.
+        timeout-minutes: 3
+        continue-on-error: true
         run: |
-          npm install --no-save --silent web-push
-          node hall-line-worker/push-board.js
+          timeout 90 npm install --no-save --no-audit --no-fund --prefer-offline --silent web-push || { echo "web-push install stalled - Lookout skipped this run"; exit 0; }
+          timeout 75 node hall-line-worker/push-board.js || echo "Lookout stopped after 75s"
