@@ -1422,7 +1422,7 @@
 /* #flip(nov24) — THE FLIP (who goes on first: 2–12 names, 1–11 spots, the server draws) gets its card in the games row.
    The Board Games card (board_games_hook.js, nov21) said it rode in from here but was never loaded; it rides in now too. */
 (function () {
-  [["game_frame.js?v=nov24c", "shkOpenGame"], ["board_games_hook.js?v=nov25d", "__bgHook"], ["flip_hook.js?v=nov24b", "__flipHook"], ["trivia_art.js?v=nov26b", "__trvArt"], ["mayday_art.js?v=nov26a", "__mdArt"], ["fold_layout.js?v=nov26b", "__foldLay"], ["daylight_ink.js?v=nov27b", "__dayInk"], ["appts.js?v=nov27b", "__shkAppts"], ["km_center.js?v=nov27b", "__kmCenter"], ["snow_globe.js?v=nov27c", "__snowGlobe"]].forEach(function (r) {
+  [["game_frame.js?v=nov24c", "shkOpenGame"], ["board_games_hook.js?v=nov25d", "__bgHook"], ["flip_hook.js?v=nov24b", "__flipHook"], ["trivia_art.js?v=nov26b", "__trvArt"], ["mayday_art.js?v=nov26a", "__mdArt"], ["fold_layout.js?v=nov26b", "__foldLay"], ["daylight_ink.js?v=nov27b", "__dayInk"], ["appts.js?v=nov27b", "__shkAppts"], ["km_center.js?v=nov27c", "__kmCenter"], ["snow_globe.js?v=nov27c", "__snowGlobe"], ["survey.js?v=nov27a", "__shkSurvey"]].forEach(function (r) {
     if (window[r[1]] || document.querySelector('script[src*="' + r[0].split("?")[0] + '"]')) return;
     var s = document.createElement("script"); s.src = r[0]; s.defer = true; (document.head || document.documentElement).appendChild(s);
   });
@@ -1475,7 +1475,8 @@
    draws as a flyer card with a button that opens that part of the app. First one: the new Messy, sent from MESSY_ON_DA_DOCKS.
    Phones on an older build just see the flyer picture. */
 (function () {
-  var GO = { messy: { to: "/messy.html", cta: "💘 OPEN MESSY", kick: "THE NEW", title: "MESSY", sub: "ON DA DOCKS" } };
+  var GO = { messy: { to: "/messy.html", cta: "💘 OPEN MESSY", kick: "THE NEW", title: "MESSY", sub: "ON DA DOCKS" },
+    survey: { to: "#survey", cta: "📝 TAKE THE SURVEY · 🎟 +1 TICKET", kick: "HELP US BUILD", title: "THE APP", sub: "10 QUICK QUESTIONS" } };
   function css() {
     if (document.getElementById("promoCss")) return;
     var s = document.createElement("style"); s.id = "promoCss";
@@ -1510,7 +1511,9 @@
     } catch (e) {}
   }
   document.addEventListener("click", function (e) { var b = e.target.closest && e.target.closest("[data-promo-go]"); if (!b) return; e.preventDefault(); e.stopPropagation();
-    var to = b.getAttribute("data-promo-go"), went = false, go = function () { if (!went) { went = true; if (window.shkOpenGame) window.shkOpenGame(to); else location.href = to; } };
+    var to = b.getAttribute("data-promo-go");
+    if (to === "#survey") { try { window.shkSurvey ? window.shkSurvey() : toast("Update the app to take the survey"); } catch (x) {} return; }
+    var went = false, go = function () { if (!went) { went = true; if (window.shkOpenGame) window.shkOpenGame(to); else location.href = to; } };
     try { window.SB && window.SB.rpc("msy_log", { p_kind: "flyer" }).then(go, go); } catch (x) {} setTimeout(go, 700); }, true);
   var n = 0, w = setInterval(function () {
     if (typeof window.dmDrawThread === "function" && !window.dmDrawThread.__promo) {

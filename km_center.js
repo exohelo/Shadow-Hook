@@ -1,4 +1,4 @@
-/* The Shadow Hook · km_center.js (nov27b) — the Command Center, rebuilt for the Keymaster.
+/* The Shadow Hook · km_center.js (nov27c) — the Command Center, rebuilt for the Keymaster.
    Nothing is re-coded: the existing sections are MOVED (so every button keeps its wiring) into a new order:
      1. UPDATE THE SYSTEM, always on top: tonight's / today's boards with PMA · ILWU · prediction status, and the
         four levers: add the PMA PDF, enter or fix an ILWU sheet, re-read the union PDF, run the prediction.
@@ -19,7 +19,8 @@
         ["People", ["kmMembersCard", "kmSecTraffic", "kmSecRoster"]],
         ["Money", ["kmSecPulse", "kmSecCasino", "kmBooksWrap"]],
         ["The Call", ["kmSecNumbers", "kmSecTape"]],
-        ["Games", ["kmGamesCard", "kmMessyCard"]]] },
+        ["Games", ["kmGamesCard", "kmMessyCard"]],
+        ["Survey", ["kmSurveyCard"]]] },
     { id: "kmGrpSys", t: "⚙ SYSTEM", sub: "Alarms, sheet flags, bots, switches", secs: ["kmSecAlarms", "kmSecFlags", "kmSecBots", "kmSecSwitches"] },
     { id: "kmGrpCast", t: "📣 BROADCAST", sub: "Bulletin, raffle, welcome, mint", secs: ["kmSecBulletin", "kmSecRaffle", "kmSecWelcome", "kmSecMint"] }
   ];
