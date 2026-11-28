@@ -1,4 +1,4 @@
-/* The Shadow Hook · close_kit.js (nov27c) — one obvious way out of every screen.
+/* The Shadow Hook · close_kit.js (nov27d) — one obvious way out of every screen.
    Members said the app "froze" when they couldn't find how to close a page. The gestures were already there (pull down
    or swipe sideways on any pop-up, the phone's back gesture), but nothing on screen said so. Now whatever is open on top
    (a pop-up sheet, a full page, a game, Messy, a photo, the survey…) gets the same round ✕ in its top-right corner,
@@ -48,7 +48,12 @@
       var g = $("shkGame"); if (g && g.classList.contains("on")) add(g, g, function () { window.shkCloseGame ? window.shkCloseGame() : g.classList.remove("on"); });
       ["svSheet", "apptSheet"].forEach(function (id) { var e = $(id); if (e) add(e.firstElementChild || e, e, function () { e.remove(); }); });
       if (typeof window.pmIsOpen === "function" && window.pmIsOpen()) { var pm = document.querySelector("#pmRoot,#pmoney,.pm-root,[data-pm-root]"); add(pm || document.body, pm || document.body, function () { window.pmClose(); }); }
-      VIEWS.forEach(function (v) { var e = $(v[0]); if (e && (e.classList.contains("on") || (e.style.display && e.style.display !== "none"))) add(e, e, function () { var b = $(v[1]); if (b && b.offsetParent) b.click(); else if (window.shkCloseTop) window.shkCloseTop(); }); });
+      /* #nov27d: on phones the app hides these back arrows (html.swipeback) and relies on the swipe, so press the page's
+         own back button even when it's hidden (a hidden button still runs its close), and undo any half-finished swipe */
+      VIEWS.forEach(function (v) { var e = $(v[0]); if (e && (e.classList.contains("on") || (e.style.display && e.style.display !== "none"))) add(e, e, function () {
+        try { e.style.transform = ""; e.style.transition = ""; } catch (x) {}
+        if (v[0] === "dmView" && typeof window.closeDmThread === "function") { try { window.dmCancelEdit && window.dmCancelEdit(); } catch (x) {} window.closeDmThread(); return; }
+        var b = $(v[1]); if (b) b.click(); else if (window.shkCloseTop) window.shkCloseTop(); }); });
       var yv = document.querySelector(".yiw.on"); if (yv) add(yv, yv, function () { window.shkCloseTop && window.shkCloseTop(); });
       ["storyViewer", "photoLB"].forEach(function (id) { var e = $(id); if (e && e.classList.contains("on")) add(e, e, function () { var b = closeIn(e); b ? b.click() : (window.shkCloseTop ? window.shkCloseTop() : e.classList.remove("on")); }); });
       document.querySelectorAll(".sheet.on,.dlg.on,.gifsheet.on,#bpop.on").forEach(function (e) {
