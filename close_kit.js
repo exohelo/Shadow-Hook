@@ -1,4 +1,4 @@
-/* The Shadow Hook · close_kit.js (nov27a) — one obvious way out of every screen.
+/* The Shadow Hook · close_kit.js (nov27b) — one obvious way out of every screen.
    Members said the app "froze" when they couldn't find how to close a page. The gestures were already there (pull down
    or swipe sideways on any pop-up, the phone's back gesture), but nothing on screen said so. Now whatever is open on top
    (a pop-up sheet, a full page, a game, Messy, a photo, the survey…) gets the same round ✕ in its top-right corner,
@@ -89,6 +89,8 @@
       document.body.appendChild(btn);
     }
     var r = L.el.getBoundingClientRect(), t = Math.max(r.top, safeTop()) + 10;
+    /* games draw their own buttons inside the frame (out of reach to check): sit on the frame's top edge instead */
+    if (L.el.id === "shkGame") t = Math.max(safeTop() + 4, r.top - 20);
     var right = Math.max(10, innerWidth - Math.min(r.right, innerWidth) + 10);
     btn.style.top = Math.round(t) + "px"; btn.style.right = Math.round(right) + "px";
     btn.classList.add("on");
