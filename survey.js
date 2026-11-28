@@ -28,16 +28,16 @@
       "#svSheet{position:fixed;inset:0;z-index:99995;background:rgba(8,10,16,.72);display:flex;align-items:flex-end;justify-content:center;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}" +
       "#svSheet .sv{width:min(520px,100%);max-height:92vh;overflow:auto;background:#14121c;color:#f3eef8;border-radius:22px 22px 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom));box-shadow:0 -10px 40px #0008;font-family:Inter,system-ui,sans-serif}" +
       "html.daylight #svSheet .sv{background:#fffaf5;color:#2b1638}" +
-      "#svSheet .sv-top{display:flex;align-items:center;gap:10px;margin-bottom:14px}#svSheet .sv-x{margin-left:auto;background:none;border:0;color:inherit;opacity:.6;font-size:22px;line-height:1;padding:4px 6px}" +
-      "#svSheet .sv-bar{flex:1;height:6px;border-radius:9px;background:rgba(127,127,127,.25);overflow:hidden}#svSheet .sv-bar i{display:block;height:100%;background:linear-gradient(90deg,#2fae6c,#7ce0a0);transition:width .25s}" +
-      "#svSheet .sv-n{font:700 12px/1 'Barlow Condensed',sans-serif;letter-spacing:.12em;opacity:.7}" +
-      "#svSheet h3{margin:4px 0 4px;font:800 22px/1.2 'Barlow Condensed',Inter,sans-serif;letter-spacing:.02em}#svSheet .sv-sub{font-size:13px;opacity:.7;margin-bottom:12px}" +
-      "#svSheet .sv-o{display:block;width:100%;text-align:left;margin:8px 0;padding:14px 14px;border-radius:14px;border:1.5px solid rgba(127,127,127,.35);background:rgba(127,127,127,.08);color:inherit;font:600 15px/1.3 Inter,sans-serif}" +
-      "#svSheet .sv-o.on{border-color:#2fae6c;background:rgba(47,174,108,.16);box-shadow:inset 0 0 0 1px #2fae6c}" +
+      "#svSheet .svq-top{display:flex;align-items:center;gap:10px;margin-bottom:14px}#svSheet .svq-x{margin-left:auto;background:none;border:0;color:inherit;opacity:.6;font-size:22px;line-height:1;padding:4px 6px}" +
+      "#svSheet .svq-bar{flex:1;height:6px;border-radius:9px;background:rgba(127,127,127,.25);overflow:hidden}#svSheet .svq-bar i{display:block;height:100%;background:linear-gradient(90deg,#2fae6c,#7ce0a0);transition:width .25s}" +
+      "#svSheet .svq-n{font:700 12px/1 'Barlow Condensed',sans-serif;letter-spacing:.12em;opacity:.7}" +
+      "#svSheet h3{margin:4px 0 4px;font:800 22px/1.2 'Barlow Condensed',Inter,sans-serif;letter-spacing:.02em}#svSheet .svq-sub{font-size:13px;opacity:.7;margin-bottom:12px}" +
+      "#svSheet .svq-o{display:block;width:100%;text-align:left;margin:8px 0;padding:14px 14px;border-radius:14px;border:1.5px solid rgba(127,127,127,.35);background:rgba(127,127,127,.08);color:inherit;font:600 15px/1.3 Inter,sans-serif}" +
+      "#svSheet .svq-o.on{border-color:#2fae6c;background:rgba(47,174,108,.16);box-shadow:inset 0 0 0 1px #2fae6c}" +
       "#svSheet textarea{width:100%;box-sizing:border-box;min-height:130px;padding:12px;border-radius:14px;border:1.5px solid rgba(127,127,127,.35);background:rgba(127,127,127,.08);color:inherit;font:15px/1.4 Inter,sans-serif;resize:vertical}" +
-      "#svSheet .sv-nav{display:flex;gap:8px;margin-top:14px}#svSheet .sv-nav button{flex:1;padding:14px;border-radius:14px;border:0;font:800 15px/1 'Barlow Condensed',sans-serif;letter-spacing:.08em}" +
-      "#svSheet .sv-back{background:rgba(127,127,127,.18);color:inherit}#svSheet .sv-next{background:#1f8f5f;color:#fff}#svSheet .sv-next:disabled{opacity:.4}" +
-      "#svSheet .sv-done{text-align:center;padding:18px 6px 8px}#svSheet .sv-done .big{font-size:54px;line-height:1}#svSheet .sv-done h3{margin-top:10px}";
+      "#svSheet .svq-nav{display:flex;gap:8px;margin-top:14px}#svSheet .svq-nav button{flex:1;padding:14px;border-radius:14px;border:0;font:800 15px/1 'Barlow Condensed',sans-serif;letter-spacing:.08em}" +
+      "#svSheet .svq-back{background:rgba(127,127,127,.18);color:inherit}#svSheet .svq-next{background:#1f8f5f;color:#fff}#svSheet .svq-next:disabled{opacity:.4}" +
+      "#svSheet .svq-done{text-align:center;padding:18px 6px 8px}#svSheet .svq-done .big{font-size:54px;line-height:1}#svSheet .svq-done h3{margin-top:10px}";
     document.head.appendChild(s);
   }
   var A = {}, i = 0, busy = false;
@@ -45,18 +45,18 @@
   function draw() {
     var s = $("svSheet"); if (!s) return;
     var q = Q[i], pct = Math.round((i / Q.length) * 100), v = A[q.k];
-    var body = '<div class="sv-top"><span class="sv-n">' + (i + 1) + ' / ' + Q.length + '</span><span class="sv-bar"><i style="width:' + pct + '%"></i></span><button class="sv-x" data-sv="x" aria-label="Close">✕</button></div>' +
-      '<h3>' + esc(q.t) + '</h3>' + (q.sub ? '<div class="sv-sub">' + esc(q.sub) + '</div>' : '<div class="sv-sub">&nbsp;</div>');
+    var body = '<div class="svq-top"><span class="svq-n">' + (i + 1) + ' / ' + Q.length + '</span><span class="svq-bar"><i style="width:' + pct + '%"></i></span><button class="svq-x" data-sv="x" aria-label="Close">✕</button></div>' +
+      '<h3>' + esc(q.t) + '</h3>' + (q.sub ? '<div class="svq-sub">' + esc(q.sub) + '</div>' : '<div class="svq-sub">&nbsp;</div>');
     if (q.text) body += '<textarea id="svWish" maxlength="1500" placeholder="I wish the app had…">' + esc(v || "") + '</textarea>';
-    else body += q.o.map(function (o, j) { var on = q.multi ? (Array.isArray(v) && v.indexOf(o) > -1) : v === o; return '<button class="sv-o' + (on ? " on" : "") + '" data-sv="o" data-j="' + j + '">' + esc(o) + '</button>'; }).join("");
+    else body += q.o.map(function (o, j) { var on = q.multi ? (Array.isArray(v) && v.indexOf(o) > -1) : v === o; return '<button class="svq-o' + (on ? " on" : "") + '" data-sv="o" data-j="' + j + '">' + esc(o) + '</button>'; }).join("");
     var ok = q.text || (q.multi ? Array.isArray(v) && v.length : !!v);
-    body += '<div class="sv-nav">' + (i ? '<button class="sv-back" data-sv="back">Back</button>' : "") +
-      '<button class="sv-next" data-sv="next"' + (ok ? "" : " disabled") + '>' + (i === Q.length - 1 ? "SEND IT · 🎟 +1 TICKET" : "NEXT") + '</button></div>';
+    body += '<div class="svq-nav">' + (i ? '<button class="svq-back" data-sv="back">Back</button>' : "") +
+      '<button class="svq-next" data-sv="next"' + (ok ? "" : " disabled") + '>' + (i === Q.length - 1 ? "SEND IT · 🎟 +1 TICKET" : "NEXT") + '</button></div>';
     s.querySelector(".sv").innerHTML = body;
   }
   function done(msg, sub) {
     var s = $("svSheet"); if (!s) return;
-    s.querySelector(".sv").innerHTML = '<div class="sv-done"><div class="big">🎟</div><h3>' + esc(msg) + '</h3><div class="sv-sub">' + esc(sub) + '</div><div class="sv-nav"><button class="sv-next" data-sv="x">CLOSE</button></div></div>';
+    s.querySelector(".sv").innerHTML = '<div class="svq-done"><div class="big">🎟</div><h3>' + esc(msg) + '</h3><div class="svq-sub">' + esc(sub) + '</div><div class="svq-nav"><button class="svq-next" data-sv="x">CLOSE</button></div></div>';
   }
   async function submit() {
     if (busy) return; busy = true;
